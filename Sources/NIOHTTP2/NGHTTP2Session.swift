@@ -11,6 +11,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
+
+import NIO
+import NIOHTTP1
 import CNIONghttp2
 
 /// A helper function that manages the lifetime of a pointer to an `nghttp2_option` structure.
@@ -40,6 +43,7 @@ private func withCallbacks<T>(fn: (OpaquePointer) throws -> T) rethrows -> T {
 
     nghttp2_session_callbacks_set_error_callback(nghttp2Callbacks, errorCallback)
     nghttp2_session_callbacks_set_on_frame_recv_callback(nghttp2Callbacks, onFrameRecvCallback)
+    nghttp2_session_callbacks_set_on_begin_frame_callback(nghttp2Callbacks, onBeginFrameCallback)
     nghttp2_session_callbacks_set_on_data_chunk_recv_callback(nghttp2Callbacks, onDataChunkRecvCallback)
     nghttp2_session_callbacks_set_on_stream_close_callback(nghttp2Callbacks, onStreamCloseCallback)
     nghttp2_session_callbacks_set_on_begin_headers_callback(nghttp2Callbacks, onBeginHeadersCallback)
@@ -60,9 +64,26 @@ private func errorCallback(session: OpaquePointer?, msg: UnsafePointer<CChar>?, 
     return 0
 }
 
+/// The global nghttp2 frame begin callback.
+///
+/// Responsible for recording the frame's type etc.
+private func onBeginFrameCallback(session: OpaquePointer?, frameHeader: UnsafePointer<nghttp2_frame_hd>?, userData: UnsafeMutableRawPointer?) -> Int32 {
+    guard let frameHeader = frameHeader, let userData = userData else {
+        fatalError("Invalid pointers provided to onBeginFrameCallback")
+    }
+
+    let nioSession = evacuateSession(userData)
+    do {
+        try nioSession.onBeginFrameCallback(frameHeader: frameHeader)
+        return 0
+    } catch {
+        return NGHTTP2_ERR_CALLBACK_FAILURE.rawValue
+    }
+}
+
 /// The global nghttp2 frame receive callback.
 ///
-/// Responsible for sanity-checking inputs and converting the user-data into a Swift class in order to dispatch the frame for
+/// Responsible for sanity-checking inputs and converting the user-data into a Swift value in order to dispatch the frame for
 /// further processing.
 private func onFrameRecvCallback(session: OpaquePointer?, frame: UnsafePointer<nghttp2_frame>?, userData: UnsafeMutableRawPointer?) -> Int32 {
     guard let frame = frame, let userData = userData else {
@@ -165,6 +186,116 @@ private func onHeaderCallback(session: OpaquePointer?,
     }
 }
 
+public struct HTTP2Frame {
+    public var header: FrameHeader
+    public var payload: FramePayload
+
+    public struct FrameHeader {
+        var storage: nghttp2_frame_hd
+        public var flags: UInt8 {
+            return self.storage.flags
+        }
+        public var streamID: Int32 {
+            return self.storage.stream_id
+        }
+    }
+
+    public enum FramePayload {
+        case data
+        case headers(HTTP2HeadersCategory, HTTPHeaders)
+        case priority
+        case rstStream
+        case settings([(Int32, UInt32)])
+        case pushPromise
+        case ping
+        case goAway
+        case windowUpdate(windowSizeIncrement: Int)
+        case continuation
+        case alternativeService
+    }
+}
+
+public enum HTTP2HeadersCategory {
+    case request
+    case response
+    case pushResponse
+    case headers
+}
+
+extension nghttp2_headers_category {
+    init(headersCategory: HTTP2HeadersCategory) {
+        switch headersCategory {
+        case .request:
+            self = NGHTTP2_HCAT_REQUEST
+        case .response:
+            self = NGHTTP2_HCAT_RESPONSE
+        case .pushResponse:
+            self = NGHTTP2_HCAT_PUSH_RESPONSE
+        case .headers:
+            self = NGHTTP2_HCAT_HEADERS
+        }
+    }
+}
+
+extension HTTPHeaders {
+    func withNGHTTP2Headers(allocator: ByteBufferAllocator,
+                            headersCategory: HTTP2HeadersCategory,
+                            headers: HTTPHeaders,
+                            _ body: (UnsafePointer<nghttp2_priority_spec>, UnsafePointer<nghttp2_nv>, Int) -> Void) {
+        var bla: [nghttp2_nv] = []
+        var allHeaderStorage: ByteBuffer = allocator.buffer(capacity: 1024)
+        var allHeadersIndices: [(Int, Int, Int, Int)] = []
+        bla.reserveCapacity(headers.underestimatedCount)
+        for header in headers {
+            let headerNameBegin = allHeaderStorage.writerIndex
+            let headerNameLen = allHeaderStorage.write(string: header.name)!
+            let headerValueBegin = allHeaderStorage.writerIndex
+            let headerValueLen = allHeaderStorage.write(string: header.value)!
+            allHeadersIndices.append((headerNameBegin, headerNameLen, headerValueBegin, headerValueLen))
+        }
+        var nghttpNVs: [nghttp2_nv] = []
+        nghttpNVs.reserveCapacity(allHeadersIndices.count)
+        allHeaderStorage.withUnsafeMutableReadableBytes { ptr in
+            let base = ptr.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            for (hnBegin, hnLen, hvBegin, hvLen) in allHeadersIndices {
+                nghttpNVs.append(nghttp2_nv(name: base + hnBegin,
+                                            value: base + hvBegin,
+                                            namelen: hnLen,
+                                            valuelen: hvLen,
+                                            flags: 0))
+            }
+            nghttpNVs.withUnsafeMutableBufferPointer { ptr in
+                var prio = nghttp2_priority_spec()
+                nghttp2_priority_spec_default_init(&prio)
+                body(&prio, ptr.baseAddress!, ptr.count)
+            }
+        }
+    }
+}
+
+private extension HTTPHeaders {
+    init(nghttp2Headers: nghttp2_headers) {
+        var headers: [(String, String)] = []
+        headers.reserveCapacity(nghttp2Headers.nvlen)
+
+        for idx in 0..<nghttp2Headers.nvlen {
+            let nva = nghttp2Headers.nva[idx]
+            let namePtr = UnsafeBufferPointer<UInt8>(start: nva.name, count: nva.namelen)
+            let valuePtr = UnsafeBufferPointer<UInt8>(start: nva.value, count: nva.valuelen)
+            headers.append((String(decoding: namePtr, as: UTF8.self), String(decoding: valuePtr, as: UTF8.self)))
+        }
+
+        self = HTTPHeaders(headers)
+    }
+}
+
+private extension HTTP2Frame.FrameHeader {
+    init(nghttp2FrameHeader: nghttp2_frame_hd) {
+        self.storage = nghttp2FrameHeader
+    }
+}
+
+
 /// An object that wraps a single nghttp2 session object.
 ///
 /// Each HTTP/2 connection is represented inside nghttp2 by using a `nghttp2_session` object. This
@@ -188,8 +319,15 @@ class NGHTTP2Session {
     /// chicken-and-egg issue can be resolved only by allowing this reference to be nil.
     private var session: OpaquePointer! = nil
 
-    init(mode: Mode) {
+    private var frameHeader: nghttp2_frame_hd! = nil
+
+    public var frameReceivedHandler: (HTTP2Frame) -> Void
+
+    public var headersAccumulation: HTTPHeaders! = nil
+
+    init(mode: Mode, frameReceivedHandler: @escaping (HTTP2Frame) -> Void) {
         var session: OpaquePointer?
+        self.frameReceivedHandler = frameReceivedHandler
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
         let rc: Int32 = withCallbacks { nghttp2Callbacks in
             return withSessionOptions { options in
@@ -203,11 +341,52 @@ class NGHTTP2Session {
         self.session = session
     }
 
+    fileprivate func onBeginFrameCallback(frameHeader: UnsafePointer<nghttp2_frame_hd>) throws {
+        self.frameHeader = frameHeader.pointee
+        return
+    }
+
     /// Called whenever nghttp2 receives a frame.
     ///
     /// In this early version of the codebase, this function does nothing.
     fileprivate func onFrameReceiveCallback(frame: UnsafePointer<nghttp2_frame>) throws {
-        return
+        let frame = frame.pointee
+        let nioFramePayload: HTTP2Frame.FramePayload
+        let nioFrameHeader = HTTP2Frame.FrameHeader(nghttp2FrameHeader: frame.data.hd)
+        switch UInt32(frame.data.hd.type) {
+        case NGHTTP2_DATA.rawValue:
+            nioFramePayload = .data
+        case NGHTTP2_HEADERS.rawValue:
+            nioFramePayload = .headers(.request, self.headersAccumulation)
+        case NGHTTP2_PRIORITY.rawValue:
+            nioFramePayload = .priority
+        case NGHTTP2_RST_STREAM.rawValue:
+            nioFramePayload = .rstStream
+        case NGHTTP2_SETTINGS.rawValue:
+            var settings: [(Int32, UInt32)] = []
+            settings.reserveCapacity(frame.settings.niv)
+            for idx in 0..<frame.settings.niv {
+                let iv = frame.settings.iv[idx]
+                settings.append((iv.settings_id, iv.value))
+            }
+            nioFramePayload = .settings(settings)
+        case NGHTTP2_PUSH_PROMISE.rawValue:
+            nioFramePayload = .pushPromise
+        case NGHTTP2_PING.rawValue:
+            nioFramePayload = .ping
+        case NGHTTP2_GOAWAY.rawValue:
+            nioFramePayload = .goAway
+        case NGHTTP2_WINDOW_UPDATE.rawValue:
+            nioFramePayload = .windowUpdate(windowSizeIncrement: Int(frame.window_update.window_size_increment))
+        case NGHTTP2_CONTINUATION.rawValue:
+            nioFramePayload = .continuation
+        default:
+            fatalError("unrecognised HTTP/2 frame type \(self.frameHeader.type) received")
+        }
+
+        let nioFrame = HTTP2Frame(header: nioFrameHeader,
+                                     payload: nioFramePayload)
+        self.frameReceivedHandler(nioFrame)
     }
 
     /// Called whenever nghttp2 receives a chunk of data from a data frame.
@@ -229,6 +408,7 @@ class NGHTTP2Session {
     ///
     /// In this early version of the codebase, this function does nothing.
     fileprivate func onBeginHeadersCallback(frame: UnsafePointer<nghttp2_frame>) throws {
+        self.headersAccumulation = HTTPHeaders()
         return
     }
 
@@ -239,7 +419,75 @@ class NGHTTP2Session {
                                       name: UnsafeBufferPointer<UInt8>,
                                       value: UnsafeBufferPointer<UInt8>,
                                       flags: UInt8) throws {
-        return
+        self.headersAccumulation.add(name: String(decoding: name, as: UTF8.self),
+                                     value: String(decoding: value, as: UTF8.self))
+    }
+
+    public func feedInput(buffer: inout ByteBuffer) {
+        buffer.withUnsafeReadableBytes { data in
+            switch nghttp2_session_mem_recv(self.session, data.baseAddress?.assumingMemoryBound(to: UInt8.self), data.count) {
+            case let x where x >= 0:
+                ()
+            case Int(NGHTTP2_ERR_NOMEM.rawValue):
+                fatalError("out of memory")
+            case let x:
+                fatalError("error \(x)")
+            }
+        }
+    }
+
+    public func feedOutput(allocator: ByteBufferAllocator, streamID: Int32, buffer: HTTP2Frame.FramePayload) {
+        switch buffer {
+        case .data:
+            fatalError("not implemented")
+        case .headers(let headersCategory, let headers):
+            headers.withNGHTTP2Headers(allocator: allocator,
+                                    headersCategory: headersCategory,
+                                    headers: headers) { a, b, c in
+                                        nghttp2_submit_headers(self.session,
+                                                               0,
+                                                               streamID,
+                                                               a,
+                                                               b,
+                                                               c,
+                                                               nil)
+            }
+        case .priority:
+            fatalError("not implemented")
+        case .rstStream:
+            fatalError("not implemented")
+        case .settings(_):
+            // FIXME this does nothing
+            nghttp2_submit_settings(self.session, 0, nil, 0)
+            //fatalError("not implemented")
+        case .pushPromise:
+            fatalError("not implemented")
+        case .ping:
+            fatalError("not implemented")
+        case .goAway:
+            fatalError("not implemented")
+        case .windowUpdate(let windowSizeIncrement):
+            fatalError("not implemented")
+        case .continuation:
+            fatalError("not implemented")
+        case .alternativeService:
+            fatalError("not implemented")
+        }
+
+    }
+
+    public func send(allocator: ByteBufferAllocator, flushFunction: () -> Void,  _ sendFunction: (ByteBuffer) -> Void) {
+        var data: UnsafePointer<UInt8>? = nil
+        while true {
+            let length = nghttp2_session_mem_send(self.session, &data)
+            guard length != 0 else {
+                break
+            }
+            var buffer = allocator.buffer(capacity: length)
+            buffer.write(bytes: UnsafeBufferPointer(start: data, count: length))
+            sendFunction(buffer)
+        }
+        flushFunction()
     }
 
     deinit {

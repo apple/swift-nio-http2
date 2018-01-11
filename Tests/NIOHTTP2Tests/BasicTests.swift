@@ -18,7 +18,7 @@ import NIO
 
 class BasicTests: XCTestCase {
     func testCanInitializeInnerSession() {
-        let x = NGHTTP2Session(mode: .server)
+        let x = NGHTTP2Session(mode: .server, frameReceivedHandler: { _ in })
         XCTAssertNotNil(x)
     }
 }
