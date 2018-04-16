@@ -186,115 +186,29 @@ private func onHeaderCallback(session: OpaquePointer?,
     }
 }
 
-public struct HTTP2Frame {
-    public var header: FrameHeader
-    public var payload: FramePayload
-
-    public struct FrameHeader {
-        var storage: nghttp2_frame_hd
-        public var flags: UInt8 {
-            return self.storage.flags
-        }
-        public var streamID: Int32 {
-            return self.storage.stream_id
-        }
+/// The global nghttp2 send-data callback.
+///
+/// Responsible for sanity-checking inputs and converting the user-data into a Swift class in order to dispatch the DATA
+/// frame downt hte channel pipeline. Also responsible for converting pointers + length into buffer pointers for ease of use.
+private func sendDataCallback(session: OpaquePointer?,
+                              frame: UnsafeMutablePointer<nghttp2_frame>?,
+                              frameHeader: UnsafePointer<UInt8>?,
+                              length: Int,
+                              source: UnsafeMutablePointer<nghttp2_data_source>?,
+                              userData: UnsafeMutableRawPointer?) -> CInt {
+    guard let frame = frame, let frameHeader = frameHeader, let source = source, let userData = userData else {
+        preconditionFailure("Invalid pointers provided to sendDataCallback")
     }
+    let frameHeaderBufferPointer = UnsafeBufferPointer(start: frameHeader, count: length)
 
-    public enum FramePayload {
-        case data
-        case headers(HTTP2HeadersCategory, HTTPHeaders)
-        case priority
-        case rstStream
-        case settings([(Int32, UInt32)])
-        case pushPromise
-        case ping
-        case goAway
-        case windowUpdate(windowSizeIncrement: Int)
-        case continuation
-        case alternativeService
+    let nioSession = evacuateSession(userData)
+    do {
+        try nioSession.sendDataCallback(frame: frame, frameHeader: frameHeaderBufferPointer, source: source)
+        return 0
+    } catch {
+        return NGHTTP2_ERR_CALLBACK_FAILURE.rawValue
     }
 }
-
-public enum HTTP2HeadersCategory {
-    case request
-    case response
-    case pushResponse
-    case headers
-}
-
-extension nghttp2_headers_category {
-    init(headersCategory: HTTP2HeadersCategory) {
-        switch headersCategory {
-        case .request:
-            self = NGHTTP2_HCAT_REQUEST
-        case .response:
-            self = NGHTTP2_HCAT_RESPONSE
-        case .pushResponse:
-            self = NGHTTP2_HCAT_PUSH_RESPONSE
-        case .headers:
-            self = NGHTTP2_HCAT_HEADERS
-        }
-    }
-}
-
-extension HTTPHeaders {
-    func withNGHTTP2Headers(allocator: ByteBufferAllocator,
-                            headersCategory: HTTP2HeadersCategory,
-                            headers: HTTPHeaders,
-                            _ body: (UnsafePointer<nghttp2_priority_spec>, UnsafePointer<nghttp2_nv>, Int) -> Void) {
-        var bla: [nghttp2_nv] = []
-        var allHeaderStorage: ByteBuffer = allocator.buffer(capacity: 1024)
-        var allHeadersIndices: [(Int, Int, Int, Int)] = []
-        bla.reserveCapacity(headers.underestimatedCount)
-        for header in headers {
-            let headerNameBegin = allHeaderStorage.writerIndex
-            let headerNameLen = allHeaderStorage.write(string: header.name)!
-            let headerValueBegin = allHeaderStorage.writerIndex
-            let headerValueLen = allHeaderStorage.write(string: header.value)!
-            allHeadersIndices.append((headerNameBegin, headerNameLen, headerValueBegin, headerValueLen))
-        }
-        var nghttpNVs: [nghttp2_nv] = []
-        nghttpNVs.reserveCapacity(allHeadersIndices.count)
-        allHeaderStorage.withUnsafeMutableReadableBytes { ptr in
-            let base = ptr.baseAddress!.assumingMemoryBound(to: UInt8.self)
-            for (hnBegin, hnLen, hvBegin, hvLen) in allHeadersIndices {
-                nghttpNVs.append(nghttp2_nv(name: base + hnBegin,
-                                            value: base + hvBegin,
-                                            namelen: hnLen,
-                                            valuelen: hvLen,
-                                            flags: 0))
-            }
-            nghttpNVs.withUnsafeMutableBufferPointer { ptr in
-                var prio = nghttp2_priority_spec()
-                nghttp2_priority_spec_default_init(&prio)
-                body(&prio, ptr.baseAddress!, ptr.count)
-            }
-        }
-    }
-}
-
-private extension HTTPHeaders {
-    init(nghttp2Headers: nghttp2_headers) {
-        var headers: [(String, String)] = []
-        headers.reserveCapacity(nghttp2Headers.nvlen)
-
-        for idx in 0..<nghttp2Headers.nvlen {
-            let nva = nghttp2Headers.nva[idx]
-            let namePtr = UnsafeBufferPointer<UInt8>(start: nva.name, count: nva.namelen)
-            let valuePtr = UnsafeBufferPointer<UInt8>(start: nva.value, count: nva.valuelen)
-            headers.append((String(decoding: namePtr, as: UTF8.self), String(decoding: valuePtr, as: UTF8.self)))
-        }
-
-        self = HTTPHeaders(headers)
-    }
-}
-
-private extension HTTP2Frame.FrameHeader {
-    init(nghttp2FrameHeader: nghttp2_frame_hd) {
-        self.storage = nghttp2FrameHeader
-    }
-}
-
 
 /// An object that wraps a single nghttp2 session object.
 ///
@@ -325,9 +239,52 @@ class NGHTTP2Session {
 
     public var headersAccumulation: HTTPHeaders! = nil
 
-    init(mode: Mode, frameReceivedHandler: @escaping (HTTP2Frame) -> Void) {
+    /// An internal buffer used to accumulate the body of DATA frames.
+    private var dataAccumulation: ByteBuffer
+
+    /// A small byte-buffer used to write DATA frame headers into.
+    ///
+    /// In many cases this will trigger a CoW (as most flushes will write more than one DATA
+    /// frame), so we allocate a new small buffer for this rather than use one of the other buffers
+    /// we have lying around. That shrinks the allocation sizes and allows us to use clear() rather
+    /// than slicing and potentially triggering copies of the entire buffer for no good reason.
+    private var dataFrameHeaderBuffer: ByteBuffer
+
+    /// A map of nghttp2 data providers, keyed by the stream ID of the stream to which they belong.
+    ///
+    /// These providers are instantiated with a callback to this object, which means they create a
+    /// reference cycle to it. As a result, it is utterly crucial that they are removed from this
+    /// object promptly once their use is complete. Their use is considered complete when nghttp2
+    /// tells us it no longer needs them (that is, on the stream_complete callback).
+    private var streamDataProviders: [Int32: HTTP2DataProvider] = [:]
+
+    /// The callback passed by the parent object, to call each time we need to send some data.
+    ///
+    /// This is expected to have similar semantics to `Channel.write`: that is, it does not trigger I/O
+    /// directly. This can safely be called at any time, including when reads have been fed to the code.
+    private let sendFunction: (IOData, EventLoopPromise<Void>?) -> Void
+
+    /// The callback passed by the parent object, to call if we have sent any data that is ready to be
+    /// flushed to the network. This may be called at any time, including when reads have been fed to the
+    /// code.
+    private let flushFunction: () -> Void
+
+    init(mode: Mode,
+         allocator: ByteBufferAllocator,
+         frameReceivedHandler: @escaping (HTTP2Frame) -> Void,
+         sendFunction: @escaping (IOData, EventLoopPromise<Void>?) -> Void,
+         flushFunction: @escaping () -> Void) {
         var session: OpaquePointer?
         self.frameReceivedHandler = frameReceivedHandler
+        self.sendFunction = sendFunction
+        self.flushFunction = flushFunction
+
+        // TODO(cory): We should make MAX_FRAME_SIZE configurable and use that, rather than hardcode
+        // that value here.
+        self.dataAccumulation = allocator.buffer(capacity: 16384)  // 2 ^ 14
+
+        // 9 is the size of the serialized frame header, excluding the padding byte, which we never set.
+        self.dataFrameHeaderBuffer = allocator.buffer(capacity: 9)
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
         let rc: Int32 = withCallbacks { nghttp2Callbacks in
             return withSessionOptions { options in
@@ -342,7 +299,12 @@ class NGHTTP2Session {
     }
 
     fileprivate func onBeginFrameCallback(frameHeader: UnsafePointer<nghttp2_frame_hd>) throws {
-        self.frameHeader = frameHeader.pointee
+        let frameHeader = frameHeader.pointee
+        if frameHeader.type == NGHTTP2_DATA.rawValue {
+            // We need this buffer now: we delayed this potentially CoW operation as long
+            // as we could.
+            self.dataAccumulation.clear()
+        }
         return
     }
 
@@ -352,12 +314,15 @@ class NGHTTP2Session {
     fileprivate func onFrameReceiveCallback(frame: UnsafePointer<nghttp2_frame>) throws {
         let frame = frame.pointee
         let nioFramePayload: HTTP2Frame.FramePayload
-        let nioFrameHeader = HTTP2Frame.FrameHeader(nghttp2FrameHeader: frame.data.hd)
-        switch UInt32(frame.data.hd.type) {
+        let nioFrameHeader = HTTP2Frame.FrameHeader(nghttp2FrameHeader: frame.hd)
+        switch UInt32(frame.hd.type) {
         case NGHTTP2_DATA.rawValue:
-            nioFramePayload = .data
+            // TODO(cory): Should we slice here? It will reduce the cost of a CoW initiated
+            // by the remote peer if the data frame is much smaller than this buffer.
+            nioFramePayload = .data(.byteBuffer(self.dataAccumulation))
         case NGHTTP2_HEADERS.rawValue:
-            nioFramePayload = .headers(.request, self.headersAccumulation)
+            // TODO(cory): handle responses here
+            nioFramePayload = .headers(.request(HTTPRequestHead(http2HeaderBlock: self.headersAccumulation)))
         case NGHTTP2_PRIORITY.rawValue:
             nioFramePayload = .priority
         case NGHTTP2_RST_STREAM.rawValue:
@@ -386,7 +351,11 @@ class NGHTTP2Session {
 
         let nioFrame = HTTP2Frame(header: nioFrameHeader,
                                      payload: nioFramePayload)
+
         self.frameReceivedHandler(nioFrame)
+
+        // We can now clear our internal state, ready for another frame.
+        self.headersAccumulation = nil
     }
 
     /// Called whenever nghttp2 receives a chunk of data from a data frame.
@@ -397,16 +366,15 @@ class NGHTTP2Session {
     }
 
     /// Called when the stream `streamID` is closed.
-    ///
-    /// In this early version of the codebase, this function does nothing.
     fileprivate func onStreamCloseCallback(streamID: Int32, errorCode: UInt32) throws {
-        return
+        // If we have a data provider, pull it out.
+        if let provider = self.streamDataProviders.removeValue(forKey: streamID) {
+            // TODO(cory): we need to fail any pending writes here.
+        }
     }
 
     /// Called when the reception of a HEADERS or PUSH_PROMISE frame is started. Does not contain
     /// any of the header pairs themselves.
-    ///
-    /// In this early version of the codebase, this function does nothing.
     fileprivate func onBeginHeadersCallback(frame: UnsafePointer<nghttp2_frame>) throws {
         self.headersAccumulation = HTTPHeaders()
         return
@@ -423,11 +391,35 @@ class NGHTTP2Session {
                                      value: String(decoding: value, as: UTF8.self))
     }
 
+    /// Called when nghttp2 wants us to send a data frame with pass-through data.
+    ///
+    /// nghttp2's "send a buffer of bytes" code is sufficiently complex that it's basically just as easy
+    /// for us to do "pass-through" writes (that is, writes where we send the body of the data frame on
+    /// directly rather than copy it into nghttp2) as it is for us to copy the data into nghttp2's
+    /// buffers. This function is called when we've told nghttp2 that we're going to pass a write
+    /// through.
+    ///
+    /// This function needs to write the frame header, optional padding byte, frame body, and then
+    /// any padding that may be needed. We never send any padding in this early build, so this code
+    /// is very simple.
+    fileprivate func sendDataCallback(frame: UnsafeMutablePointer<nghttp2_frame>,
+                                      frameHeader: UnsafeBufferPointer<UInt8>,
+                                      source: UnsafeMutablePointer<nghttp2_data_source>) {
+        precondition(frame.pointee.data.padlen == 0, "unexpected padding in DATA frame")
+        self.dataFrameHeaderBuffer.clear()
+        self.dataFrameHeaderBuffer.write(bytes: frameHeader)
+
+        let provider = Unmanaged<HTTP2DataProvider>.fromOpaque(source.pointee.ptr!).takeUnretainedValue()
+        provider.forWriteInDataFrame { body, promise in
+            self.sendFunction(body, promise)
+        }
+    }
+
     public func feedInput(buffer: inout ByteBuffer) {
         buffer.withUnsafeReadableBytes { data in
             switch nghttp2_session_mem_recv(self.session, data.baseAddress?.assumingMemoryBound(to: UInt8.self), data.count) {
             case let x where x >= 0:
-                ()
+                precondition(x == data.count, "did not consume all bytes")
             case Int(NGHTTP2_ERR_NOMEM.rawValue):
                 fatalError("out of memory")
             case let x:
@@ -436,21 +428,20 @@ class NGHTTP2Session {
         }
     }
 
-    public func feedOutput(allocator: ByteBufferAllocator, streamID: Int32, buffer: HTTP2Frame.FramePayload) {
-        switch buffer {
-        case .data:
-            fatalError("not implemented")
-        case .headers(let headersCategory, let headers):
-            headers.withNGHTTP2Headers(allocator: allocator,
-                                    headersCategory: headersCategory,
-                                    headers: headers) { a, b, c in
-                                        nghttp2_submit_headers(self.session,
-                                                               0,
-                                                               streamID,
-                                                               a,
-                                                               b,
-                                                               c,
-                                                               nil)
+    // TODO(cory): This needs to know about promises.
+    public func feedOutput(allocator: ByteBufferAllocator, frame: HTTP2Frame) {
+        switch frame.payload {
+        case .data(let b):
+            writeDataToStream(header: frame.header, data: b, promise: nil)
+        case .headers(let headersCategory):
+            headersCategory.withNGHTTP2Headers(allocator: allocator) { vec, count in
+               nghttp2_submit_headers(self.session,
+                                      0,
+                                      frame.header.streamID,
+                                      nil,
+                                      vec,
+                                      count,
+                                      nil)
             }
         case .priority:
             fatalError("not implemented")
@@ -476,8 +467,12 @@ class NGHTTP2Session {
 
     }
 
-    public func send(allocator: ByteBufferAllocator, flushFunction: () -> Void,  _ sendFunction: (ByteBuffer) -> Void) {
+    public func send(allocator: ByteBufferAllocator) {
         var data: UnsafePointer<UInt8>? = nil
+
+        // Here we mark all stream write managers to flush. This is insane, it's very slow, come back and optimise it.
+        self.streamDataProviders.values.forEach { $0.markFlushCheckpoint() }
+
         while true {
             let length = nghttp2_session_mem_send(self.session, &data)
             guard length != 0 else {
@@ -485,9 +480,49 @@ class NGHTTP2Session {
             }
             var buffer = allocator.buffer(capacity: length)
             buffer.write(bytes: UnsafeBufferPointer(start: data, count: length))
-            sendFunction(buffer)
+            self.sendFunction(.byteBuffer(buffer), nil)
         }
-        flushFunction()
+
+        self.flushFunction()
+    }
+
+    /// Given the data for a "data frame", configure nghttp2 to write it.
+    ///
+    /// This function does not immediately emit output: it just configures nghttp2 to start outputting
+    /// data at some point.
+    private func writeDataToStream(header: HTTP2Frame.FrameHeader, data: IOData, promise: EventLoopPromise<Void>?) {
+        let dataProvider: HTTP2DataProvider
+
+        switch self.streamDataProviders[header.streamID] {
+        case .some(let p):
+            dataProvider = p
+        case .none:
+            let p = HTTP2DataProvider()
+            self.streamDataProviders[header.streamID] = p
+            dataProvider = p
+
+            // This data provider has just been newly constructed, we need to tell nghttp2 about it. We always set
+            // END_STREAM because we only ever make this call once: this is a part of nghttp2's weird data model that's
+            // not worth discussing at this moment.
+            var provider = p.nghttp2DataProvider
+            let rc = nghttp2_submit_data(self.session, UInt8(NGHTTP2_FLAG_END_STREAM.rawValue), header.streamID, &provider)
+            // TODO(cory): Error handling
+            precondition(rc == 0)
+        }
+
+        dataProvider.bufferWrite(write: data, promise: promise)
+
+        // TODO(cory): trailers support
+        if header.endStream {
+            dataProvider.bufferEOF()
+        }
+
+        if case .pending = dataProvider.state {
+            // The data provider is currently in the pending state, we need to tell nghttp2 it's active again.
+            let rc = nghttp2_session_resume_data(self.session, header.streamID)
+            // TODO(cory): Error handling
+            precondition(rc == 0)
+        }
     }
 
     deinit {

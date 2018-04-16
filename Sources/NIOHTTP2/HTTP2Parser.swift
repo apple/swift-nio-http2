@@ -18,19 +18,21 @@ import CNIONghttp2
 public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = ByteBuffer
     public typealias InboundOut = HTTP2Frame
-    public typealias OutboundOut = ByteBuffer
+    public typealias OutboundOut = IOData
 
-    public typealias OutboundIn = (Int32, HTTP2Frame.FramePayload)
+    public typealias OutboundIn = HTTP2Frame
 
     private var session: NGHTTP2Session!
 
-    public func channelRegistered(ctx: ChannelHandlerContext) {
-        self.session = NGHTTP2Session(mode: .server) {
-            ctx.fireChannelRead(self.wrapInboundOut($0))
-        }
+    public func handlerAdded(ctx: ChannelHandlerContext) {
+        self.session = NGHTTP2Session(mode: .server,
+                                      allocator: ctx.channel.allocator,
+                                      frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
+                                      sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) },
+                                      flushFunction: ctx.flush)
     }
 
-    public func channelUnregistered(ctx: ChannelHandlerContext) {
+    public func handlerRemoved(ctx: ChannelHandlerContext) {
         self.session = nil
     }
 
@@ -41,13 +43,11 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
 
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
-        self.session.feedOutput(allocator: ctx.channel.allocator, streamID: frame.0, buffer: frame.1)
+        self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame)
     }
 
     public func flush(ctx: ChannelHandlerContext) {
-        self.session.send(allocator: ctx.channel.allocator, flushFunction: ctx.flush) { buffer in
-            ctx.write(self.wrapOutboundOut(buffer), promise: nil)
-        }
+        self.session.send(allocator: ctx.channel.allocator)
     }
 
     public init() {}

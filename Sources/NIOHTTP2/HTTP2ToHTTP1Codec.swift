@@ -32,7 +32,10 @@ public final class HTTP1TestServer: ChannelInboundHandler {
     public typealias OutboundOut = HTTPServerResponsePart
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok))), promise: nil)
+        var headers = HTTPHeaders()
+        headers.add(name: "content-length", value: "0")
+        headers.add(name: "x-cory-kicks-nghttp2s-ass", value: "true")
+        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
         ctx.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil))).whenComplete {
             ctx.close(promise: nil)
         }
@@ -44,7 +47,7 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
     public typealias InboundOut = HTTPServerRequestPart
 
     public typealias OutboundIn = HTTPServerResponsePart
-    public typealias OutboundOut = (Int32, HTTP2Frame.FramePayload)
+    public typealias OutboundOut = HTTP2Frame
 
     private let streamID: Int32
 
@@ -56,10 +59,7 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
         let frame = self.unwrapInboundIn(data)
 
         switch frame.payload {
-        case .headers(_, let h2Headers):
-            let reqHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0),
-                                          method: HTTPMethod(http2Method: h2Headers[":method"].first!)!,
-                                          uri: h2Headers[":path"].first!)
+        case .headers(.request(let reqHead)):
             let req = InboundOut.head(reqHead)
             ctx.fireChannelRead(self.wrapInboundOut(req))
         case .settings(_), .windowUpdate(windowSizeIncrement: _):
@@ -80,12 +80,15 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
         let responsePart = self.unwrapOutboundIn(data)
         switch responsePart {
         case .head(let head):
-            let payload = HTTP2Frame.FramePayload.headers(.response, head.headers)
-            ctx.channel.parent!.write(self.wrapOutboundOut((self.streamID, payload: payload)), promise: promise)
+            let frame = HTTP2Frame(header: .init(streamID: self.streamID), payload: .headers(.response(head)))
+            ctx.channel.parent!.write(self.wrapOutboundOut(frame), promise: promise)
         case .end(_):
-            // FIXME: trailers
-            promise?.succeed(result: ())
-            ()
+            var header = HTTP2Frame.FrameHeader(streamID: self.streamID)
+            header.endStream = true
+            let payload = HTTP2Frame.FramePayload.data(.byteBuffer(ctx.channel.allocator.buffer(capacity: 0)))
+
+            let frame = HTTP2Frame(header: header, payload: payload)
+            ctx.channel.parent!.write(self.wrapOutboundOut(frame), promise: promise)
         default:
             fatalError("unimplemented \(responsePart)")
         }

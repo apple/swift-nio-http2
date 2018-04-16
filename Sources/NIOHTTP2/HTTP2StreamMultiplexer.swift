@@ -18,13 +18,13 @@ import CNIONghttp2
 public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias OutboundIn = HTTP2Frame
-    public typealias OutboundOut = (Int32, HTTP2Frame.FramePayload)
+    public typealias OutboundOut = HTTP2Frame
 
     private var streams: [Int32: Channel] = [:]
 
     public func channelActive(ctx: ChannelHandlerContext) {
-
-        ctx.write(self.wrapOutboundOut((0, HTTP2Frame.FramePayload.settings([]))), promise: nil)
+        let frame = HTTP2Frame(header: .init(streamID: 0), payload: .settings([]))
+        ctx.write(self.wrapOutboundOut(frame), promise: nil)
     }
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
