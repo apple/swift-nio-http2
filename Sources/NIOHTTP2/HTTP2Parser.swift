@@ -43,7 +43,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
 
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
-        self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame)
+        self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: promise)
     }
 
     public func flush(ctx: ChannelHandlerContext) {

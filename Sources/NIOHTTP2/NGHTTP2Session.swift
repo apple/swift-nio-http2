@@ -48,6 +48,7 @@ private func withCallbacks<T>(fn: (OpaquePointer) throws -> T) rethrows -> T {
     nghttp2_session_callbacks_set_on_stream_close_callback(nghttp2Callbacks, onStreamCloseCallback)
     nghttp2_session_callbacks_set_on_begin_headers_callback(nghttp2Callbacks, onBeginHeadersCallback)
     nghttp2_session_callbacks_set_on_header_callback(nghttp2Callbacks, onHeaderCallback)
+    nghttp2_session_callbacks_set_send_data_callback(nghttp2Callbacks, sendDataCallback)
     return try fn(nghttp2Callbacks!)
 }
 
@@ -199,7 +200,7 @@ private func sendDataCallback(session: OpaquePointer?,
     guard let frame = frame, let frameHeader = frameHeader, let source = source, let userData = userData else {
         preconditionFailure("Invalid pointers provided to sendDataCallback")
     }
-    let frameHeaderBufferPointer = UnsafeBufferPointer(start: frameHeader, count: length)
+    let frameHeaderBufferPointer = UnsafeBufferPointer(start: frameHeader, count: 9)
 
     let nioSession = evacuateSession(userData)
     do {
@@ -408,6 +409,7 @@ class NGHTTP2Session {
         precondition(frame.pointee.data.padlen == 0, "unexpected padding in DATA frame")
         self.dataFrameHeaderBuffer.clear()
         self.dataFrameHeaderBuffer.write(bytes: frameHeader)
+        self.sendFunction(.byteBuffer(self.dataFrameHeaderBuffer), nil)
 
         let provider = Unmanaged<HTTP2DataProvider>.fromOpaque(source.pointee.ptr!).takeUnretainedValue()
         provider.forWriteInDataFrame { body, promise in
@@ -429,10 +431,10 @@ class NGHTTP2Session {
     }
 
     // TODO(cory): This needs to know about promises.
-    public func feedOutput(allocator: ByteBufferAllocator, frame: HTTP2Frame) {
+    public func feedOutput(allocator: ByteBufferAllocator, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         switch frame.payload {
         case .data(let b):
-            writeDataToStream(header: frame.header, data: b, promise: nil)
+            writeDataToStream(header: frame.header, data: b, promise: promise)
         case .headers(let headersCategory):
             headersCategory.withNGHTTP2Headers(allocator: allocator) { vec, count in
                nghttp2_submit_headers(self.session,

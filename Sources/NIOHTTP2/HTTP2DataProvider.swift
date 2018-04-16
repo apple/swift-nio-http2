@@ -24,6 +24,7 @@ private func nghttp2DataProviderReadCallback(session: OpaquePointer?,
                                              userData: UnsafeMutableRawPointer?) -> Int {
     let dataProvider = Unmanaged<HTTP2DataProvider>.fromOpaque(source!.pointee.ptr).takeUnretainedValue()
     let writeResult = dataProvider.write(size: targetBufferSize)
+    dataFlags!.pointee |= NGHTTP2_DATA_FLAG_NO_COPY.rawValue  // We do passthrough writes, always.
 
     switch writeResult {
     case .eof(let written):
@@ -167,6 +168,7 @@ class HTTP2DataProvider {
     /// Mark that we have flushed up to this point.
     func markFlushCheckpoint() {
         self.writeBuffer.mark()
+        self.updateFlushedWriteCount()
     }
 
     /// Prepare a number of writes for emitting into a data frame.
@@ -211,9 +213,21 @@ class HTTP2DataProvider {
                 self.flushedBufferedBytes -= write.readableBytes
                 self.lastDataFrameSize -= write.readableBytes
                 body(write, promise)
+                _ = self.writeBuffer.removeFirst()
             case .eof:
                 preconditionFailure("Should never write over EOF")
             }
+        }
+
+        // Zero length writes are a thing, we need to pull them off the queue here and dispatch them as well or
+        // we run the risk of leaking promises.
+        while self.writeBuffer.hasMark() {
+            guard case .write(let write, let promise) = self.writeBuffer.first!, write.readableBytes == 0 else {
+                break
+            }
+
+            body(write, promise)
+            _ = self.writeBuffer.removeFirst()
         }
 
         assert(self.lastDataFrameSize == 0)
@@ -256,6 +270,19 @@ class HTTP2DataProvider {
             f.moveReaderIndex(forwardBy: writeSize)
             self.writeBuffer[self.writeBuffer.startIndex] = .write(.fileRegion(f), promise)
             return .fileRegion(fileToWrite)
+        }
+    }
+
+    /// Updates the count of the flushed bytes. Used to keep track of how much data is outstanding to write.
+    private func updateFlushedWriteCount() {
+        self.flushedBufferedBytes = 0
+        for idx in (self.writeBuffer.startIndex...self.writeBuffer.markedElementIndex()!) {
+            switch self.writeBuffer[idx]{
+            case .write(let d, _):
+                self.flushedBufferedBytes += d.readableBytes
+            case .eof:
+                assert(idx == self.writeBuffer.markedElementIndex()!)
+            }
         }
     }
 }
