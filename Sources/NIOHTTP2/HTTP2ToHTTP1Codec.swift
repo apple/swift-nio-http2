@@ -65,19 +65,18 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
         let responsePart = self.unwrapOutboundIn(data)
         switch responsePart {
         case .head(let head):
-            let frame = HTTP2Frame(header: .init(streamID: self.streamID), payload: .headers(.response(head)))
-            ctx.channel.parent!.write(self.wrapOutboundOut(frame), promise: promise)
+            var frame = HTTP2Frame(streamID: self.streamID, payload: .headers(.response(head)))
+            frame.endHeaders = true
+            ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):
             let payload = HTTP2Frame.FramePayload.data(body)
-            let frame = HTTP2Frame(header: .init(streamID: self.streamID), payload: payload)
-            ctx.channel.parent!.write(self.wrapOutboundOut(frame), promise: promise)
+            let frame = HTTP2Frame(streamID: self.streamID, payload: payload)
+            ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .end(_):
-            var header = HTTP2Frame.FrameHeader(streamID: self.streamID)
-            header.endStream = true
             let payload = HTTP2Frame.FramePayload.data(.byteBuffer(ctx.channel.allocator.buffer(capacity: 0)))
-
-            let frame = HTTP2Frame(header: header, payload: payload)
-            ctx.channel.parent!.write(self.wrapOutboundOut(frame), promise: promise)
+            var frame = HTTP2Frame(streamID: self.streamID, payload: payload)
+            frame.endStream = true
+            ctx.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }
 }

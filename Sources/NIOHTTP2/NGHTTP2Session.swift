@@ -315,7 +315,6 @@ class NGHTTP2Session {
     fileprivate func onFrameReceiveCallback(frame: UnsafePointer<nghttp2_frame>) throws {
         let frame = frame.pointee
         let nioFramePayload: HTTP2Frame.FramePayload
-        let nioFrameHeader = HTTP2Frame.FrameHeader(nghttp2FrameHeader: frame.hd)
         switch UInt32(frame.hd.type) {
         case NGHTTP2_DATA.rawValue:
             // TODO(cory): Should we slice here? It will reduce the cost of a CoW initiated
@@ -350,8 +349,7 @@ class NGHTTP2Session {
             fatalError("unrecognised HTTP/2 frame type \(self.frameHeader.type) received")
         }
 
-        let nioFrame = HTTP2Frame(header: nioFrameHeader,
-                                     payload: nioFramePayload)
+        let nioFrame = HTTP2Frame(nghttp2FrameHeader: frame.hd, payload: nioFramePayload)
 
         self.frameReceivedHandler(nioFrame)
 
@@ -434,12 +432,12 @@ class NGHTTP2Session {
     public func feedOutput(allocator: ByteBufferAllocator, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         switch frame.payload {
         case .data(let b):
-            writeDataToStream(header: frame.header, data: b, promise: promise)
+            writeDataToStream(frame: frame, promise: promise)
         case .headers(let headersCategory):
             headersCategory.withNGHTTP2Headers(allocator: allocator) { vec, count in
                nghttp2_submit_headers(self.session,
                                       0,
-                                      frame.header.streamID,
+                                      frame.streamID,
                                       nil,
                                       vec,
                                       count,
@@ -477,6 +475,8 @@ class NGHTTP2Session {
 
         while true {
             let length = nghttp2_session_mem_send(self.session, &data)
+            // TODO(cory): I think this mishandles DATA frames: they'll say 0, but there may be more frames to
+            // send. Must investigate.
             guard length != 0 else {
                 break
             }
@@ -492,22 +492,25 @@ class NGHTTP2Session {
     ///
     /// This function does not immediately emit output: it just configures nghttp2 to start outputting
     /// data at some point.
-    private func writeDataToStream(header: HTTP2Frame.FrameHeader, data: IOData, promise: EventLoopPromise<Void>?) {
+    private func writeDataToStream(frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+        guard case .data(let data) = frame.payload else {
+            preconditionFailure("Write data attempted on non-data frame \(frame)")
+        }
         let dataProvider: HTTP2DataProvider
 
-        switch self.streamDataProviders[header.streamID] {
+        switch self.streamDataProviders[frame.streamID] {
         case .some(let p):
             dataProvider = p
         case .none:
             let p = HTTP2DataProvider()
-            self.streamDataProviders[header.streamID] = p
+            self.streamDataProviders[frame.streamID] = p
             dataProvider = p
 
             // This data provider has just been newly constructed, we need to tell nghttp2 about it. We always set
             // END_STREAM because we only ever make this call once: this is a part of nghttp2's weird data model that's
             // not worth discussing at this moment.
             var provider = p.nghttp2DataProvider
-            let rc = nghttp2_submit_data(self.session, UInt8(NGHTTP2_FLAG_END_STREAM.rawValue), header.streamID, &provider)
+            let rc = nghttp2_submit_data(self.session, UInt8(NGHTTP2_FLAG_END_STREAM.rawValue), frame.streamID, &provider)
             // TODO(cory): Error handling
             precondition(rc == 0)
         }
@@ -515,13 +518,13 @@ class NGHTTP2Session {
         dataProvider.bufferWrite(write: data, promise: promise)
 
         // TODO(cory): trailers support
-        if header.endStream {
+        if frame.endStream {
             dataProvider.bufferEOF()
         }
 
         if case .pending = dataProvider.state {
             // The data provider is currently in the pending state, we need to tell nghttp2 it's active again.
-            let rc = nghttp2_session_resume_data(self.session, header.streamID)
+            let rc = nghttp2_session_resume_data(self.session, frame.streamID)
             // TODO(cory): Error handling
             precondition(rc == 0)
         }

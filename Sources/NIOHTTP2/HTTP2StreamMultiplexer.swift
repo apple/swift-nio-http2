@@ -15,36 +15,51 @@
 import NIO
 import CNIONghttp2
 
+/// A channel handler that creates a child channel for each HTTP/2 stream.
+///
+/// In general in NIO applications it is helpful to consider each HTTP/2 stream as an
+/// independent stream of HTTP/2 frames. This multiplexer achieves this by creating a
+/// number of in-memory `HTTP2StreamChannel` objects, one for each stream. These operate
+/// on `HTTP2Frame` objects as their base communication atom, as opposed to the regular
+/// NIO `SelectableChannel` objects which use `ByteBuffer` and `IOData`.
 public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias OutboundIn = HTTP2Frame
     public typealias OutboundOut = HTTP2Frame
 
-    private var streams: [Int32: Channel] = [:]
+    private var streams: [Int32: HTTP2StreamChannel] = [:]
     private let streamStateInitializer: ((Channel, Int) -> EventLoopFuture<Void>)?
 
     public func channelActive(ctx: ChannelHandlerContext) {
-        let frame = HTTP2Frame(header: .init(streamID: 0), payload: .settings([]))
+        let frame = HTTP2Frame(streamID: 0, payload: .settings([]))
         ctx.write(self.wrapOutboundOut(frame), promise: nil)
     }
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
-        let streamID = frame.header.streamID
+        let streamID = frame.streamID
+
+        guard streamID != 0 else {
+            // For stream 0 we forward all frames on to the main channel.
+            ctx.fireChannelRead(data)
+            return
+        }
+
         if let channel = streams[streamID] {
-            channel.pipeline.fireChannelRead(data)
+            channel.receiveInboundFrame(frame)
         } else {
-            switch (streamID, frame.payload) {
-            case (0, _), (_, .headers(_)):
-                /* this is legal, new stream starts with a header frame */
-                self.streams[streamID] = HTTP2StreamChannel(allocator: ctx.channel.allocator,
-                                                            parent: ctx.channel,
-                                                            streamID: streamID,
-                                                            initializer: self.streamStateInitializer)
-                self.channelRead(ctx: ctx, data: data)
-            default:
-                fatalError("unknown stream \(frame.header.streamID) with \(frame.payload)")
+            guard case .headers = frame.payload else {
+                // This should probably produce a runtime error.
+                fatalError("unknown stream \(frame.streamID) with \(frame.payload)")
             }
+
+            let channel =  HTTP2StreamChannel(allocator: ctx.channel.allocator,
+                                              parent: ctx.channel,
+                                              streamID: streamID,
+                                              initializer: self.streamStateInitializer)
+
+            self.streams[streamID] = channel
+            channel.receiveInboundFrame(frame)
         }
     }
 
