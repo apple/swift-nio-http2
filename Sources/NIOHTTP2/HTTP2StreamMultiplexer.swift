@@ -21,6 +21,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public typealias OutboundOut = HTTP2Frame
 
     private var streams: [Int32: Channel] = [:]
+    private let streamStateInitializer: ((Channel, Int) -> EventLoopFuture<Void>)?
 
     public func channelActive(ctx: ChannelHandlerContext) {
         let frame = HTTP2Frame(header: .init(streamID: 0), payload: .settings([]))
@@ -36,7 +37,10 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             switch (streamID, frame.payload) {
             case (0, _), (_, .headers(_)):
                 /* this is legal, new stream starts with a header frame */
-                self.streams[streamID] = HTTP2StreamChannel(allocator: ctx.channel.allocator, parent: ctx.channel, streamID: streamID)
+                self.streams[streamID] = HTTP2StreamChannel(allocator: ctx.channel.allocator,
+                                                            parent: ctx.channel,
+                                                            streamID: streamID,
+                                                            initializer: self.streamStateInitializer)
                 self.channelRead(ctx: ctx, data: data)
             default:
                 fatalError("unknown stream \(frame.header.streamID) with \(frame.payload)")
@@ -49,5 +53,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         ctx.write(data, promise: promise)
     }
 
-    public init() {}
+    public init(streamStateInitializer: ((Channel, Int) -> EventLoopFuture<Void>)? = nil) {
+        self.streamStateInitializer = streamStateInitializer
+    }
 }

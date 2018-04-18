@@ -13,7 +13,28 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
+import NIOHTTP1
 import NIOHTTP2
+
+final class HTTP1TestServer: ChannelInboundHandler {
+    public typealias InboundIn = HTTPServerRequestPart
+    public typealias OutboundOut = HTTPServerResponsePart
+
+    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        var headers = HTTPHeaders()
+        headers.add(name: "content-length", value: "5")
+        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
+
+        var buffer = ctx.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "hello")
+        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
+
+        ctx.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil))).whenComplete {
+            ctx.close(promise: nil)
+        }
+    }
+}
+
 
 // First argument is the program path
 let arguments = CommandLine.arguments
@@ -49,6 +70,13 @@ default:
     htdocs = defaultHtdocs
     bindTarget = BindTo.ip(host: defaultHost, port: defaultPort)
 }
+
+let multiplexer = HTTP2StreamMultiplexer { channel, streamID in
+    return channel.pipeline.add(handler: HTTP2ToHTTP1Codec(streamID: streamID)).then { () in
+        return channel.pipeline.add(handler: HTTP1TestServer())
+    }
+}
+
 let group = MultiThreadedEventLoopGroup(numThreads: System.coreCount)
 let bootstrap = ServerBootstrap(group: group)
     // Specify backlog and enable SO_REUSEADDR for the server itself
@@ -57,10 +85,8 @@ let bootstrap = ServerBootstrap(group: group)
 
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
-        return channel.pipeline.add(handler: HTTP2Parser()).then { () in
-            return channel.pipeline.add(handler: PrintEverythingHandler(prefix: "outer")).then { () in
-                return channel.pipeline.add(handler: HTTP2StreamMultiplexer())
-            }
+        return channel.pipeline.add(handler: HTTP2Parser()).then {
+            return channel.pipeline.add(handler: multiplexer)
         }
     }
 

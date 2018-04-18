@@ -27,26 +27,6 @@ private extension HTTPMethod {
     }
 }
 
-public final class HTTP1TestServer: ChannelInboundHandler {
-    public typealias InboundIn = HTTPServerRequestPart
-    public typealias OutboundOut = HTTPServerResponsePart
-
-    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        var headers = HTTPHeaders()
-        headers.add(name: "content-length", value: "5")
-        headers.add(name: "x-cory-kicks-nghttp2s-ass", value: "true")
-        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
-
-        var buffer = ctx.channel.allocator.buffer(capacity: 12)
-        buffer.write(staticString: "hello")
-        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
-
-        ctx.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil))).whenComplete {
-            ctx.close(promise: nil)
-        }
-    }
-}
-
 public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias InboundOut = HTTPServerRequestPart
@@ -56,8 +36,8 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
 
     private let streamID: Int32
 
-    public init(streamID: Int32) {
-        self.streamID = streamID
+    public init(streamID: Int) {
+        self.streamID = Int32(streamID)
     }
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {

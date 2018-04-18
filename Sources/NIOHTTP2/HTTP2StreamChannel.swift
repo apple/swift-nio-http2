@@ -15,42 +15,23 @@
 import NIO
 import CNIONghttp2
 
-public final class PrintEverythingHandler: ChannelInboundHandler, ChannelOutboundHandler {
-    public typealias InboundIn = Any
-    public typealias OutboundIn = Any
-
-    private let prefix: String
-
-    public init(prefix: String) {
-        self.prefix = prefix
-    }
-
-    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        print("-> \(self.prefix): \(self.unwrapInboundIn(data))")
-        ctx.fireChannelRead(data)
-    }
-
-    public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        print("<- \(self.prefix): \(self.unwrapInboundIn(data))")
-        ctx.write(data, promise: promise)
-    }
-}
-
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    public init(allocator: ByteBufferAllocator, parent: Channel, streamID: Int32) {
+    public init(allocator: ByteBufferAllocator, parent: Channel, streamID: Int32, initializer: ((Channel, Int) -> EventLoopFuture<Void>)?) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.newPromise()
         self.localAddress = parent.localAddress
         self.remoteAddress = parent.remoteAddress
         self.parent = parent
         self.eventLoop = parent.eventLoop
+        self.streamID = Int(streamID)
         // FIXME: that's just wrong
         self.isWritable = true
         self.isActive = true
         self._pipeline = ChannelPipeline(channel: self)
-        _ = self._pipeline.add(handler: HTTP2ToHTTP1Codec(streamID: streamID))
-        _ = self._pipeline.add(handler: PrintEverythingHandler(prefix: "inner"))
-        _ = self._pipeline.add(handler: HTTP1TestServer())
+
+        // TODO(cory): This needs to do some state management, but we can't until we do the proper interface for communicating between
+        // the multiplexer and this channel.
+        _ = initializer?(self, self.streamID)
     }
 
     private var _pipeline: ChannelPipeline!
@@ -98,6 +79,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     public let eventLoop: EventLoop
+
+    private let streamID: Int
 
     public func register0(promise: EventLoopPromise<Void>?) {
         fatalError("not implemented \(#function)")
