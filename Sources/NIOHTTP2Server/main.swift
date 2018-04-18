@@ -71,12 +71,6 @@ default:
     bindTarget = BindTo.ip(host: defaultHost, port: defaultPort)
 }
 
-let multiplexer = HTTP2StreamMultiplexer { channel, streamID in
-    return channel.pipeline.add(handler: HTTP2ToHTTP1Codec(streamID: streamID)).then { () in
-        return channel.pipeline.add(handler: HTTP1TestServer())
-    }
-}
-
 let group = MultiThreadedEventLoopGroup(numThreads: System.coreCount)
 let bootstrap = ServerBootstrap(group: group)
     // Specify backlog and enable SO_REUSEADDR for the server itself
@@ -86,6 +80,12 @@ let bootstrap = ServerBootstrap(group: group)
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
         return channel.pipeline.add(handler: HTTP2Parser()).then {
+            let multiplexer = HTTP2StreamMultiplexer { channel, streamID in
+                return channel.pipeline.add(handler: HTTP2ToHTTP1Codec(streamID: streamID)).then { () in
+                    return channel.pipeline.add(handler: HTTP1TestServer())
+                }
+            }
+
             return channel.pipeline.add(handler: multiplexer)
         }
     }
