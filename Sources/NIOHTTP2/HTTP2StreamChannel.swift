@@ -15,6 +15,28 @@
 import NIO
 import CNIONghttp2
 
+/// `StreamIDOption` allows users to query the stream ID for a given `HTTP2StreamChannel`.
+///
+/// On active `HTTP2StreamChannel`s, it is possible that a channel handler or user may need to know which
+/// stream ID the channel owns. This channel option allows that query. Please note that this channel option
+/// is *get-only*: that is, it cannot be used with `setOption`. The stream ID for a given `HTTP2StreamChannel`
+/// is immutable.
+public enum StreamIDOption: ChannelOption {
+    public typealias AssociatedValueType = Void
+    public typealias OptionType = Int
+
+    case const(Void)
+}
+
+/// The various channel options specific to `HTTP2StreamChannel`s.
+///
+/// Please note that some of NIO's regular `ChannelOptions` are valid on `HTTP2StreamChannel`s.
+public struct HTTP2StreamChannelOptions {
+    /// - seealso: `StreamIDOption`.
+    public static let streamID: StreamIDOption = .const(())
+}
+
+
 final class HTTP2StreamChannel: Channel, ChannelCore {
     public init(allocator: ByteBufferAllocator, parent: Channel, streamID: Int32, initializer: ((Channel, Int) -> EventLoopFuture<Void>)?) {
         self.allocator = allocator
@@ -66,8 +88,27 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         fatalError()
     }
 
-    func getOption<T>(option: T) -> EventLoopFuture<T.OptionType> where T : ChannelOption {
-        fatalError()
+    public func getOption<T>(option: T) -> EventLoopFuture<T.OptionType> where T: ChannelOption {
+        if eventLoop.inEventLoop {
+            do {
+                return eventLoop.newSucceededFuture(result: try getOption0(option: option))
+            } catch {
+                return eventLoop.newFailedFuture(error: error)
+            }
+        } else {
+            return eventLoop.submit { try self.getOption0(option: option) }
+        }
+    }
+
+    func getOption0<T: ChannelOption>(option: T) throws -> T.OptionType {
+        assert(eventLoop.inEventLoop)
+
+        switch option {
+        case _ as StreamIDOption:
+            return self.streamID as! T.OptionType
+        default:
+            fatalError("option \(option) not supported")
+        }
     }
 
     public let isWritable: Bool
@@ -124,3 +165,5 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         fatalError("not implemented \(#function)")
     }
 }
+
+

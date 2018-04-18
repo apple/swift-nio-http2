@@ -21,15 +21,17 @@ final class HTTP1TestServer: ChannelInboundHandler {
     public typealias OutboundOut = HTTPServerResponsePart
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        var headers = HTTPHeaders()
-        headers.add(name: "content-length", value: "5")
-        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
+        ctx.channel.getOption(option: HTTP2StreamChannelOptions.streamID).then { (streamID) -> EventLoopFuture<Void> in
+            var headers = HTTPHeaders()
+            headers.add(name: "content-length", value: "5")
+            headers.add(name: "x-stream-id", value: String(streamID))
+            ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
 
-        var buffer = ctx.channel.allocator.buffer(capacity: 12)
-        buffer.write(staticString: "hello")
-        ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
-
-        ctx.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil))).whenComplete {
+            var buffer = ctx.channel.allocator.buffer(capacity: 12)
+            buffer.write(staticString: "hello")
+            ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
+            return ctx.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
+        }.whenComplete {
             ctx.close(promise: nil)
         }
     }
