@@ -62,9 +62,22 @@ internal extension HTTP2HeadersCategory {
     private func writeHeaders(into headerBlock: inout ContiguousHeaderBlock) {
         let headers: HTTPHeaders
         switch self {
-        case .request, .pushResponse:
-            // TODO(cory): fix these two cases
-            preconditionFailure("Currently no support for writing request headers.")
+        case .request(var h), .pushResponse(var h):
+            // TODO(cory): This is potentially wrong if the URI contains more than just a path.
+            headerBlock.writeHeader(name: ":path", value: h.uri)
+            headerBlock.writeHeader(name: ":method", value: String(httpMethod: h.method))
+
+            // TODO(cory): This is very wrong.
+            headerBlock.writeHeader(name: ":scheme", value: "https")
+
+            let authority = h.headers[canonicalForm: "host"]
+            if authority.count > 0 {
+                precondition(authority.count == 1)
+                h.headers.remove(name: "host")
+                headerBlock.writeHeader(name: ":authority", value: authority[0])
+            }
+
+            headers = h.headers
         case .response(let h):
             headerBlock.writeHeader(name: ":status", value: String(h.status.code))
             headers = h.headers
@@ -131,7 +144,7 @@ internal extension HTTPRequestHead {
         // TODO(cory): Right now we're just stripping these two, but they should probably be translated
         // into something else, authority in particular.
         headers.remove(name: ":scheme")
-        headers.remove(name: "authority")
+        headers.remove(name: ":authority")
 
         self.init(version: version, method: method, uri: uri)
         self.headers = headers
@@ -231,6 +244,82 @@ private extension HTTPMethod {
             self = .UNSUBSCRIBE
         default:
             self = .RAW(value: methodString)
+        }
+    }
+}
+
+private extension String {
+    /// Create a `HTTPMethod` from the string representation of that method.
+    init(httpMethod: HTTPMethod) {
+        switch httpMethod {
+        case .GET:
+            self = "GET"
+        case .PUT:
+            self = "PUT"
+        case .ACL:
+            self = "ACL"
+        case .HEAD:
+            self = "HEAD"
+        case .POST:
+            self = "POST"
+        case .COPY:
+            self = "COPY"
+        case .LOCK:
+            self = "LOCK"
+        case .MOVE:
+            self = "MOVE"
+        case .BIND:
+            self = "BIND"
+        case .LINK:
+            self = "LINK"
+        case .PATCH:
+            self = "PATCH"
+        case .TRACE:
+            self = "TRACE"
+        case .MKCOL:
+            self = "MKCOL"
+        case .MERGE:
+            self = "MERGE"
+        case .PURGE:
+            self = "PURGE"
+        case .NOTIFY:
+            self = "NOTIFY"
+        case .SEARCH:
+            self = "SEARCH"
+        case .UNLOCK:
+            self = "UNLOCK"
+        case .REBIND:
+            self = "REBIND"
+        case .UNBIND:
+            self = "UNBIND"
+        case .REPORT:
+            self = "REPORT"
+        case .DELETE:
+            self = "DELETE"
+        case .UNLINK:
+            self = "UNLINK"
+        case .CONNECT:
+            self = "CONNECT"
+        case .MSEARCH:
+            self = "MSEARCH"
+        case .OPTIONS:
+            self = "OPTIONS"
+        case .PROPFIND:
+            self = "PROPFIND"
+        case .CHECKOUT:
+            self = "CHECKOUT"
+        case .PROPPATCH:
+            self = "PROPPATCH"
+        case .SUBSCRIBE:
+            self = "SUBSCRIBE"
+        case .MKCALENDAR:
+            self = "MKCALENDAR"
+        case .MKACTIVITY:
+            self = "MKACTIVITY"
+        case .UNSUBSCRIBE:
+            self = "UNSUBSCRIBE"
+        case .RAW(let v):
+            self = v
         }
     }
 }

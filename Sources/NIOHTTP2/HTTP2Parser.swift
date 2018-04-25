@@ -22,14 +22,30 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
 
     public typealias OutboundIn = HTTP2Frame
 
+    /// The mode for this parser to operate in: client or server.
+    public enum ParserMode {
+        /// Client mode
+        case client
+
+        /// Server mode
+        case server
+    }
+
     private var session: NGHTTP2Session!
+    private let mode: ParserMode
+
+    public init(mode: ParserMode) {
+        self.mode = mode
+    }
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
-        self.session = NGHTTP2Session(mode: .server,
+        self.session = NGHTTP2Session(mode: self.mode,
                                       allocator: ctx.channel.allocator,
                                       frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
                                       sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) },
                                       flushFunction: ctx.flush)
+
+        self.flushPreamble(ctx: ctx)
     }
 
     public func handlerRemoved(ctx: ChannelHandlerContext) {
@@ -50,5 +66,10 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         self.session.send(allocator: ctx.channel.allocator)
     }
 
-    public init() {}
+    private func flushPreamble(ctx: ChannelHandlerContext) {
+        // TODO(cory): This should actually allow configuring settings at some point.
+        let frame = HTTP2Frame(streamID: 0, payload: .settings([]))
+        self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: nil)
+        self.flush(ctx: ctx)
+    }
 }
