@@ -49,6 +49,8 @@ private func withCallbacks<T>(fn: (OpaquePointer) throws -> T) rethrows -> T {
     nghttp2_session_callbacks_set_on_begin_headers_callback(nghttp2Callbacks, onBeginHeadersCallback)
     nghttp2_session_callbacks_set_on_header_callback(nghttp2Callbacks, onHeaderCallback)
     nghttp2_session_callbacks_set_send_data_callback(nghttp2Callbacks, sendDataCallback)
+    nghttp2_session_callbacks_set_on_frame_send_callback(nghttp2Callbacks, onFrameSendCallback)
+    nghttp2_session_callbacks_set_on_frame_not_send_callback(nghttp2Callbacks, onFrameNotSentCallback)
     return try fn(nghttp2Callbacks!)
 }
 
@@ -227,6 +229,15 @@ private func onFrameSendCallback(session: OpaquePointer?, frame: UnsafePointer<n
     } catch {
         return NGHTTP2_ERR_CALLBACK_FAILURE.rawValue
     }
+}
+
+private func onFrameNotSentCallback(session: OpaquePointer?,
+                                    frame: UnsafePointer<nghttp2_frame>?,
+                                    errorCode: CInt,
+                                    userData: UnsafeMutableRawPointer?) -> CInt {
+    // TODO(cory): Report the errors.
+    precondition(errorCode == 0)
+    return 0
 }
 
 /// An object that wraps a single nghttp2 session object.

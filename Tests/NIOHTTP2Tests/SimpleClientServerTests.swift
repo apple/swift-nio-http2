@@ -17,25 +17,6 @@ import NIO
 import NIOHTTP1
 import NIOHTTP2
 
-/// Have two `EmbeddedChannel` objects send and receive data from each other until
-/// they make no forward progress.
-func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel) {
-    var operated: Bool
-
-    repeat {
-        operated = false
-
-        if case .some(.byteBuffer(let data)) = first.readOutbound() {
-            operated = true
-            XCTAssertNoThrow(try second.writeInbound(data))
-        }
-        if case .some(.byteBuffer(let data)) = second.readOutbound() {
-            operated = true
-            XCTAssertNoThrow(try first.writeInbound(data))
-        }
-    } while operated
-}
-
 class SimpleClientServerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
@@ -52,9 +33,9 @@ class SimpleClientServerTests: XCTestCase {
 
     func testBasicRequestResponse() throws {
         // Begin by getting the connection up.
-        try! self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client)).wait()
-        try! self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait()
-        interactInMemory(self.clientChannel, self.serverChannel)
+        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())
+        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
 
         // We're now going to try to send a request from the client to the server.
         let requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/")
@@ -67,7 +48,7 @@ class SimpleClientServerTests: XCTestCase {
         reqBodyFrame.endStream = true
         self.clientChannel.write(reqFrame, promise: nil)
         self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
-        interactInMemory(self.clientChannel, self.serverChannel)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
 
         XCTAssertNil(self.clientChannel.readInbound())
         guard let firstFrame: HTTP2Frame = self.serverChannel.readInbound() else {
@@ -105,7 +86,7 @@ class SimpleClientServerTests: XCTestCase {
         respFrame.endHeaders = true
         respFrame.endStream = true
         XCTAssertNoThrow(try self.serverChannel.writeAndFlush(respFrame).wait())
-        interactInMemory(self.clientChannel, self.serverChannel)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
 
         // The client should have seen this.
         guard let receivedResponseFrame: HTTP2Frame = self.clientChannel.readInbound() else {

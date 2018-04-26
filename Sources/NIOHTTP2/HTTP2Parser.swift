@@ -57,6 +57,12 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         self.session.feedInput(buffer: &data)
     }
 
+    public func channelReadComplete(ctx: ChannelHandlerContext) {
+        // TODO(cory): Prevent this unconditionally flushing.
+        // TODO(cory): Should this flush at all? The tests rely on it right now.
+        self.session.send(allocator: ctx.channel.allocator)
+    }
+
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
         self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: promise)
