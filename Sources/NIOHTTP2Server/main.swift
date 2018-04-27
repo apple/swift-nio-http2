@@ -82,9 +82,9 @@ let bootstrap = ServerBootstrap(group: group)
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
         return channel.pipeline.add(handler: HTTP2Parser(mode: .server)).then {
-            let multiplexer = HTTP2StreamMultiplexer { channel, streamID in
-                return channel.pipeline.add(handler: HTTP2ToHTTP1Codec(streamID: streamID)).then { () in
-                    return channel.pipeline.add(handler: HTTP1TestServer())
+            let multiplexer = HTTP2StreamMultiplexer { (channel, streamID) -> EventLoopFuture<Void> in
+                return channel.pipeline.add(handler: HTTP2ToHTTP1Codec(streamID: streamID)).then { () -> EventLoopFuture<Void> in
+                    channel.pipeline.add(handler: HTTP1TestServer())
                 }
             }
 

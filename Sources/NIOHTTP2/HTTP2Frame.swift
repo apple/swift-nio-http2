@@ -26,7 +26,7 @@ public struct HTTP2Frame {
     public var flags: UInt8
 
     /// The frame stream ID as a 32-bit integer.
-    public var streamID: Int32
+    public var streamID: HTTP2StreamID
 
     // Whether the END_STREAM flag bit is set.
     public var endStream: Bool {
@@ -141,21 +141,16 @@ public struct HTTP2Frame {
 
 
 internal extension HTTP2Frame {
-    internal init(nghttp2FrameHeader header: nghttp2_frame_hd, payload: HTTP2Frame.FramePayload) {
-        self.streamID = header.stream_id
-        self.flags = header.flags
+    internal init(streamID: HTTP2StreamID, flags: UInt8, payload: HTTP2Frame.FramePayload) {
+        self.streamID = streamID
+        self.flags = flags
         self.payload = payload
     }
 }
 
 public extension HTTP2Frame {
-    /// Constructs a frame for a given stream ID. All flags are unset.
-    public init(streamID: Int, payload: HTTP2Frame.FramePayload) {
-        self.init(streamID: Int32(streamID), payload: payload)
-    }
-
     /// Constructs a frame header for a given stream ID. All flags are unset.
-    public init(streamID: Int32, payload: HTTP2Frame.FramePayload) {
+    public init(streamID: HTTP2StreamID, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
         self.flags = 0
         self.payload = payload

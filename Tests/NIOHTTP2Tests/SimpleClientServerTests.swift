@@ -38,13 +38,15 @@ class SimpleClientServerTests: XCTestCase {
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
 
         // We're now going to try to send a request from the client to the server.
-        let requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/")
+        var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/")
+        requestHead.headers.add(name: "host", value: "localhost")
         var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
         requestBody.write(staticString: "A simple HTTP/2 request.")
 
-        var reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.request(requestHead)))
+        let clientStreamID = HTTP2StreamID()
+        var reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.request(requestHead)))
         reqFrame.endHeaders = true
-        var reqBodyFrame = HTTP2Frame(streamID: 1, payload: .data(.byteBuffer(requestBody)))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
         reqBodyFrame.endStream = true
         self.clientChannel.write(reqFrame, promise: nil)
         self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
@@ -55,7 +57,7 @@ class SimpleClientServerTests: XCTestCase {
             XCTFail("No frame")
             return
         }
-        XCTAssertEqual(firstFrame.streamID, 1)
+        XCTAssertEqual(firstFrame.streamID.networkStreamID!, clientStreamID.networkStreamID!)
         XCTAssertFalse(firstFrame.endStream)
         XCTAssertTrue(firstFrame.endHeaders)
         guard case .headers(.request(let receivedRequestHead)) = firstFrame.payload else {
@@ -63,13 +65,15 @@ class SimpleClientServerTests: XCTestCase {
             return
         }
 
-        XCTAssertEqual(receivedRequestHead, requestHead)
+        var expectedRequestHead = requestHead
+        expectedRequestHead.headers.remove(name: "host")
+        XCTAssertEqual(receivedRequestHead, expectedRequestHead)
 
         guard let secondFrame: HTTP2Frame = self.serverChannel.readInbound() else {
             XCTFail("No second frame")
             return
         }
-        XCTAssertEqual(secondFrame.streamID, 1)
+        XCTAssertEqual(secondFrame.streamID.networkStreamID!, clientStreamID.networkStreamID!)
         XCTAssertTrue(secondFrame.endStream)
         guard case .data(.byteBuffer(let receivedData)) = secondFrame.payload else {
             XCTFail("Payload incorrect")
@@ -82,10 +86,10 @@ class SimpleClientServerTests: XCTestCase {
         let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0),
                                             status: .ok,
                                             headers: HTTPHeaders([("content-length", "0")]))
-        var respFrame = HTTP2Frame(streamID: 1, payload: .headers(.response(responseHead)))
+        var respFrame = HTTP2Frame(streamID: firstFrame.streamID, payload: .headers(.response(responseHead)))
         respFrame.endHeaders = true
         respFrame.endStream = true
-        XCTAssertNoThrow(try self.serverChannel.writeAndFlush(respFrame).wait())
+        self.serverChannel.writeAndFlush(respFrame, promise: nil)
         self.interactInMemory(self.clientChannel, self.serverChannel)
 
         // The client should have seen this.
@@ -93,9 +97,9 @@ class SimpleClientServerTests: XCTestCase {
             XCTFail("No frame")
             return
         }
-        XCTAssertEqual(firstFrame.streamID, 1)
-        XCTAssertTrue(firstFrame.endStream)
-        XCTAssertTrue(firstFrame.endHeaders)
+        XCTAssertEqual(receivedResponseFrame.streamID, clientStreamID)
+        XCTAssertTrue(receivedResponseFrame.endStream)
+        XCTAssertTrue(receivedResponseFrame.endHeaders)
         guard case .headers(.response(let receivedResponseHead)) = receivedResponseFrame.payload else {
             XCTFail("Payload incorrect")
             return

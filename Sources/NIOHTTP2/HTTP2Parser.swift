@@ -31,16 +31,21 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         case server
     }
 
+    /// The `HTTP2ConnectionManager` used to manage stream IDs on this connection.
+    public let connectionManager: HTTP2ConnectionManager
+
     private var session: NGHTTP2Session!
     private let mode: ParserMode
 
-    public init(mode: ParserMode) {
+    public init(mode: ParserMode, connectionManager: HTTP2ConnectionManager = .init()) {
         self.mode = mode
+        self.connectionManager = connectionManager
     }
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
         self.session = NGHTTP2Session(mode: self.mode,
                                       allocator: ctx.channel.allocator,
+                                      connectionManager: self.connectionManager,
                                       frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
                                       sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) },
                                       flushFunction: ctx.flush)
@@ -74,7 +79,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
 
     private func flushPreamble(ctx: ChannelHandlerContext) {
         // TODO(cory): This should actually allow configuring settings at some point.
-        let frame = HTTP2Frame(streamID: 0, payload: .settings([]))
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings([]))
         self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: nil)
         self.flush(ctx: ctx)
     }

@@ -80,6 +80,11 @@ extension EmbeddedChannel {
 
         return frame
     }
+
+    /// Returns the `HTTP2ConnectionManager` for a given channel.
+    var connectionManager: HTTP2ConnectionManager {
+        return try! (self.pipeline.context(handlerType: HTTP2Parser.self).wait().handler as! HTTP2Parser).connectionManager
+    }
 }
 
 extension HTTP2Frame {
@@ -93,7 +98,7 @@ extension HTTP2Frame {
             return
         }
 
-        XCTAssertEqual(self.streamID, 0, "Got unexpected stream ID for SETTINGS: \(self.streamID)",
+        XCTAssertEqual(self.streamID, .rootStream, "Got unexpected stream ID for SETTINGS: \(self.streamID)",
                        file: file, line: line)
         XCTAssertEqual(self.ack, ack, "Got unexpected value for ack: expected \(ack), got \(self.ack)",
                        file: file, line: line)

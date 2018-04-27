@@ -256,14 +256,14 @@ public enum HTTP2StreamChannelError: Error {
 
 
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    public init(allocator: ByteBufferAllocator, parent: Channel, streamID: Int32, initializer: ((Channel, Int) -> EventLoopFuture<Void>)?) {
+    public init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID, initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.newPromise()
         self.localAddress = parent.localAddress
         self.remoteAddress = parent.remoteAddress
         self.parent = parent
         self.eventLoop = parent.eventLoop
-        self.streamID = Int(streamID)
+        self.streamID = streamID
         // FIXME: that's just wrong
         self.isWritable = true
         self.isActive = true
@@ -340,7 +340,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     public let eventLoop: EventLoop
 
-    private let streamID: Int
+    private let streamID: HTTP2StreamID
 
     private var state: StreamState
 

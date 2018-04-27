@@ -34,10 +34,10 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
     public typealias OutboundIn = HTTPServerResponsePart
     public typealias OutboundOut = HTTP2Frame
 
-    private let streamID: Int32
+    private let streamID: HTTP2StreamID
 
-    public init(streamID: Int) {
-        self.streamID = Int32(streamID)
+    public init(streamID: HTTP2StreamID) {
+        self.streamID = streamID
     }
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {

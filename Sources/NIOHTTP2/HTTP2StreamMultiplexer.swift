@@ -27,11 +27,11 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public typealias OutboundIn = HTTP2Frame
     public typealias OutboundOut = HTTP2Frame
 
-    private var streams: [Int32: HTTP2StreamChannel] = [:]
-    private let streamStateInitializer: ((Channel, Int) -> EventLoopFuture<Void>)?
+    private var streams: [HTTP2StreamID: HTTP2StreamChannel] = [:]
+    private let streamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?
 
     public func channelActive(ctx: ChannelHandlerContext) {
-        let frame = HTTP2Frame(streamID: 0, payload: .settings([]))
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings([]))
         ctx.write(self.wrapOutboundOut(frame), promise: nil)
     }
 
@@ -39,7 +39,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         let frame = self.unwrapInboundIn(data)
         let streamID = frame.streamID
 
-        guard streamID != 0 else {
+        guard streamID.networkStreamID != 0 else {
             // For stream 0 we forward all frames on to the main channel.
             ctx.fireChannelRead(data)
             return
@@ -68,7 +68,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         ctx.write(data, promise: promise)
     }
 
-    public init(streamStateInitializer: ((Channel, Int) -> EventLoopFuture<Void>)? = nil) {
+    public init(streamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
         self.streamStateInitializer = streamStateInitializer
     }
 }

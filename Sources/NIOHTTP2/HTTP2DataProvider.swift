@@ -276,12 +276,17 @@ class HTTP2DataProvider {
     /// Updates the count of the flushed bytes. Used to keep track of how much data is outstanding to write.
     private func updateFlushedWriteCount() {
         self.flushedBufferedBytes = 0
-        for idx in (self.writeBuffer.startIndex...self.writeBuffer.markedElementIndex()!) {
+
+        guard let markIndex = self.writeBuffer.markedElementIndex() else {
+            return
+        }
+
+        for idx in (self.writeBuffer.startIndex...markIndex) {
             switch self.writeBuffer[idx]{
             case .write(let d, _):
                 self.flushedBufferedBytes += d.readableBytes
             case .eof:
-                assert(idx == self.writeBuffer.markedElementIndex()!)
+                assert(idx == markIndex)
             }
         }
     }

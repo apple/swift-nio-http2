@@ -294,8 +294,11 @@ class NGHTTP2Session {
     /// code.
     private let flushFunction: () -> Void
 
+    private let connectionManager: HTTP2ConnectionManager
+
     init(mode: HTTP2Parser.ParserMode,
          allocator: ByteBufferAllocator,
+         connectionManager: HTTP2ConnectionManager,
          frameReceivedHandler: @escaping (HTTP2Frame) -> Void,
          sendFunction: @escaping (IOData, EventLoopPromise<Void>?) -> Void,
          flushFunction: @escaping () -> Void) {
@@ -303,6 +306,7 @@ class NGHTTP2Session {
         self.frameReceivedHandler = frameReceivedHandler
         self.sendFunction = sendFunction
         self.flushFunction = flushFunction
+        self.connectionManager = connectionManager
 
         // TODO(cory): We should make MAX_FRAME_SIZE configurable and use that, rather than hardcode
         // that value here.
@@ -347,8 +351,16 @@ class NGHTTP2Session {
             // by the remote peer if the data frame is much smaller than this buffer.
             nioFramePayload = .data(.byteBuffer(self.dataAccumulation))
         case NGHTTP2_HEADERS.rawValue:
-            // TODO(cory): handle responses here
-            nioFramePayload = .headers(.request(HTTPRequestHead(http2HeaderBlock: self.headersAccumulation)))
+            switch frame.headers.cat {
+            case NGHTTP2_HCAT_REQUEST:
+                nioFramePayload = .headers(.request(HTTPRequestHead(http2HeaderBlock: self.headersAccumulation)))
+            case NGHTTP2_HCAT_RESPONSE:
+                nioFramePayload = .headers(.response(HTTPResponseHead(http2HeaderBlock: self.headersAccumulation)))
+            case NGHTTP2_HCAT_PUSH_RESPONSE, NGHTTP2_HCAT_HEADERS:
+                preconditionFailure("Currently push promise/trailers are unsupported.")
+            default:
+                preconditionFailure("Unexpected headers category \(frame.headers.cat)")
+            }
         case NGHTTP2_PRIORITY.rawValue:
             nioFramePayload = .priority
         case NGHTTP2_RST_STREAM.rawValue:
@@ -375,8 +387,8 @@ class NGHTTP2Session {
             fatalError("unrecognised HTTP/2 frame type \(self.frameHeader.type) received")
         }
 
-        let nioFrame = HTTP2Frame(nghttp2FrameHeader: frame.hd, payload: nioFramePayload)
-
+        let streamID = self.connectionManager.streamID(for: frame.hd.stream_id)
+        let nioFrame = HTTP2Frame(streamID: streamID, flags: frame.hd.flags, payload: nioFramePayload)
         self.frameReceivedHandler(nioFrame)
 
         // We can now clear our internal state, ready for another frame.
@@ -384,10 +396,8 @@ class NGHTTP2Session {
     }
 
     /// Called whenever nghttp2 receives a chunk of data from a data frame.
-    ///
-    /// In this early version of the codebase, this function does nothing.
     fileprivate func onDataChunkRecvCallback(flags: UInt8, streamID: Int32, data: UnsafeBufferPointer<UInt8>) throws {
-        return
+        self.dataAccumulation.write(bytes: data)
     }
 
     /// Called when the stream `streamID` is closed.
@@ -559,19 +569,33 @@ class NGHTTP2Session {
 
         // TODO(cory): Support trailers.
         // TODO(cory): Support sending END_STREAM without allocating all this data nonsense.
-        headersCategory.withNGHTTP2Headers(allocator: allocator) { vec, count in
-            let rc = nghttp2_submit_headers(self.session,
-                                            0,
-                                            frame.streamID,
-                                            nil,
-                                            vec,
-                                            count,
-                                            nil)
+
+        // If this is still an abstract stream ID, we want to pass -1. This signals to nghttp2 that we have
+        // a new stream ID to allocate here, which will be returned from this function.
+        let streamID = frame.streamID.networkStreamID ?? -1
+        let rc = headersCategory.withNGHTTP2Headers(allocator: allocator) { vec, count in
+            nghttp2_submit_headers(self.session,
+                                   0,
+                                   streamID,
+                                   nil,
+                                   vec,
+                                   count,
+                                   nil)
+        }
+        precondition(rc >= 0)
+
+        let newStreamID: Int32
+        if streamID == -1 {
+            precondition(rc > 0)
+            self.connectionManager.mapID(frame.streamID, to: rc)
+            newStreamID = rc
+        } else {
             precondition(rc == 0)
+            newStreamID = streamID
         }
 
         let p = HTTP2DataProvider()
-        let oldValue = self.streamDataProviders.updateValue(p, forKey: frame.streamID)
+        let oldValue = self.streamDataProviders.updateValue(p, forKey: newStreamID)
         precondition(oldValue == nil, "Double-insertion of HTTP2 stream data provider")
     }
 
@@ -584,7 +608,7 @@ class NGHTTP2Session {
             preconditionFailure("Write data attempted on non-data frame \(frame)")
         }
         // TODO(cory): Error handling here.
-        let dataProvider = self.streamDataProviders[frame.streamID]!
+        let dataProvider = self.streamDataProviders[frame.streamID.networkStreamID!]!
         dataProvider.bufferWrite(write: data, promise: promise)
 
         // TODO(cory): trailers support
@@ -594,7 +618,7 @@ class NGHTTP2Session {
 
         if case .pending = dataProvider.state {
             // The data provider is currently in the pending state, we need to tell nghttp2 it's active again.
-            let rc = nghttp2_session_resume_data(self.session, frame.streamID)
+            let rc = nghttp2_session_resume_data(self.session, frame.streamID.networkStreamID!)
             // TODO(cory): Error handling
             precondition(rc == 0)
         }

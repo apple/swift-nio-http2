@@ -32,14 +32,14 @@ internal extension HTTP2HeadersCategory {
     ///
     /// This function will handle placing in the appropriate pseudo-headers
     /// for HTTP/2 usage and obeying the ordering rules for those headers.
-    internal func withNGHTTP2Headers(allocator: ByteBufferAllocator,
-                                     _ body: (UnsafePointer<nghttp2_nv>, Int) -> Void) {
+    internal func withNGHTTP2Headers<T>(allocator: ByteBufferAllocator,
+                                        _ body: (UnsafePointer<nghttp2_nv>, Int) -> T) -> T {
         var headerBlock = ContiguousHeaderBlock(buffer: allocator.buffer(capacity: 1024))
         self.writeHeaders(into: &headerBlock)
 
         var nghttpNVs: [nghttp2_nv] = []
         nghttpNVs.reserveCapacity(headerBlock.headerIndices.count)
-        headerBlock.headerBuffer.withUnsafeMutableReadableBytes { ptr in
+        return headerBlock.headerBuffer.withUnsafeMutableReadableBytes { ptr in
             let base = ptr.baseAddress!.assumingMemoryBound(to: UInt8.self)
             for (hnBegin, hnLen, hvBegin, hvLen) in headerBlock.headerIndices {
                 nghttpNVs.append(nghttp2_nv(name: base + hnBegin,
@@ -48,7 +48,7 @@ internal extension HTTP2HeadersCategory {
                                             valuelen: hvLen,
                                             flags: 0))
             }
-            nghttpNVs.withUnsafeMutableBufferPointer { nvPtr in
+            return nghttpNVs.withUnsafeMutableBufferPointer { nvPtr in
                 body(nvPtr.baseAddress!, nvPtr.count)
             }
         }
@@ -148,6 +148,19 @@ internal extension HTTPRequestHead {
 
         self.init(version: version, method: method, uri: uri)
         self.headers = headers
+    }
+}
+
+internal extension HTTPResponseHead {
+    /// Create a `HTTPResponseHead` from the header block produced by nghttp2.
+    init(http2HeaderBlock headers: HTTPHeaders) {
+        // Take a local copy here.
+        var headers = headers
+
+        // A response head should have only one psuedo-header. We strip it off.
+        // TODO(cory): Error handling!
+        let status = HTTPResponseStatus(statusCode: Int(headers.popPseudoHeader(name: ":status")!, radix: 10)!)
+        self.init(version: .init(major: 2, minor: 0), status: status, headers: headers)
     }
 }
 
