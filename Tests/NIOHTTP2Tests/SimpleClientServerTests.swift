@@ -48,64 +48,18 @@ class SimpleClientServerTests: XCTestCase {
         reqFrame.endHeaders = true
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
         reqBodyFrame.endStream = true
-        self.clientChannel.write(reqFrame, promise: nil)
-        self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
-        self.interactInMemory(self.clientChannel, self.serverChannel)
 
-        XCTAssertNil(self.clientChannel.readInbound())
-        guard let firstFrame: HTTP2Frame = self.serverChannel.readInbound() else {
-            XCTFail("No frame")
-            return
-        }
-        XCTAssertEqual(firstFrame.streamID.networkStreamID!, clientStreamID.networkStreamID!)
-        XCTAssertFalse(firstFrame.endStream)
-        XCTAssertTrue(firstFrame.endHeaders)
-        guard case .headers(.request(let receivedRequestHead)) = firstFrame.payload else {
-            XCTFail("Payload incorrect")
-            return
-        }
-
-        var expectedRequestHead = requestHead
-        expectedRequestHead.headers.remove(name: "host")
-        XCTAssertEqual(receivedRequestHead, expectedRequestHead)
-
-        guard let secondFrame: HTTP2Frame = self.serverChannel.readInbound() else {
-            XCTFail("No second frame")
-            return
-        }
-        XCTAssertEqual(secondFrame.streamID.networkStreamID!, clientStreamID.networkStreamID!)
-        XCTAssertTrue(secondFrame.endStream)
-        guard case .data(.byteBuffer(let receivedData)) = secondFrame.payload else {
-            XCTFail("Payload incorrect")
-            return
-        }
-
-        XCTAssertEqual(receivedData, requestBody)
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
         // Let's send a quick response back.
         let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0),
                                             status: .ok,
                                             headers: HTTPHeaders([("content-length", "0")]))
-        var respFrame = HTTP2Frame(streamID: firstFrame.streamID, payload: .headers(.response(responseHead)))
+        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(.response(responseHead)))
         respFrame.endHeaders = true
         respFrame.endStream = true
-        self.serverChannel.writeAndFlush(respFrame, promise: nil)
-        self.interactInMemory(self.clientChannel, self.serverChannel)
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
-        // The client should have seen this.
-        guard let receivedResponseFrame: HTTP2Frame = self.clientChannel.readInbound() else {
-            XCTFail("No frame")
-            return
-        }
-        XCTAssertEqual(receivedResponseFrame.streamID, clientStreamID)
-        XCTAssertTrue(receivedResponseFrame.endStream)
-        XCTAssertTrue(receivedResponseFrame.endHeaders)
-        guard case .headers(.response(let receivedResponseHead)) = receivedResponseFrame.payload else {
-            XCTFail("Payload incorrect")
-            return
-        }
-
-        XCTAssertEqual(receivedResponseHead, responseHead)
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }

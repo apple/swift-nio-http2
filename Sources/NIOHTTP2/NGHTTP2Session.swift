@@ -569,13 +569,15 @@ class NGHTTP2Session {
 
         // TODO(cory): Support trailers.
         // TODO(cory): Support sending END_STREAM without allocating all this data nonsense.
+        let isEndStream = frame.endStream
+        let flags = isEndStream ? NGHTTP2_FLAG_END_STREAM.rawValue : 0
 
         // If this is still an abstract stream ID, we want to pass -1. This signals to nghttp2 that we have
         // a new stream ID to allocate here, which will be returned from this function.
         let streamID = frame.streamID.networkStreamID ?? -1
         let rc = headersCategory.withNGHTTP2Headers(allocator: allocator) { vec, count in
             nghttp2_submit_headers(self.session,
-                                   0,
+                                   UInt8(flags),
                                    streamID,
                                    nil,
                                    vec,
@@ -594,9 +596,12 @@ class NGHTTP2Session {
             newStreamID = streamID
         }
 
-        let p = HTTP2DataProvider()
-        let oldValue = self.streamDataProviders.updateValue(p, forKey: newStreamID)
-        precondition(oldValue == nil, "Double-insertion of HTTP2 stream data provider")
+        // If this is an endStream headers frame, let's avoid allocating a data provider.
+        if !isEndStream {
+            let p = HTTP2DataProvider()
+            let oldValue = self.streamDataProviders.updateValue(p, forKey: newStreamID)
+            precondition(oldValue == nil, "Double-insertion of HTTP2 stream data provider")
+        }
     }
 
     /// Given the data for a "data frame", configure nghttp2 to write it.
