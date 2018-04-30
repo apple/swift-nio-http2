@@ -157,7 +157,7 @@ extension HTTP2Frame {
 
     /// Asserts the given frame is a HEADERS frame.
     func assertHeadersFrame(endStream: Bool, endHeaders: Bool,
-                            streamID: Int32, payload: HTTP2HeadersCategory,
+                            streamID: Int32, payload: HTTPHeaders,
                             file: StaticString = #file, line: UInt = #line) {
         guard case .headers(let actualPayload) = self.payload else {
             XCTFail("Expected HEADERS frame, got \(self.payload) instead", file: file, line: line)
@@ -170,19 +170,7 @@ extension HTTP2Frame {
                        "Unexpected endHeaders: expected \(endHeaders), got \(self.endHeaders)", file: file, line: line)
         XCTAssertEqual(self.streamID.networkStreamID!, streamID,
                        "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
-
-        let equal: Bool
-        switch (payload, actualPayload) {
-        case (.request(let l), .request(let r)),
-             (.pushResponse(let l), .pushResponse(let r)):
-            equal = l == r
-        case (.response(let l), .response(let r)):
-            equal = l == r
-        default:
-            equal = false
-        }
-
-        XCTAssertTrue(equal, "Non-equal payloads: expected \(payload), got \(actualPayload)", file: file, line: line)
+        XCTAssertEqual(payload, actualPayload, "Non-equal payloads: expected \(payload), got \(actualPayload)", file: file, line: line)
     }
 
     /// Asserts that a given frame is a DATA frame matching this one.

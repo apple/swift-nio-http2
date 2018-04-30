@@ -27,6 +27,37 @@ private extension HTTPMethod {
     }
 }
 
+fileprivate extension HTTPHeaders {
+    fileprivate init(requestHead: HTTPRequestHead) {
+        self.init()
+
+        // TODO(cory): This is potentially wrong if the URI contains more than just a path.
+        self.add(name: ":path", value: requestHead.uri)
+        self.add(name: ":method", value: String(httpMethod: requestHead.method))
+
+        // TODO(cory): This is very wrong.
+        self.add(name: ":scheme", value: "https")
+
+        var headers = requestHead.headers
+        let authority = headers[canonicalForm: "host"]
+        if authority.count > 0 {
+            precondition(authority.count == 1)
+            headers.remove(name: "host")
+            self.add(name: ":authority", value: authority[0])
+        }
+
+        headers.forEach { self.add(name: $0.name, value: $0.value) }
+    }
+
+    fileprivate init(responseHead: HTTPResponseHead) {
+        self.init()
+        
+        self.add(name: ":status", value: String(responseHead.status.code))
+        responseHead.headers.forEach { self.add(name: $0.name, value: $0.value) }
+    }
+}
+
+
 public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias InboundOut = HTTPServerRequestPart
@@ -44,9 +75,9 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
         let frame = self.unwrapInboundIn(data)
 
         switch frame.payload {
-        case .headers(.request(let reqHead)):
-            let req = InboundOut.head(reqHead)
-            ctx.fireChannelRead(self.wrapInboundOut(req))
+        case .headers(let headers):
+            let reqHead = HTTPRequestHead(http2HeaderBlock: headers)
+            ctx.fireChannelRead(self.wrapInboundOut(.head(reqHead)))
         case .settings(_), .windowUpdate(windowSizeIncrement: _):
             // FIXME: ignored
             ()
@@ -65,7 +96,7 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
         let responsePart = self.unwrapOutboundIn(data)
         switch responsePart {
         case .head(let head):
-            var frame = HTTP2Frame(streamID: self.streamID, payload: .headers(.response(head)))
+            var frame = HTTP2Frame(streamID: self.streamID, payload: .headers(HTTPHeaders(responseHead: head)))
             frame.endHeaders = true
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):

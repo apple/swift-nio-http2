@@ -353,9 +353,9 @@ class NGHTTP2Session {
         case NGHTTP2_HEADERS.rawValue:
             switch frame.headers.cat {
             case NGHTTP2_HCAT_REQUEST:
-                nioFramePayload = .headers(.request(HTTPRequestHead(http2HeaderBlock: self.headersAccumulation)))
+                nioFramePayload = .headers(self.headersAccumulation)
             case NGHTTP2_HCAT_RESPONSE:
-                nioFramePayload = .headers(.response(HTTPResponseHead(http2HeaderBlock: self.headersAccumulation)))
+                nioFramePayload = .headers(self.headersAccumulation)
             case NGHTTP2_HCAT_PUSH_RESPONSE, NGHTTP2_HCAT_HEADERS:
                 preconditionFailure("Currently push promise/trailers are unsupported.")
             default:

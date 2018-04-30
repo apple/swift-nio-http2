@@ -126,7 +126,7 @@ public struct HTTP2Frame {
 
     public enum FramePayload {
         case data(IOData)
-        case headers(HTTP2HeadersCategory)
+        case headers(HTTPHeaders)
         case priority
         case rstStream
         case settings([(Int32, UInt32)])

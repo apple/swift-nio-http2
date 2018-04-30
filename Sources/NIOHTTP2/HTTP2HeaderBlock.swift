@@ -15,19 +15,9 @@ import CNIONghttp2
 import NIO
 import NIOHTTP1
 
-/// The type of header block. This carries along with it the HTTP head portion for
-/// whatever the appropriate type is (either response or request).
-public enum HTTP2HeadersCategory {
-    case request(HTTPRequestHead)
-    case response(HTTPResponseHead)
-    case pushResponse(HTTPRequestHead)
-
-    // TODO(cory): Non-final stuff goes here, but I don't know what to put here.
-    case headers
-}
 
 // MARK:- Helpers for working with nghttp2 headers.
-internal extension HTTP2HeadersCategory {
+internal extension HTTPHeaders {
     /// Creates a NGHTTP2 header block for this HTTP/2 HEADERS frame.
     ///
     /// This function will handle placing in the appropriate pseudo-headers
@@ -58,34 +48,23 @@ internal extension HTTP2HeadersCategory {
     ///
     /// This function writes the headers corresponding to this type of header block into a byte
     /// buffer, recording their indices. This includes writing out any pseudo-headers that are
-    /// needed, and ensuring that those pseudo-headers are written first.
+    /// needed to the start of the buffer.
     private func writeHeaders(into headerBlock: inout ContiguousHeaderBlock) {
-        let headers: HTTPHeaders
-        switch self {
-        case .request(var h), .pushResponse(var h):
-            // TODO(cory): This is potentially wrong if the URI contains more than just a path.
-            headerBlock.writeHeader(name: ":path", value: h.uri)
-            headerBlock.writeHeader(name: ":method", value: String(httpMethod: h.method))
+        // TODO(cory): Right now this method is a bit costly, we should add helpers to
+        // HTTPHeaders to make it faster (and ideally end up removing ContiguousHeaderBlock).
+        // TODO(cory): Would be great to get the bytes for these names! In fact, this entire
+        // method would work better if I could just shuffle the header ordering around without
+        // copying anything.
+        // chr(58) is ":"
+        var headers = self
 
-            // TODO(cory): This is very wrong.
-            headerBlock.writeHeader(name: ":scheme", value: "https")
-
-            let authority = h.headers[canonicalForm: "host"]
-            if authority.count > 0 {
-                precondition(authority.count == 1)
-                h.headers.remove(name: "host")
-                headerBlock.writeHeader(name: ":authority", value: authority[0])
-            }
-
-            headers = h.headers
-        case .response(let h):
-            headerBlock.writeHeader(name: ":status", value: String(h.status.code))
-            headers = h.headers
-        case .headers:
-            preconditionFailure("Currently no support for non-final headers")
+        let pseudoHeaders = headers.map { $0.name }.filter { $0.utf8.first == 58 }
+        for header in pseudoHeaders {
+            let value = headers.popPseudoHeader(name: header)!
+            headerBlock.writeHeader(name: header, value: value)
         }
 
-        headers.forEach { headerBlock.writeHeader(name: $0.name, value: $0.value) }
+        headers.forEach{ headerBlock.writeHeader(name: $0.name, value: $0.value) }
     }
 }
 
@@ -110,21 +89,6 @@ private struct ContiguousHeaderBlock {
         let headerValueBegin = self.headerBuffer.writerIndex
         let headerValueLen = self.headerBuffer.write(string: value)!
         self.headerIndices.append((headerNameBegin, headerNameLen, headerValueBegin, headerValueLen))
-    }
-}
-
-extension nghttp2_headers_category {
-    init(headersCategory: HTTP2HeadersCategory) {
-        switch headersCategory {
-        case .request:
-            self = NGHTTP2_HCAT_REQUEST
-        case .response:
-            self = NGHTTP2_HCAT_RESPONSE
-        case .pushResponse:
-            self = NGHTTP2_HCAT_PUSH_RESPONSE
-        case .headers:
-            self = NGHTTP2_HCAT_HEADERS
-        }
     }
 }
 
@@ -261,7 +225,7 @@ private extension HTTPMethod {
     }
 }
 
-private extension String {
+internal extension String {
     /// Create a `HTTPMethod` from the string representation of that method.
     init(httpMethod: HTTPMethod) {
         switch httpMethod {
