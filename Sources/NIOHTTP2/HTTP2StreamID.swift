@@ -39,14 +39,10 @@
 /// IDs are not meaningful outside of their connection.
 // TODO(cory): We can remove this thread-safety limitation by embedding an atomic
 // here, but NIO doesn't let us do it.
-public struct HTTP2StreamID {
-    fileprivate class _AbstractStreamID {
-        /// The actual stream ID. Set to a negative number in cases where we don't know the
-        /// stream ID yet.
-        fileprivate var actualStreamID: Int32 = -1
-    }
-
-    fileprivate var id: _AbstractStreamID
+public class HTTP2StreamID {
+    /// The actual stream ID. Set to a negative number in cases where we don't know the
+    /// stream ID yet.
+    fileprivate var actualStreamID: Int32 = -1
 
     /// The root stream on a HTTP/2 connection, stream 0.
     ///
@@ -57,16 +53,13 @@ public struct HTTP2StreamID {
     ///
     /// An abstract stream ID represents a handle to a stream ID that may or may not yet
     /// have been reified on the network.
-    public init() {
-        self.id = _AbstractStreamID()
-    }
+    public init() { }
 
     /// Create a `HTTP2StreamID` for a known network ID.
     ///
     /// This is used to initialize the global "stream 0" stream ID.
     fileprivate init(knownID: Int32) {
-        self.id = _AbstractStreamID()
-        self.id.actualStreamID = knownID
+        self.actualStreamID = knownID
     }
 
     /// The stream ID used on the network, if there is one.
@@ -77,14 +70,14 @@ public struct HTTP2StreamID {
     ///
     /// Note that while this returns an Int32, the value must always be greater than zero.
     public var networkStreamID: Int32? {
-        return (self.id.actualStreamID >= 0) ? self.id.actualStreamID : nil
+        return (self.actualStreamID >= 0) ? self.actualStreamID : nil
     }
 }
 
 // MARK:- Equatable conformance for HTTP2StreamID
 extension HTTP2StreamID: Equatable {
     public static func ==(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        return lhs.id === rhs.id
+        return lhs === rhs
     }
 }
 
@@ -92,7 +85,7 @@ extension HTTP2StreamID: Equatable {
 // MARK:- Hashable conformance for HTTP2StreamID
 extension HTTP2StreamID: Hashable {
     public var hashValue: Int {
-        return ObjectIdentifier(self.id).hashValue
+        return ObjectIdentifier(self).hashValue
     }
 }
 
@@ -126,7 +119,7 @@ public class HTTP2ConnectionManager {
         precondition(oldValue == nil, "Mapping abstract stream ID that already has a mapping!")
 
         // Now we set the actual stream ID.
-        streamID.id.actualStreamID = networkStreamID
+        streamID.actualStreamID = networkStreamID
     }
 
     /// Returns the internal `HTTP2StreamID` for a given network stream ID.
