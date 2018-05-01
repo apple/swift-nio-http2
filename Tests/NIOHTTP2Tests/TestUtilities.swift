@@ -64,6 +64,9 @@ extension XCTestCase {
         serverReceivedSettings.assertSettingsFrame(ack: false, file: file, line: line)
         clientReceivedSettingsAck.assertSettingsFrame(ack: true, file: file, line: line)
         serverReceivedSettingsAck.assertSettingsFrame(ack: true, file: file, line: line)
+
+        client.assertNoFramesReceived(file: file, line: line)
+        server.assertNoFramesReceived(file: file, line: line)
     }
 
     /// Assert that sending the given `frames` into `sender` causes them all to pop back out again at `receiver`,
@@ -76,9 +79,8 @@ extension XCTestCase {
             sender.write(frame, promise: nil)
         }
         sender.flush()
-        self.interactInMemory(sender, receiver)
-
-        XCTAssertNil(sender.readInbound())
+        self.interactInMemory(sender, receiver, file: file, line: line)
+        sender.assertNoFramesReceived(file: file, line: line)
 
         var receivedFrames = [HTTP2Frame]()
 
@@ -104,6 +106,12 @@ extension EmbeddedChannel {
         }
 
         return frame
+    }
+
+    /// Asserts that the connection has not received a HTTP/2 frame at this time.
+    func assertNoFramesReceived(file: StaticString = #file, line: UInt = #line) {
+        let content: HTTP2Frame? = self.readInbound()
+        XCTAssertNil(content, "Received unexpected content: \(content!)", file: file, line: line)
     }
 
     /// Returns the `HTTP2ConnectionManager` for a given channel.

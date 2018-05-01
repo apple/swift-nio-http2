@@ -31,11 +31,16 @@ class SimpleClientServerTests: XCTestCase {
         self.serverChannel = nil
     }
 
-    func testBasicRequestResponse() throws {
-        // Begin by getting the connection up.
+    /// Establish a basic HTTP/2 connection.
+    func basicHTTP2Connection() throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
+    }
+
+    func testBasicRequestResponse() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
 
         // We're now going to try to send a request from the client to the server.
         let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
@@ -57,6 +62,52 @@ class SimpleClientServerTests: XCTestCase {
         respFrame.endStream = true
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testManyRequestsAtOnce() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        let requestHeaders = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        // We're going to send three requests before we flush.
+        var clientStreamIDs = [HTTP2StreamID]()
+        var headersFrames = [HTTP2Frame]()
+        var dataFrames = [HTTP2Frame]()
+
+        for _ in 0..<3 {
+            let streamID = HTTP2StreamID()
+            var reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(requestHeaders))
+            reqFrame.endHeaders = true
+            var reqBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(requestBody)))
+            reqBodyFrame.endStream = true
+
+            self.clientChannel.write(reqFrame, promise: nil)
+            self.clientChannel.write(reqBodyFrame, promise: nil)
+
+            clientStreamIDs.append(streamID)
+            headersFrames.append(reqFrame)
+            dataFrames.append(reqBodyFrame)
+        }
+        self.clientChannel.flush()
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // We expect to see all 3 headers frames emitted first, and then the data frames. This is an artefact of nghttp2,
+        // but it's how it'll go.
+        let frames = [headersFrames, dataFrames].flatMap { $0 }
+        for frame in frames {
+            let receivedFrame = try self.serverChannel.assertReceivedFrame()
+            receivedFrame.assertFrameMatches(this: frame)
+        }
+
+        // There should be no frames here.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+        
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
