@@ -135,4 +135,52 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testGoAwayWithStreamsUpQuiescing() throws {
+        // A simple connection with a goaway should be no big deal.
+        try self.basicHTTP2Connection()
+
+        // We're going to send a HEADERS frame from the client to the server.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID()
+        var reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        reqFrame.endHeaders = true
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Now the server is going to send a GOAWAY frame with the maximum stream ID. This should quiesce the connection:
+        // futher frames on stream 1 are allowed, but nothing else.
+        let serverGoaway = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: .noError, opaqueData: nil))
+        try self.assertFramesRoundTrip(frames: [serverGoaway], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // We should still be able to send DATA frames on stream 1 now.
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.endStream = true
+        try self.assertFramesRoundTrip(frames: [reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // The server will respond, closing this stream.
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+        respFrame.endHeaders = true
+        respFrame.endStream = true
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // The server can now GOAWAY down to stream 1. We evaluate the bytes here ourselves becuase the client won't see this frame.
+        let secondServerGoaway = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: serverStreamID, errorCode: .noError, opaqueData: nil))
+        self.serverChannel.writeAndFlush(secondServerGoaway, promise: nil)
+        guard case .some(.byteBuffer(let bytes)) = self.serverChannel.readOutbound() else {
+            XCTFail("No data sent from server")
+            return
+        }
+        // A GOAWAY frame (type 7, 8 bytes long, no flags, on stream 0), with error code 0 and last stream ID 1.
+        let expectedFrameBytes: [UInt8] = [0, 0, 8, 7, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+        XCTAssertEqual(bytes.getBytes(at: bytes.readerIndex, length: bytes.readableBytes)!, expectedFrameBytes)
+
+        // At this stage, everything is shut down.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

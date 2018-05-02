@@ -30,10 +30,10 @@ private func nghttp2DataProviderReadCallback(session: OpaquePointer?,
     case .eof(let written):
         dataFlags!.pointee |= NGHTTP2_DATA_FLAG_EOF.rawValue
         return written
-    case .written(let written) where written > 0:
-        return written
     case .written(let written):
-        assert(written == 0)
+        assert(written > 0)
+        return written
+    case .framePending:
         return Int(NGHTTP2_ERR_DEFERRED.rawValue)
     }
 }
@@ -65,6 +65,9 @@ class HTTP2DataProvider {
 
         /// We wrote some number of bytes, and no more are coming.
         case eof(Int)
+
+        /// We have no bytes to write now, but more are coming.
+        case framePending
     }
 
     /// The current state of this provider.
@@ -88,39 +91,27 @@ class HTTP2DataProvider {
 
         /// Called when we have written some data. Potentially transitions the state of the enum.
         fileprivate mutating func wroteData(_ count: Int) {
-            switch (self, count) {
-            case (.idle, 0):
-                self = .pending
-            case (.idle, _):
-                assert(count > 0)
-                self = .writing
-            case (.pending, let x) where x > 0:
-                self = .writing
-            case (.writing, let x) where x == 0:
-                self = .pending
-
-            // For EOF, it should not be possible to write bytes in the EOF state.
-            // This assertion checks that.
-            case (.eof, _):
+            assert(count > 0)
+            if case .eof = self {
                 assertionFailure("Should not write data when in EOF state")
-
-            // These two cases are to make the enum exhaustive: they contain
-            // only assertions to validate correctness.
-            case (.pending, let x):
-                assert(x == 0)
-            case (.writing, let x):
-                assert(x > 0)
             }
+            self = .writing
         }
 
         /// Called when we sent EOF.
         fileprivate mutating func sentEOF() {
-            switch self {
-            case .idle, .pending, .writing:
-                self = .eof
-            case .eof:
-                assertionFailure("Transitioned into EOF when in state \(self)")
+            if case .eof = self {
+                assertionFailure("Transitioned into EOF when in EOF state")
             }
+            self = .eof
+        }
+
+        /// Called when we had no data to send.
+        fileprivate mutating func awaitingData() {
+            if case .eof = self {
+                assertionFailure("Should not be asked to write data when in EOF state")
+            }
+            self = .pending
         }
     }
 
@@ -185,9 +176,15 @@ class HTTP2DataProvider {
         if self.reachedEOF(bytesToWrite: bytesToWrite) {
             self.state.sentEOF()
             return .eof(bytesToWrite)
-        } else {
+        } else if bytesToWrite > 0 {
             self.state.wroteData(bytesToWrite)
             return .written(bytesToWrite)
+        } else {
+            assert(bytesToWrite == 0)
+            // Set this to -1 as we won't actually write a frame here.
+            self.lastDataFrameSize = -1
+            self.state.awaitingData()
+            return .framePending
         }
     }
 
