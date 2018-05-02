@@ -145,6 +145,8 @@ extension HTTP2Frame {
             self.assertHeadersFrameMatches(this: frame, file: file, line: line)
         case .data:
             self.assertDataFrameMatches(this: frame, file: file, line: line)
+        case .goAway:
+            self.assertGoAwayFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }
@@ -207,5 +209,34 @@ extension HTTP2Frame {
         XCTAssertEqual(actualPayload, payload,
                        "Unexpected body: expected \(payload), got \(actualPayload)", file: file, line: line)
 
+    }
+
+    func assertGoAwayFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .goAway(let lastStreamID, let errorCode, let opaqueData) = frame.payload else {
+            preconditionFailure("Goaway frames can never match non-Goaway frames.")
+        }
+        self.assertGoAwayFrame(lastStreamID: lastStreamID.networkStreamID!,
+                               errorCode: UInt32(http2ErrorCode: errorCode),
+                               opaqueData: opaqueData.flatMap { $0.getBytes(at: $0.readerIndex, length: $0.readableBytes) },
+                               file: file,
+                               line: line)
+    }
+
+    func assertGoAwayFrame(lastStreamID: Int32, errorCode: UInt32, opaqueData: [UInt8]?, file: StaticString = #file, line: UInt = #line) {
+        guard case .goAway(let actualLastStreamID, let actualErrorCode, let actualOpaqueData) = self.payload else {
+            XCTFail("Expected GOAWAY frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        let integerErrorCode = UInt32(http2ErrorCode: actualErrorCode)
+        let byteArrayOpaqueData = actualOpaqueData.flatMap { $0.getBytes(at: $0.readerIndex, length: $0.readableBytes) }
+
+        XCTAssertEqual(self.streamID, .rootStream, "Goaway frame must be on the root stream!", file: file, line: line)
+        XCTAssertEqual(lastStreamID, actualLastStreamID.networkStreamID!,
+                       "Unexpected last stream ID: expected \(lastStreamID), got \(actualLastStreamID)", file: file, line: line)
+        XCTAssertEqual(integerErrorCode, errorCode,
+                       "Unexpected error code: expected \(errorCode), got \(integerErrorCode)", file: file, line: line)
+        XCTAssertEqual(byteArrayOpaqueData, opaqueData,
+                       "Unexpected opaque data: expected \(String(describing: opaqueData)), got \(String(describing: byteArrayOpaqueData))", file: file, line: line)
     }
 }

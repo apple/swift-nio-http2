@@ -107,7 +107,31 @@ class SimpleClientServerTests: XCTestCase {
         // There should be no frames here.
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
-        
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testNothingButGoaway() throws {
+        // A simple connection with a goaway should be no big deal.
+        try self.basicHTTP2Connection()
+        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .noError, opaqueData: nil))
+        self.clientChannel.writeAndFlush(goAwayFrame, promise: nil)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The server should have received a GOAWAY. Nothing else should have happened.
+        let receivedGoawayFrame = try self.serverChannel.assertReceivedFrame()
+        receivedGoawayFrame.assertFrameMatches(this: goAwayFrame)
+
+        // Send the GOAWAY back to the client. Should be safe.
+        self.serverChannel.writeAndFlush(goAwayFrame, promise: nil)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The client should not receive this GOAWAY frame, as it has shut down.
+        self.clientChannel.assertNoFramesReceived()
+
+        // All should be good.
+        self.serverChannel.assertNoFramesReceived()
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }

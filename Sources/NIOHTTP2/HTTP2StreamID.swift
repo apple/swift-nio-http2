@@ -49,6 +49,12 @@ public class HTTP2StreamID {
     /// This can safely be used across all connections to identify stream 0.
     public static let rootStream: HTTP2StreamID = HTTP2StreamID(knownID: 0)
 
+    /// The largest possible stream ID on a HTTP/2 connection.
+    ///
+    /// This should not usually be used to manage a specific stream. Instead, it's a sentinel
+    /// that can be used to "quiesce" a HTTP/2 connection on a GOAWAY frame.
+    public static let maxID: HTTP2StreamID = HTTP2StreamID(knownID: Int32.max)
+
     /// Create an abstract stream ID.
     ///
     /// An abstract stream ID represents a handle to a stream ID that may or may not yet
@@ -97,8 +103,8 @@ extension HTTP2StreamID: Hashable {
 /// The only use-case for this today is to manage stream IDs for connections.
 public class HTTP2ConnectionManager {
     /// The map of concrete stream numbers to internal stream ID references. This is always initialized
-    /// with stream 0 as the root stream ID.
-    private var abstractConnectionMap: [Int32: HTTP2StreamID] = [0: .rootStream]
+    /// with stream 0 as the root stream ID, and the max stream ID.
+    private var abstractConnectionMap: [Int32: HTTP2StreamID] = [0: .rootStream, Int32.max: .maxID]
 
     public init() { }
 

@@ -267,6 +267,9 @@ class NGHTTP2Session {
     /// An internal buffer used to accumulate the body of DATA frames.
     private var dataAccumulation: ByteBuffer
 
+    /// Access to an allocator for use during frame callbacks.
+    private let allocator: ByteBufferAllocator
+
     /// A small byte-buffer used to write DATA frame headers into.
     ///
     /// In many cases this will trigger a CoW (as most flushes will write more than one DATA
@@ -307,6 +310,7 @@ class NGHTTP2Session {
         self.sendFunction = sendFunction
         self.flushFunction = flushFunction
         self.connectionManager = connectionManager
+        self.allocator = allocator
 
         // TODO(cory): We should make MAX_FRAME_SIZE configurable and use that, rather than hardcode
         // that value here.
@@ -378,7 +382,11 @@ class NGHTTP2Session {
         case NGHTTP2_PING.rawValue:
             nioFramePayload = .ping
         case NGHTTP2_GOAWAY.rawValue:
-            nioFramePayload = .goAway
+            let frameData = frame.goaway
+            let opaqueData = frameData.opaque_data_len > 0 ? self.allocator.buffer(containingCopyOf: UnsafeBufferPointer(start: frameData.opaque_data, count: frameData.opaque_data_len)) : nil
+            let lastStreamID = self.connectionManager.streamID(for: frameData.last_stream_id)
+            let errorCode = HTTP2ErrorCode(frameData.error_code)
+            nioFramePayload = .goAway(lastStreamID: lastStreamID, errorCode: errorCode, opaqueData: opaqueData)
         case NGHTTP2_WINDOW_UPDATE.rawValue:
             nioFramePayload = .windowUpdate(windowSizeIncrement: Int(frame.window_update.window_size_increment))
         case NGHTTP2_CONTINUATION.rawValue:
@@ -518,7 +526,7 @@ class NGHTTP2Session {
         case .ping:
             fatalError("not implemented")
         case .goAway:
-            fatalError("not implemented")
+            self.sendGoAway(frame: frame)
         case .windowUpdate(let windowSizeIncrement):
             fatalError("not implemented")
         case .continuation:
@@ -629,7 +637,47 @@ class NGHTTP2Session {
         }
     }
 
+    private func sendGoAway(frame: HTTP2Frame) {
+        guard case .goAway(let lastStreamID, let errorCode, let opaqueData) = frame.payload else {
+            preconditionFailure("Send goaway attempted on non-goaway frame \(frame)")
+        }
+
+        precondition(frame.streamID == .rootStream, "GOAWAY must be sent on the root stream")
+
+        func submitGoAway(opaqueData: UnsafeRawBufferPointer?) -> CInt {
+            return nghttp2_submit_goaway(self.session,
+                                         0,
+                                         lastStreamID.networkStreamID!,
+                                         UInt32(http2ErrorCode: errorCode),
+                                         opaqueData?.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                                         opaqueData?.count ?? 0)
+        }
+
+        let rc: CInt
+        if let data = opaqueData {
+            rc = data.withUnsafeReadableBytes { submitGoAway(opaqueData: $0) }
+        } else {
+            rc = submitGoAway(opaqueData: nil)
+        }
+
+        // TODO(cory): Error handling!
+        precondition(rc == 0)
+    }
+
     deinit {
         nghttp2_session_del(session)
+    }
+}
+
+private extension ByteBufferAllocator {
+    /// Allocate a buffer containing a copy of the bytes in `pointer`.
+    ///
+    /// - parameters:
+    ///     - pointer: The pointer to the bytes to copy.
+    /// - returns: A `ByteBuffer` containing a copy of the bytes.
+    func buffer(containingCopyOf pointer: UnsafeBufferPointer<UInt8>) -> ByteBuffer {
+        var buffer = self.buffer(capacity: pointer.count)
+        buffer.write(bytes: pointer)
+        return buffer
     }
 }

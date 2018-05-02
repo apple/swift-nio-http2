@@ -132,7 +132,7 @@ public struct HTTP2Frame {
         case settings([(Int32, UInt32)])
         case pushPromise
         case ping
-        case goAway
+        case goAway(lastStreamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, opaqueData: ByteBuffer?)
         case windowUpdate(windowSizeIncrement: Int)
         case continuation
         case alternativeService
