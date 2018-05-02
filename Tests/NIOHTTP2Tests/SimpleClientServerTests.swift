@@ -264,4 +264,56 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testSendingDataFrameWithLargeFile() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're going to create a largish temp file: 3 data frames in size.
+        var bodyData = self.clientChannel.allocator.buffer(capacity: 1<<14)
+        for val in (0..<((1<<14) / MemoryLayout<Int>.size)) {
+            bodyData.write(integer: val)
+        }
+
+        try withTemporaryFile { (handle, path) in
+            for _ in (0..<3) {
+                handle.appendBuffer(bodyData)
+            }
+
+            let region = try FileRegion(fileHandle: handle)
+
+            // Start by sending the headers.
+            let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+            let clientStreamID = HTTP2StreamID()
+            var reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+            reqFrame.endHeaders = true
+            let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+            // Ok, we're gonna send the body here. This should create 4 streams.
+            var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.fileRegion(region)))
+            reqBodyFrame.endStream = true
+            self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
+            self.interactInMemory(self.clientChannel, self.serverChannel)
+
+            // We now expect 3 frames.
+            for idx in (0..<3) {
+                let frame = try self.serverChannel.assertReceivedFrame()
+                frame.assertDataFrame(endStream: idx == 2, streamID: serverStreamID.networkStreamID!, payload: bodyData)
+            }
+
+            // Let's send a quick response back.
+            let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+            var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+            respFrame.endHeaders = true
+            respFrame.endStream = true
+            try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+            // No frames left.
+            self.clientChannel.assertNoFramesReceived()
+            self.serverChannel.assertNoFramesReceived()
+        }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

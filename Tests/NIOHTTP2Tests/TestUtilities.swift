@@ -323,3 +323,20 @@ extension FileRegion {
         return fileBuffer
     }
 }
+
+extension NIO.FileHandle {
+    func appendBuffer(_ buffer: ByteBuffer) {
+        var written = 0
+
+        while written < buffer.readableBytes {
+            let rc = buffer.withUnsafeReadableBytes { ptr in
+                try! self.withUnsafeFileDescriptor { fd -> Int in
+                    lseek(fd, 0, SEEK_END)
+                    return write(fd, ptr.baseAddress! + written, ptr.count - written)
+                }
+            }
+            precondition(rc > 0)
+            written += rc
+        }
+    }
+}
