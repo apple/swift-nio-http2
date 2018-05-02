@@ -12,6 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if os(macOS) || os(iOS) || os(watchOS) || os(tvOS)
+import Darwin.C
+#elseif os(Linux) || os(FreeBSD) || os(Android)
+import Glibc
+#else
+#endif
+
 import XCTest
 import NIO
 import NIOHTTP1
@@ -27,14 +34,26 @@ extension XCTestCase {
     func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) {
         var operated: Bool
 
+        func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
+            guard let data = channel.readOutbound() else {
+                return nil
+            }
+            switch data {
+            case .byteBuffer(let b):
+                return b
+            case .fileRegion(let f):
+                return f.asByteBuffer(allocator: channel.allocator)
+            }
+        }
+
         repeat {
             operated = false
 
-            if case .some(.byteBuffer(let data)) = first.readOutbound() {
+            if let data = readBytesFromChannel(first) {
                 operated = true
                 XCTAssertNoThrow(try second.writeInbound(data), file: file, line: line)
             }
-            if case .some(.byteBuffer(let data)) = second.readOutbound() {
+            if let data = readBytesFromChannel(second) {
                 operated = true
                 XCTAssertNoThrow(try first.writeInbound(data), file: file, line: line)
             }
@@ -185,12 +204,20 @@ extension HTTP2Frame {
 
     /// Asserts that a given frame is a DATA frame matching this one.
     func assertDataFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
-        guard case .data(.byteBuffer(let payload)) = frame.payload else {
+        let expectedPayload: ByteBuffer
+        switch frame.payload {
+        case .data(.byteBuffer(let bufferPayload)):
+            expectedPayload = bufferPayload
+        case .data(.fileRegion(let filePayload)):
+            // Sorry about creating an allocator from thin air here!
+            expectedPayload = filePayload.asByteBuffer(allocator: ByteBufferAllocator())
+        default:
             preconditionFailure("Data frames can never match non-data frames")
         }
+
         self.assertDataFrame(endStream: frame.endStream,
                              streamID: frame.streamID.networkStreamID!,
-                             payload: payload,
+                             payload: expectedPayload,
                              file: file,
                              line: line)
     }
@@ -238,5 +265,61 @@ extension HTTP2Frame {
                        "Unexpected error code: expected \(errorCode), got \(integerErrorCode)", file: file, line: line)
         XCTAssertEqual(byteArrayOpaqueData, opaqueData,
                        "Unexpected opaque data: expected \(String(describing: opaqueData)), got \(String(describing: byteArrayOpaqueData))", file: file, line: line)
+    }
+}
+
+/// Runs the body with a temporary file, optionally containing some file content.
+func withTemporaryFile<T>(content: String? = nil, _ body: (NIO.FileHandle, String) throws -> T) rethrows -> T {
+    let (fd, path) = openTemporaryFile()
+    let fileHandle = FileHandle(descriptor: fd)
+    defer {
+        XCTAssertNoThrow(try fileHandle.close())
+        XCTAssertEqual(0, unlink(path))
+    }
+    if let content = content {
+        Array(content.utf8).withUnsafeBufferPointer { ptr in
+            var toWrite = ptr.count
+            var start = ptr.baseAddress!
+            while toWrite > 0 {
+                let rc = write(fd, start, toWrite)
+                if rc >= 0 {
+                    toWrite -= rc
+                    start = start + rc
+                } else {
+                    fatalError("Hit error: \(String(cString: strerror(errno)))")
+                }
+            }
+            XCTAssertEqual(0, lseek(fd, 0, SEEK_SET))
+        }
+    }
+    return try body(fileHandle, path)
+}
+
+func openTemporaryFile() -> (CInt, String) {
+    let template = "/tmp/niotestXXXXXXX"
+    var templateBytes = template.utf8 + [0]
+    let templateBytesCount = templateBytes.count
+    let fd = templateBytes.withUnsafeMutableBufferPointer { ptr in
+        ptr.baseAddress!.withMemoryRebound(to: Int8.self, capacity: templateBytesCount) { (ptr: UnsafeMutablePointer<Int8>) in
+            return mkstemp(ptr)
+        }
+    }
+    templateBytes.removeLast()
+    return (fd, String(decoding: templateBytes, as: UTF8.self))
+}
+
+extension FileRegion {
+    func asByteBuffer(allocator: ByteBufferAllocator) -> ByteBuffer {
+        var fileBuffer = allocator.buffer(capacity: self.readableBytes)
+        fileBuffer.writeWithUnsafeMutableBytes { ptr in
+            let rc = try! self.fileHandle.withUnsafeFileDescriptor { fd -> Int in
+                lseek(fd, off_t(self.readerIndex), SEEK_SET)
+                return read(fd, ptr.baseAddress!, self.readableBytes)
+            }
+            precondition(rc == self.readableBytes)
+            return rc
+        }
+        precondition(fileBuffer.readableBytes == self.readableBytes)
+        return fileBuffer
     }
 }

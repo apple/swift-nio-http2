@@ -234,4 +234,34 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testSendingDataFrameWithSmallFile() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server with a file region for the body.
+        let bodyContent = "Hello world, this is data from a file!"
+
+        try withTemporaryFile(content: bodyContent) { (handle, path) in
+            let region = try FileRegion(fileHandle: handle)
+            let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+            let clientStreamID = HTTP2StreamID()
+            var reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+            reqFrame.endHeaders = true
+            var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.fileRegion(region)))
+            reqBodyFrame.endStream = true
+
+            let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+            // Let's send a quick response back.
+            let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+            var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+            respFrame.endHeaders = true
+            respFrame.endStream = true
+            try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+        }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
