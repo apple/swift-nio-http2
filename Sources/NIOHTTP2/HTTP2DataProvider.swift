@@ -205,12 +205,12 @@ class HTTP2DataProvider {
                     promise = nil
                 } else {
                     write = data
+                    _ = self.writeBuffer.removeFirst()
                 }
 
                 self.flushedBufferedBytes -= write.readableBytes
                 self.lastDataFrameSize -= write.readableBytes
                 body(write, promise)
-                _ = self.writeBuffer.removeFirst()
             case .eof:
                 preconditionFailure("Should never write over EOF")
             }
@@ -257,12 +257,12 @@ class HTTP2DataProvider {
     private func sliceWrite(write: IOData, promise: EventLoopPromise<Void>?, writeSize: Int) -> IOData {
         switch write {
         case .byteBuffer(var b):
-            assert(b.readableBytes < writeSize)
+            assert(b.readableBytes > writeSize)
             let bufferToWrite = b.readSlice(length: writeSize)!
             self.writeBuffer[self.writeBuffer.startIndex] = .write(.byteBuffer(b), promise)
             return .byteBuffer(bufferToWrite)
         case .fileRegion(var f):
-            assert(f.readableBytes < writeSize)
+            assert(f.readableBytes > writeSize)
             let fileToWrite = FileRegion(fileHandle: f.fileHandle, readerIndex: f.readerIndex, endIndex: f.readerIndex + writeSize)
             f.moveReaderIndex(forwardBy: writeSize)
             self.writeBuffer[self.writeBuffer.startIndex] = .write(.fileRegion(f), promise)

@@ -183,4 +183,55 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testLargeDataFramesAreSplit() throws {
+        // Big DATA frames get split up.
+        try self.basicHTTP2Connection()
+
+        // Start by opening the stream.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID()
+        var reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        reqFrame.endHeaders = true
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Confirm there's no bonus frame sitting around.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Now we're going to send in a frame that's just a bit larger than the max frame size of 1<<14.
+        let frameSize = (1<<14) + 8
+        var buffer = self.clientChannel.allocator.buffer(capacity: frameSize)
+
+        /// To write this in as fast as possible, we're going to fill the buffer one int at a time.
+        for val in (0..<(frameSize / MemoryLayout<Int>.size)) {
+            buffer.write(integer: val)
+        }
+
+        // Now we'll try to send this in a DATA frame.
+        var dataFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(buffer)))
+        dataFrame.endStream = true
+        self.clientChannel.writeAndFlush(dataFrame, promise: nil)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // This should have produced two frames in the server. Both are DATA, one is max frame size and the other
+        // is not.
+        let firstFrame = try self.serverChannel.assertReceivedFrame()
+        firstFrame.assertDataFrame(endStream: false, streamID: serverStreamID.networkStreamID!, payload: buffer.getSlice(at: 0, length: 1<<14)!)
+        let secondFrame = try self.serverChannel.assertReceivedFrame()
+        secondFrame.assertDataFrame(endStream: true, streamID: serverStreamID.networkStreamID!, payload: buffer.getSlice(at: 1<<14, length: 8)!)
+
+        // The client should have got nothing.
+        self.clientChannel.assertNoFramesReceived()
+
+        // Now send a response from the server and shut things down.
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+        respFrame.endHeaders = true
+        respFrame.endStream = true
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
