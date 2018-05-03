@@ -362,11 +362,11 @@ class NGHTTP2Session {
         case NGHTTP2_RST_STREAM.rawValue:
             nioFramePayload = .rstStream
         case NGHTTP2_SETTINGS.rawValue:
-            var settings: [(Int32, UInt32)] = []
+            var settings: [(UInt16, UInt32)] = []
             settings.reserveCapacity(frame.settings.niv)
             for idx in 0..<frame.settings.niv {
                 let iv = frame.settings.iv[idx]
-                settings.append((iv.settings_id, iv.value))
+                settings.append((UInt16(iv.settings_id), iv.value))
             }
             nioFramePayload = .settings(settings)
         case NGHTTP2_PUSH_PROMISE.rawValue:
@@ -507,9 +507,8 @@ class NGHTTP2Session {
             fatalError("not implemented")
         case .rstStream:
             fatalError("not implemented")
-        case .settings(_):
-            // FIXME this does nothing
-            nghttp2_submit_settings(self.session, 0, nil, 0)
+        case .settings:
+            self.sendSettings(frame: frame)
         case .pushPromise:
             fatalError("not implemented")
         case .ping:
@@ -648,6 +647,17 @@ class NGHTTP2Session {
         }
 
         // TODO(cory): Error handling!
+        precondition(rc == 0)
+    }
+
+    private func sendSettings(frame: HTTP2Frame) {
+        guard case .settings(let settings) = frame.payload else {
+            preconditionFailure("Send settings attempted on non-settings frame \(frame)")
+        }
+
+        let rc = settings.map { nghttp2_settings_entry(settings_id: Int32($0.0), value: $0.1) }.withUnsafeBufferPointer {
+            nghttp2_submit_settings(self.session, 0, $0.baseAddress!, $0.count)
+        }
         precondition(rc == 0)
     }
 

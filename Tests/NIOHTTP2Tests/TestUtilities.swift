@@ -142,8 +142,8 @@ extension EmbeddedChannel {
 extension HTTP2Frame {
     /// Asserts that the given frame is a SETTINGS frame.
     ///
-    /// Currently this does not supoport SETTINGS frames with actual settings in them,
-    /// so it asserts the frame is empty. Extend this to support settings later.
+    /// Currently this does not supoport SETTINGS frames with configurable settings in them,
+    /// which won't work when we allow that.
     func assertSettingsFrame(ack: Bool, file: StaticString = #file, line: UInt = #line) {
         guard case .settings(let values) = self.payload else {
             XCTFail("Expected SETTINGS frame, got \(self.payload) instead", file: file, line: line)
@@ -154,7 +154,13 @@ extension HTTP2Frame {
                        file: file, line: line)
         XCTAssertEqual(self.ack, ack, "Got unexpected value for ack: expected \(ack), got \(self.ack)",
                        file: file, line: line)
-        XCTAssertEqual(values.count, 0, "Got settings values \(values), expected none.", file: file, line: line)
+        XCTAssertEqual(values.count, self.ack ? 0 : 1, "Got settings values \(values), expected one.", file: file, line: line)
+
+        // This is using the raw value, which it really shouldn't.
+        if !self.ack {
+            XCTAssertEqual(values[0].0, UInt16(0x03), file: file, line: line)
+            XCTAssertEqual(values[0].1, UInt32(100), file: file, line: line)
+        }
     }
 
     /// Asserts that this frame matches a give other frame.

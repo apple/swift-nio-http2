@@ -305,4 +305,68 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testMoreRequestsThanMaxConcurrentStreamsAtOnce() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        let requestHeaders = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        // We're going to send 101 requests before we flush.
+        var clientStreamIDs = [HTTP2StreamID]()
+        var serverStreamIDs = [HTTP2StreamID]()
+        var headersFrames = [HTTP2Frame]()
+
+        for _ in 0..<101 {
+            let streamID = HTTP2StreamID()
+            let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(requestHeaders))
+
+            self.clientChannel.write(reqFrame, promise: nil)
+
+            clientStreamIDs.append(streamID)
+            headersFrames.append(reqFrame)
+        }
+        self.clientChannel.flush()
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // We expect to see the first 100 headers frames, but nothing more.
+        for frame in headersFrames.dropLast() {
+            let receivedFrame = try self.serverChannel.assertReceivedFrame()
+            receivedFrame.assertFrameMatches(this: frame)
+            serverStreamIDs.append(receivedFrame.streamID)
+        }
+
+        // There should be no frames here.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Let's complete one of the streams by sending data for the first stream on the client, and responding on the server.
+        var dataFrame = HTTP2Frame(streamID: clientStreamIDs.first!, payload: .data(.byteBuffer(requestBody)))
+        dataFrame.endStream = true
+        self.clientChannel.writeAndFlush(dataFrame, promise: nil)
+
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+        var respFrame = HTTP2Frame(streamID: serverStreamIDs.first!, payload: .headers(responseHeaders))
+        respFrame.endStream = true
+        self.serverChannel.writeAndFlush(respFrame, promise: nil)
+
+        // Now we expect the following things to have happened: 1) the client will have seen the server's response,
+        // 2) the server will have seen the END_STREAM, and 3) the server will have seen another request, making
+        // 101.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: respFrame)
+        try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: dataFrame)
+        try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: headersFrames.last!)
+
+        // There should be no frames here.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // No need to bother cleaning this up.
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

@@ -109,7 +109,7 @@ public struct HTTP2Frame {
         case headers(HTTPHeaders)
         case priority
         case rstStream
-        case settings([(Int32, UInt32)])
+        case settings([(UInt16, UInt32)])
         case pushPromise
         case ping
         case goAway(lastStreamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, opaqueData: ByteBuffer?)
