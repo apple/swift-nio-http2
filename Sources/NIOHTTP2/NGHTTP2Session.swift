@@ -205,12 +205,8 @@ private func sendDataCallback(session: OpaquePointer?,
     let frameHeaderBufferPointer = UnsafeBufferPointer(start: frameHeader, count: 9)
 
     let nioSession = evacuateSession(userData)
-    do {
-        try nioSession.sendDataCallback(frame: frame, frameHeader: frameHeaderBufferPointer, source: source)
-        return 0
-    } catch {
-        return NGHTTP2_ERR_CALLBACK_FAILURE.rawValue
-    }
+    nioSession.sendDataCallback(frame: frame, frameHeader: frameHeaderBufferPointer, source: source)
+    return 0
 }
 
 /// The global nghttp2 on-frame-send callback.
@@ -223,12 +219,8 @@ private func onFrameSendCallback(session: OpaquePointer?, frame: UnsafePointer<n
     }
 
     let nioSession = evacuateSession(userData)
-    do {
-        try nioSession.onFrameSendCallback(frame: frame)
-        return 0
-    } catch {
-        return NGHTTP2_ERR_CALLBACK_FAILURE.rawValue
-    }
+    nioSession.onFrameSendCallback(frame: frame)
+    return 0
 }
 
 private func onFrameNotSentCallback(session: OpaquePointer?,
@@ -520,14 +512,13 @@ class NGHTTP2Session {
         case .settings(_):
             // FIXME this does nothing
             nghttp2_submit_settings(self.session, 0, nil, 0)
-            //fatalError("not implemented")
         case .pushPromise:
             fatalError("not implemented")
         case .ping:
             fatalError("not implemented")
         case .goAway:
             self.sendGoAway(frame: frame)
-        case .windowUpdate(let windowSizeIncrement):
+        case .windowUpdate:
             fatalError("not implemented")
         case .continuation:
             fatalError("not implemented")
