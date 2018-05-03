@@ -381,8 +381,6 @@ class NGHTTP2Session {
             nioFramePayload = .goAway(lastStreamID: lastStreamID, errorCode: errorCode, opaqueData: opaqueData)
         case NGHTTP2_WINDOW_UPDATE.rawValue:
             nioFramePayload = .windowUpdate(windowSizeIncrement: Int(frame.window_update.window_size_increment))
-        case NGHTTP2_CONTINUATION.rawValue:
-            nioFramePayload = .continuation
         default:
             fatalError("unrecognised HTTP/2 frame type \(self.frameHeader.type) received")
         }
@@ -519,8 +517,6 @@ class NGHTTP2Session {
         case .goAway:
             self.sendGoAway(frame: frame)
         case .windowUpdate:
-            fatalError("not implemented")
-        case .continuation:
             fatalError("not implemented")
         case .alternativeService:
             fatalError("not implemented")

@@ -96,8 +96,7 @@ public final class HTTP2ToHTTP1Codec: ChannelInboundHandler, ChannelOutboundHand
         let responsePart = self.unwrapOutboundIn(data)
         switch responsePart {
         case .head(let head):
-            var frame = HTTP2Frame(streamID: self.streamID, payload: .headers(HTTPHeaders(responseHead: head)))
-            frame.endHeaders = true
+            let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(HTTPHeaders(responseHead: head)))
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):
             let payload = HTTP2Frame.FramePayload.data(body)

@@ -48,26 +48,6 @@ public struct HTTP2Frame {
         }
     }
 
-    // Whether the END_HEADERS flag bit is set.
-    public var endHeaders: Bool {
-        get {
-            switch self.payload {
-            case .headers, .pushPromise, .continuation:
-                return (self.flags & UInt8(NGHTTP2_FLAG_END_HEADERS.rawValue) != 0)
-            default:
-                return false
-            }
-        }
-        set {
-            switch self.payload {
-            case .headers, .pushPromise, .continuation:
-                self.flags |= UInt8(NGHTTP2_FLAG_END_HEADERS.rawValue)
-            default:
-                break
-            }
-        }
-    }
-
     // Whether the PADDED flag bit is set.
     public var padded: Bool {
         get {
@@ -134,7 +114,6 @@ public struct HTTP2Frame {
         case ping
         case goAway(lastStreamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, opaqueData: ByteBuffer?)
         case windowUpdate(windowSizeIncrement: Int)
-        case continuation
         case alternativeService
     }
 }

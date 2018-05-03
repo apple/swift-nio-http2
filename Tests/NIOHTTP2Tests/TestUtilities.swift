@@ -177,7 +177,6 @@ extension HTTP2Frame {
             preconditionFailure("Headers frames can never match non-headers frames")
         }
         self.assertHeadersFrame(endStream: frame.endStream,
-                                endHeaders: frame.endHeaders,
                                 streamID: frame.streamID.networkStreamID!,
                                 payload: payload,
                                 file: file,
@@ -185,8 +184,7 @@ extension HTTP2Frame {
     }
 
     /// Asserts the given frame is a HEADERS frame.
-    func assertHeadersFrame(endStream: Bool, endHeaders: Bool,
-                            streamID: Int32, payload: HTTPHeaders,
+    func assertHeadersFrame(endStream: Bool, streamID: Int32, payload: HTTPHeaders,
                             file: StaticString = #file, line: UInt = #line) {
         guard case .headers(let actualPayload) = self.payload else {
             XCTFail("Expected HEADERS frame, got \(self.payload) instead", file: file, line: line)
@@ -195,8 +193,6 @@ extension HTTP2Frame {
 
         XCTAssertEqual(self.endStream, endStream,
                        "Unexpected endStream: expected \(endStream), got \(self.endStream)", file: file, line: line)
-        XCTAssertEqual(self.endHeaders, endHeaders,
-                       "Unexpected endHeaders: expected \(endHeaders), got \(self.endHeaders)", file: file, line: line)
         XCTAssertEqual(self.streamID.networkStreamID!, streamID,
                        "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
         XCTAssertEqual(payload, actualPayload, "Non-equal payloads: expected \(payload), got \(actualPayload)", file: file, line: line)

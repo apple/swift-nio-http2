@@ -92,12 +92,9 @@ fileprivate struct StreamState {
     mutating func receivedFrame(frame: HTTP2Frame) throws -> Action {
         switch frame.payload {
         case .headers:
-            assert(frame.endHeaders, "Fragmented headers frame received!")
             return try self.processInput(.headersReceived)
-        case .continuation:
-            preconditionFailure("Received unexpected CONTINUATION frame")
         case .pushPromise:
-            assert(frame.endHeaders, "Fragmented PUSH_PROMISE frame received!")
+
             return try self.processInput(.pushPromiseReceived)
         case .rstStream:
             return try self.processInput(.rstStreamReceived)
@@ -114,12 +111,8 @@ fileprivate struct StreamState {
     mutating func sentFrame(frame: HTTP2Frame) throws -> Action {
         switch frame.payload {
         case .headers:
-            assert(frame.endHeaders, "Fragmented headers frame sent!")
             return try self.processInput(.headersSent)
-        case .continuation:
-            preconditionFailure("Sent unexpected CONTINUATION frame")
         case .pushPromise:
-            assert(frame.endHeaders, "Fragmented PUSH_PROMISE frame sent!")
             return try self.processInput(.pushPromiseSent)
         case .rstStream:
             return try self.processInput(.rstStreamSent)
