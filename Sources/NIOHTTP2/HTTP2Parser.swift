@@ -75,21 +75,21 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     public func channelReadComplete(ctx: ChannelHandlerContext) {
         // TODO(cory): Prevent this unconditionally flushing.
         // TODO(cory): Should this flush at all? The tests rely on it right now.
-        self.session.send(allocator: ctx.channel.allocator)
+        self.session.send()
     }
 
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
-        self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: promise)
+        self.session.feedOutput(frame: frame, promise: promise)
     }
 
     public func flush(ctx: ChannelHandlerContext) {
-        self.session.send(allocator: ctx.channel.allocator)
+        self.session.send()
     }
 
     private func flushPreamble(ctx: ChannelHandlerContext) {
         let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.initialSettings))
-        self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: nil)
+        self.session.feedOutput(frame: frame, promise: nil)
         self.flush(ctx: ctx)
     }
 }

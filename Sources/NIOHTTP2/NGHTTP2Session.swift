@@ -497,12 +497,12 @@ class NGHTTP2Session {
     }
 
     // TODO(cory): This needs to know about promises.
-    public func feedOutput(allocator: ByteBufferAllocator, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+    public func feedOutput(frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         switch frame.payload {
         case .data:
             self.writeDataToStream(frame: frame, promise: promise)
         case .headers:
-            self.sendHeaders(frame: frame, allocator: allocator)
+            self.sendHeaders(frame: frame)
         case .priority:
             fatalError("not implemented")
         case .rstStream:
@@ -522,12 +522,12 @@ class NGHTTP2Session {
         }
     }
 
-    public func send(allocator: ByteBufferAllocator) {
-        self.writeOutstandingData(allocator: allocator)
+    public func send() {
+        self.writeOutstandingData()
         self.flushFunction()
     }
 
-    private func writeOutstandingData(allocator: ByteBufferAllocator) {
+    private func writeOutstandingData() {
         var data: UnsafePointer<UInt8>? = nil
 
         // Here we mark all stream write managers to flush. This is insane, it's very slow, come back and optimise it.
@@ -540,7 +540,7 @@ class NGHTTP2Session {
             guard length != 0 else {
                 break
             }
-            var buffer = allocator.buffer(capacity: length)
+            var buffer = self.allocator.buffer(capacity: length)
             buffer.write(bytes: UnsafeBufferPointer(start: data, count: length))
             self.sendFunction(.byteBuffer(buffer), nil)
         }
@@ -556,7 +556,7 @@ class NGHTTP2Session {
     ///
     /// That means all this state must be ready to go once we've submitted the headers frame to nghttp2. This function
     /// is responsible for getting all our ducks in a row.
-    private func sendHeaders(frame: HTTP2Frame, allocator: ByteBufferAllocator) {
+    private func sendHeaders(frame: HTTP2Frame) {
         guard case .headers(let headersCategory) = frame.payload else {
             preconditionFailure("Attempting to send non-headers frame")
         }
@@ -569,7 +569,7 @@ class NGHTTP2Session {
         // If this is still an abstract stream ID, we want to pass -1. This signals to nghttp2 that we have
         // a new stream ID to allocate here, which will be returned from this function.
         let streamID = frame.streamID.networkStreamID ?? -1
-        let rc = headersCategory.withNGHTTP2Headers(allocator: allocator) { vec, count in
+        let rc = headersCategory.withNGHTTP2Headers(allocator: self.allocator) { vec, count in
             nghttp2_submit_headers(self.session,
                                    UInt8(flags),
                                    streamID,
