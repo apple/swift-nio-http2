@@ -158,8 +158,7 @@ extension HTTP2Frame {
 
         // This is using the raw value, which it really shouldn't.
         if !self.ack {
-            XCTAssertEqual(values[0].0, UInt16(0x03), file: file, line: line)
-            XCTAssertEqual(values[0].1, UInt32(100), file: file, line: line)
+            XCTAssertEqual(values[0], HTTP2Setting(parameter: .maxConcurrentStreams, value: 100), file: file, line: line)
         }
     }
 

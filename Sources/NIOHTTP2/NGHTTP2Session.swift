@@ -362,11 +362,11 @@ class NGHTTP2Session {
         case NGHTTP2_RST_STREAM.rawValue:
             nioFramePayload = .rstStream
         case NGHTTP2_SETTINGS.rawValue:
-            var settings: [(UInt16, UInt32)] = []
+            var settings: [HTTP2Setting] = []
             settings.reserveCapacity(frame.settings.niv)
             for idx in 0..<frame.settings.niv {
                 let iv = frame.settings.iv[idx]
-                settings.append((UInt16(iv.settings_id), iv.value))
+                settings.append(HTTP2Setting(fromNghttp2: iv))
             }
             nioFramePayload = .settings(settings)
         case NGHTTP2_PUSH_PROMISE.rawValue:
@@ -655,7 +655,7 @@ class NGHTTP2Session {
             preconditionFailure("Send settings attempted on non-settings frame \(frame)")
         }
 
-        let rc = settings.map { nghttp2_settings_entry(settings_id: Int32($0.0), value: $0.1) }.withUnsafeBufferPointer {
+        let rc = settings.map { nghttp2_settings_entry(nioSetting: $0) }.withUnsafeBufferPointer {
             nghttp2_submit_settings(self.session, 0, $0.baseAddress!, $0.count)
         }
         precondition(rc == 0)

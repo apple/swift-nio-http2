@@ -79,7 +79,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
 
     private func flushPreamble(ctx: ChannelHandlerContext) {
         // TODO(cory): This should actually allow configuring settings at some point.
-        let fixedSettings: [(UInt16, UInt32)] = [(UInt16(NGHTTP2_SETTINGS_MAX_CONCURRENT_STREAMS.rawValue), 100)]
+        let fixedSettings = [HTTP2Setting(parameter: .maxConcurrentStreams, value: 100)]
         let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(fixedSettings))
         self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: nil)
         self.flush(ctx: ctx)
