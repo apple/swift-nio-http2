@@ -154,11 +154,11 @@ extension HTTP2Frame {
                        file: file, line: line)
         XCTAssertEqual(self.ack, ack, "Got unexpected value for ack: expected \(ack), got \(self.ack)",
                        file: file, line: line)
-        XCTAssertEqual(values.count, self.ack ? 0 : 1, "Got settings values \(values), expected one.", file: file, line: line)
+        XCTAssertEqual(values.count, self.ack ? 0 : nioDefaultSettings.count, "Got settings values \(values), expected one.", file: file, line: line)
 
         // This is using the raw value, which it really shouldn't.
         if !self.ack {
-            XCTAssertEqual(values[0], HTTP2Setting(parameter: .maxConcurrentStreams, value: 100), file: file, line: line)
+            XCTAssertEqual(values, nioDefaultSettings, file: file, line: line)
         }
     }
 

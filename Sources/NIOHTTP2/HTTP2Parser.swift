@@ -15,6 +15,14 @@
 import NIO
 import CNIONghttp2
 
+/// NIO's default settings used for initial settings values on HTTP/2 streams, when the user hasn't
+/// overridden that. This limits the max concurrent streams to 100, and limits the max header list
+/// size to 16kB, to avoid trivial resource exhaustion on NIO HTTP/2 users.
+public let nioDefaultSettings = [
+    HTTP2Setting(parameter: .maxConcurrentStreams, value: 100),
+    HTTP2Setting(parameter: .maxHeaderListSize, value: 1<<16)
+]
+
 public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = ByteBuffer
     public typealias InboundOut = HTTP2Frame
@@ -36,10 +44,12 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
 
     private var session: NGHTTP2Session!
     private let mode: ParserMode
+    private let defaultSettings: [HTTP2Setting]
 
-    public init(mode: ParserMode, connectionManager: HTTP2ConnectionManager = .init()) {
+    public init(mode: ParserMode, connectionManager: HTTP2ConnectionManager = .init(), defaultSettings: [HTTP2Setting] = nioDefaultSettings) {
         self.mode = mode
         self.connectionManager = connectionManager
+        self.defaultSettings = defaultSettings
     }
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
@@ -78,9 +88,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     }
 
     private func flushPreamble(ctx: ChannelHandlerContext) {
-        // TODO(cory): This should actually allow configuring settings at some point.
-        let fixedSettings = [HTTP2Setting(parameter: .maxConcurrentStreams, value: 100)]
-        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(fixedSettings))
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.defaultSettings))
         self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: nil)
         self.flush(ctx: ctx)
     }
