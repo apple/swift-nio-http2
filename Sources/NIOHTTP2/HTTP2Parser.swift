@@ -44,12 +44,12 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
 
     private var session: NGHTTP2Session!
     private let mode: ParserMode
-    private let defaultSettings: [HTTP2Setting]
+    private let initialSettings: [HTTP2Setting]
 
-    public init(mode: ParserMode, connectionManager: HTTP2ConnectionManager = .init(), defaultSettings: [HTTP2Setting] = nioDefaultSettings) {
+    public init(mode: ParserMode, connectionManager: HTTP2ConnectionManager = .init(), initialSettings: [HTTP2Setting] = nioDefaultSettings) {
         self.mode = mode
         self.connectionManager = connectionManager
-        self.defaultSettings = defaultSettings
+        self.initialSettings = initialSettings
     }
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
@@ -88,7 +88,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     }
 
     private func flushPreamble(ctx: ChannelHandlerContext) {
-        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.defaultSettings))
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.initialSettings))
         self.session.feedOutput(allocator: ctx.channel.allocator, frame: frame, promise: nil)
         self.flush(ctx: ctx)
     }

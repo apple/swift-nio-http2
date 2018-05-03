@@ -65,7 +65,9 @@ extension XCTestCase {
     ///
     /// If the handshake has not occurred, this will definitely call `XCTFail`. It may also throw if the
     /// channel is now in an indeterminate state.
-    func assertDoHandshake(client: EmbeddedChannel, server: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) throws {
+    func assertDoHandshake(client: EmbeddedChannel, server: EmbeddedChannel,
+                           clientSettings: [HTTP2Setting] = nioDefaultSettings, serverSettings: [HTTP2Setting] = nioDefaultSettings,
+                           file: StaticString = #file, line: UInt = #line) throws {
         // First the channels need to interact.
         self.interactInMemory(client, server, file: file, line: line)
 
@@ -77,12 +79,11 @@ extension XCTestCase {
         let clientReceivedSettingsAck = try client.assertReceivedFrame(file: file, line: line)
         let serverReceivedSettingsAck = try server.assertReceivedFrame(file: file, line: line)
 
-        // Check that these SETTINGS frames are ok. Currently we don't actually set any values in here,
-        // but when we do this function can be enhanced to tolerate it.
-        clientReceivedSettings.assertSettingsFrame(ack: false, file: file, line: line)
-        serverReceivedSettings.assertSettingsFrame(ack: false, file: file, line: line)
-        clientReceivedSettingsAck.assertSettingsFrame(ack: true, file: file, line: line)
-        serverReceivedSettingsAck.assertSettingsFrame(ack: true, file: file, line: line)
+        // Check that these SETTINGS frames are ok.
+        clientReceivedSettings.assertSettingsFrame(expectedSettings: serverSettings, ack: false, file: file, line: line)
+        serverReceivedSettings.assertSettingsFrame(expectedSettings: clientSettings, ack: false, file: file, line: line)
+        clientReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: file, line: line)
+        serverReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: file, line: line)
 
         client.assertNoFramesReceived(file: file, line: line)
         server.assertNoFramesReceived(file: file, line: line)
@@ -141,10 +142,7 @@ extension EmbeddedChannel {
 
 extension HTTP2Frame {
     /// Asserts that the given frame is a SETTINGS frame.
-    ///
-    /// Currently this does not supoport SETTINGS frames with configurable settings in them,
-    /// which won't work when we allow that.
-    func assertSettingsFrame(ack: Bool, file: StaticString = #file, line: UInt = #line) {
+    func assertSettingsFrame(expectedSettings: [HTTP2Setting], ack: Bool, file: StaticString = #file, line: UInt = #line) {
         guard case .settings(let values) = self.payload else {
             XCTFail("Expected SETTINGS frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -154,12 +152,7 @@ extension HTTP2Frame {
                        file: file, line: line)
         XCTAssertEqual(self.ack, ack, "Got unexpected value for ack: expected \(ack), got \(self.ack)",
                        file: file, line: line)
-        XCTAssertEqual(values.count, self.ack ? 0 : nioDefaultSettings.count, "Got settings values \(values), expected one.", file: file, line: line)
-
-        // This is using the raw value, which it really shouldn't.
-        if !self.ack {
-            XCTAssertEqual(values, nioDefaultSettings, file: file, line: line)
-        }
+        XCTAssertEqual(values, expectedSettings, file: file, line: line)
     }
 
     /// Asserts that this frame matches a give other frame.

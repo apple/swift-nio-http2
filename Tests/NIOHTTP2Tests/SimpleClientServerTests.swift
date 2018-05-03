@@ -369,4 +369,23 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testOverridingDefaultSettings() throws {
+        let initialSettings = [
+            HTTP2Setting(parameter: .maxHeaderListSize, value: 1000),
+            HTTP2Setting(parameter: .initialWindowSize, value: 100),
+            HTTP2Setting(parameter: .enablePush, value: 0)
+        ]
+        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client, initialSettings: initialSettings)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())
+        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel, clientSettings: initialSettings)
+
+        // There should be no frames here.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // No need to bother cleaning this up.
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
