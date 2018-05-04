@@ -527,6 +527,18 @@ class NGHTTP2Session {
         self.flushFunction()
     }
 
+    public func receivedEOF() throws {
+        // EOF is the end of this connection. If the connection is already over, that's fine: otherwise,
+        // we want to throw an error for reporting on the pipeline. Either way, we need to clean up our state.
+        let dataProviders = self.streamDataProviders.values
+        self.streamDataProviders.removeAll()
+
+        // We can now call out here.
+        dataProviders.forEach { $0.failAllWrites(error: ChannelError.eof) }
+
+        // TODO(cory): Check state, throw in error cases.
+    }
+
     private func writeOutstandingData() {
         var data: UnsafePointer<UInt8>? = nil
 

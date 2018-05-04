@@ -412,4 +412,64 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testUnflushedWritesAreFailedOnChannelInactive() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we're going to send a request, including a body, but not flush it.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.endStream = true
+        self.clientChannel.write(reqFrame, promise: nil)
+
+        var receivedError: Error? = nil
+        let clientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
+        clientWritePromise.futureResult.whenFailure { error in receivedError = error }
+        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
+        XCTAssertNil(receivedError)
+
+        // Ok, now we're going to send EOF to the client.
+        self.clientChannel.pipeline.fireChannelInactive()
+        XCTAssertNotNil(receivedError)
+        XCTAssertEqual(receivedError as? ChannelError, ChannelError.eof)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testUnflushedWritesAreFailedOnHalfClosure() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we're going to send a request, including a body, but not flush it.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.endStream = true
+        self.clientChannel.write(reqFrame, promise: nil)
+
+        var receivedError: Error? = nil
+        let clientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
+        clientWritePromise.futureResult.whenFailure { error in receivedError = error }
+        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
+        XCTAssertNil(receivedError)
+
+        // Ok, now we're going to send half closure to the client.
+        self.clientChannel.pipeline.fireUserInboundEventTriggered(ChannelEvent.inputClosed)
+        XCTAssertNotNil(receivedError)
+        XCTAssertEqual(receivedError as? ChannelError, ChannelError.eof)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

@@ -89,6 +89,9 @@ class HTTP2DataProvider {
         /// this provider for further data.
         case eof
 
+        /// We are in an error state, and can no longer be used.
+        case error
+
         /// Called when we have written some data. Potentially transitions the state of the enum.
         fileprivate mutating func wroteData(_ count: Int) {
             assert(count > 0)
@@ -124,19 +127,12 @@ class HTTP2DataProvider {
     /// The number of bytes written to the last data frame.
     private var lastDataFrameSize = -1
 
-    /// The promise to fulfil for all pending writes. Should be extracted when a write is
-    /// being emitted and passed onto that frame write.
-    var completedWritePromise: EventLoopPromise<Void>?
-
     /// The current state of this provider.
     var state: State = .idle
 
-    /// The current index of the write we have written up to.
-    ///
-    /// This value is used to support nghttp2's "pass through writes", while maximising efficiency. This index
-    /// should be valid only for extremely short periods of time.
-    // TODO(cory): Consider merging into a structure with `writeBuffer`.
-    private var writtenToIndex = -1
+    private var mayWrite: Bool {
+        return self.state != .error
+    }
 
     /// An nghttp2_data_provider corresponding to this object.
     internal var nghttp2DataProvider: nghttp2_data_provider {
@@ -148,16 +144,19 @@ class HTTP2DataProvider {
 
     /// Buffer a stream write.
     func bufferWrite(write: IOData, promise: EventLoopPromise<Void>?) {
+        precondition(self.mayWrite)
         self.writeBuffer.append(.write(write, promise))
     }
 
     /// Buffer the EOF flag.
     func bufferEOF() {
+        precondition(self.mayWrite)
         self.writeBuffer.append(.eof)
     }
 
     /// Mark that we have flushed up to this point.
     func markFlushCheckpoint() {
+        precondition(self.mayWrite)
         self.writeBuffer.mark()
         self.updateFlushedWriteCount()
     }
@@ -167,6 +166,7 @@ class HTTP2DataProvider {
     /// This function does not actually do anything: it just prepares for actually sending the data in the next
     /// stage. This is because we use "pass-through" writes to avoid copying data around.
     func write(size: Int) -> WriteResult {
+        precondition(self.mayWrite)
         precondition(size > 0, "Asked to write \(size) bytes")
         precondition(self.lastDataFrameSize == -1, "write called before any written data was popped")
 
@@ -194,6 +194,7 @@ class HTTP2DataProvider {
     ///     - body: The callback to be invoked for each element in the data frame. Will be invoked with both
     //          the `IOData` of the write and the promise associated with that write, if any.
     func forWriteInDataFrame(_ body: (IOData, EventLoopPromise<Void>?) -> Void) {
+        precondition(self.mayWrite)
         while self.lastDataFrameSize > 0 {
             let write = self.writeBuffer.first!
 
@@ -229,6 +230,22 @@ class HTTP2DataProvider {
 
         assert(self.lastDataFrameSize == 0)
         self.lastDataFrameSize = -1
+    }
+
+    // We're done here, report as much.
+    func failAllWrites(error: Error) {
+        precondition(self.mayWrite)
+        self.state = .eof
+        self.flushedBufferedBytes = 0
+        self.lastDataFrameSize = -1
+
+        let bufferedWrites = self.writeBuffer
+        self.writeBuffer = MarkedCircularBuffer(initialRingCapacity: 0)
+        bufferedWrites.forEach {
+            if case .write(_, let p) = $0 {
+                p?.fail(error: error)
+            }
+        }
     }
 
     /// Tells us whether the write we're about to emit includes EOF.

@@ -78,6 +78,27 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         self.session.send()
     }
 
+    public func channelInactive(ctx: ChannelHandlerContext) {
+        do {
+            try self.session.receivedEOF()
+        } catch {
+            ctx.fireErrorCaught(error)
+        }
+        ctx.fireChannelInactive()
+    }
+
+    public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+        // Half-closure is not allowed for HTTP/2: it must always be possible to send frames both ways.
+        if case .some(.inputClosed) = event as? ChannelEvent {
+            do {
+                try self.session.receivedEOF()
+            } catch {
+                ctx.fireErrorCaught(error)
+            }
+        }
+        ctx.fireUserInboundEventTriggered(event)
+    }
+
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
         self.session.feedOutput(frame: frame, promise: promise)
