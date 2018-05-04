@@ -49,6 +49,25 @@ final class EOFOnWriteHandler: ChannelOutboundHandler {
     }
 }
 
+/// A channel handler that verifies that we never send flushes
+/// for no reason.
+final class NoEmptyFlushesHandler: ChannelOutboundHandler {
+    typealias OutboundIn = Any
+    typealias OutboundOut = Any
+
+    var writeCount = 0
+
+    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        self.writeCount += 1
+        ctx.write(data, promise: promise)
+    }
+
+    func flush(ctx: ChannelHandlerContext) {
+        XCTAssertGreaterThan(self.writeCount, 0)
+        self.writeCount = 0
+    }
+}
+
 class SimpleClientServerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
@@ -603,5 +622,14 @@ class SimpleClientServerTests: XCTestCase {
         self.serverChannel.assertNoFramesReceived()
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testNoUnnecessaryReadFlushes() throws {
+        // Add a flush tracker on the server side and client side.
+        try self.clientChannel.pipeline.add(handler: NoEmptyFlushesHandler(), first: true).wait()
+        try self.serverChannel.pipeline.add(handler: NoEmptyFlushesHandler(), first: true).wait()
+
+        // Now just run the regular req/resp test.
+        try self.testBasicRequestResponse()
     }
 }

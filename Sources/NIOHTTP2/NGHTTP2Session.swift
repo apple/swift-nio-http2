@@ -531,8 +531,10 @@ class NGHTTP2Session {
 
     public func send() {
         if self.closed { return }
-        self.writeOutstandingData()
-        self.flushFunction()
+        let writeResult = self.writeOutstandingData()
+        if writeResult == .didWrite {
+            self.flushFunction()
+        }
     }
 
     public func receivedEOF() throws {
@@ -548,8 +550,14 @@ class NGHTTP2Session {
         // TODO(cory): Check state, throw in error cases.
     }
 
-    private func writeOutstandingData() {
+    private enum WriteResult {
+        case didWrite
+        case noWrite
+    }
+
+    private func writeOutstandingData() -> WriteResult {
         var data: UnsafePointer<UInt8>? = nil
+        var result = WriteResult.noWrite
 
         // Here we mark all stream write managers to flush. This is insane, it's very slow, come back and optimise it.
         self.streamDataProviders.values.forEach { $0.markFlushCheckpoint() }
@@ -562,10 +570,13 @@ class NGHTTP2Session {
             guard length != 0 else {
                 break
             }
+            result = .didWrite
             var buffer = self.allocator.buffer(capacity: length)
             buffer.write(bytes: UnsafeBufferPointer(start: data, count: length))
             self.sendFunction(.byteBuffer(buffer), nil)
         }
+
+        return result
     }
 
     /// Given a headers frame, configure nghttp2 to write it and set up appropriate
