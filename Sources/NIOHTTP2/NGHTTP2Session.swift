@@ -372,7 +372,7 @@ class NGHTTP2Session {
         case NGHTTP2_PUSH_PROMISE.rawValue:
             nioFramePayload = .pushPromise
         case NGHTTP2_PING.rawValue:
-            nioFramePayload = .ping
+            nioFramePayload = .ping(HTTP2PingData(withTuple: frame.ping.opaque_data))
         case NGHTTP2_GOAWAY.rawValue:
             let frameData = frame.goaway
             let opaqueData = frameData.opaque_data_len > 0 ? self.allocator.buffer(containingCopyOf: UnsafeBufferPointer(start: frameData.opaque_data, count: frameData.opaque_data_len)) : nil
@@ -512,7 +512,7 @@ class NGHTTP2Session {
         case .pushPromise:
             fatalError("not implemented")
         case .ping:
-            fatalError("not implemented")
+            self.sendPing(frame: frame)
         case .goAway:
             self.sendGoAway(frame: frame)
         case .windowUpdate:
@@ -657,6 +657,17 @@ class NGHTTP2Session {
 
         let rc = settings.map { nghttp2_settings_entry(nioSetting: $0) }.withUnsafeBufferPointer {
             nghttp2_submit_settings(self.session, 0, $0.baseAddress!, $0.count)
+        }
+        precondition(rc == 0)
+    }
+
+    private func sendPing(frame: HTTP2Frame) {
+        guard case .ping(var opaqueData) = frame.payload else {
+            preconditionFailure("Send ping attempted on non-ping frame \(frame)")
+        }
+
+        let rc = withUnsafeBytes(of: &opaqueData.bytes) {
+            nghttp2_submit_ping(self.session, 0, $0.baseAddress!.assumingMemoryBound(to: UInt8.self))
         }
         precondition(rc == 0)
     }

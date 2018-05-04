@@ -111,7 +111,7 @@ public struct HTTP2Frame {
         case rstStream
         case settings([HTTP2Setting])
         case pushPromise
-        case ping
+        case ping(HTTP2PingData)
         case goAway(lastStreamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, opaqueData: ByteBuffer?)
         case windowUpdate(windowSizeIncrement: Int)
         case alternativeService

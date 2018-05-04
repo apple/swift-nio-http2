@@ -388,4 +388,28 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testBasicPingFrames() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Let's try sending a ping frame.
+        let pingData = HTTP2PingData(withInteger: 6000)
+        let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(pingData))
+        self.clientChannel.writeAndFlush(pingFrame, promise: nil)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        let receivedPingFrame = try self.serverChannel.assertReceivedFrame()
+        receivedPingFrame.assertFrameMatches(this: pingFrame)
+
+        // The client should also see an automatic response without server action.
+        let receivedFrame = try self.clientChannel.assertReceivedFrame()
+        receivedFrame.assertPingFrame(ack: true, opaqueData: pingData)
+
+        // Clean up
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

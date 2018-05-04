@@ -164,6 +164,8 @@ extension HTTP2Frame {
             self.assertDataFrameMatches(this: frame, file: file, line: line)
         case .goAway:
             self.assertGoAwayFrameMatches(this: frame, file: file, line: line)
+        case .ping:
+            self.assertPingFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }
@@ -259,6 +261,25 @@ extension HTTP2Frame {
                        "Unexpected error code: expected \(errorCode), got \(integerErrorCode)", file: file, line: line)
         XCTAssertEqual(byteArrayOpaqueData, opaqueData,
                        "Unexpected opaque data: expected \(String(describing: opaqueData)), got \(String(describing: byteArrayOpaqueData))", file: file, line: line)
+    }
+
+    func assertPingFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .ping(let opaqueData) = frame.payload else {
+            preconditionFailure("Ping frames can never match non-Ping frames.")
+        }
+        self.assertPingFrame(ack: frame.ack, opaqueData: opaqueData, file: file, line: line)
+    }
+
+    func assertPingFrame(ack: Bool, opaqueData: HTTP2PingData, file: StaticString = #file, line: UInt = #line) {
+        guard case .ping(let actualPingData) = self.payload else {
+            XCTFail("Expected PING frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(self.streamID, .rootStream, "Ping frame must be on the root stream!", file: file, line: line)
+        XCTAssertEqual(self.ack, ack, "Non-matching ACK: expected \(ack), got \(self.ack)", file: file, line: line)
+        XCTAssertEqual(actualPingData, opaqueData, "Non-matching ping data: expected \(opaqueData), got \(actualPingData)",
+                       file: file, line: line)
     }
 }
 
