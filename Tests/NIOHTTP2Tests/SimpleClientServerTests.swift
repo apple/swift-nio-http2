@@ -17,6 +17,38 @@ import NIO
 import NIOHTTP1
 import NIOHTTP2
 
+/// A channel handler that passes writes through but fires EOF once the first one hits.
+final class EOFOnWriteHandler: ChannelOutboundHandler {
+    typealias OutboundIn = Any
+    typealias OutboundOut = Any
+
+    enum InactiveType {
+        case halfClose
+        case fullClose
+        case doNothing
+    }
+
+    private var type: InactiveType
+
+    init(type: InactiveType) {
+        assert(type != .doNothing)
+        self.type = type
+    }
+
+    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        switch self.type {
+        case .halfClose:
+            ctx.fireUserInboundEventTriggered(ChannelEvent.inputClosed)
+        case .fullClose:
+            ctx.fireChannelInactive()
+        case .doNothing:
+            break
+        }
+
+        self.type = .doNothing
+    }
+}
+
 class SimpleClientServerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
@@ -469,6 +501,106 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNotNil(receivedError)
         XCTAssertEqual(receivedError as? ChannelError, ChannelError.eof)
 
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testUnflushedWritesAreFailedOnChannelInactiveRentrant() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we'll add a shutdown handler to the client.
+        try self.clientChannel.pipeline.add(handler: EOFOnWriteHandler(type: .fullClose), first: true).wait()
+
+        // Now we're going to send a request, including a body, but not flush it.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.endStream = true
+        self.clientChannel.write(reqFrame, promise: nil)
+
+        var receivedError: Error? = nil
+        let clientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
+        clientWritePromise.futureResult.whenFailure { error in receivedError = error }
+        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
+        XCTAssertNil(receivedError)
+
+        // Ok, now we're going to flush. This will trigger the writes, but they should immediately fail.
+        self.clientChannel.flush()
+        XCTAssertNotNil(receivedError)
+        XCTAssertEqual(receivedError as? ChannelError, ChannelError.eof)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testUnflushedWritesAreFailedOnHalfClosureReentrant() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we'll add a shutdown handler to the client.
+        try self.clientChannel.pipeline.add(handler: EOFOnWriteHandler(type: .halfClose), first: true).wait()
+
+        // Now we're going to send a request, including a body, but not flush it.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.endStream = true
+        self.clientChannel.write(reqFrame, promise: nil)
+
+        var receivedError: Error? = nil
+        let clientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
+        clientWritePromise.futureResult.whenFailure { error in receivedError = error }
+        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
+        XCTAssertNil(receivedError)
+
+        // Ok, now we're going to flush. This will trigger the writes, but they should immediately fail.
+        self.clientChannel.flush()
+        XCTAssertNotNil(receivedError)
+        XCTAssertEqual(receivedError as? ChannelError, ChannelError.eof)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testFrameReceivesDoNotTriggerFlushes() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we're going to send a request, including a body, but not flush it.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.endStream = true
+        self.clientChannel.write(reqFrame, promise: nil)
+        self.clientChannel.write(reqBodyFrame, promise: nil)
+
+        // Now the server is going to transmit a PING frame.
+        let pingFrame = HTTP2Frame(streamID: HTTP2StreamID(), payload: .ping(HTTP2PingData(withInteger: 52)))
+        self.serverChannel.writeAndFlush(pingFrame, promise: nil)
+
+        // The frames will spin in memory.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The client should have received the ping frame, and the server a ping ACK.
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: pingFrame)
+        try self.serverChannel.assertReceivedFrame().assertPingFrame(ack: true, opaqueData: HTTP2PingData(withInteger: 52))
+
+        // No other frames should be emitted.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }

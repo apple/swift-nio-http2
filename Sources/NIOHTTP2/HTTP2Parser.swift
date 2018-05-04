@@ -43,6 +43,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     public let connectionManager: HTTP2ConnectionManager
 
     private var session: NGHTTP2Session!
+    private var outboundFrameBuffer: CircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>
     private let mode: ParserMode
     private let initialSettings: [HTTP2Setting]
 
@@ -50,6 +51,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         self.mode = mode
         self.connectionManager = connectionManager
         self.initialSettings = initialSettings
+        self.outboundFrameBuffer = CircularBuffer(initialRingCapacity: 8)
     }
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
@@ -84,6 +86,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         } catch {
             ctx.fireErrorCaught(error)
         }
+        dropOutstandingWrites()
         ctx.fireChannelInactive()
     }
 
@@ -95,16 +98,21 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
             } catch {
                 ctx.fireErrorCaught(error)
             }
+            dropOutstandingWrites()
         }
         ctx.fireUserInboundEventTriggered(event)
     }
 
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
-        self.session.feedOutput(frame: frame, promise: promise)
+        self.outboundFrameBuffer.append((frame, promise))
     }
 
     public func flush(ctx: ChannelHandlerContext) {
+        while self.outboundFrameBuffer.count > 0 {
+            let (frame, promise) = self.outboundFrameBuffer.removeFirst()
+            self.session.feedOutput(frame: frame, promise: promise)
+        }
         self.session.send()
     }
 
@@ -112,5 +120,11 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.initialSettings))
         self.session.feedOutput(frame: frame, promise: nil)
         self.flush(ctx: ctx)
+    }
+
+    private func dropOutstandingWrites() {
+        while self.outboundFrameBuffer.count > 0 {
+            self.outboundFrameBuffer.removeFirst().1?.fail(error: ChannelError.eof)
+        }
     }
 }

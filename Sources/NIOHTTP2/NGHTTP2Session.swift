@@ -291,6 +291,9 @@ class NGHTTP2Session {
 
     private let connectionManager: HTTP2ConnectionManager
 
+    // TODO(cory): This is not really sufficient, we need to introspect nghttp2, but it is enough for now.
+    private var closed: Bool = false
+
     init(mode: HTTP2Parser.ParserMode,
          allocator: ByteBufferAllocator,
          connectionManager: HTTP2ConnectionManager,
@@ -496,8 +499,12 @@ class NGHTTP2Session {
         }
     }
 
-    // TODO(cory): This needs to know about promises.
     public func feedOutput(frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+        if self.closed {
+            promise?.fail(error: ChannelError.ioOnClosedChannel)
+            return
+        }
+        
         switch frame.payload {
         case .data:
             self.writeDataToStream(frame: frame, promise: promise)
@@ -523,6 +530,7 @@ class NGHTTP2Session {
     }
 
     public func send() {
+        if self.closed { return }
         self.writeOutstandingData()
         self.flushFunction()
     }
@@ -532,6 +540,7 @@ class NGHTTP2Session {
         // we want to throw an error for reporting on the pipeline. Either way, we need to clean up our state.
         let dataProviders = self.streamDataProviders.values
         self.streamDataProviders.removeAll()
+        self.closed = true
 
         // We can now call out here.
         dataProviders.forEach { $0.failAllWrites(error: ChannelError.eof) }
@@ -545,7 +554,8 @@ class NGHTTP2Session {
         // Here we mark all stream write managers to flush. This is insane, it's very slow, come back and optimise it.
         self.streamDataProviders.values.forEach { $0.markFlushCheckpoint() }
 
-        while true {
+        // If we close while we're looping here, stop.
+        while !self.closed {
             let length = nghttp2_session_mem_send(self.session, &data)
             // TODO(cory): I think this mishandles DATA frames: they'll say 0, but there may be more frames to
             // send. Must investigate.
