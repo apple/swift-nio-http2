@@ -301,6 +301,16 @@ extension HTTP2Frame {
         XCTAssertEqual(actualPingData, opaqueData, "Non-matching ping data: expected \(opaqueData), got \(actualPingData)",
                        file: file, line: line)
     }
+
+    func assertWindowUpdateFrame(streamID: Int32, windowIncrement: Int, file: StaticString = #file, line: UInt = #line) {
+        guard case .windowUpdate(let actualWindowIncrement) = self.payload else {
+            XCTFail("Expected WINDOW_UPDATE frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(self.streamID.networkStreamID!, streamID, "Unexpected stream ID!", file: file, line: line)
+        XCTAssertEqual(windowIncrement, actualWindowIncrement, "Unexpected window increment!", file: file, line: line)
+    }
 }
 
 /// Runs the body with a temporary file, optionally containing some file content.

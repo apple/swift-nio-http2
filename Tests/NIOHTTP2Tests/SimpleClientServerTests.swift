@@ -342,6 +342,10 @@ class SimpleClientServerTests: XCTestCase {
                 frame.assertDataFrame(endStream: idx == 2, streamID: serverStreamID.networkStreamID!, payload: bodyData)
             }
 
+            // The client will have seen a pair of window updates.
+            try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
+            try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: clientStreamID.networkStreamID!, windowIncrement: 32768)
+
             // Let's send a quick response back.
             let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
             var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
@@ -620,6 +624,44 @@ class SimpleClientServerTests: XCTestCase {
         // No other frames should be emitted.
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testAutomaticFlowControl() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we're going to send a request, including a very large body: 65536 bytes in size. To avoid spending too much
+        // time initializing buffers, we're going to send the same 1kB data frame 64 times.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 1024)
+        requestBody.write(bytes: Array(repeating: UInt8(0x04), count: 1024))
+
+        // Quickly open a stream before the main test begins.
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        let serverStreamId = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Now prepare the large body.
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        for _ in 0..<63 {
+            self.clientChannel.write(reqBodyFrame, promise: nil)
+        }
+        reqBodyFrame.endStream = true
+        self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
+
+        // Ok, we now want to send this data to the server.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // We should also see 4 window update frames on the client side: two for the stream, two for the connection.
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: serverStreamId.networkStreamID!, windowIncrement: 32768)
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32767)
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: serverStreamId.networkStreamID!, windowIncrement: 32767)
+
+        // No other frames should be emitted.
+        self.clientChannel.assertNoFramesReceived()
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }

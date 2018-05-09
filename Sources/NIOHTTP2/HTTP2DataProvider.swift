@@ -92,29 +92,40 @@ class HTTP2DataProvider {
         /// We are in an error state, and can no longer be used.
         case error
 
+        fileprivate mutating func resumed() {
+            precondition(self == .pending, "Resumed while in state \(self)")
+            self = .writing
+        }
+
         /// Called when we have written some data. Potentially transitions the state of the enum.
         fileprivate mutating func wroteData(_ count: Int) {
             assert(count > 0)
-            if case .eof = self {
-                assertionFailure("Should not write data when in EOF state")
+            switch self {
+            case .eof, .pending, .error:
+                preconditionFailure("Should not write data when in state \(self)")
+            case .idle, .writing:
+                self = .writing
             }
-            self = .writing
         }
 
         /// Called when we sent EOF.
         fileprivate mutating func sentEOF() {
-            if case .eof = self {
-                assertionFailure("Transitioned into EOF when in EOF state")
+            switch self {
+            case .eof, .error, .pending:
+                preconditionFailure("Sent EOF when in state \(self)")
+            case .idle, .writing:
+                self = .eof
             }
-            self = .eof
         }
 
         /// Called when we had no data to send.
         fileprivate mutating func awaitingData() {
-            if case .eof = self {
-                assertionFailure("Should not be asked to write data when in EOF state")
+            switch self {
+            case .eof, .error, .pending:
+                preconditionFailure("Asked to write data in state \(self)")
+            case .idle, .writing:
+                self = .pending
             }
-            self = .pending
         }
     }
 
@@ -229,7 +240,7 @@ class HTTP2DataProvider {
     // We're done here, report as much.
     func failAllWrites(error: Error) {
         precondition(self.mayWrite)
-        self.state = .eof
+        self.state = .error
         self.flushedBufferedBytes = 0
         self.lastDataFrameSize = -1
 
@@ -240,6 +251,11 @@ class HTTP2DataProvider {
                 p?.fail(error: error)
             }
         }
+    }
+
+    /// Called when sending data has been resumed by the session.
+    func didResume() {
+        self.state.resumed()
     }
 
     /// Tells us whether the write we're about to emit includes EOF.

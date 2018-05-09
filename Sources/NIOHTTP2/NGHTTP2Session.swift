@@ -25,9 +25,7 @@ private func withSessionOptions<T>(fn: (OpaquePointer) throws -> T) rethrows -> 
         nghttp2_option_del(optionPtr)
     }
 
-    // Disable auto window updates, and provide an initial
-    // default outbound concurrent stream limit of 100.
-    nghttp2_option_set_no_auto_window_update(optionPtr, 1)
+    // Provide an initial default outbound concurrent stream limit of 100.
     nghttp2_option_set_peer_max_concurrent_streams(optionPtr, 100)
     return try fn(optionPtr!)
 }
@@ -630,6 +628,7 @@ class NGHTTP2Session {
             let rc = nghttp2_session_resume_data(self.session, frame.streamID.networkStreamID!)
             // TODO(cory): Error handling
             precondition(rc == 0)
+            dataProvider.didResume()
         }
     }
 
