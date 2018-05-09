@@ -660,8 +660,36 @@ class SimpleClientServerTests: XCTestCase {
         try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32767)
         try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: serverStreamId.networkStreamID!, windowIncrement: 32767)
 
+        // No other frames should be emitted, though the server may have many.
+        self.clientChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testPartialFrame() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We want to test whether partial frames are well-handled. We do that by just faking up a PING frame and sending it in two halves.
+        var pingBuffer = self.serverChannel.allocator.buffer(capacity: 17)
+        pingBuffer.write(integer: UInt16(0))
+        pingBuffer.write(integer: UInt8(8))
+        pingBuffer.write(integer: UInt8(6))
+        pingBuffer.write(integer: UInt8(0))
+        pingBuffer.write(integer: UInt32(0))
+        pingBuffer.write(integer: UInt64(0))
+
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(pingBuffer.getSlice(at: pingBuffer.readerIndex, length: 8)))
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(pingBuffer.getSlice(at: pingBuffer.readerIndex + 8, length: 9)))
+        try self.serverChannel.assertReceivedFrame().assertPingFrame(ack: false, opaqueData: HTTP2PingData(withInteger: 0))
+
+        // We should have a PING response. Let's check it.
+        self.interactInMemory(self.serverChannel, self.clientChannel)
+        try self.clientChannel.assertReceivedFrame().assertPingFrame(ack: true, opaqueData: HTTP2PingData(withInteger: 0))
+
         // No other frames should be emitted.
         self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
