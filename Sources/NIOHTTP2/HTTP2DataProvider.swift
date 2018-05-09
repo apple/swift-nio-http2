@@ -119,7 +119,7 @@ class HTTP2DataProvider {
     }
 
     /// The buffer of pending writes.
-    private var writeBuffer: MarkedCircularBuffer<BufferedWrite> = MarkedCircularBuffer(initialRingCapacity: 8)
+    private var writeBuffer: CircularBuffer<BufferedWrite> = CircularBuffer(initialRingCapacity: 8)
 
     /// The number of flushed bytes currently in `writeBuffer`.
     private var flushedBufferedBytes = 0
@@ -146,19 +146,13 @@ class HTTP2DataProvider {
     func bufferWrite(write: IOData, promise: EventLoopPromise<Void>?) {
         precondition(self.mayWrite)
         self.writeBuffer.append(.write(write, promise))
+        self.flushedBufferedBytes += write.readableBytes
     }
 
     /// Buffer the EOF flag.
     func bufferEOF() {
         precondition(self.mayWrite)
         self.writeBuffer.append(.eof)
-    }
-
-    /// Mark that we have flushed up to this point.
-    func markFlushCheckpoint() {
-        precondition(self.mayWrite)
-        self.writeBuffer.mark()
-        self.updateFlushedWriteCount()
     }
 
     /// Prepare a number of writes for emitting into a data frame.
@@ -219,7 +213,7 @@ class HTTP2DataProvider {
 
         // Zero length writes are a thing, we need to pull them off the queue here and dispatch them as well or
         // we run the risk of leaking promises.
-        while self.writeBuffer.hasMark() {
+        while self.writeBuffer.count > 0 {
             guard case .write(let write, let promise) = self.writeBuffer.first!, write.readableBytes == 0 else {
                 break
             }
@@ -240,7 +234,7 @@ class HTTP2DataProvider {
         self.lastDataFrameSize = -1
 
         let bufferedWrites = self.writeBuffer
-        self.writeBuffer = MarkedCircularBuffer(initialRingCapacity: 0)
+        self.writeBuffer = CircularBuffer(initialRingCapacity: 0)
         bufferedWrites.forEach {
             if case .write(_, let p) = $0 {
                 p?.fail(error: error)
@@ -257,7 +251,11 @@ class HTTP2DataProvider {
             return false
         }
 
-        if case .some(.eof) = self.writeBuffer.markedElement() {
+        guard self.writeBuffer.count > 0 else {
+            return false
+        }
+
+        if case .eof = self.writeBuffer[self.writeBuffer.endIndex - 1] {
             return true
         } else {
             return false
@@ -284,24 +282,6 @@ class HTTP2DataProvider {
             f.moveReaderIndex(forwardBy: writeSize)
             self.writeBuffer[self.writeBuffer.startIndex] = .write(.fileRegion(f), promise)
             return .fileRegion(fileToWrite)
-        }
-    }
-
-    /// Updates the count of the flushed bytes. Used to keep track of how much data is outstanding to write.
-    private func updateFlushedWriteCount() {
-        self.flushedBufferedBytes = 0
-
-        guard let markIndex = self.writeBuffer.markedElementIndex() else {
-            return
-        }
-
-        for idx in (self.writeBuffer.startIndex...markIndex) {
-            switch self.writeBuffer[idx]{
-            case .write(let d, _):
-                self.flushedBufferedBytes += d.readableBytes
-            case .eof:
-                assert(idx == markIndex)
-            }
         }
     }
 }

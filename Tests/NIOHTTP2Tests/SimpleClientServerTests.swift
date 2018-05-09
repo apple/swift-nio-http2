@@ -623,13 +623,4 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
-
-    func testNoUnnecessaryReadFlushes() throws {
-        // Add a flush tracker on the server side and client side.
-        try self.clientChannel.pipeline.add(handler: NoEmptyFlushesHandler(), first: true).wait()
-        try self.serverChannel.pipeline.add(handler: NoEmptyFlushesHandler(), first: true).wait()
-
-        // Now just run the regular req/resp test.
-        try self.testBasicRequestResponse()
-    }
 }

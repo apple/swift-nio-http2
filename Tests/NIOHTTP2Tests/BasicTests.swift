@@ -22,8 +22,7 @@ class BasicTests: XCTestCase {
                                allocator: ByteBufferAllocator(),
                                connectionManager: HTTP2ConnectionManager(),
                                frameReceivedHandler: { _ in },
-                               sendFunction: { _, _ in },
-                               flushFunction: { })
+                               sendFunction: { _, _ in })
         XCTAssertNotNil(x)
     }
 }

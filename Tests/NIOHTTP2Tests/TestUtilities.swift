@@ -60,6 +60,17 @@ extension XCTestCase {
         } while operated
     }
 
+    /// Deliver all the bytes currently flushed on `sourceChannel` to `targetChannel`.
+    func deliverAllBytes(from sourceChannel: EmbeddedChannel, to targetChannel: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) {
+        // Collect the serialized data.
+        var frameBuffer = sourceChannel.allocator.buffer(capacity: 1024)
+        while case .some(.byteBuffer(var buf)) = sourceChannel.readOutbound() {
+            frameBuffer.write(buffer: &buf)
+        }
+
+        XCTAssertNoThrow(try targetChannel.writeInbound(frameBuffer), file: file, line: line)
+    }
+
     /// Given two `EmbeddedChannel` objects, verify that each one performs the handshake: specifically,
     /// that each receives a SETTINGS frame from its peer and a SETTINGS ACK for its own settings frame.
     ///
@@ -155,6 +166,13 @@ extension HTTP2Frame {
         XCTAssertEqual(values, expectedSettings, file: file, line: line)
     }
 
+    func assertSettingsFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .settings(let payload) = frame.payload else {
+            preconditionFailure("Settings frames can never match non-settings frames")
+        }
+        self.assertSettingsFrame(expectedSettings: payload, ack: self.ack)
+    }
+
     /// Asserts that this frame matches a give other frame.
     func assertFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
         switch frame.payload {
@@ -166,6 +184,8 @@ extension HTTP2Frame {
             self.assertGoAwayFrameMatches(this: frame, file: file, line: line)
         case .ping:
             self.assertPingFrameMatches(this: frame, file: file, line: line)
+        case .settings:
+            self.assertSettingsFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }

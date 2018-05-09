@@ -284,11 +284,6 @@ class NGHTTP2Session {
     /// directly. This can safely be called at any time, including when reads have been fed to the code.
     private let sendFunction: (IOData, EventLoopPromise<Void>?) -> Void
 
-    /// The callback passed by the parent object, to call if we have sent any data that is ready to be
-    /// flushed to the network. This may be called at any time, including when reads have been fed to the
-    /// code.
-    private let flushFunction: () -> Void
-
     private let connectionManager: HTTP2ConnectionManager
 
     // TODO(cory): This is not really sufficient, we need to introspect nghttp2, but it is enough for now.
@@ -298,12 +293,10 @@ class NGHTTP2Session {
          allocator: ByteBufferAllocator,
          connectionManager: HTTP2ConnectionManager,
          frameReceivedHandler: @escaping (HTTP2Frame) -> Void,
-         sendFunction: @escaping (IOData, EventLoopPromise<Void>?) -> Void,
-         flushFunction: @escaping () -> Void) {
+         sendFunction: @escaping (IOData, EventLoopPromise<Void>?) -> Void) {
         var session: OpaquePointer?
         self.frameReceivedHandler = frameReceivedHandler
         self.sendFunction = sendFunction
-        self.flushFunction = flushFunction
         self.connectionManager = connectionManager
         self.allocator = allocator
 
@@ -529,14 +522,6 @@ class NGHTTP2Session {
         }
     }
 
-    public func send() {
-        if self.closed { return }
-        let writeResult = self.writeOutstandingData()
-        if writeResult == .didWrite {
-            self.flushFunction()
-        }
-    }
-
     public func receivedEOF() throws {
         // EOF is the end of this connection. If the connection is already over, that's fine: otherwise,
         // we want to throw an error for reporting on the pipeline. Either way, we need to clean up our state.
@@ -550,33 +535,25 @@ class NGHTTP2Session {
         // TODO(cory): Check state, throw in error cases.
     }
 
-    private enum WriteResult {
-        case didWrite
-        case noWrite
+    public func doOneWrite() -> WriteResult {
+        precondition(!self.closed)
+        var data: UnsafePointer<UInt8>? = nil
+
+        let length = nghttp2_session_mem_send(self.session, &data)
+        // TODO(cory): I think this mishandles DATA frames: they'll say 0, but there may be more frames to
+        // send. Must investigate.
+        guard length != 0 else {
+            return .noWrite
+        }
+        var buffer = self.allocator.buffer(capacity: length)
+        buffer.write(bytes: UnsafeBufferPointer(start: data, count: length))
+        self.sendFunction(.byteBuffer(buffer), nil)
+        return .didWrite
     }
 
-    private func writeOutstandingData() -> WriteResult {
-        var data: UnsafePointer<UInt8>? = nil
-        var result = WriteResult.noWrite
-
-        // Here we mark all stream write managers to flush. This is insane, it's very slow, come back and optimise it.
-        self.streamDataProviders.values.forEach { $0.markFlushCheckpoint() }
-
-        // If we close while we're looping here, stop.
-        while !self.closed {
-            let length = nghttp2_session_mem_send(self.session, &data)
-            // TODO(cory): I think this mishandles DATA frames: they'll say 0, but there may be more frames to
-            // send. Must investigate.
-            guard length != 0 else {
-                break
-            }
-            result = .didWrite
-            var buffer = self.allocator.buffer(capacity: length)
-            buffer.write(bytes: UnsafeBufferPointer(start: data, count: length))
-            self.sendFunction(.byteBuffer(buffer), nil)
-        }
-
-        return result
+    enum WriteResult {
+        case didWrite
+        case noWrite
     }
 
     /// Given a headers frame, configure nghttp2 to write it and set up appropriate
