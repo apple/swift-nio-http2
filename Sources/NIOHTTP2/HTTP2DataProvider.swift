@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 import CNIONghttp2
 import NIO
+import NIOHTTP1
 
 /// The static data provider read callback used by NIOHTTP2.
 private func nghttp2DataProviderReadCallback(session: OpaquePointer?,
@@ -27,8 +28,21 @@ private func nghttp2DataProviderReadCallback(session: OpaquePointer?,
     dataFlags!.pointee |= NGHTTP2_DATA_FLAG_NO_COPY.rawValue  // We do passthrough writes, always.
 
     switch writeResult {
-    case .eof(let written):
+    case .eof(let written, let trailers):
         dataFlags!.pointee |= NGHTTP2_DATA_FLAG_EOF.rawValue
+        if let trailers = trailers {
+            // If there are trailers to submit, we want to set NO_END_STREAM as the trailers will carry
+            // END_STREAM.
+            dataFlags!.pointee |= NGHTTP2_DATA_FLAG_NO_END_STREAM.rawValue
+
+            // Annoyingly we have to submit the trailers here.
+            // TODO(cory): error handling or something
+            // TODO(cory): Get this allocator from somewhere my god.
+            let rc = trailers.withNGHTTP2Headers(allocator: ByteBufferAllocator()) {
+                nghttp2_submit_trailer(session, streamID, $0, $1)
+            }
+            precondition(rc == 0)
+        }
         return written
     case .written(let written):
         assert(written > 0)
@@ -54,7 +68,7 @@ private func nghttp2DataProviderReadCallback(session: OpaquePointer?,
 class HTTP2DataProvider {
     /// A single buffered write.
     enum BufferedWrite {
-        case eof
+        case eof(HTTPHeaders?)
         case write(IOData, EventLoopPromise<Void>?)
     }
 
@@ -64,7 +78,7 @@ class HTTP2DataProvider {
         case written(Int)
 
         /// We wrote some number of bytes, and no more are coming.
-        case eof(Int)
+        case eof(Int, HTTPHeaders?)
 
         /// We have no bytes to write now, but more are coming.
         case framePending
@@ -160,10 +174,10 @@ class HTTP2DataProvider {
         self.flushedBufferedBytes += write.readableBytes
     }
 
-    /// Buffer the EOF flag.
-    func bufferEOF() {
+    /// Buffer the EOF flag. The EOF may optionally also contain trailers.
+    func bufferEOF(trailers: HTTPHeaders?) {
         precondition(self.mayWrite)
-        self.writeBuffer.append(.eof)
+        self.writeBuffer.append(.eof(trailers))
     }
 
     /// Prepare a number of writes for emitting into a data frame.
@@ -180,7 +194,7 @@ class HTTP2DataProvider {
 
         if self.reachedEOF(bytesToWrite: bytesToWrite) {
             self.state.sentEOF()
-            return .eof(bytesToWrite)
+            return .eof(bytesToWrite, self.trailers)
         } else if bytesToWrite > 0 {
             self.state.wroteData(bytesToWrite)
             return .written(bytesToWrite)
@@ -256,6 +270,14 @@ class HTTP2DataProvider {
     /// Called when sending data has been resumed by the session.
     func didResume() {
         self.state.resumed()
+    }
+
+    /// Obtains the trailers for this stream, if any.
+    private var trailers: HTTPHeaders? {
+        guard case .eof(let trailers) = self.writeBuffer[self.writeBuffer.endIndex - 1] else {
+            return nil
+        }
+        return trailers
     }
 
     /// Tells us whether the write we're about to emit includes EOF.

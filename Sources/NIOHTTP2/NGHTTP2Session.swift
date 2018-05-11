@@ -625,9 +625,9 @@ class NGHTTP2Session {
         }
         dataProvider.bufferWrite(write: data, promise: promise)
 
-        // TODO(cory): trailers support
+        // If this has END_STREAM set, we do not expect trailers.
         if frame.endStream {
-            dataProvider.bufferEOF()
+            dataProvider.bufferEOF(trailers: nil)
         }
 
         if case .pending = dataProvider.state {
