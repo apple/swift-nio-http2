@@ -354,7 +354,7 @@ class NGHTTP2Session {
         case NGHTTP2_PRIORITY.rawValue:
             nioFramePayload = .priority
         case NGHTTP2_RST_STREAM.rawValue:
-            nioFramePayload = .rstStream
+            nioFramePayload = .rstStream(HTTP2ErrorCode(frame.rst_stream.error_code))
         case NGHTTP2_SETTINGS.rawValue:
             var settings: [HTTP2Setting] = []
             settings.reserveCapacity(frame.settings.niv)
@@ -396,8 +396,12 @@ class NGHTTP2Session {
     fileprivate func onStreamCloseCallback(streamID: Int32, errorCode: UInt32) throws {
         // If we have a data provider, pull it out.
         if let provider = self.streamDataProviders.removeValue(forKey: streamID) {
-            // TODO(cory): we need to fail any pending writes here.
+            let error = NIOHTTP2Errors.StreamClosed(streamID: self.connectionManager.streamID(for: streamID),
+                                                    errorCode: HTTP2ErrorCode(errorCode))
+            provider.failAllWrites(error: error)
         }
+
+        // TODO(cory): Fire the errro down the pipeline.
     }
 
     /// Called when the reception of a HEADERS or PUSH_PROMISE frame is started. Does not contain
@@ -504,7 +508,7 @@ class NGHTTP2Session {
         case .priority:
             fatalError("not implemented")
         case .rstStream:
-            fatalError("not implemented")
+            self.sendRstStream(frame: frame)
         case .settings:
             self.sendSettings(frame: frame)
         case .pushPromise:
@@ -614,8 +618,11 @@ class NGHTTP2Session {
         guard case .data(let data) = frame.payload else {
             preconditionFailure("Write data attempted on non-data frame \(frame)")
         }
-        // TODO(cory): Error handling here.
-        let dataProvider = self.streamDataProviders[frame.streamID.networkStreamID!]!
+
+        guard let dataProvider = self.streamDataProviders[frame.streamID.networkStreamID!] else {
+            promise?.fail(error: NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID))
+            return
+        }
         dataProvider.bufferWrite(write: data, promise: promise)
 
         // TODO(cory): trailers support
@@ -678,6 +685,15 @@ class NGHTTP2Session {
         let rc = withUnsafeBytes(of: &opaqueData.bytes) {
             nghttp2_submit_ping(self.session, 0, $0.baseAddress!.assumingMemoryBound(to: UInt8.self))
         }
+        precondition(rc == 0)
+    }
+
+    private func sendRstStream(frame: HTTP2Frame) {
+        guard case .rstStream(let errorCode) = frame.payload else {
+            preconditionFailure("Send rstStream attempted on non-rst-stream frame \(frame)")
+        }
+
+        let rc = nghttp2_submit_rst_stream(self.session, 0, frame.streamID.networkStreamID!, UInt32(http2ErrorCode: errorCode))
         precondition(rc == 0)
     }
 

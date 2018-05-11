@@ -108,7 +108,7 @@ public struct HTTP2Frame {
         case data(IOData)
         case headers(HTTPHeaders)
         case priority
-        case rstStream
+        case rstStream(HTTP2ErrorCode)
         case settings([HTTP2Setting])
         case pushPromise
         case ping(HTTP2PingData)

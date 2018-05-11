@@ -186,6 +186,8 @@ extension HTTP2Frame {
             self.assertPingFrameMatches(this: frame, file: file, line: line)
         case .settings:
             self.assertSettingsFrameMatches(this: frame, file: file, line: line)
+        case .rstStream:
+            self.assertRstStreamFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }
@@ -310,6 +312,23 @@ extension HTTP2Frame {
 
         XCTAssertEqual(self.streamID.networkStreamID!, streamID, "Unexpected stream ID!", file: file, line: line)
         XCTAssertEqual(windowIncrement, actualWindowIncrement, "Unexpected window increment!", file: file, line: line)
+    }
+
+    func assertRstStreamFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .rstStream(let errorCode) = frame.payload else {
+            preconditionFailure("RstStream frames can never match non-RstStream frames.")
+        }
+        self.assertRstStreamFrame(streamID: frame.streamID.networkStreamID!, errorCode: errorCode, file: file, line: line)
+    }
+
+    func assertRstStreamFrame(streamID: Int32, errorCode: HTTP2ErrorCode, file: StaticString = #file, line: UInt = #line) {
+        guard case .rstStream(let actualErrorCode) = self.payload else {
+            XCTFail("Expected RST_STREAM frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(self.streamID.networkStreamID!, streamID, "Non matching stream IDs: expected \(streamID), got \(self.streamID.networkStreamID!)!", file: file, line: line)
+        XCTAssertEqual(actualErrorCode, errorCode, "Non-matching error-code: expected \(errorCode), got \(actualErrorCode)", file: file, line: line)
     }
 }
 

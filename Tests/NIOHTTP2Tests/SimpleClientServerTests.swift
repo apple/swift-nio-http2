@@ -68,6 +68,20 @@ final class NoEmptyFlushesHandler: ChannelOutboundHandler {
     }
 }
 
+/// A channel handler that forcibly resets all inbound frames it receives.
+final class InstaResetHandler: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame
+    typealias OutboundOut = HTTP2Frame
+
+    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        let frame = self.unwrapInboundIn(data)
+        if case .headers = frame.payload {
+            let kaboomFrame = HTTP2Frame(streamID: frame.streamID, payload: .rstStream(.refusedStream))
+            ctx.writeAndFlush(self.wrapOutboundOut(kaboomFrame), promise: nil)
+        }
+    }
+}
+
 class SimpleClientServerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
@@ -686,6 +700,91 @@ class SimpleClientServerTests: XCTestCase {
         // We should have a PING response. Let's check it.
         self.interactInMemory(self.serverChannel, self.clientChannel)
         try self.clientChannel.assertReceivedFrame().assertPingFrame(ack: true, opaqueData: HTTP2PingData(withInteger: 0))
+
+        // No other frames should be emitted.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testFailingUnflushedWritesForResetStream() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Let's set up a stream.
+        let clientStreamID = HTTP2StreamID()
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        let serverStreamId = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Now we're going to queue up a DATA frame.
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(bytes: Array(repeating: UInt8(0x04), count: 128))
+        let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+
+        var writeError: Error?
+        self.clientChannel.write(reqBodyFrame).whenFailure {
+            writeError = $0
+        }
+        XCTAssertNil(writeError)
+
+        // From the server side, we're going to send and deliver a RST_STREAM frame. The client should receive this
+        // frame. The pending write will not be failed because it has not yet been flushed.
+        let frame = HTTP2Frame(streamID: serverStreamId, payload: .rstStream(.refusedStream))
+        try self.assertFramesRoundTrip(frames: [frame], sender: self.serverChannel, receiver: self.clientChannel)
+        XCTAssertNil(writeError)
+
+        // When we now flush the write, that write should fail immediately.
+        self.clientChannel.flush()
+        XCTAssertEqual(writeError as? NIOHTTP2Errors.NoSuchStream, NIOHTTP2Errors.NoSuchStream(streamID: clientStreamID))
+
+        // No other frames should be emitted.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testFailingFlushedWritesForResetStream() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Install a reset handler.
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: InstaResetHandler()).wait())
+
+        // Let's set up a stream.
+        let clientStreamID = HTTP2StreamID()
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 1024)
+        requestBody.write(bytes: Array(repeating: UInt8(0x04), count: 1024))
+        let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+
+        // We'll send some frames: specifically, a headers and 80kB of DATA.
+        // We do this to ensure that the DATA does not all go out to the network in one go, such that there is still
+        // some sitting in the pipeline when the RST_STREAM frame arrives. The last write will have a promise attached.
+        var writeError: Error?
+        self.clientChannel.write(reqFrame, promise: nil)
+        for _ in 0..<79 {
+            self.clientChannel.write(reqBodyFrame, promise: nil)
+        }
+
+        self.clientChannel.writeAndFlush(reqBodyFrame).whenFailure {
+            writeError = $0
+        }
+        XCTAssertNil(writeError)
+
+        // Let the channels dance. The RST_STREAM should come through.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+        try self.clientChannel.assertReceivedFrame().assertRstStreamFrame(streamID: clientStreamID.networkStreamID!, errorCode: .refusedStream)
+
+        // The data frame write should have exploded.
+        XCTAssertEqual(writeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: clientStreamID, errorCode: .refusedStream))
+
+        // There will also be two window update frames on the connection covering all sent data.
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32767)
 
         // No other frames should be emitted.
         self.clientChannel.assertNoFramesReceived()
