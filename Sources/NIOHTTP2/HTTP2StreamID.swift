@@ -147,3 +147,14 @@ public class HTTP2ConnectionManager {
         return internalID
     }
 }
+
+extension HTTP2StreamID: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        var streamIDDescription: String = "unknown"
+
+        if let networkStreamID = self.networkStreamID {
+            streamIDDescription = String(networkStreamID)
+        }
+        return "HTTP2StreamID(\(streamIDDescription))"
+    }
+}
