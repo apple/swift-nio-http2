@@ -887,4 +887,61 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testSendingTrailers() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server. This request will be one headers frame, one
+        // data frame, and then another headers frame for trailers.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let trailers = HTTPHeaders([("x-trailers-field", "true")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        var trailerFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(trailers))
+        trailerFrame.endStream = true
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame, trailerFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Let's send a quick response back. This response should also contain trailers.
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+        let respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+        var respTrailersFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(trailers))
+        respTrailersFrame.endStream = true
+        try self.assertFramesRoundTrip(frames: [respFrame, respTrailersFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func test1XXResponseHeaderFields() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a simple request from the client.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID()
+        var reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        reqFrame.endStream = true
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // We're going to send 3 150 responses back.
+        let earlyHeaders = HTTPHeaders([(":status", "150"), ("x-some-data", "is here")])
+        let earlyFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(earlyHeaders))
+        try self.assertFramesRoundTrip(frames: [earlyFrame, earlyFrame, earlyFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Now we send the final response back.
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+        respFrame.endStream = true
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
