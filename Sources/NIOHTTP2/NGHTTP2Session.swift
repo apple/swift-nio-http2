@@ -426,7 +426,8 @@ class NGHTTP2Session {
                 streamState.active = true
             }
         case NGHTTP2_PRIORITY.rawValue:
-            nioFramePayload = .priority
+            // we explicitly suppress priority frames at this time.
+            return
         case NGHTTP2_RST_STREAM.rawValue:
             nioFramePayload = .rstStream(HTTP2ErrorCode(frame.rst_stream.error_code))
         case NGHTTP2_SETTINGS.rawValue:

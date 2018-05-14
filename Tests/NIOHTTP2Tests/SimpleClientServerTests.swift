@@ -983,4 +983,35 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testPriorityFramesAreNotEmitted() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we're going to explicitly send in PRIORITY frame. This needs to be manually serialized as NIO currently
+        // doesn't support sending PRIORITY frames directly.
+        var buffer = self.clientChannel.allocator.buffer(capacity: 14)
+
+        // Length is 5.
+        buffer.write(integer: UInt8(0))
+        buffer.write(integer: UInt16(5))
+
+        // Frame type 2, no flags, stream ID 1.
+        buffer.write(integer: UInt8(2))
+        buffer.write(integer: UInt8(0))
+        buffer.write(integer: UInt32(1))
+
+        // Exclusive dependency on stream 0, weight 255.
+        buffer.write(integer: UInt32(0x80000000))
+        buffer.write(integer: UInt8(0xff))
+
+        // Write the buffer in.
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(buffer))
+
+        // No data should be received on the server channel.
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
