@@ -49,6 +49,29 @@ final class EOFOnWriteHandler: ChannelOutboundHandler {
     }
 }
 
+/// Emits a write to the channel the first time a write is received at this point of the pipeline.
+final class WriteOnWriteHandler: ChannelOutboundHandler {
+    typealias OutboundIn = Any
+    typealias OutboundOut = Any
+
+    private var written = false
+    private let frame: HTTP2Frame
+    private let writePromise: EventLoopPromise<Void>
+
+    init(frame: HTTP2Frame, promise: EventLoopPromise<Void>) {
+        self.frame = frame
+        self.writePromise = promise
+    }
+
+    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        if !self.written {
+            self.written = true
+            ctx.channel.write(self.frame, promise: self.writePromise)
+        }
+        ctx.write(data, promise: promise)
+    }
+}
+
 /// A channel handler that verifies that we never send flushes
 /// for no reason.
 final class NoEmptyFlushesHandler: ChannelOutboundHandler {
@@ -560,30 +583,38 @@ class SimpleClientServerTests: XCTestCase {
         // Begin by getting the connection up.
         try self.basicHTTP2Connection()
 
-        // Now we'll add a shutdown handler to the client.
-        try self.clientChannel.pipeline.add(handler: EOFOnWriteHandler(type: .fullClose), first: true).wait()
-
-        // Now we're going to send a request, including a body, but not flush it.
+        // Now we're going to send a request, including a body.
         let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
         var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
         requestBody.write(staticString: "A simple HTTP/2 request.")
 
         let clientStreamID = HTTP2StreamID()
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
-        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
-        self.clientChannel.write(reqFrame, promise: nil)
+        let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
 
-        var receivedError: Error? = nil
+        var firstWriteError: Error? = nil
+        var secondWriteError: Error? = nil
         let clientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
-        clientWritePromise.futureResult.whenFailure { error in receivedError = error }
-        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
-        XCTAssertNil(receivedError)
+        clientWritePromise.futureResult.whenFailure { error in firstWriteError = error }
+        let secondClientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
+        secondClientWritePromise.futureResult.whenFailure { error in secondWriteError = error }
 
-        // Ok, now we're going to flush. This will trigger the writes, but they should immediately fail.
+        // Now we'll add a shutdown handler to the client. We'll also add a handler that will propagate a new write on the first one, without
+        // flushing it. This write will fail: the other will not.
+        try self.clientChannel.pipeline.add(handler: WriteOnWriteHandler(frame: reqBodyFrame, promise: secondClientWritePromise), first: true).wait()
+        try self.clientChannel.pipeline.add(handler: EOFOnWriteHandler(type: .fullClose), first: true).wait()
+
+        // Now we issue the two writes. Nothing has happened yet.
+        self.clientChannel.write(reqFrame, promise: nil)
+        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
+        XCTAssertNil(firstWriteError)
+        XCTAssertNil(secondWriteError)
+
+        // Ok, now we're going to flush. This will trigger the writes: the first will succeed, the ßecond will fail.
         self.clientChannel.flush()
-        XCTAssertNotNil(receivedError)
-        XCTAssertEqual(receivedError as? ChannelError, ChannelError.eof)
+        XCTAssertNil(firstWriteError)
+        XCTAssertNotNil(secondWriteError)
+        XCTAssertEqual(secondWriteError as? ChannelError, ChannelError.eof)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
@@ -593,30 +624,38 @@ class SimpleClientServerTests: XCTestCase {
         // Begin by getting the connection up.
         try self.basicHTTP2Connection()
 
-        // Now we'll add a shutdown handler to the client.
-        try self.clientChannel.pipeline.add(handler: EOFOnWriteHandler(type: .halfClose), first: true).wait()
-
-        // Now we're going to send a request, including a body, but not flush it.
+        // Now we're going to send a request, including a body.
         let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
         var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
         requestBody.write(staticString: "A simple HTTP/2 request.")
 
         let clientStreamID = HTTP2StreamID()
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
-        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
-        self.clientChannel.write(reqFrame, promise: nil)
+        let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
 
-        var receivedError: Error? = nil
+        var firstWriteError: Error? = nil
+        var secondWriteError: Error? = nil
         let clientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
-        clientWritePromise.futureResult.whenFailure { error in receivedError = error }
-        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
-        XCTAssertNil(receivedError)
+        clientWritePromise.futureResult.whenFailure { error in firstWriteError = error }
+        let secondClientWritePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.newPromise()
+        secondClientWritePromise.futureResult.whenFailure { error in secondWriteError = error }
 
-        // Ok, now we're going to flush. This will trigger the writes, but they should immediately fail.
+        // Now we'll add a shutdown handler to the client. We'll also add a handler that will propagate a new write on the first one, without
+        // flushing it. This write will fail: the other will not.
+        try self.clientChannel.pipeline.add(handler: WriteOnWriteHandler(frame: reqBodyFrame, promise: secondClientWritePromise), first: true).wait()
+        try self.clientChannel.pipeline.add(handler: EOFOnWriteHandler(type: .halfClose), first: true).wait()
+
+        // Now we issue the two writes. Nothing has happened yet.
+        self.clientChannel.write(reqFrame, promise: nil)
+        self.clientChannel.write(reqBodyFrame, promise: clientWritePromise)
+        XCTAssertNil(firstWriteError)
+        XCTAssertNil(secondWriteError)
+
+        // Ok, now we're going to flush. This will trigger the writes: the first will succeed, the ßecond will fail.
         self.clientChannel.flush()
-        XCTAssertNotNil(receivedError)
-        XCTAssertEqual(receivedError as? ChannelError, ChannelError.eof)
+        XCTAssertNil(firstWriteError)
+        XCTAssertNotNil(secondWriteError)
+        XCTAssertEqual(secondWriteError as? ChannelError, ChannelError.eof)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
