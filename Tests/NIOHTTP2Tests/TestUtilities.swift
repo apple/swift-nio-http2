@@ -144,11 +144,6 @@ extension EmbeddedChannel {
         let content: HTTP2Frame? = self.readInbound()
         XCTAssertNil(content, "Received unexpected content: \(content!)", file: file, line: line)
     }
-
-    /// Returns the `HTTP2ConnectionManager` for a given channel.
-    var connectionManager: HTTP2ConnectionManager {
-        return try! (self.pipeline.context(handlerType: HTTP2Parser.self).wait().handler as! HTTP2Parser).connectionManager
-    }
 }
 
 extension HTTP2Frame {

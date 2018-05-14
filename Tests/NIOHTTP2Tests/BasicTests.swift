@@ -20,7 +20,7 @@ class BasicTests: XCTestCase {
     func testCanInitializeInnerSession() {
         let x = NGHTTP2Session(mode: .server,
                                allocator: ByteBufferAllocator(),
-                               connectionManager: HTTP2ConnectionManager(),
+                               maxCachedStreamIDs: 1024,
                                frameReceivedHandler: { _ in },
                                sendFunction: { _, _ in })
         XCTAssertNotNil(x)

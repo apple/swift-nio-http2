@@ -152,24 +152,20 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         case server
     }
 
-    /// The `HTTP2ConnectionManager` used to manage stream IDs on this connection.
-    public let connectionManager: HTTP2ConnectionManager
-
     private var session: NGHTTP2Session!
     private let mode: ParserMode
     private let initialSettings: [HTTP2Setting]
     private let reentrancyManager = ReentrancyManager()
 
-    public init(mode: ParserMode, connectionManager: HTTP2ConnectionManager = .init(), initialSettings: [HTTP2Setting] = nioDefaultSettings) {
+    public init(mode: ParserMode, initialSettings: [HTTP2Setting] = nioDefaultSettings) {
         self.mode = mode
-        self.connectionManager = connectionManager
         self.initialSettings = initialSettings
     }
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
         self.session = NGHTTP2Session(mode: self.mode,
                                       allocator: ctx.channel.allocator,
-                                      connectionManager: self.connectionManager,
+                                      maxCachedStreamIDs: 1024,  // TODO(cory): Make configurable
                                       frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
                                       sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) })
 

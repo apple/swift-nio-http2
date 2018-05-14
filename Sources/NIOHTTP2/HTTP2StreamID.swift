@@ -64,7 +64,7 @@ public class HTTP2StreamID {
     /// Create a `HTTP2StreamID` for a known network ID.
     ///
     /// This is used to initialize the global "stream 0" stream ID.
-    fileprivate init(knownID: Int32) {
+    internal init(knownID: Int32) {
         self.actualStreamID = knownID
     }
 
@@ -77,6 +77,12 @@ public class HTTP2StreamID {
     /// Note that while this returns an Int32, the value must always be greater than zero.
     public var networkStreamID: Int32? {
         return (self.actualStreamID >= 0) ? self.actualStreamID : nil
+    }
+
+    /// Resolve the abstract stream ID to a real one.
+    internal func resolve(to newID: Int32) {
+        precondition(self.actualStreamID == -1)
+        self.actualStreamID = newID
     }
 }
 
@@ -95,58 +101,6 @@ extension HTTP2StreamID: Hashable {
     }
 }
 
-
-// MARK:- HTTP2ConnectionManager
-
-/// An object that manages HTTP/2 per-connection state.
-///
-/// The only use-case for this today is to manage stream IDs for connections.
-public class HTTP2ConnectionManager {
-    /// The map of concrete stream numbers to internal stream ID references. This is always initialized
-    /// with stream 0 as the root stream ID, and the max stream ID.
-    private var abstractConnectionMap: [Int32: HTTP2StreamID] = [0: .rootStream, Int32.max: .maxID]
-
-    public init() { }
-
-    /// Called when a stream ID has been allocated for a stream that previously had
-    /// only an abstract stream ID.
-    ///
-    /// - parameters:
-    ///     - streamID: The abstract stream ID to reify.
-    ///     - networkStreamID: The network stream ID to map the abstract ID to.
-    internal func mapID(_ streamID: HTTP2StreamID, to networkStreamID: Int32) {
-        precondition(networkStreamID > 0)
-        guard streamID.networkStreamID == nil else {
-            // TODO(cory): Should this throw instead?
-            preconditionFailure("Mapping non-abstract stream ID \(streamID) to \(networkStreamID)")
-        }
-
-        let oldValue = self.abstractConnectionMap.updateValue(streamID, forKey: networkStreamID)
-        precondition(oldValue == nil, "Mapping abstract stream ID that already has a mapping!")
-
-        // Now we set the actual stream ID.
-        streamID.actualStreamID = networkStreamID
-    }
-
-    /// Returns the internal `HTTP2StreamID` for a given network stream ID.
-    ///
-    /// Creates a new `HTTP2StreamID` if necessary.
-    ///
-    /// - parameters:
-    ///     networkID: The stream ID from the network.
-    /// - returns: The `HTTP2StreamID` for this stream.
-    internal func streamID(for networkID: Int32) -> HTTP2StreamID {
-        precondition(networkID >= 0)
-        if let internalID = self.abstractConnectionMap[networkID] {
-            return internalID
-        }
-
-        // This is a stream we haven't previously seen. Associate it with a new stream ID.
-        let internalID = HTTP2StreamID(knownID: networkID)
-        self.abstractConnectionMap[networkID] = internalID
-        return internalID
-    }
-}
 
 extension HTTP2StreamID: CustomDebugStringConvertible {
     public var debugDescription: String {

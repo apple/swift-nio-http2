@@ -230,6 +230,66 @@ private func onFrameNotSentCallback(session: OpaquePointer?,
     return 0
 }
 
+
+/// This struct exists to work around an annoying problem with stream data when using nghttp2,
+/// which is that we need to have a structure but nghttp2 doesn't give us anywhere nice to hang
+/// it. We also need to keep track of stream IDs that we may have seen in the past, in case they
+/// reappear.
+///
+/// This is because of the need to use `HTTP2StreamID`, a type that makes me quite
+/// unhappy in its current form. In general we attempt to obtain the stream ID from nghttp2
+/// directly by asking for the `HTTP2Stream` object, but it is occasionally possible that
+/// we need to obtain a stream ID for a stream that is long gone (e.g. for RST_STREAM or
+/// GOAWAY purposes). This structure maintains a map that allows us to resurrect these as needed.
+fileprivate struct StreamManager {
+    /// The map of streams from their network stream ID.
+    ///
+    /// This map contains two types of stream IDs. The first are stream IDs for streams that
+    /// are no longer active. The second are two special sentinel values, for the root stream
+    /// and the highest numbered stream ID.
+    private var streamMap: [Int32: HTTP2Stream]
+
+    /// The maximum size of the cache.
+    private let maxSize: Int
+
+    /// The parser mode for this connection.
+    private let mode: HTTP2Parser.ParserMode
+
+    fileprivate init(mode: HTTP2Parser.ParserMode, maxSize: Int) {
+        self.maxSize = maxSize
+        self.mode = mode
+        self.streamMap = [0: HTTP2Stream(mode: mode, streamID: .rootStream), Int32.max: HTTP2Stream(mode: mode, streamID: .maxID)]
+    }
+
+    /// Obtains the NIO stream data for a given stream, or nil if NIO doesn't know about this stream.
+    public func getStreamData(for streamID: Int32) -> HTTP2Stream? {
+        return self.streamMap[streamID]
+    }
+
+    /// Obtains a NIO stream data block for a given stream if one exists, otherwise creates a new one and
+    /// caches it.
+    mutating func getOrCreateStreamData(for streamID: Int32) -> HTTP2Stream {
+        if let streamData = self.getStreamData(for: streamID) {
+            return streamData
+        }
+
+        let streamData = self.createStreamData(for: streamID)
+        return streamData
+    }
+
+    /// Creates stream data for a given stream.
+    mutating func createStreamData(for streamID: Int32) -> HTTP2Stream {
+        while self.streamMap.count >= maxSize {
+            let lowestStreamID = self.streamMap.filter { $0.value.active }.keys.sorted().first { $0 != 0 && $0 != Int32.max }!
+            self.streamMap.removeValue(forKey: lowestStreamID)
+        }
+
+        let streamData = HTTP2Stream(mode: self.mode, streamID: HTTP2StreamID(knownID: streamID))
+        self.streamMap[streamID] = streamData
+        return streamData
+    }
+}
+
 /// An object that wraps a single nghttp2 session object.
 ///
 /// Each HTTP/2 connection is represented inside nghttp2 by using a `nghttp2_session` object. This
@@ -260,6 +320,9 @@ class NGHTTP2Session {
     /// Access to an allocator for use during frame callbacks.
     private let allocator: ByteBufferAllocator
 
+    /// The mode of this session: client or server.
+    private let mode: HTTP2Parser.ParserMode
+
     /// A small byte-buffer used to write DATA frame headers into.
     ///
     /// In many cases this will trigger a CoW (as most flushes will write more than one DATA
@@ -268,35 +331,28 @@ class NGHTTP2Session {
     /// than slicing and potentially triggering copies of the entire buffer for no good reason.
     private var dataFrameHeaderBuffer: ByteBuffer
 
-    /// A map of nghttp2 data providers, keyed by the stream ID of the stream to which they belong.
-    ///
-    /// These providers are instantiated with a callback to this object, which means they create a
-    /// reference cycle to it. As a result, it is utterly crucial that they are removed from this
-    /// object promptly once their use is complete. Their use is considered complete when nghttp2
-    /// tells us it no longer needs them (that is, on the stream_complete callback).
-    private var streamDataProviders: [Int32: HTTP2DataProvider] = [:]
-
     /// The callback passed by the parent object, to call each time we need to send some data.
     ///
     /// This is expected to have similar semantics to `Channel.write`: that is, it does not trigger I/O
     /// directly. This can safely be called at any time, including when reads have been fed to the code.
     private let sendFunction: (IOData, EventLoopPromise<Void>?) -> Void
 
-    private let connectionManager: HTTP2ConnectionManager
-
     // TODO(cory): This is not really sufficient, we need to introspect nghttp2, but it is enough for now.
     private var closed: Bool = false
 
+    private var streamIDManager: StreamManager
+
     init(mode: HTTP2Parser.ParserMode,
          allocator: ByteBufferAllocator,
-         connectionManager: HTTP2ConnectionManager,
+         maxCachedStreamIDs: Int,
          frameReceivedHandler: @escaping (HTTP2Frame) -> Void,
          sendFunction: @escaping (IOData, EventLoopPromise<Void>?) -> Void) {
         var session: OpaquePointer?
         self.frameReceivedHandler = frameReceivedHandler
         self.sendFunction = sendFunction
-        self.connectionManager = connectionManager
         self.allocator = allocator
+        self.mode = mode
+        self.streamIDManager = StreamManager(mode: self.mode, maxSize: maxCachedStreamIDs)
 
         // TODO(cory): We should make MAX_FRAME_SIZE configurable and use that, rather than hardcode
         // that value here.
@@ -341,15 +397,12 @@ class NGHTTP2Session {
             // by the remote peer if the data frame is much smaller than this buffer.
             nioFramePayload = .data(.byteBuffer(self.dataAccumulation))
         case NGHTTP2_HEADERS.rawValue:
-            switch frame.headers.cat {
-            case NGHTTP2_HCAT_REQUEST:
-                nioFramePayload = .headers(self.headersAccumulation)
-            case NGHTTP2_HCAT_RESPONSE:
-                nioFramePayload = .headers(self.headersAccumulation)
-            case NGHTTP2_HCAT_PUSH_RESPONSE, NGHTTP2_HCAT_HEADERS:
-                preconditionFailure("Currently push promise/trailers are unsupported.")
-            default:
-                preconditionFailure("Unexpected headers category \(frame.headers.cat)")
+            nioFramePayload = .headers(self.headersAccumulation)
+
+            /// If we are a server, the first headers frame on a new stream should cause us to create our stream state and store it.
+            if case .server = self.mode, frame.headers.cat == NGHTTP2_HCAT_REQUEST {
+                let streamState = self.streamIDManager.createStreamData(for: frame.hd.stream_id)
+                streamState.active = true
             }
         case NGHTTP2_PRIORITY.rawValue:
             nioFramePayload = .priority
@@ -370,7 +423,10 @@ class NGHTTP2Session {
         case NGHTTP2_GOAWAY.rawValue:
             let frameData = frame.goaway
             let opaqueData = frameData.opaque_data_len > 0 ? self.allocator.buffer(containingCopyOf: UnsafeBufferPointer(start: frameData.opaque_data, count: frameData.opaque_data_len)) : nil
-            let lastStreamID = self.connectionManager.streamID(for: frameData.last_stream_id)
+            guard let lastStreamID = self.streamIDManager.getStreamData(for: frameData.last_stream_id)?.streamID else {
+                // TODO(cory): This should probably report the error some other way.
+                preconditionFailure("Could not find stream ID")
+            }
             let errorCode = HTTP2ErrorCode(frameData.error_code)
             nioFramePayload = .goAway(lastStreamID: lastStreamID, errorCode: errorCode, opaqueData: opaqueData)
         case NGHTTP2_WINDOW_UPDATE.rawValue:
@@ -379,7 +435,7 @@ class NGHTTP2Session {
             fatalError("unrecognised HTTP/2 frame type \(self.frameHeader.type) received")
         }
 
-        let streamID = self.connectionManager.streamID(for: frame.hd.stream_id)
+        let streamID = self.streamIDManager.getStreamData(for: frame.hd.stream_id)!.streamID
         let nioFrame = HTTP2Frame(streamID: streamID, flags: frame.hd.flags, payload: nioFramePayload)
         self.frameReceivedHandler(nioFrame)
 
@@ -394,14 +450,17 @@ class NGHTTP2Session {
 
     /// Called when the stream `streamID` is closed.
     fileprivate func onStreamCloseCallback(streamID: Int32, errorCode: UInt32) throws {
-        // If we have a data provider, pull it out.
-        if let provider = self.streamDataProviders.removeValue(forKey: streamID) {
-            let error = NIOHTTP2Errors.StreamClosed(streamID: self.connectionManager.streamID(for: streamID),
-                                                    errorCode: HTTP2ErrorCode(errorCode))
-            provider.failAllWrites(error: error)
-        }
+        let streamData = self.streamIDManager.getStreamData(for: streamID)!
 
-        // TODO(cory): Fire the errro down the pipeline.
+        // If we have a data provider, pull it out.
+        let error = NIOHTTP2Errors.StreamClosed(streamID: streamData.streamID,
+                                                errorCode: HTTP2ErrorCode(errorCode))
+        streamData.dataProvider.failAllWrites(error: error)
+
+        // Retire the stream data: it should not be used again.
+        streamData.active = false
+
+        // TODO(cory): Fire the error down the pipeline.
     }
 
     /// Called when the reception of a HEADERS or PUSH_PROMISE frame is started. Does not contain
@@ -471,14 +530,13 @@ class NGHTTP2Session {
 
         // Ok, there's some data to send. Grab the provider.
         // TODO(cory): Don't force-unwrap this.
-        let provider = self.streamDataProviders[frame.pointee.hd.stream_id]!
+        let provider = self.streamIDManager.getStreamData(for: frame.pointee.hd.stream_id)!.dataProvider
         var nghttp2Provider = provider.nghttp2DataProvider
         precondition(provider.state == .idle)
 
         // Submit the data. We always submit END_STREAM: nghttp2 will work out when to actually fire it.
         let rc = nghttp2_submit_data(self.session, UInt8(NGHTTP2_FLAG_END_STREAM.rawValue), frame.pointee.hd.stream_id, &nghttp2Provider)
         precondition(rc == 0)
-
     }
 
     public func feedInput(buffer: inout ByteBuffer) {
@@ -527,12 +585,7 @@ class NGHTTP2Session {
     public func receivedEOF() throws {
         // EOF is the end of this connection. If the connection is already over, that's fine: otherwise,
         // we want to throw an error for reporting on the pipeline. Either way, we need to clean up our state.
-        let dataProviders = self.streamDataProviders.values
-        self.streamDataProviders.removeAll()
         self.closed = true
-
-        // We can now call out here.
-        dataProviders.forEach { $0.failAllWrites(error: ChannelError.eof) }
 
         // TODO(cory): Check state, throw in error cases.
     }
@@ -580,7 +633,8 @@ class NGHTTP2Session {
 
         // If this is still an abstract stream ID, we want to pass -1. This signals to nghttp2 that we have
         // a new stream ID to allocate here, which will be returned from this function.
-        let streamID = frame.streamID.networkStreamID ?? -1
+        let streamID: Int32 = frame.streamID.networkStreamID ?? -1
+
         let rc = headersCategory.withNGHTTP2Headers(allocator: self.allocator) { vec, count in
             nghttp2_submit_headers(self.session,
                                    UInt8(flags),
@@ -590,23 +644,14 @@ class NGHTTP2Session {
                                    count,
                                    nil)
         }
-        precondition(rc >= 0)
 
-        let newStreamID: Int32
         if streamID == -1 {
             precondition(rc > 0)
-            self.connectionManager.mapID(frame.streamID, to: rc)
-            newStreamID = rc
+            frame.streamID.resolve(to: rc)
+            let streamData = self.streamIDManager.createStreamData(for: rc)
+            streamData.active = true
         } else {
             precondition(rc == 0)
-            newStreamID = streamID
-        }
-
-        // If this is an endStream headers frame, let's avoid allocating a data provider.
-        if !isEndStream {
-            let p = HTTP2DataProvider()
-            let oldValue = self.streamDataProviders.updateValue(p, forKey: newStreamID)
-            precondition(oldValue == nil, "Double-insertion of HTTP2 stream data provider")
         }
     }
 
@@ -619,23 +664,24 @@ class NGHTTP2Session {
             preconditionFailure("Write data attempted on non-data frame \(frame)")
         }
 
-        guard let dataProvider = self.streamDataProviders[frame.streamID.networkStreamID!] else {
+        guard let streamState = self.streamIDManager.getStreamData(for: frame.streamID.networkStreamID!), streamState.active else {
             promise?.fail(error: NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID))
             return
         }
-        dataProvider.bufferWrite(write: data, promise: promise)
+
+        streamState.dataProvider.bufferWrite(write: data, promise: promise)
 
         // If this has END_STREAM set, we do not expect trailers.
         if frame.endStream {
-            dataProvider.bufferEOF(trailers: nil)
+            streamState.dataProvider.bufferEOF(trailers: nil)
         }
 
-        if case .pending = dataProvider.state {
+        if case .pending = streamState.dataProvider.state {
             // The data provider is currently in the pending state, we need to tell nghttp2 it's active again.
             let rc = nghttp2_session_resume_data(self.session, frame.streamID.networkStreamID!)
             // TODO(cory): Error handling
             precondition(rc == 0)
-            dataProvider.didResume()
+            streamState.dataProvider.didResume()
         }
     }
 
