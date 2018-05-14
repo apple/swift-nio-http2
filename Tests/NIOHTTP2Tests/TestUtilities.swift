@@ -118,7 +118,7 @@ extension XCTestCase {
         for frame in frames {
             let receivedFrame = try receiver.assertReceivedFrame()
             receivedFrame.assertFrameMatches(this: frame, file: file, line: line)
-            receivedFrames.append(frame)
+            receivedFrames.append(receivedFrame)
         }
 
         return receivedFrames

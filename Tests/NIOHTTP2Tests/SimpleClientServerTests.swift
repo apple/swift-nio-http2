@@ -15,7 +15,7 @@
 import XCTest
 import NIO
 import NIOHTTP1
-import NIOHTTP2
+@testable import NIOHTTP2
 
 /// A channel handler that passes writes through but fires EOF once the first one hits.
 final class EOFOnWriteHandler: ChannelOutboundHandler {
@@ -116,6 +116,17 @@ final class InstaGoawayHandler: ChannelInboundHandler {
             let kaboomFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .inadequateSecurity, opaqueData: nil))
             ctx.writeAndFlush(self.wrapOutboundOut(kaboomFrame), promise: nil)
         }
+    }
+}
+
+/// A simple channel handler that records all user events.
+final class UserEventRecorder: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame
+
+    var events: [Any] = []
+
+    func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+        events.append(event)
     }
 }
 
@@ -1010,6 +1021,119 @@ class SimpleClientServerTests: XCTestCase {
 
         // No data should be received on the server channel.
         self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testStreamClosedWithNoError() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now add handlers to record user events.
+        let clientHandler = UserEventRecorder()
+        let serverHandler = UserEventRecorder()
+        try self.clientChannel.pipeline.add(handler: clientHandler).wait()
+        try self.serverChannel.pipeline.add(handler: serverHandler).wait()
+
+        // We're now going to try to send a request from the client to the server and send a server response back. This
+        // stream will terminate cleanly.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.endStream = true
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // At this stage the stream is still open, neither handler will have seen events.
+        XCTAssertEqual(clientHandler.events.count, 0)
+        XCTAssertEqual(serverHandler.events.count, 0)
+
+        // Let's send a quick response back.
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+        respFrame.endStream = true
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Now the streams are closed, they should have seen user events.
+        XCTAssertEqual(clientHandler.events.count, 1)
+        XCTAssertEqual(serverHandler.events.count, 1)
+        XCTAssertEqual(clientHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: nil))
+        XCTAssertEqual(serverHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: nil))
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testStreamClosedViaRstStream() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now add handlers to record user events.
+        let clientHandler = UserEventRecorder()
+        let serverHandler = UserEventRecorder()
+        try self.clientChannel.pipeline.add(handler: clientHandler).wait()
+        try self.serverChannel.pipeline.add(handler: serverHandler).wait()
+
+        // Initiate a stream from the client. No need to send body data, we don't need it.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // At this stage the stream is still open, neither handler will have seen events.
+        XCTAssertEqual(clientHandler.events.count, 0)
+        XCTAssertEqual(serverHandler.events.count, 0)
+
+        // The server will reset the stream.
+        let rstStreamFrame = HTTP2Frame(streamID: serverStreamID, payload: .rstStream(.cancel))
+        try self.assertFramesRoundTrip(frames: [rstStreamFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Now the streams are closed, they should have seen user events.
+        XCTAssertEqual(clientHandler.events.count, 1)
+        XCTAssertEqual(serverHandler.events.count, 1)
+        XCTAssertEqual(clientHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: .cancel))
+        XCTAssertEqual(serverHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: .cancel))
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testStreamClosedViaGoaway() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now add handlers to record user events.
+        let clientHandler = UserEventRecorder()
+        let serverHandler = UserEventRecorder()
+        try self.clientChannel.pipeline.add(handler: clientHandler).wait()
+        try self.serverChannel.pipeline.add(handler: serverHandler).wait()
+
+        // Initiate a stream from the client. No need to send body data, we don't need it.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // At this stage the stream is still open, neither handler will have seen events.
+        XCTAssertEqual(clientHandler.events.count, 0)
+        XCTAssertEqual(serverHandler.events.count, 0)
+
+        // The server will send a GOAWAY.
+        let goawayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
+        try self.assertFramesRoundTrip(frames: [goawayFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Now the streams are closed, they should have seen user events.
+        XCTAssertEqual(clientHandler.events.count, 1)
+        XCTAssertEqual(serverHandler.events.count, 1)
+        XCTAssertEqual(clientHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: .refusedStream))
+        XCTAssertEqual(serverHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: .refusedStream))
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())

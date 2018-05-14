@@ -22,7 +22,8 @@ class BasicTests: XCTestCase {
                                allocator: ByteBufferAllocator(),
                                maxCachedStreamIDs: 1024,
                                frameReceivedHandler: { _ in },
-                               sendFunction: { _, _ in })
+                               sendFunction: { _, _ in },
+                               userEventFunction: { _ in })
         XCTAssertNotNil(x)
     }
 }

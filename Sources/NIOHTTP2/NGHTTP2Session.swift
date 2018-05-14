@@ -358,6 +358,9 @@ class NGHTTP2Session {
     /// directly. This can safely be called at any time, including when reads have been fed to the code.
     private let sendFunction: (IOData, EventLoopPromise<Void>?) -> Void
 
+    /// The callback passed by the parent object to call each time we want to send a user event.
+    private let userEventFunction: (Any) -> Void
+
     // TODO(cory): This is not really sufficient, we need to introspect nghttp2, but it is enough for now.
     private var closed: Bool = false
 
@@ -367,10 +370,12 @@ class NGHTTP2Session {
          allocator: ByteBufferAllocator,
          maxCachedStreamIDs: Int,
          frameReceivedHandler: @escaping (HTTP2Frame) -> Void,
-         sendFunction: @escaping (IOData, EventLoopPromise<Void>?) -> Void) {
+         sendFunction: @escaping (IOData, EventLoopPromise<Void>?) -> Void,
+         userEventFunction: @escaping (Any) -> Void) {
         var session: OpaquePointer?
         self.frameReceivedHandler = frameReceivedHandler
         self.sendFunction = sendFunction
+        self.userEventFunction = userEventFunction
         self.allocator = allocator
         self.mode = mode
         self.streamIDManager = StreamManager(mode: self.mode, maxSize: maxCachedStreamIDs)
@@ -477,12 +482,14 @@ class NGHTTP2Session {
         // If we have a data provider, pull it out.
         let error = NIOHTTP2Errors.StreamClosed(streamID: streamData.streamID,
                                                 errorCode: HTTP2ErrorCode(errorCode))
-        streamData.dataProvider.failAllWrites(error: error)
 
         // Retire the stream data: it should not be used again.
         streamData.active = false
 
-        // TODO(cory): Fire the error down the pipeline.
+        // Now we can call out. We fail pending writes and fire a user event.
+        streamData.dataProvider.failAllWrites(error: error)
+        let reason = error.errorCode == .noError ? nil : error.errorCode
+        self.userEventFunction(StreamClosedEvent(streamID: streamData.streamID, reason: reason))
     }
 
     /// Called when the reception of a HEADERS or PUSH_PROMISE frame is started. Does not contain

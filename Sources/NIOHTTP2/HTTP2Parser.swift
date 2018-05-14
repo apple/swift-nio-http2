@@ -167,7 +167,8 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
                                       allocator: ctx.channel.allocator,
                                       maxCachedStreamIDs: 1024,  // TODO(cory): Make configurable
                                       frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
-                                      sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) })
+                                      sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) },
+                                      userEventFunction: { ctx.fireUserInboundEventTriggered($0) })
 
         self.flushPreamble(ctx: ctx)
     }

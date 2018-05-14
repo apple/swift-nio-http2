@@ -94,7 +94,6 @@ fileprivate struct StreamState {
         case .headers:
             return try self.processInput(.headersReceived)
         case .pushPromise:
-
             return try self.processInput(.pushPromiseReceived)
         case .rstStream:
             return try self.processInput(.rstStreamReceived)
