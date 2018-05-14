@@ -290,6 +290,26 @@ fileprivate struct StreamManager {
     }
 }
 
+// MARK:- An extension to the HTTP/2 headers struct to check if this is an informational response.
+private extension nghttp2_headers {
+    /// Whether this header block is an informational response.
+    var isInformationalResponse: Bool {
+        guard self.nvlen > 0 else {
+            return false
+        }
+
+        // TODO(cory): This is very slow (creating Strings here), but it's part and parcel of the
+        // slowness nghttp2 forces on us so let's just do it safely for now.
+        let name = String(decoding: UnsafeBufferPointer(start: self.nva.pointee.name, count: self.nva.pointee.namelen), as: UTF8.self)
+        guard name == ":status" else {
+            return false
+        }
+
+        let value = String(decoding: UnsafeBufferPointer(start: self.nva.pointee.value, count: self.nva.pointee.valuelen), as: UTF8.self)
+        return value.starts(with: "1")
+    }
+}
+
 /// An object that wraps a single nghttp2 session object.
 ///
 /// Each HTTP/2 connection is represented inside nghttp2 by using a `nghttp2_session` object. This
@@ -521,10 +541,15 @@ class NGHTTP2Session {
             return
         }
 
-        // Next, check for END_HEADERS flag. If END_HEADERS is set, but END_STREAM is not, we are expecting some data.
-        // TODO(cory): What about trailers?
+        // Next, check for END_HEADERS flag. If END_HEADERS is set, but END_STREAM is not, we are expecting some data.=
         let flags = UInt32(frame.pointee.hd.flags)
         guard (flags & NGHTTP2_FLAG_END_HEADERS.rawValue) != 0 && (flags & NGHTTP2_FLAG_END_STREAM.rawValue) == 0 else {
+            return
+        }
+
+        // Next, check if this is an informational response block. If it is, we have more HEADERS frames inbound, we can't
+        // attach our data provider now.
+        if frame.pointee.headers.isInformationalResponse {
             return
         }
 
