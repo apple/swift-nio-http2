@@ -647,37 +647,58 @@ class NGHTTP2Session {
     /// That means all this state must be ready to go once we've submitted the headers frame to nghttp2. This function
     /// is responsible for getting all our ducks in a row.
     private func sendHeaders(frame: HTTP2Frame) {
-        guard case .headers(let headersCategory) = frame.payload else {
+        guard case .headers(let headers) = frame.payload else {
             preconditionFailure("Attempting to send non-headers frame")
         }
 
-        // TODO(cory): Support trailers.
-        // TODO(cory): Support sending END_STREAM without allocating all this data nonsense.
         let isEndStream = frame.endStream
-        let flags = isEndStream ? NGHTTP2_FLAG_END_STREAM.rawValue : 0
+        let flags = isEndStream ? UInt8(NGHTTP2_FLAG_END_STREAM.rawValue) : UInt8(0)
 
-        // If this is still an abstract stream ID, we want to pass -1. This signals to nghttp2 that we have
-        // a new stream ID to allocate here, which will be returned from this function.
-        let streamID: Int32 = frame.streamID.networkStreamID ?? -1
+        guard let networkStreamID = frame.streamID.networkStreamID else {
+            // This must be a request: delegate to that function.
+            self.sendRequest(streamID: frame.streamID, flags: flags, headers: headers)
+            return
+        }
 
-        let rc = headersCategory.withNGHTTP2Headers(allocator: self.allocator) { vec, count in
+        let streamData = self.streamIDManager.getStreamData(for: networkStreamID)!
+        let blockType = streamData.newOutboundHeaderBlock(block: headers)
+        if blockType == .trailer {
+            // Trailers are a tricky beast, as they must be submitted via the data provider. They count as EOF.
+            // TODO(cory): Error handling.
+            precondition(isEndStream)
+            streamData.dataProvider.bufferEOF(trailers: headers)
+            return
+        }
+
+        // Ok, we know we have some kind of response header here, we can submit it directly.
+        assert(self.mode == .server)
+        let rc = headers.withNGHTTP2Headers(allocator: self.allocator) { vec, count in
             nghttp2_submit_headers(self.session,
-                                   UInt8(flags),
-                                   streamID,
+                                   flags,
+                                   networkStreamID,
                                    nil,
                                    vec,
                                    count,
                                    nil)
         }
+        precondition(rc == 0)
+    }
 
-        if streamID == -1 {
-            precondition(rc > 0)
-            frame.streamID.resolve(to: rc)
-            let streamData = self.streamIDManager.createStreamData(for: rc)
-            streamData.active = true
-        } else {
-            precondition(rc == 0)
+    /// Sends a HEADERS frame for a request.
+    ///
+    /// This function specifically handles the additional logic for creating a brand new stream.
+    private func sendRequest(streamID: HTTP2StreamID, flags: UInt8, headers: HTTPHeaders) {
+        let rc = headers.withNGHTTP2Headers(allocator: self.allocator) { vec, count in
+            nghttp2_submit_headers(self.session, flags, -1, nil, vec, count, nil)
         }
+
+        precondition(rc > 0)
+        streamID.resolve(to: rc)
+        let streamData = self.streamIDManager.createStreamData(for: rc)
+        streamData.active = true
+
+        let blockType = streamData.newOutboundHeaderBlock(block: headers)
+        assert(blockType == .requestHead)
     }
 
     /// Given the data for a "data frame", configure nghttp2 to write it.
