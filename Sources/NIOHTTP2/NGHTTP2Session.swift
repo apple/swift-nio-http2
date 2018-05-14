@@ -266,27 +266,28 @@ fileprivate struct StreamManager {
         return self.streamMap[streamID]
     }
 
-    /// Obtains a NIO stream data block for a given stream if one exists, otherwise creates a new one and
-    /// caches it.
-    mutating func getOrCreateStreamData(for streamID: Int32) -> HTTP2Stream {
-        if let streamData = self.getStreamData(for: streamID) {
-            return streamData
-        }
-
-        let streamData = self.createStreamData(for: streamID)
+    /// Creates stream data for a given stream.
+    mutating func createStreamData(for streamID: Int32) -> HTTP2Stream {
+        self.purgeOldStreams()
+        let streamData = HTTP2Stream(mode: self.mode, streamID: HTTP2StreamID(knownID: streamID))
+        self.streamMap[streamID] = streamData
         return streamData
     }
 
-    /// Creates stream data for a given stream.
-    mutating func createStreamData(for streamID: Int32) -> HTTP2Stream {
+    /// Creates stream data for a given stream with an internal stream ID.
+    mutating func createStreamData(for internalStreamID: HTTP2StreamID) -> HTTP2Stream {
+        self.purgeOldStreams()
+        let streamData = HTTP2Stream(mode: self.mode, streamID: internalStreamID)
+        self.streamMap[internalStreamID.networkStreamID!] = streamData
+        return streamData
+    }
+
+    // Discard old and unnecessary streams.
+    private mutating func purgeOldStreams() {
         while self.streamMap.count >= maxSize {
             let lowestStreamID = self.streamMap.filter { $0.value.active }.keys.sorted().first { $0 != 0 && $0 != Int32.max }!
             self.streamMap.removeValue(forKey: lowestStreamID)
         }
-
-        let streamData = HTTP2Stream(mode: self.mode, streamID: HTTP2StreamID(knownID: streamID))
-        self.streamMap[streamID] = streamData
-        return streamData
     }
 }
 
@@ -694,7 +695,7 @@ class NGHTTP2Session {
 
         precondition(rc > 0)
         streamID.resolve(to: rc)
-        let streamData = self.streamIDManager.createStreamData(for: rc)
+        let streamData = self.streamIDManager.createStreamData(for: streamID)
         streamData.active = true
 
         let blockType = streamData.newOutboundHeaderBlock(block: headers)

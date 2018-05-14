@@ -105,6 +105,46 @@ extension HTTP2ErrorCode: Hashable {
     }
 }
 
+extension HTTP2ErrorCode: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        let errorCodeDescription: String
+        switch self {
+        case .noError:
+            errorCodeDescription = "No Error"
+        case .protocolError:
+            errorCodeDescription = "ProtocolError"
+        case .internalError:
+            errorCodeDescription = "Internal Error"
+        case .flowControlError:
+            errorCodeDescription = "Flow Control Error"
+        case .settingsTimeout:
+            errorCodeDescription = "Settings Timeout"
+        case .streamClosed:
+            errorCodeDescription = "Stream Closed"
+        case .frameSizeError:
+            errorCodeDescription = "Frame Size Error"
+        case .refusedStream:
+            errorCodeDescription = "Refused Stream"
+        case .cancel:
+            errorCodeDescription = "Cancel"
+        case .compressionError:
+            errorCodeDescription = "Compression Error"
+        case .connectError:
+            errorCodeDescription = "Connect Error"
+        case .enhanceYourCalm:
+            errorCodeDescription = "Enhance Your Calm"
+        case .inadequateSecurity:
+            errorCodeDescription = "Inadequate Security"
+        case .http11Required:
+            errorCodeDescription = "HTTP/1.1 Required"
+        default:
+            errorCodeDescription = "Unknown Error"
+        }
+
+        return "HTTP2ErrorCode<0x\(String(self.networkCode, radix: 16)) \(errorCodeDescription)>"
+    }
+}
+
 public extension UInt32 {
     /// Create a 32-bit integer corresponding to the given `HTTP2ErrorCode`.
     public init(http2ErrorCode code: HTTP2ErrorCode) {
