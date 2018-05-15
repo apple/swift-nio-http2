@@ -130,6 +130,44 @@ final class UserEventRecorder: ChannelInboundHandler {
     }
 }
 
+/// A simple channel handler that enforces that stream closed events fire after the
+/// frame is dispatched, not before.
+final class ClosedEventVsFrameOrderingHandler: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame
+
+    var seenFrame = false
+    var seenEvent = false
+    let targetStreamID: HTTP2StreamID
+
+    init(targetStreamID: HTTP2StreamID) {
+        self.targetStreamID = targetStreamID
+    }
+
+    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        let frame = self.unwrapInboundIn(data)
+        switch (frame.payload, frame.streamID) {
+        case (.rstStream, self.targetStreamID),
+             (.goAway(_, _, _), .rootStream):
+            XCTAssertFalse(self.seenFrame)
+            XCTAssertFalse(self.seenEvent)
+            self.seenFrame = true
+        default:
+            break
+        }
+        ctx.fireChannelRead(data)
+    }
+
+    func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+        guard let evt = event as? StreamClosedEvent, evt.streamID == self.targetStreamID else {
+            return
+        }
+
+        XCTAssertTrue(self.seenFrame)
+        XCTAssertFalse(self.seenEvent)
+        self.seenEvent = true
+    }
+}
+
 class SimpleClientServerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
@@ -1134,6 +1172,60 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertEqual(serverHandler.events.count, 1)
         XCTAssertEqual(clientHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: .refusedStream))
         XCTAssertEqual(serverHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: .refusedStream))
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testStreamCloseEventForRstStreamFiresAfterFrame() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Initiate a stream from the client. No need to send body data, we don't need it.
+        let clientStreamID = HTTP2StreamID()
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Add handler to record stream closed event.
+        let handler = ClosedEventVsFrameOrderingHandler(targetStreamID: serverStreamID)
+        try self.serverChannel.pipeline.add(handler: handler).wait()
+
+        // The client will reset the stream.
+        let rstStreamFrame = HTTP2Frame(streamID: serverStreamID, payload: .rstStream(.cancel))
+        try self.assertFramesRoundTrip(frames: [rstStreamFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Check we saw the frame and the event.
+        XCTAssertTrue(handler.seenEvent)
+        XCTAssertTrue(handler.seenFrame)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testStreamCloseEventForGoawayFiresAfterFrame() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Initiate a stream from the client. No need to send body data, we don't need it.
+        let clientStreamID = HTTP2StreamID()
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+
+        try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Add handler to record stream closed event.
+        let handler = ClosedEventVsFrameOrderingHandler(targetStreamID: clientStreamID)
+        try self.clientChannel.pipeline.add(handler: handler).wait()
+
+        // The server will send GOAWAY.
+        let goawayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
+        try self.assertFramesRoundTrip(frames: [goawayFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Check we saw the frame and the event.
+        XCTAssertTrue(handler.seenEvent)
+        XCTAssertTrue(handler.seenFrame)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())

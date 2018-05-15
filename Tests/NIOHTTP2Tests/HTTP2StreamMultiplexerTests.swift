@@ -34,17 +34,22 @@ final class FrameExpecter: ChannelInboundHandler {
 
     private let expectedFrames: [HTTP2Frame]
     private var actualFrames: [HTTP2Frame] = []
+    private var inactive = false
 
     init(expectedFrames: [HTTP2Frame]) {
         self.expectedFrames = expectedFrames
     }
 
     func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        XCTAssertFalse(self.inactive)
         let frame = self.unwrapInboundIn(data)
         self.actualFrames.append(frame)
     }
 
-    func handlerRemoved(ctx: ChannelHandlerContext) {
+    func channelInactive(ctx: ChannelHandlerContext) {
+        XCTAssertFalse(self.inactive)
+        self.inactive = true
+
         XCTAssertEqual(self.expectedFrames.count, self.actualFrames.count)
 
         for (idx, expectedFrame) in self.expectedFrames.enumerated() {
@@ -231,7 +236,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         let streamID = HTTP2StreamID(knownID: Int32(1))
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
         frame.endStream = true
-        let goAwayFrame = HTTP2Frame(streamID: streamID, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
+        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
 
         let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
             XCTAssertNil(closeError)
