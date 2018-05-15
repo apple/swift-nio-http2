@@ -24,16 +24,12 @@ import CNIONghttp2
 /// NIO `SelectableChannel` objects which use `ByteBuffer` and `IOData`.
 public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
+    public typealias InboundOut = HTTP2Frame
     public typealias OutboundIn = HTTP2Frame
     public typealias OutboundOut = HTTP2Frame
 
     private var streams: [HTTP2StreamID: HTTP2StreamChannel] = [:]
     private let streamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?
-
-    public func channelActive(ctx: ChannelHandlerContext) {
-        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings([]))
-        ctx.write(self.wrapOutboundOut(frame), promise: nil)
-    }
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
@@ -66,6 +62,18 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         /* for now just forward */
         ctx.write(data, promise: promise)
+    }
+
+    public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+        // The only event we care about right now is StreamClosedEvent, and in particular
+        // we only care about it if we still have the stream channel for the stream
+        // in question.
+        guard let evt = event as? StreamClosedEvent, let channel = self.streams[evt.streamID] else {
+            ctx.fireUserInboundEventTriggered(event)
+            return
+        }
+
+        channel.receiveStreamClosed(evt.reason)
     }
 
     public init(streamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
