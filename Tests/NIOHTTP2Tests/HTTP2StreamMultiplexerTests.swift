@@ -60,6 +60,28 @@ final class FrameExpecter: ChannelInboundHandler {
 }
 
 
+// A handler that keeps track of the writes made on a channel. Used to work around the limitations
+// in `EmbeddedChannel`.
+final class FrameWriteRecorder: ChannelOutboundHandler {
+    typealias OutboundIn = HTTP2Frame
+    typealias OutboundOut = HTTP2Frame
+
+    var flushedWrites: [HTTP2Frame] = []
+    private var unflushedWrites: [HTTP2Frame] = []
+
+    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        self.unflushedWrites.append(self.unwrapOutboundIn(data))
+        ctx.write(data, promise: promise)
+    }
+
+    func flush(ctx: ChannelHandlerContext) {
+        self.flushedWrites.append(contentsOf: self.unflushedWrites)
+        self.unflushedWrites = []
+        ctx.flush()
+    }
+}
+
+
 final class HTTP2StreamMultiplexerTests: XCTestCase {
     var channel: EmbeddedChannel!
 
@@ -237,6 +259,178 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             XCTAssertEqual(error.streamID, streamID)
         }
         self.channel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testClosingIdleChannels() throws {
+        let frameReceiver = FrameWriteRecorder()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            return channel.close()
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameReceiver).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's send a bunch of headers frames. These will all be answered by RST_STREAM frames.
+        let streamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID(knownID: $0) }
+        for streamID in streamIDs {
+            let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+            XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        }
+
+        let expectedFrames = streamIDs.map { HTTP2Frame(streamID: $0, payload: .rstStream(.cancel)) }
+        XCTAssertEqual(expectedFrames.count, frameReceiver.flushedWrites.count)
+        for (idx, expectedFrame) in expectedFrames.enumerated() {
+            let actualFrame = frameReceiver.flushedWrites[idx]
+            expectedFrame.assertFrameMatches(this: actualFrame)
+        }
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testClosingActiveChannels() throws {
+        let frameReceiver = FrameWriteRecorder()
+        let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channelPromise.succeed(result: channel)
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameReceiver).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's send a headers frame to open the stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // The channel should now be active.
+        let childChannel = try channelPromise.futureResult.wait()
+        XCTAssertTrue(childChannel.isActive)
+
+        // Now we close it. This triggers a RST_STREAM frame.
+        childChannel.close(promise: nil)
+        XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
+        frameReceiver.flushedWrites[0].assertRstStreamFrame(streamID: streamID.networkStreamID!, errorCode: .cancel)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testClosePromiseIsSatisfiedWithTheEvent() throws {
+        let frameReceiver = FrameWriteRecorder()
+        let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channelPromise.succeed(result: channel)
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameReceiver).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's send a headers frame to open the stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // The channel should now be active.
+        let childChannel = try channelPromise.futureResult.wait()
+        XCTAssertTrue(childChannel.isActive)
+
+        // Now we close it. This triggers a RST_STREAM frame. The channel will not be closed at this time.
+        var closed = false
+        childChannel.close().whenComplete { closed = true }
+        XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
+        frameReceiver.flushedWrites[0].assertRstStreamFrame(streamID: streamID.networkStreamID!, errorCode: .cancel)
+        XCTAssertFalse(closed)
+
+        // Now send the stream closed event. This will satisfy the close promise.
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        XCTAssertTrue(closed)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testMultipleClosePromisesAreSatisfied() throws {
+        let frameReceiver = FrameWriteRecorder()
+        let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channelPromise.succeed(result: channel)
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameReceiver).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's send a headers frame to open the stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // The channel should now be active.
+        let childChannel = try channelPromise.futureResult.wait()
+        XCTAssertTrue(childChannel.isActive)
+
+        // Now we close it several times. This triggers one RST_STREAM frame. The channel will not be closed at this time.
+        var firstClosed = false
+        var secondClosed = false
+        var thirdClosed = false
+        childChannel.close().whenComplete {
+            XCTAssertFalse(firstClosed)
+            XCTAssertFalse(secondClosed)
+            XCTAssertFalse(thirdClosed)
+            firstClosed = true
+        }
+        childChannel.close().whenComplete {
+            XCTAssertTrue(firstClosed)
+            XCTAssertFalse(secondClosed)
+            XCTAssertFalse(thirdClosed)
+            secondClosed = true
+        }
+        childChannel.close().whenComplete {
+            XCTAssertTrue(firstClosed)
+            XCTAssertTrue(secondClosed)
+            XCTAssertFalse(thirdClosed)
+            thirdClosed = true
+        }
+        XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
+        frameReceiver.flushedWrites[0].assertRstStreamFrame(streamID: streamID.networkStreamID!, errorCode: .cancel)
+        XCTAssertFalse(thirdClosed)
+
+        // Now send the stream closed event. This will satisfy the close promise.
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        XCTAssertTrue(thirdClosed)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testClosePromiseFailsWithError() throws {
+        let frameReceiver = FrameWriteRecorder()
+        let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channelPromise.succeed(result: channel)
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameReceiver).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's send a headers frame to open the stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // The channel should now be active.
+        let childChannel = try channelPromise.futureResult.wait()
+        XCTAssertTrue(childChannel.isActive)
+
+        // Now we close it. This triggers a RST_STREAM frame. The channel will not be closed at this time.
+        var closeError: Error? = nil
+        childChannel.close().whenFailure { closeError = $0 }
+        XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
+        frameReceiver.flushedWrites[0].assertRstStreamFrame(streamID: streamID.networkStreamID!, errorCode: .cancel)
+        XCTAssertNil(closeError)
+
+        // Now send the stream closed event. This will fail the close promise.
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
 
         XCTAssertNoThrow(try self.channel.finish())
     }

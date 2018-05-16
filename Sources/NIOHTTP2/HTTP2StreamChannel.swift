@@ -41,6 +41,7 @@ public struct HTTP2StreamChannelOptions {
 private enum StreamChannelState {
     case idle
     case active
+    case closing
     case closed
 }
 
@@ -126,7 +127,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     public let isWritable: Bool
 
     public var isActive: Bool {
-        return self.state == .active
+        return self.state == .active || self.state == .closing
     }
 
     public var _unsafe: ChannelCore {
@@ -138,6 +139,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     private let streamID: HTTP2StreamID
 
     private var state: StreamChannelState
+
+    /// If close0 was called but the stream could not synchronously close (because it's currently
+    /// active), the promise is stored here until it can be fulfilled.
+    private var pendingClosePromise: EventLoopPromise<Void>?
 
     public func register0(promise: EventLoopPromise<Void>?) {
         fatalError("not implemented \(#function)")
@@ -165,12 +170,27 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     public func close0(error: Error, mode: CloseMode, promise: EventLoopPromise<Void>?) {
-        // TODO(cory): In some cases this should emit RST_STREAM frames.
-        self.closedCleanly(promise: promise)
+        // If the stream is already closed, we can fail this early and abort processing. If it's not, we need to emit a
+        // RST_STREAM frame.
+        guard self.state != .closed else {
+            promise?.fail(error: ChannelError.alreadyClosed)
+            return
+        }
+
+        // Store the pending close promise: it'll be succeeded later.
+        if let promise = promise {
+            if let pendingPromise = self.pendingClosePromise {
+                pendingPromise.futureResult.cascade(promise: promise)
+            } else {
+                self.pendingClosePromise = promise
+            }
+        }
+
+        self.closedWhileOpen()
     }
 
     public func triggerUserOutboundEvent0(_ event: Any, promise: EventLoopPromise<Void>?) {
-        fatalError("not implemented \(#function)")
+        // do nothing
     }
 
     public func channelRead0(_ data: NIOAny) {
@@ -181,13 +201,32 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // do nothing
     }
 
-    private func closedCleanly(promise: EventLoopPromise<Void>?) {
+    /// Called when the channel was closed from the pipeline while the stream is still open.
+    ///
+    /// Will emit a RST_STREAM frame in order to close the stream. Note that this function does not
+    /// directly close the stream: it waits until the stream closed notification is fired.
+    private func closedWhileOpen() {
+        precondition(self.state != .closed)
+        guard self.state != .closing else {
+            // If we're already closing, nothing to do here.
+            return
+        }
+
+        self.state = .closing
+        let resetFrame = HTTP2Frame(streamID: self.streamID, payload: .rstStream(.cancel))
+        self.receiveOutboundFrame(resetFrame, promise: nil)
+        self.parent?.flush()
+    }
+
+    private func closedCleanly() {
         guard self.state != .closed else {
-            promise?.fail(error: ChannelError.alreadyClosed)
             return
         }
         self.state = .closed
-        promise?.succeed(result: ())
+        if let promise = self.pendingClosePromise {
+            self.pendingClosePromise = nil
+            promise.succeed(result: ())
+        }
         self.pipeline.fireChannelInactive()
         self.closePromise.succeed(result: ())
     }
@@ -197,6 +236,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             return
         }
         self.state = .closed
+        if let promise = self.pendingClosePromise {
+            self.pendingClosePromise = nil
+            promise.fail(error: error)
+        }
         self.pipeline.fireErrorCaught(error)
         self.pipeline.fireChannelInactive()
         self.closePromise.fail(error: error)
@@ -219,8 +262,7 @@ internal extension HTTP2StreamChannel {
     ///     - frame: The `HTTP2Frame` to send to the network.
     ///     - promise: The promise associated with the frame write.
     private func receiveOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
-        guard let parent = self.parent else {
-            assert(!self.isActive)
+        guard let parent = self.parent, self.state != .closed else {
             let error = ChannelError.alreadyClosed
             promise?.fail(error: error)
             self.errorEncountered(error: error)
@@ -238,7 +280,7 @@ internal extension HTTP2StreamChannel {
             let err = NIOHTTP2Errors.StreamClosed(streamID: self.streamID, errorCode: reason)
             self.errorEncountered(error: err)
         } else {
-            self.closedCleanly(promise: nil)
+            self.closedCleanly()
         }
     }
 }
