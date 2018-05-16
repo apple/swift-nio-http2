@@ -42,7 +42,37 @@ private enum StreamChannelState {
     case idle
     case active
     case closing
+    case closingFromIdle
     case closed
+
+    mutating func activate() {
+        switch self {
+        case .idle:
+            self = .active
+        case .active, .closing, .closingFromIdle, .closed:
+            preconditionFailure("Became active from state \(self)")
+        }
+    }
+
+    mutating func beginClosing() {
+        switch self {
+        case .active, .closing:
+            self = .closing
+        case .idle, .closingFromIdle:
+            self = .closingFromIdle
+        case .closed:
+            preconditionFailure("Cannot begin closing while closed")
+        }
+    }
+
+    mutating func completeClosing() {
+        switch self {
+        case .closing, .closingFromIdle, .active:
+            self = .closed
+        case .idle, .closed:
+            preconditionFailure("Complete closing from \(self)")
+        }
+    }
 }
 
 
@@ -62,10 +92,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
         let initializingFuture: EventLoopFuture<Void> = initializer?(self, self.streamID) ?? self.eventLoop.newSucceededFuture(result: ())
         initializingFuture.map {
-            self.state = .active
+            self.state.activate()
             self.pipeline.fireChannelActive()
-        }.whenFailure {
-            self.errorEncountered(error: $0)
+            self.deliverPendingReads()
+        }.whenFailure { (_: Error) in
+            self.closedWhileOpen()
         }
     }
 
@@ -144,6 +175,13 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     /// active), the promise is stored here until it can be fulfilled.
     private var pendingClosePromise: EventLoopPromise<Void>?
 
+    /// A buffer of pending inbound reads delivered from the parent channel.
+    ///
+    /// In the future this buffer will be used to manage interactions with read() and even, one day,
+    /// with flow control. For now, though, all this does is hold frames until we have set the
+    /// channel up.
+    private var pendingReads: CircularBuffer<HTTP2Frame> = CircularBuffer(initialRingCapacity: 8)
+
     public func register0(promise: EventLoopPromise<Void>?) {
         fatalError("not implemented \(#function)")
     }
@@ -212,7 +250,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             return
         }
 
-        self.state = .closing
+        self.state.beginClosing()
         let resetFrame = HTTP2Frame(streamID: self.streamID, payload: .rstStream(.cancel))
         self.receiveOutboundFrame(resetFrame, promise: nil)
         self.parent?.flush()
@@ -222,7 +260,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         guard self.state != .closed else {
             return
         }
-        self.state = .closed
+        self.state.completeClosing()
+        self.dropPendingReads()
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
             promise.succeed(result: ())
@@ -235,7 +274,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         guard self.state != .closed else {
             return
         }
-        self.state = .closed
+        self.state.completeClosing()
+        self.dropPendingReads()
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
             promise.fail(error: error)
@@ -246,6 +286,24 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 }
 
+// MARK:- Functions used to manage pending reads.
+private extension HTTP2StreamChannel {
+    /// Drop all pending reads.
+    private func dropPendingReads() {
+        /// To drop all the reads, as we don't need to report it, we just allocate a new buffer of 0 size.
+        self.pendingReads = CircularBuffer(initialRingCapacity: 0)
+    }
+
+    /// Deliver all pending reads to the channel.
+    private func deliverPendingReads() {
+        assert(self.isActive)
+        while self.pendingReads.count > 0 {
+            self.pipeline.fireChannelRead(NIOAny(self.pendingReads.removeFirst()))
+        }
+        self.pipeline.fireChannelReadComplete()
+    }
+}
+
 // MARK:- Functions used to communicate between the `HTTP2StreamMultiplexer` and the `HTTP2StreamChannel`.
 internal extension HTTP2StreamChannel {
     /// Called when a frame is received from the network.
@@ -253,8 +311,18 @@ internal extension HTTP2StreamChannel {
     /// - parameters:
     ///     - frame: The `HTTP2Frame` received from the network.
     internal func receiveInboundFrame(_ frame: HTTP2Frame) {
-        self.pipeline.fireChannelRead(NIOAny(frame))
+        guard self.state != .closed else {
+            // Do nothing
+            return
+        }
+
+        self.pendingReads.append(frame)
+        if self.isActive {
+            // TODO(cory): Replace this when we add support for read().
+            self.deliverPendingReads()
+        }
     }
+
 
     /// Called when a frame is sent to the network.
     ///

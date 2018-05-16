@@ -26,6 +26,8 @@ private extension ChannelPipeline {
     }
 }
 
+private struct MyError: Error { }
+
 
 /// A handler that asserts the frames received match the expected set.
 final class FrameExpecter: ChannelInboundHandler {
@@ -78,6 +80,18 @@ final class FrameWriteRecorder: ChannelOutboundHandler {
         self.flushedWrites.append(contentsOf: self.unflushedWrites)
         self.unflushedWrites = []
         ctx.flush()
+    }
+}
+
+
+/// A handler that keeps track of all reads made on a channel.
+final class InboundFrameRecorder: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame
+
+    var receivedFrames: [HTTP2Frame] = []
+
+    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        self.receivedFrames.append(self.unwrapInboundIn(data))
     }
 }
 
@@ -431,6 +445,118 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
         XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testFramesAreNotDeliveredUntilStreamIsSetUp() throws {
+        let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+        let setupCompletePromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channelPromise.succeed(result: channel)
+            return channel.pipeline.add(handler: InboundFrameRecorder()).then {
+                setupCompletePromise.futureResult
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's send a headers frame to open the stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // The channel should now be available, but no frames should have been received on either the parent or child channel.
+        let childChannel = try channelPromise.futureResult.wait()
+        let frameRecorder = try childChannel.pipeline.context(handlerType: InboundFrameRecorder.self).wait().handler as! InboundFrameRecorder
+        self.channel.assertNoFramesReceived()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // Send a few data frames for this stream, which should also not go through.
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+        for _ in 0..<5 {
+            XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        }
+        self.channel.assertNoFramesReceived()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // Use a PING frame to check that the channel is still functioning.
+        let ping = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5)))
+        XCTAssertNoThrow(try self.channel.writeInbound(ping))
+        try self.channel.assertReceivedFrame().assertPingFrameMatches(this: ping)
+        self.channel.assertNoFramesReceived()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // Ok, complete the setup promise. This should trigger all the frames to be delivered.
+        setupCompletePromise.succeed(result: ())
+        self.channel.assertNoFramesReceived()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 6)
+        frameRecorder.receivedFrames[0].assertHeadersFrameMatches(this: frame)
+        for idx in 1...5 {
+            frameRecorder.receivedFrames[idx].assertDataFrameMatches(this: dataFrame)
+        }
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testFramesAreNotDeliveredIfSetUpFails() throws {
+        let writeRecorder = FrameWriteRecorder()
+        let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+        let setupCompletePromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channelPromise.succeed(result: channel)
+            return channel.pipeline.add(handler: InboundFrameRecorder()).then {
+                setupCompletePromise.futureResult
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's send a headers frame to open the stream, along with some DATA frames.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+        for _ in 0..<5 {
+            XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        }
+
+        // The channel should now be available, but no frames should have been received on either the parent or child channel.
+        let childChannel = try channelPromise.futureResult.wait()
+        let frameRecorder = try childChannel.pipeline.context(handlerType: InboundFrameRecorder.self).wait().handler as! InboundFrameRecorder
+        self.channel.assertNoFramesReceived()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // Ok, fail the setup promise. This should deliver a RST_STREAM frame, but not yet close the channel.
+        // The channel should, however, be inactive.
+        var channelClosed = false
+        childChannel.closeFuture.whenComplete { channelClosed = true }
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 0)
+        XCTAssertFalse(channelClosed)
+
+        setupCompletePromise.fail(error: MyError())
+        self.channel.assertNoFramesReceived()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+        XCTAssertFalse(childChannel.isActive)
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertRstStreamFrame(streamID: streamID.networkStreamID!, errorCode: .cancel)
+
+        // Even delivering a new DATA frame should do nothing.
+        XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // Now sending the stream closed event should complete the closure. All frames should be dropped. No new writes.
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+        XCTAssertFalse(childChannel.isActive)
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        XCTAssertTrue(channelClosed)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
