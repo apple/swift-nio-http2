@@ -1213,7 +1213,7 @@ class SimpleClientServerTests: XCTestCase {
         let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
 
-        try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+        try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel)
 
         // Add handler to record stream closed event.
         let handler = ClosedEventVsFrameOrderingHandler(targetStreamID: clientStreamID)

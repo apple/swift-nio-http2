@@ -129,39 +129,6 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
-    func testChannelsCloseAfterResetStreamEventFirstThenFrame() throws {
-        var closeError: Error? = nil
-
-        // First, set up the frames we want to send/receive.
-        let streamID = HTTP2StreamID(knownID: Int32(1))
-        var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
-        let rstStreamFrame = HTTP2Frame(streamID: streamID, payload: .rstStream(.cancel))
-
-        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
-            XCTAssertNil(closeError)
-            channel.closeFuture.whenFailure { closeError = $0 }
-            return channel.pipeline.add(handler: FrameExpecter(expectedFrames: [frame, rstStreamFrame]))
-        }
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
-
-        // Let's open the stream up.
-        XCTAssertNoThrow(try self.channel.writeInbound(frame))
-        XCTAssertNil(closeError)
-
-        // Now we send the user event.
-        let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
-        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
-
-        // Now we can send a RST_STREAM frame.
-        XCTAssertNoThrow(try self.channel.writeInbound(rstStreamFrame))
-
-        // At this stage the stream should be closed with the appropriate error code.
-        XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
-                       NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
-        XCTAssertNoThrow(try self.channel.finish())
-    }
-
     func testChannelsCloseAfterResetStreamFrameFirstThenEvent() throws {
         var closeError: Error? = nil
 
@@ -192,40 +159,6 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // At this stage the stream should be closed with the appropriate error code.
         XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
                        NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
-        XCTAssertNoThrow(try self.channel.finish())
-    }
-
-    func testChannelsCloseAfterGoawayEventFirstThenFrame() throws {
-        var closeError: Error? = nil
-
-        // First, set up the frames we want to send/receive.
-        let streamID = HTTP2StreamID(knownID: Int32(1))
-        var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
-        let goAwayFrame = HTTP2Frame(streamID: streamID, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
-
-        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
-            XCTAssertNil(closeError)
-            channel.closeFuture.whenFailure { closeError = $0 }
-            // The channel won't see the goaway frame.
-            return channel.pipeline.add(handler: FrameExpecter(expectedFrames: [frame]))
-        }
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
-
-        // Let's open the stream up.
-        XCTAssertNoThrow(try self.channel.writeInbound(frame))
-        XCTAssertNil(closeError)
-
-        // Now we send the user event.
-        let userEvent = StreamClosedEvent(streamID: streamID, reason: .refusedStream)
-        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
-
-        // Now we can send a GOAWAY frame. This will close the stream.
-        XCTAssertNoThrow(try self.channel.writeInbound(goAwayFrame))
-
-        // At this stage the stream should be closed with the appropriate manufactured error code.
-        XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
-                       NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .refusedStream))
         XCTAssertNoThrow(try self.channel.finish())
     }
 
