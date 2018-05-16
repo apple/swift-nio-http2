@@ -182,6 +182,12 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     /// channel up.
     private var pendingReads: CircularBuffer<HTTP2Frame> = CircularBuffer(initialRingCapacity: 8)
 
+    /// A buffer of pending outbound writes to deliver to the parent channel.
+    ///
+    /// To correctly respect flushes, we deliberately withold frames from the parent channel until this
+    /// stream is flushed, at which time we deliver them all. This buffer holds the pending ones.
+    private var pendingWrites: MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)> = MarkedCircularBuffer(initialRingCapacity: 8)
+
     public func register0(promise: EventLoopPromise<Void>?) {
         fatalError("not implemented \(#function)")
     }
@@ -195,11 +201,21 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     public func write0(_ data: NIOAny, promise: EventLoopPromise<Void>?) {
+        guard self.state != .closed else {
+            promise?.fail(error: ChannelError.ioOnClosedChannel)
+            return
+        }
+
         let frame = self.unwrapData(data, as: HTTP2Frame.self)
-        self.receiveOutboundFrame(frame, promise: promise)
+        self.pendingWrites.append((frame, promise))
     }
 
     public func flush0() {
+        guard self.state != .closed else {
+            return
+        }
+        self.pendingWrites.mark()
+        self.deliverPendingWrites()
         self.parent?.flush()
     }
 
@@ -262,6 +278,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
         self.state.completeClosing()
         self.dropPendingReads()
+        self.failPendingWrites(error: ChannelError.eof)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
             promise.succeed(result: ())
@@ -276,6 +293,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
         self.state.completeClosing()
         self.dropPendingReads()
+        self.failPendingWrites(error: error)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
             promise.fail(error: error)
@@ -286,7 +304,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 }
 
-// MARK:- Functions used to manage pending reads.
+// MARK:- Functions used to manage pending reads and writes.
 private extension HTTP2StreamChannel {
     /// Drop all pending reads.
     private func dropPendingReads() {
@@ -301,6 +319,22 @@ private extension HTTP2StreamChannel {
             self.pipeline.fireChannelRead(NIOAny(self.pendingReads.removeFirst()))
         }
         self.pipeline.fireChannelReadComplete()
+    }
+
+    /// Delivers all pending flushed writes to the parent channel.
+    private func deliverPendingWrites() {
+        while self.pendingWrites.hasMark() {
+            let write = self.pendingWrites.removeFirst()
+            self.receiveOutboundFrame(write.0, promise: write.1)
+        }
+    }
+
+    /// Fails all pending writes with the given error.
+    private func failPendingWrites(error: Error) {
+        assert(self.state == .closed)
+        while self.pendingWrites.count > 0 {
+            self.pendingWrites.removeFirst().1?.fail(error: error)
+        }
     }
 }
 

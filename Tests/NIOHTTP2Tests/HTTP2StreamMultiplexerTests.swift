@@ -560,4 +560,136 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    func testFlushingOneChannelDoesntFlushThemAll() throws {
+        let writeTracker = FrameWriteRecorder()
+        var channels: [Channel] = []
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channels.append(channel)
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeTracker).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open two streams.
+        let firstStreamID = HTTP2StreamID(knownID: 1)
+        let secondStreamID = HTTP2StreamID(knownID: 3)
+        for streamID in [firstStreamID, secondStreamID] {
+            var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+            frame.endStream = true
+            XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        }
+        XCTAssertEqual(channels.count, 2)
+
+        // We will now write a headers frame to each channel. Neither frame should be written to the connection. To verify this
+        // we will flush the parent channel.
+        for (idx, streamID) in [firstStreamID, secondStreamID].enumerated() {
+            let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+            channels[idx].write(frame, promise: nil)
+        }
+        self.channel.flush()
+        XCTAssertEqual(writeTracker.flushedWrites.count, 0)
+
+        // Now we're going to flush only the first child channel. This should cause one flushed write.
+        channels[0].flush()
+        XCTAssertEqual(writeTracker.flushedWrites.count, 1)
+
+        // Now the other.
+        channels[1].flush()
+        XCTAssertEqual(writeTracker.flushedWrites.count, 2)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testUnflushedWritesFailOnClose() throws {
+        var childChannel: Channel? = nil
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            childChannel = channel
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        frame.endStream = true
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        XCTAssertNotNil(channel)
+
+        // We will now write a headers frame to the channel, but don't flush it.
+        var writeError: Error? = nil
+        let responseFrame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        childChannel!.write(responseFrame).whenFailure {
+            writeError = $0
+        }
+        XCTAssertNil(writeError)
+
+        // Now we're going to deliver a normal close to the stream.
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: nil)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        XCTAssertEqual(writeError as? ChannelError, ChannelError.eof)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testUnflushedWritesFailOnError() throws {
+        var childChannel: Channel? = nil
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            childChannel = channel
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        frame.endStream = true
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        XCTAssertNotNil(channel)
+
+        // We will now write a headers frame to the channel, but don't flush it.
+        var writeError: Error? = nil
+        let responseFrame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        childChannel!.write(responseFrame).whenFailure {
+            writeError = $0
+        }
+        XCTAssertNil(writeError)
+
+        // Now we're going to deliver a normal close to the stream.
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        XCTAssertEqual(writeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testWritesFailOnClosedStreamChannels() throws {
+        var childChannel: Channel? = nil
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            childChannel = channel
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        frame.endStream = true
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        XCTAssertNotNil(channel)
+
+        // Now let's close it.
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: nil)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+
+        // We will now write a headers frame to the channel. This should fail immediately.
+        var writeError: Error? = nil
+        let responseFrame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        childChannel!.write(responseFrame).whenFailure {
+            writeError = $0
+        }
+        XCTAssertEqual(writeError as? ChannelError, ChannelError.ioOnClosedChannel)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }
