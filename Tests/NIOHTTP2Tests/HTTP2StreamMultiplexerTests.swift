@@ -109,6 +109,23 @@ final class ReadCounter: ChannelOutboundHandler {
 }
 
 
+/// A channel handler that succeeds a promise when removed from
+/// a pipeline.
+final class HandlerRemovedHandler: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame
+
+    let removedPromise: EventLoopPromise<Void>
+
+    init(removedPromise: EventLoopPromise<Void>) {
+        self.removedPromise = removedPromise
+    }
+
+    func handlerRemoved(ctx: ChannelHandlerContext) {
+        self.removedPromise.succeed(result: ())
+    }
+}
+
+
 final class HTTP2StreamMultiplexerTests: XCTestCase {
     var channel: EmbeddedChannel!
 
@@ -172,6 +189,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             let event = StreamClosedEvent(streamID: streamID, reason: nil)
             self.channel.pipeline.fireUserInboundEventTriggered(event)
         }
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
         // At this stage all the promises should be completed.
         XCTAssertEqual(completedChannelCount, 50)
@@ -204,6 +222,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Now we send the user event.
         let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
         // At this stage the stream should be closed with the appropriate error code.
         XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
@@ -238,6 +257,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Now we send the user event.
         let userEvent = StreamClosedEvent(streamID: streamID, reason: .refusedStream)
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
         // At this stage the stream should be closed with the appropriate manufactured error code.
         XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
@@ -273,6 +293,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
         let userEvent = StreamClosedEvent(streamID: streamID, reason: nil)
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
         // Ok, now we can send a DATA frame for the now-closed stream.
         var buffer = self.channel.allocator.buffer(capacity: 12)
@@ -569,6 +590,9 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
         XCTAssertFalse(childChannel.isActive)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        XCTAssertFalse(channelClosed)
+
+        (childChannel.eventLoop as! EmbeddedEventLoop).run()
         XCTAssertTrue(channelClosed)
 
         XCTAssertNoThrow(try self.channel.finish())
@@ -908,6 +932,68 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
         XCTAssertEqual(frameRecorder.receivedFrames.count, 3)
         XCTAssertEqual(readCounter.readCount, 2)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testHandlersAreRemovedOnClosure() throws {
+        var handlerRemoved = false
+        let handlerRemovedPromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        handlerRemovedPromise.futureResult.whenComplete { handlerRemoved = true }
+
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            return channel.pipeline.add(handler: HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        frame.endStream = true
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // No handlerRemoved so far.
+        XCTAssertFalse(handlerRemoved)
+
+        // Now we send the channel a clean exit.
+        let event = StreamClosedEvent(streamID: streamID, reason: nil)
+        self.channel.pipeline.fireUserInboundEventTriggered(event)
+        XCTAssertFalse(handlerRemoved)
+
+        // The handlers will only be removed after we spin the loop.
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertTrue(handlerRemoved)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testHandlersAreRemovedOnClosureWithError() throws {
+        var handlerRemoved = false
+        let handlerRemovedPromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        handlerRemovedPromise.futureResult.whenComplete { handlerRemoved = true }
+
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            return channel.pipeline.add(handler: HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        frame.endStream = true
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // No handlerRemoved so far.
+        XCTAssertFalse(handlerRemoved)
+
+        // Now we send the channel a clean exit.
+        let event = StreamClosedEvent(streamID: streamID, reason: .cancel)
+        self.channel.pipeline.fireUserInboundEventTriggered(event)
+        XCTAssertFalse(handlerRemoved)
+
+        // The handlers will only be removed after we spin the loop.
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertTrue(handlerRemoved)
 
         XCTAssertNoThrow(try self.channel.finish())
     }

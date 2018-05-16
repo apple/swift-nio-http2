@@ -48,6 +48,8 @@ extension HTTP2StreamMultiplexerTests {
                 ("testReadIsPerChannel", testReadIsPerChannel),
                 ("testReadWillCauseAutomaticFrameDelivery", testReadWillCauseAutomaticFrameDelivery),
                 ("testReadWithNoPendingDataCausesReadOnParentChannel", testReadWithNoPendingDataCausesReadOnParentChannel),
+                ("testHandlersAreRemovedOnClosure", testHandlersAreRemovedOnClosure),
+                ("testHandlersAreRemovedOnClosureWithError", testHandlersAreRemovedOnClosureWithError),
            ]
    }
 }
