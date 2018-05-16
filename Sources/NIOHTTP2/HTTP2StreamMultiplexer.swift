@@ -35,7 +35,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         let frame = self.unwrapInboundIn(data)
         let streamID = frame.streamID
 
-        guard streamID.networkStreamID != 0 else {
+        guard streamID != .rootStream else {
             // For stream 0 we forward all frames on to the main channel.
             ctx.fireChannelRead(data)
             return
@@ -43,19 +43,22 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
         if let channel = streams[streamID] {
             channel.receiveInboundFrame(frame)
-        } else {
-            guard case .headers = frame.payload else {
-                // This should probably produce a runtime error.
-                fatalError("unknown stream \(frame.streamID) with \(frame.payload)")
-            }
-
-            let channel =  HTTP2StreamChannel(allocator: ctx.channel.allocator,
-                                              parent: ctx.channel,
-                                              streamID: streamID,
-                                              initializer: self.streamStateInitializer)
+        } else if case .headers = frame.payload {
+            let channel = HTTP2StreamChannel(allocator: ctx.channel.allocator,
+                                             parent: ctx.channel,
+                                             streamID: streamID,
+                                             initializer: self.streamStateInitializer)
 
             self.streams[streamID] = channel
+            channel.closeFuture.whenComplete {
+                self.childChannelClosed(streamID: streamID)
+            }
             channel.receiveInboundFrame(frame)
+        } else {
+            // This frame is for a stream we know nothing about. We can't do much about it, so we
+            // are going to fire an error and drop the frame.
+            let error = NIOHTTP2Errors.NoSuchStream(streamID: streamID)
+            ctx.fireErrorCaught(error)
         }
     }
 
@@ -74,6 +77,10 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         }
 
         channel.receiveStreamClosed(evt.reason)
+    }
+
+    private func childChannelClosed(streamID: HTTP2StreamID) {
+        self.streams.removeValue(forKey: streamID)
     }
 
     public init(streamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {

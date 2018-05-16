@@ -195,4 +195,49 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
                        NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .refusedStream))
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    func testFramesForUnknownStreamsAreReported() throws {
+        self.channel.pipeline.addNoOpMultiplexer()
+
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        let streamID = HTTP2StreamID(knownID: 5)
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+
+        do {
+            try self.channel.writeInbound(dataFrame)
+            XCTFail("Did not throw")
+        } catch let error as NIOHTTP2Errors.NoSuchStream {
+            XCTAssertEqual(error.streamID, streamID)
+        }
+        self.channel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testFramesForClosedStreamsAreReported() throws {
+        self.channel.pipeline.addNoOpMultiplexer()
+
+        // We need to open the stream, then close it. A headers frame will open it, and then the closed event will close it.
+        let streamID = HTTP2StreamID(knownID: 5)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        let userEvent = StreamClosedEvent(streamID: streamID, reason: nil)
+        self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
+
+        // Ok, now we can send a DATA frame for the now-closed stream.
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+
+        do {
+            try self.channel.writeInbound(dataFrame)
+            XCTFail("Did not throw")
+        } catch let error as NIOHTTP2Errors.NoSuchStream {
+            XCTAssertEqual(error.streamID, streamID)
+        }
+        self.channel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }
