@@ -23,7 +23,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "1.5.0"),
-        .package(url: "git@github.com:apple/swift-nio-nghttp2-support.git", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-nio-nghttp2-support.git", from: "1.0.0"),
     ],
     targets: [
         .target(name: "CNIONghttp2"),
