@@ -96,6 +96,19 @@ final class InboundFrameRecorder: ChannelInboundHandler {
 }
 
 
+/// A handler that tracks the number of times read() was called on the channel.
+final class ReadCounter: ChannelOutboundHandler {
+    typealias OutboundIn = Any
+    typealias OutboundOut = Any
+
+    var readCount = 0
+
+    func read(ctx: ChannelHandlerContext) {
+        readCount += 1
+    }
+}
+
+
 final class HTTP2StreamMultiplexerTests: XCTestCase {
     var channel: EmbeddedChannel!
 
@@ -689,6 +702,212 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             writeError = $0
         }
         XCTAssertEqual(writeError as? ChannelError, ChannelError.ioOnClosedChannel)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testReadPullsInAllFrames() throws {
+        var childChannel: Channel? = nil
+        let frameRecorder = InboundFrameRecorder()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) -> EventLoopFuture<Void> in
+            childChannel = channel
+
+            // We're going to disable autoRead on this channel.
+            return channel.getOption(option: ChannelOptions.autoRead).map {
+                XCTAssertTrue($0)
+            }.then {
+                channel.setOption(option: ChannelOptions.autoRead, value: false)
+            }.then {
+                channel.getOption(option: ChannelOptions.autoRead)
+            }.map {
+                XCTAssertFalse($0)
+            }.then {
+                channel.pipeline.add(handler: frameRecorder)
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        XCTAssertNotNil(channel)
+
+        // Now we're going to deliver 5 data frames for this stream.
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        for _ in 0..<5 {
+            let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+            XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        }
+
+        // These frames should not have been delivered.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // We'll call read() on the child channel.
+        childChannel!.read()
+
+        // All frames should now have been delivered.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 6)
+        frameRecorder.receivedFrames[0].assertFrameMatches(this: frame)
+        for idx in 1...5 {
+            frameRecorder.receivedFrames[idx].assertDataFrame(endStream: false, streamID: 1, payload: buffer)
+        }
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testReadIsPerChannel() throws {
+        let firstStreamID = HTTP2StreamID(knownID: 1)
+        let secondStreamID = HTTP2StreamID(knownID: 3)
+        var frameRecorders: [HTTP2StreamID: InboundFrameRecorder] = [:]
+
+        let multiplexer = HTTP2StreamMultiplexer { (channel, streamID) -> EventLoopFuture<Void> in
+            let recorder = InboundFrameRecorder()
+            frameRecorders[streamID] = recorder
+
+            // Disable autoRead on the first channel.
+            return channel.setOption(option: ChannelOptions.autoRead, value: streamID != firstStreamID).then {
+                return channel.pipeline.add(handler: recorder)
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open two streams.
+        for streamID in [firstStreamID, secondStreamID] {
+            let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+            XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        }
+        XCTAssertEqual(frameRecorders.count, 2)
+
+        // Stream 1 should not have received a frame, stream 3 should.
+        XCTAssertEqual(frameRecorders[firstStreamID]!.receivedFrames.count, 0)
+        XCTAssertEqual(frameRecorders[secondStreamID]!.receivedFrames.count, 1)
+
+        // Deliver a DATA frame to each stream, which should also have gone into stream 3 but not stream 1.
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        for streamID in [firstStreamID, secondStreamID] {
+            let frame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+            XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        }
+
+        // Stream 1 should not have received a frame, stream 3 should.
+        XCTAssertEqual(frameRecorders[firstStreamID]!.receivedFrames.count, 0)
+        XCTAssertEqual(frameRecorders[secondStreamID]!.receivedFrames.count, 2)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testReadWillCauseAutomaticFrameDelivery() throws {
+        var childChannel: Channel? = nil
+        let frameRecorder = InboundFrameRecorder()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) -> EventLoopFuture<Void> in
+            childChannel = channel
+
+            // We're going to disable autoRead on this channel.
+            return channel.setOption(option: ChannelOptions.autoRead, value: false).then {
+                channel.pipeline.add(handler: frameRecorder)
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        XCTAssertNotNil(channel)
+
+        // This stream should have seen no frames.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // Call read, the header frame will come through.
+        childChannel!.read()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 1)
+
+        // Call read again, nothing happens.
+        childChannel!.read()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 1)
+
+        // Now deliver a data frame.
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+        XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+
+        // This frame should have been immediately delivered.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 2)
+
+        // Delivering another data frame does nothing.
+        XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 2)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testReadWithNoPendingDataCausesReadOnParentChannel() throws {
+        var childChannel: Channel? = nil
+        let readCounter = ReadCounter()
+        let frameRecorder = InboundFrameRecorder()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) -> EventLoopFuture<Void> in
+            childChannel = channel
+
+            // We're going to disable autoRead on this channel.
+            return channel.setOption(option: ChannelOptions.autoRead, value: false).then {
+                channel.pipeline.add(handler: frameRecorder)
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: readCounter).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        // Let's open a stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        XCTAssertNotNil(channel)
+
+        // This stream should have seen no frames.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+
+        // There should be no calls to read.
+        XCTAssertEqual(readCounter.readCount, 0)
+
+        // Call read, the header frame will come through. No calls to read on the parent stream.
+        childChannel!.read()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 1)
+        XCTAssertEqual(readCounter.readCount, 0)
+
+        // Call read again, read is called on the parent stream. No frames delivered.
+        childChannel!.read()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 1)
+        XCTAssertEqual(readCounter.readCount, 1)
+
+        // Now deliver a data frame.
+        var buffer = self.channel.allocator.buffer(capacity: 12)
+        buffer.write(staticString: "Hello, world!")
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(buffer)))
+        XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+
+        // This frame should have been immediately delivered. No extra call to read.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 2)
+        XCTAssertEqual(readCounter.readCount, 1)
+
+        // Another call to read issues a read to the parent stream.
+        childChannel!.read()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 2)
+        XCTAssertEqual(readCounter.readCount, 2)
+
+        // Another call to read, this time does not issue a read to the parent stream.
+        childChannel!.read()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 2)
+        XCTAssertEqual(readCounter.readCount, 2)
+
+        // Delivering two more frames does not cause another call to read, and only one frame
+        // is delivered.
+        XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 3)
+        XCTAssertEqual(readCounter.readCount, 2)
 
         XCTAssertNoThrow(try self.channel.finish())
     }

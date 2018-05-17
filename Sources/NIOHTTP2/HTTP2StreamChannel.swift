@@ -88,13 +88,27 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // FIXME: that's just wrong
         self.isWritable = true
         self.state = .idle
+
+        // To begin with we initialize autoRead to false, but we are going to fetch it from our parent before we
+        // go much further.
+        self.autoRead = false
+
         self._pipeline = ChannelPipeline(channel: self)
 
-        let initializingFuture: EventLoopFuture<Void> = initializer?(self, self.streamID) ?? self.eventLoop.newSucceededFuture(result: ())
-        initializingFuture.map {
+        // Now we need to configure this channel. This involves doing four things:
+        // 1. Setting our autoRead state from the parent
+        // 2. Calling the initializer, if provided.
+        // 3. Activating when complete.
+        // 4. Catching errors if they occur.
+        parent.getOption(option: ChannelOptions.autoRead).then { autoRead -> EventLoopFuture<Void> in
+            self.autoRead = autoRead
+            return initializer?(self, self.streamID) ?? self.eventLoop.newSucceededFuture(result: ())
+        }.map {
             self.state.activate()
             self.pipeline.fireChannelActive()
-            self.deliverPendingReads()
+            if self.autoRead {
+                self.read0()
+            }
         }.whenFailure { (_: Error) in
             self.closedWhileOpen()
         }
@@ -128,8 +142,16 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         fatalError()
     }
 
-    func setOption<T>(option: T, value: T.OptionType) -> EventLoopFuture<Void> where T : ChannelOption {
-        fatalError()
+    func setOption<T>(option: T, value: T.OptionType) -> EventLoopFuture<Void> where T: ChannelOption {
+        if eventLoop.inEventLoop {
+            do {
+                return eventLoop.newSucceededFuture(result: try setOption0(option: option, value: value))
+            } catch {
+                return eventLoop.newFailedFuture(error: error)
+            }
+        } else {
+            return eventLoop.submit { try self.setOption0(option: option, value: value) }
+        }
     }
 
     public func getOption<T>(option: T) -> EventLoopFuture<T.OptionType> where T: ChannelOption {
@@ -144,14 +166,27 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    func getOption0<T: ChannelOption>(option: T) throws -> T.OptionType {
+    private func setOption0<T>(option: T, value: T.OptionType) throws where T: ChannelOption {
+        assert(eventLoop.inEventLoop)
+
+        switch option {
+        case _ as AutoReadOption:
+            self.autoRead = value as! Bool
+        default:
+            fatalError("setting option \(option) on HTTP2StreamChannel not supported")
+        }
+    }
+
+    private func getOption0<T>(option: T) throws -> T.OptionType where T: ChannelOption {
         assert(eventLoop.inEventLoop)
 
         switch option {
         case _ as StreamIDOption:
             return self.streamID as! T.OptionType
+        case _ as AutoReadOption:
+            return self.autoRead as! T.OptionType
         default:
-            fatalError("option \(option) not supported")
+            fatalError("option \(option) not supported on HTTP2StreamChannel")
         }
     }
 
@@ -181,6 +216,14 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     /// with flow control. For now, though, all this does is hold frames until we have set the
     /// channel up.
     private var pendingReads: CircularBuffer<HTTP2Frame> = CircularBuffer(initialRingCapacity: 8)
+
+    /// Whether `autoRead` is enabled. By default, all `HTTP2StreamChannel` objects inherit their `autoRead`
+    /// state from their parent.
+    private var autoRead: Bool
+
+    /// Whether a call to `read` has happened without any frames available to read (that is, whether newly
+    /// received frames should be immediately delivered to the pipeline).
+    private var unsatisfiedRead: Bool = false
 
     /// A buffer of pending outbound writes to deliver to the parent channel.
     ///
@@ -220,7 +263,20 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     public func read0() {
-        fatalError("not implemented \(#function)")
+        if self.unsatisfiedRead {
+            // We already have an unsatisfied read, let's do nothing.
+            return
+        }
+
+        // At this stage, we have an unsatisfied read. If there is no pending data to read,
+        // we're going to call read() on the parent channel. Otherwise, we're going to
+        // succeed the read out of our pending data.
+        self.unsatisfiedRead = true
+        if self.pendingReads.count > 0 {
+            self.tryToRead()
+        } else {
+            self.parent?.read()
+        }
     }
 
     public func close0(error: Error, mode: CloseMode, promise: EventLoopPromise<Void>?) {
@@ -302,6 +358,31 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.pipeline.fireChannelInactive()
         self.closePromise.fail(error: error)
     }
+
+    private func tryToRead() {
+        // If there's no read to satisfy, no worries about it.
+        guard self.unsatisfiedRead else {
+            return
+        }
+
+        assert(self.pendingReads.count > 0, "tryToRead called without reads!")
+
+        // If we're not active, we will hold on to these reads.
+        guard self.isActive else {
+            return
+        }
+
+        // Ok, we're satisfying a read here.
+        self.unsatisfiedRead = false
+        self.deliverPendingReads()
+
+        // If auto-read is turned on, recurse into read0.
+        // This cannot recurse indefinitely unless frames are being delivered
+        // by the read stacks, which is generally fairly unlikely to continue unbounded.
+        if self.autoRead {
+            self.read0()
+        }
+    }
 }
 
 // MARK:- Functions used to manage pending reads and writes.
@@ -351,10 +432,7 @@ internal extension HTTP2StreamChannel {
         }
 
         self.pendingReads.append(frame)
-        if self.isActive {
-            // TODO(cory): Replace this when we add support for read().
-            self.deliverPendingReads()
-        }
+        self.tryToRead()
     }
 
 
