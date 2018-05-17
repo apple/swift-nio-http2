@@ -11,9 +11,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-///
-/// LinuxMain.swift
-///
+//
+// LinuxMain.swift
+//
 import XCTest
 
 ///
@@ -27,5 +27,8 @@ import XCTest
 
    XCTMain([
          testCase(BasicTests.allTests),
+         testCase(HTTP2StreamMultiplexerTests.allTests),
+         testCase(ReentrancyTests.allTests),
+         testCase(SimpleClientServerTests.allTests),
     ])
 #endif
