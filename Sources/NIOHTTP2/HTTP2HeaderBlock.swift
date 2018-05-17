@@ -105,10 +105,16 @@ internal extension HTTPRequestHead {
         let version = HTTPVersion(major: 2, minor: 0)
         let uri = headers.popPseudoHeader(name: ":path")!
 
-        // TODO(cory): Right now we're just stripping these two, but they should probably be translated
-        // into something else, authority in particular.
+        // TODO(cory): Right now we're just stripping authority, but it should probably
+        // be used.
         headers.remove(name: ":scheme")
-        headers.remove(name: ":authority")
+
+        // This block works only if the HTTP/2 implementation rejects requests with
+        // mismatched :authority and host headers.
+        let authority = headers.popPseudoHeader(name: ":authority")!
+        if !headers.contains(name: "host") {
+            headers.add(name: "host", value: authority)
+        }
 
         self.init(version: version, method: method, uri: uri)
         self.headers = headers

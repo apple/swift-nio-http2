@@ -83,7 +83,7 @@ let bootstrap = ServerBootstrap(group: group)
     .childChannelInitializer { channel in
         return channel.pipeline.add(handler: HTTP2Parser(mode: .server)).then {
             let multiplexer = HTTP2StreamMultiplexer { (channel, streamID) -> EventLoopFuture<Void> in
-                return channel.pipeline.add(handler: HTTP2ToHTTP1Codec(streamID: streamID)).then { () -> EventLoopFuture<Void> in
+                return channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).then { () -> EventLoopFuture<Void> in
                     channel.pipeline.add(handler: HTTP1TestServer())
                 }
             }

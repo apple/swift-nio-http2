@@ -51,7 +51,7 @@ struct HTTP2HeadersStateMachine {
     /// The mode of this connection: client or server.
     private let mode: HTTP2Parser.ParserMode
 
-    fileprivate init(mode: HTTP2Parser.ParserMode) {
+    init(mode: HTTP2Parser.ParserMode) {
         self.mode = mode
     }
 
