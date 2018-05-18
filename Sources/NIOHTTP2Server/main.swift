@@ -12,6 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+// This example server currently does not know how to negotiate HTTP/2. That will come in a future enhancement. For now, you can
+// hit it with curl like so: curl --http2-prior-knowledge http://localhost:8888/
+
+
 import NIO
 import NIOHTTP1
 import NIOHTTP2
@@ -21,10 +25,14 @@ final class HTTP1TestServer: ChannelInboundHandler {
     public typealias OutboundOut = HTTPServerResponsePart
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        guard case .end = self.unwrapInboundIn(data) else {
+            return
+        }
+
         ctx.channel.getOption(option: HTTP2StreamChannelOptions.streamID).then { (streamID) -> EventLoopFuture<Void> in
             var headers = HTTPHeaders()
             headers.add(name: "content-length", value: "5")
-            headers.add(name: "x-stream-id", value: String(streamID))
+            headers.add(name: "x-stream-id", value: String(streamID.networkStreamID!))
             ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
 
             var buffer = ctx.channel.allocator.buffer(capacity: 12)

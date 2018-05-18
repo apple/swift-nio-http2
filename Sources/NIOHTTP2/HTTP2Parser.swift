@@ -162,7 +162,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
         self.initialSettings = initialSettings
     }
 
-    public func handlerAdded(ctx: ChannelHandlerContext) {
+    public func channelActive(ctx: ChannelHandlerContext) {
         self.session = NGHTTP2Session(mode: self.mode,
                                       allocator: ctx.channel.allocator,
                                       maxCachedStreamIDs: 1024,  // TODO(cory): Make configurable
@@ -171,6 +171,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
                                       userEventFunction: { ctx.fireUserInboundEventTriggered($0) })
 
         self.flushPreamble(ctx: ctx)
+        ctx.fireChannelActive()
     }
 
     public func handlerRemoved(ctx: ChannelHandlerContext) {
@@ -191,6 +192,7 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     public func channelInactive(ctx: ChannelHandlerContext) {
         self.reentrancyManager.eofType = .channelInactive
         self.reentrancyManager.process(ctx: ctx, self.process)
+        ctx.fireChannelInactive()
     }
 
     public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {

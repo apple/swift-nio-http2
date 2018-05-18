@@ -23,7 +23,7 @@ import CNIONghttp2
 /// is immutable.
 public enum StreamIDOption: ChannelOption {
     public typealias AssociatedValueType = Void
-    public typealias OptionType = Int
+    public typealias OptionType = HTTP2StreamID
 
     case const(Void)
 }
