@@ -340,7 +340,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             promise.succeed(result: ())
         }
         self.pipeline.fireChannelInactive()
-        self.closePromise.succeed(result: ())
+
+        self.eventLoop.execute {
+            self.removeHandlers(channel: self)
+            self.closePromise.succeed(result: ())
+        }
     }
 
     fileprivate func errorEncountered(error: Error) {
@@ -356,7 +360,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
         self.pipeline.fireErrorCaught(error)
         self.pipeline.fireChannelInactive()
-        self.closePromise.fail(error: error)
+
+        self.eventLoop.execute {
+            self.removeHandlers(channel: self)
+            self.closePromise.fail(error: error)
+        }
     }
 
     private func tryToRead() {
