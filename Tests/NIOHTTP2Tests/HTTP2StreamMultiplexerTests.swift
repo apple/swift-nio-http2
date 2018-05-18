@@ -997,4 +997,119 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    func testCreatingOutboundChannel() throws {
+        let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        var createdChannelCount = 0
+        var configuredChannelCount = 0
+        let multiplexer = HTTP2StreamMultiplexer { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.newFailedFuture(error: MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+
+        for _ in 0..<3 {
+            let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+            multiplexer.createStreamChannel(promise: channelPromise) { (channel, streamID) in
+                createdChannelCount += 1
+                return configurePromise.futureResult
+            }
+            channelPromise.futureResult.whenSuccess { _ in
+                configuredChannelCount += 1
+            }
+        }
+
+        XCTAssertEqual(createdChannelCount, 0)
+        XCTAssertEqual(configuredChannelCount, 0)
+
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertEqual(createdChannelCount, 3)
+        XCTAssertEqual(configuredChannelCount, 0)
+
+        configurePromise.succeed(result: ())
+        XCTAssertEqual(createdChannelCount, 3)
+        XCTAssertEqual(configuredChannelCount, 3)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testWritesOnCreatedChannelAreDelayed() throws {
+        let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        let writeRecorder = FrameWriteRecorder()
+        var childChannel: Channel? = nil
+        var childStreamID: HTTP2StreamID? = nil
+
+        let multiplexer = HTTP2StreamMultiplexer { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.newFailedFuture(error: MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+        multiplexer.createStreamChannel(promise: nil) { (channel, streamID) in
+            childChannel = channel
+            childStreamID = streamID
+            return configurePromise.futureResult
+        }
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertNotNil(childChannel)
+        XCTAssertNotNil(childStreamID)
+
+        childChannel!.writeAndFlush(HTTP2Frame(streamID: childStreamID!, payload: .headers(HTTPHeaders())), promise: nil)
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 0)
+
+        configurePromise.succeed(result: ())
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testWritesAreCancelledOnFailingInitializer() throws {
+        let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        var childChannel: Channel? = nil
+        var childStreamID: HTTP2StreamID? = nil
+
+        let multiplexer = HTTP2StreamMultiplexer { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.newFailedFuture(error: MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+        multiplexer.createStreamChannel(promise: nil) { (channel, streamID) in
+            childChannel = channel
+            childStreamID = streamID
+            return configurePromise.futureResult
+        }
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+
+        var writeError: Error? = nil
+        childChannel!.writeAndFlush(HTTP2Frame(streamID: childStreamID!, payload: .headers(HTTPHeaders()))).whenFailure { writeError = $0 }
+        XCTAssertNil(writeError)
+
+        configurePromise.fail(error: MyError())
+        XCTAssertNotNil(writeError)
+        XCTAssertTrue(writeError is MyError)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testFailingInitializerDoesNotWrite() throws {
+        let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        let writeRecorder = FrameWriteRecorder()
+
+        let multiplexer = HTTP2StreamMultiplexer { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.newFailedFuture(error: MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+        multiplexer.createStreamChannel(promise: nil) { (channel, streamID) in
+            return configurePromise.futureResult
+        }
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+
+        configurePromise.fail(error: MyError())
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 0)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }

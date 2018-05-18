@@ -50,6 +50,10 @@ extension HTTP2StreamMultiplexerTests {
                 ("testReadWithNoPendingDataCausesReadOnParentChannel", testReadWithNoPendingDataCausesReadOnParentChannel),
                 ("testHandlersAreRemovedOnClosure", testHandlersAreRemovedOnClosure),
                 ("testHandlersAreRemovedOnClosureWithError", testHandlersAreRemovedOnClosureWithError),
+                ("testCreatingOutboundChannel", testCreatingOutboundChannel),
+                ("testWritesOnCreatedChannelAreDelayed", testWritesOnCreatedChannelAreDelayed),
+                ("testWritesAreCancelledOnFailingInitializer", testWritesAreCancelledOnFailingInitializer),
+                ("testFailingInitializerDoesNotWrite", testFailingInitializerDoesNotWrite),
            ]
    }
 }
