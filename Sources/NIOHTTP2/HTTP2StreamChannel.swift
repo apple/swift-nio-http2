@@ -67,9 +67,9 @@ private enum StreamChannelState {
 
     mutating func completeClosing() {
         switch self {
-        case .closing, .closingFromIdle, .active:
+        case .idle, .closing, .closingFromIdle, .active:
             self = .closed
-        case .idle, .closed:
+        case .closed:
             preconditionFailure("Complete closing from \(self)")
         }
     }
@@ -77,7 +77,7 @@ private enum StreamChannelState {
 
 
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    public init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID, initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?) {
+    internal init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.newPromise()
         self.localAddress = parent.localAddress
@@ -92,15 +92,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // To begin with we initialize autoRead to false, but we are going to fetch it from our parent before we
         // go much further.
         self.autoRead = false
-
         self._pipeline = ChannelPipeline(channel: self)
+    }
 
-        // Now we need to configure this channel. This involves doing four things:
+    @discardableResult
+    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?) -> EventLoopFuture<Void> {
+        // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        parent.getOption(option: ChannelOptions.autoRead).then { autoRead -> EventLoopFuture<Void> in
+        let f = self.parent!.getOption(option: ChannelOptions.autoRead).then { autoRead -> EventLoopFuture<Void> in
             self.autoRead = autoRead
             return initializer?(self, self.streamID) ?? self.eventLoop.newSucceededFuture(result: ())
         }.map {
@@ -109,9 +111,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             if self.autoRead {
                 self.read0()
             }
-        }.whenFailure { (_: Error) in
-            self.closedWhileOpen()
+            self.deliverPendingWrites()
         }
+
+        f.whenFailure { (error: Error) in
+            if self.streamID.networkStreamID != nil {
+                self.closedWhileOpen()
+            } else {
+                self.errorEncountered(error: error)
+            }
+        }
+        return f
     }
 
     private var _pipeline: ChannelPipeline!
@@ -254,12 +264,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     public func flush0() {
-        guard self.state != .closed else {
-            return
-        }
         self.pendingWrites.mark()
-        self.deliverPendingWrites()
-        self.parent?.flush()
+
+        if self.isActive {
+            self.deliverPendingWrites()
+        }
     }
 
     public func read0() {
@@ -412,10 +421,16 @@ private extension HTTP2StreamChannel {
 
     /// Delivers all pending flushed writes to the parent channel.
     private func deliverPendingWrites() {
+        // If there are no pending writes, don't bother with the processing.
+        guard self.pendingWrites.hasMark() else {
+            return
+        }
+
         while self.pendingWrites.hasMark() {
             let write = self.pendingWrites.removeFirst()
             self.receiveOutboundFrame(write.0, promise: write.1)
         }
+        self.parent?.flush()
     }
 
     /// Fails all pending writes with the given error.
