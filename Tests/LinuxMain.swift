@@ -28,6 +28,7 @@ import XCTest
    XCTMain([
          testCase(BasicTests.allTests),
          testCase(HTTP2StreamMultiplexerTests.allTests),
+         testCase(HTTP2ToHTTP1CodecTests.allTests),
          testCase(ReentrancyTests.allTests),
          testCase(SimpleClientServerTests.allTests),
     ])
