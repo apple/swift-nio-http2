@@ -192,7 +192,6 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     public func channelInactive(ctx: ChannelHandlerContext) {
         self.reentrancyManager.eofType = .channelInactive
         self.reentrancyManager.process(ctx: ctx, self.process)
-        ctx.fireChannelInactive()
     }
 
     public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
