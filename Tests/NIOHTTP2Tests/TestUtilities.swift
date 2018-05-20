@@ -79,6 +79,9 @@ extension XCTestCase {
     func assertDoHandshake(client: EmbeddedChannel, server: EmbeddedChannel,
                            clientSettings: [HTTP2Setting] = nioDefaultSettings, serverSettings: [HTTP2Setting] = nioDefaultSettings,
                            file: StaticString = #file, line: UInt = #line) throws {
+        client.pipeline.fireChannelActive()
+        server.pipeline.fireChannelActive()
+
         // First the channels need to interact.
         self.interactInMemory(client, server, file: file, line: line)
 
