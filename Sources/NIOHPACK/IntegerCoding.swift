@@ -1,4 +1,3 @@
-// swift-tools-version:4.0
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -15,27 +14,7 @@
 
 import NIO
 
-/// Determines the number of bytes needed to encode a given integer.
-func encodedLength<T : UnsignedInteger>(of value: T, prefix: Int) -> Int {
-    precondition(prefix <= 8)
-    precondition(prefix >= 0)
-    
-    let k = (1 << prefix) - 1
-    if value < k {
-        return 1
-    }
-    
-    var len = 1
-    var n = value - T(k)
-    
-    while n >= 128 {
-        n >>= 7
-        len += 1
-    }
-    
-    return len + 1
-}
-
+/* private but tests */
 /// Encodes an integer value into a provided memory location.
 ///
 /// - Parameters:
@@ -45,67 +24,60 @@ func encodedLength<T : UnsignedInteger>(of value: T, prefix: Int) -> Int {
 ///   - prefixBits: Existing bits to place in that first byte of `buffer` before encoding `value`.
 /// - Returns: Returns the number of bytes used to encode the integer.
 @discardableResult
-func encodeInteger<T : UnsignedInteger>(_ value: T, to buffer: UnsafeMutableRawPointer,
+func encodeInteger<T : UnsignedInteger>(_ value: T, to buffer: inout ByteBuffer,
                                         prefix: Int, prefixBits: UInt8 = 0) -> Int {
-    precondition(prefix <= 8)
-    precondition(prefix >= 1)
+    assert(prefix <= 8)
+    assert(prefix >= 1)
+    
+    let start = buffer.writerIndex
     
     let k = (1 << prefix) - 1
-    var buf = buffer.assumingMemoryBound(to: UInt8.self)
-    let start = buf
-    start.pointee = prefixBits
+    var initialByte = prefixBits
     
     if value < k {
         // it fits already!
-        buf.pointee |= UInt8(truncatingIfNeeded: value)
+        initialByte |= UInt8(truncatingIfNeeded: value)
+        buffer.write(integer: initialByte)
         return 1
     }
     
     // if it won't fit in this byte altogether, fill in all the remaining bits and move
     // to the next byte.
-    buf.pointee |= UInt8(truncatingIfNeeded: k)
-    buf += 1
+    initialByte |= UInt8(truncatingIfNeeded: k)
+    buffer.write(integer: initialByte)
     
     // deduct the initial [prefix] bits from the value, then encode it seven bits at a time into
     // the remaining bytes.
     var n = value - T(k)
     while n >= 128 {
-        buf.pointee = (1 << 7) | UInt8(n & 0x7f)
-        buf += 1
+        let nextByte = (1 << 7) | UInt8(n & 0x7f)
+        buffer.write(integer: nextByte)
         n >>= 7
     }
     
-    buf.pointee = UInt8(n)
-    buf += 1
-    
-    return start.distance(to: buf)
+    buffer.write(integer: UInt8(n))
+    return buffer.writerIndex - start
 }
 
-enum IntegerDecodeError : Error
-{
-    case insufficientInput
-}
-
-func decodeInteger(from buffer: UnsafeRawBufferPointer, prefix: Int, initial: UInt = 0) throws -> (UInt, Int) {
-    precondition(prefix <= 8)
-    precondition(prefix >= 0)
+/* private but tests */
+func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> (UInt, Int) {
+    assert(prefix <= 8)
+    assert(prefix >= 1)
     
     let k = (1 << prefix) - 1
-    var n = initial
-    let bytes = buffer.bindMemory(to: UInt8.self)
-    var buf = bytes.baseAddress!
-    let end = buf + buffer.count
+    var n: UInt = 0
+    var i = bytes.startIndex
     
     if n == 0 {
         // if the available bits aren't all set, the entire value consists of those bits
-        if buf.pointee & UInt8(k) != k {
-            return (UInt(buf.pointee & UInt8(k)), 1)
+        if bytes[i] & UInt8(k) != k {
+            return (UInt(bytes[i] & UInt8(k)), 1)
         }
         
         n = UInt(k)
-        buf += 1
-        if buf == end {
-            return (n, buffer.baseAddress!.distance(to: buf))
+        i = bytes.index(after: i)
+        if i == bytes.endIndex {
+            return (n, bytes.distance(from: bytes.startIndex, to: i))
         }
     }
     
@@ -113,35 +85,27 @@ func decodeInteger(from buffer: UnsafeRawBufferPointer, prefix: Int, initial: UI
     var m: UInt = 0
     var b: UInt8 = 0
     repeat {
-        if buf == end {
-            throw IntegerDecodeError.insufficientInput
+        if i == bytes.endIndex {
+            throw NIOHPACKErrors.InsufficientInput()
         }
         
-        b = buf.pointee
+        b = bytes[i]
         n += UInt(b & 127) * (1 << m)
         m += 7
-        buf += 1
+        i = bytes.index(after: i)
     } while b & 128 == 128
     
-    return (n, bytes.baseAddress!.distance(to: buf))
+    return (n, bytes.distance(from: bytes.startIndex, to: i))
 }
 
 extension ByteBuffer {
-    mutating func readEncodedInteger(withPrefix prefix: Int = 0, initial: UInt = 0) throws -> UInt {
-        return try self.readWithUnsafeReadableBytes { ptr -> (Int, UInt) in
-            let (result, nread) = try decodeInteger(from: ptr, prefix: prefix, initial: initial)
-            return (nread, result)
-        }
+    mutating func readEncodedInteger(withPrefix prefix: Int = 0) throws -> UInt {
+        let (result, nread) = try decodeInteger(from: self.readableBytesView, prefix: prefix)
+        self.moveReaderIndex(forwardBy: nread)
+        return result
     }
     
     mutating func write<T : UnsignedInteger>(encodedInteger value: T, prefix: Int = 0, prefixBits: UInt8 = 0) {
-        let len = encodedLength(of: value, prefix: prefix)
-        if self.writableBytes < len {
-            // realloc so we have enough room
-            self.changeCapacity(to: self.writerIndex + len)
-        }
-        self.writeWithUnsafeMutableBytes {
-            encodeInteger(value, to: $0.baseAddress!, prefix: prefix, prefixBits: prefixBits)
-        }
+        encodeInteger(value, to: &self, prefix: prefix, prefixBits: prefixBits)
     }
 }

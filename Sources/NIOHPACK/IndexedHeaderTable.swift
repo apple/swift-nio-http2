@@ -1,4 +1,3 @@
-// swift-tools-version:4.0
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -13,9 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+import NIO
+
 /// The unified header table used by HTTP/2, encompassing both static and dynamic tables.
-public class IndexedHeaderTable {
+public struct IndexedHeaderTable {
     // private but tests
+    let staticTable = HeaderTableStorage(staticHeaderList: StaticHeaderTable)
     var dynamicTable: DynamicHeaderTable
     
     /// Creates a new header table, optionally specifying a maximum size for the dynamic
@@ -30,19 +32,43 @@ public class IndexedHeaderTable {
     ///
     /// - note: Per RFC 7541, this uses a *1-based* index.
     /// - Parameter index: The index to query.
-    /// - Returns: A tuple containing the name and value of the stored header, or `nil` if
-    ///            the index was not valid.
-    public func header(at index: Int) -> (name: String, value: String)? {
-        let entry: HeaderTableEntry
-        if index < StaticHeaderTable.count {
-            entry = StaticHeaderTable[index]    // static table is already 1-based
-        } else if index - StaticHeaderTable.count < self.dynamicTable.count {
-            entry = self.dynamicTable[index - StaticHeaderTable.count]
+    /// - Returns: A tuple containing the name and value of the stored header.
+    /// - Throws: `NIOHPACKErrors.InvalidHeaderIndex` if the supplied index was invalid.
+    public func header(at index: Int) throws -> (name: String, value: String) {
+        let views: (RingBufferView, RingBufferView)
+        if index < self.staticTable.count {
+            let entry = self.staticTable[index]    // static table is already 1-based
+            views = (self.staticTable.view(of: entry.name), self.staticTable.view(of: entry.value))
+        } else if index - self.staticTable.count < self.dynamicTable.count {
+            let entry = self.dynamicTable[index - self.staticTable.count]
+            views = (self.dynamicTable.view(of: entry.name), self.dynamicTable.view(of: entry.value))
         } else {
-            return nil
+            throw NIOHPACKErrors.InvalidHeaderIndex(suppliedIndex: index, availableIndex: self.staticTable.count + self.dynamicTable.count - 1)
         }
         
-        return (entry.name, entry.value ?? "")
+        return (String(decoding: views.0, as: UTF8.self), String(decoding: views.1, as: UTF8.self))
+    }
+    
+    /// Obtains the header key/value pair at the given index within the table as sequences of
+    /// raw bytes.
+    ///
+    /// - note: Per RFC 7541, this uses a *1-based* index.
+    /// - Parameter index: The index to query.
+    /// - Returns: A tuple containing the name and value of the stored header.
+    /// - Throws: `NIOHPACKErrors.InvalidHeaderIndex` if the supplied index was invalid.
+    public func headerViews(at index: Int) throws -> (name: RingBufferView, value: RingBufferView) {
+        let result: (RingBufferView, RingBufferView)
+        if index < self.staticTable.count {
+            let entry = self.staticTable[index]
+            result = (self.staticTable.view(of: entry.name), self.staticTable.view(of: entry.value))
+        } else if index - self.staticTable.count < self.dynamicTable.count {
+            let entry = self.dynamicTable[index - self.staticTable.count]
+            result = (self.dynamicTable.view(of: entry.name), self.dynamicTable.view(of: entry.value))
+        } else {
+            throw NIOHPACKErrors.InvalidHeaderIndex(suppliedIndex: index, availableIndex: self.staticTable.count + self.dynamicTable.count - 1)
+        }
+        
+        return result
     }
     
     /// Searches the table to locate an existing header with the given name and value. If
@@ -55,15 +81,19 @@ public class IndexedHeaderTable {
     /// - Returns: A tuple containing the index of any located header, and a boolean indicating
     ///            whether the item at that index also contains a matching value. Returns `nil`
     ///            if no match could be found.
-    public func firstHeaderMatch(for name: String, value: String) -> (index: Int, matchesValue: Bool)? {
+    public func firstHeaderMatch(for name: String, value: String?) -> (index: Int, matchesValue: Bool)? {
+        return self.firstHeaderMatch(for: name.utf8, value: value?.utf8)
+    }
+    
+    func firstHeaderMatch<C : Collection>(for name: C, value: C?) -> (index: Int, matchesValue: Bool)? where C.Element == UInt8 {
         var firstHeaderIndex: Int? = nil
-        for (index, entry) in StaticHeaderTable.enumerated() where entry.name == name {
+        for index in self.staticTable.indices(matching: name) {
             // we've found a name, at least
             if firstHeaderIndex == nil {
                 firstHeaderIndex = index
             }
             
-            if entry.value == value {
+            if let value = value, self.staticTable.view(of: self.staticTable[index].value).matches(value) {
                 return (index, true)
             }
         }
@@ -99,8 +129,12 @@ public class IndexedHeaderTable {
     ///   - name: The name of the header to insert.
     ///   - value: The value of the header to insert.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    public func append(headerNamed name: String, value: String) -> Bool {
-        return self.dynamicTable.appendHeader(named: name, value: value)
+    public mutating func add(headerNamed name: String, value: String) throws {
+        try self.dynamicTable.addHeader(named: name.utf8, value: value.utf8)
+    }
+    
+    public mutating func add<C : ContiguousCollection>(headerNameBytes nameBytes: C, valueBytes: C) throws where C.Element == UInt8 {
+        try self.dynamicTable.addHeader(nameBytes: nameBytes, valueBytes: valueBytes)
     }
     
     /// The length, in bytes, of the dynamic portion of the header table.

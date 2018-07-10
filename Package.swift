@@ -20,10 +20,9 @@ let package = Package(
     products: [
         .executable(name: "NIOHTTP2Server", targets: ["NIOHTTP2Server"]),
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
-        .library(name: "NIOHPACK", targets: ["NIOHPACK"])
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "1.7.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", .branch("master")),
         .package(url: "https://github.com/apple/swift-nio-nghttp2-support.git", from: "1.0.0"),
     ],
     targets: [
@@ -31,7 +30,7 @@ let package = Package(
         .target(name: "NIOHTTP2Server",
             dependencies: ["NIOHTTP2"]),
         .target(name: "NIOHTTP2",
-            dependencies: ["NIO", "NIOHTTP1", "NIOTLS", "CNIONghttp2", "NIOHPACK"]),
+            dependencies: ["NIO", "NIOHTTP1", "NIOTLS", "CNIONghttp2"]),
         .target(name: "NIOHPACK",
             dependencies: ["NIO", "NIOConcurrencyHelpers"]),
         

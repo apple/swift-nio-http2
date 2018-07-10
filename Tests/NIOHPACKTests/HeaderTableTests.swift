@@ -1,9 +1,16 @@
+//===----------------------------------------------------------------------===//
 //
-//  HeaderTableTests.swift
-//  NIOHPACKTests
+// This source file is part of the SwiftNIO open source project
 //
-//  Created by Jim Dovey on 6/27/18.
+// Copyright (c) 2017-2018 Apple Inc. and the SwiftNIO project authors
+// Licensed under Apache License v2.0
 //
+// See LICENSE.txt for license information
+// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
 
 import XCTest
 import NIO
@@ -55,15 +62,15 @@ class HeaderTableTests: XCTestCase {
     
     func testDynamicTableInsertion() {
         // NB: I'm using the overall table class to verify the expected indices of dynamic table items.
-        let table = IndexedHeaderTable(maxDynamicTableSize: 1024)
+        var table = IndexedHeaderTable(maxDynamicTableSize: 1024)
         XCTAssertEqual(table.dynamicTableLength, 0)
         
-        XCTAssertTrue(table.append(headerNamed: ":authority", value: "www.example.com"))
+        XCTAssertNoThrow(try table.add(headerNamed: ":authority", value: "www.example.com"))
         XCTAssertEqual(table.dynamicTableLength, 57)
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)
         XCTAssertEqualTuple((1, false), table.firstHeaderMatch(for: ":authority", value: "www.something-else.com")!)
         
-        XCTAssertTrue(table.append(headerNamed: "cache-control", value: "no-cache"))
+        XCTAssertNoThrow(try table.add(headerNamed: "cache-control", value: "no-cache"))
         XCTAssertEqual(table.dynamicTableLength, 110)
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "cache-control", value: "no-cache")!)
         XCTAssertEqualTuple((63, true), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)
@@ -71,7 +78,7 @@ class HeaderTableTests: XCTestCase {
         // custom key not yet in the table, should return nil
         XCTAssertNil(table.firstHeaderMatch(for: "custom-key", value: "custom-value"))
         
-        XCTAssertTrue(table.append(headerNamed: "custom-key", value: "custom-value"))
+        XCTAssertNoThrow(try table.add(headerNamed: "custom-key", value: "custom-value"))
         XCTAssertEqual(table.dynamicTableLength, 164)
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "custom-key", value: "custom-value")!)
         XCTAssertEqualTuple((62, false), table.firstHeaderMatch(for: "custom-key", value: "other-value")!)
@@ -100,7 +107,7 @@ class HeaderTableTests: XCTestCase {
         // get code coverage for dynamic table search with no value to match
         // Note that the resulting index is an index into the dynamic table only, so we
         // have to modify it to check that it's what we expect.
-        XCTAssertEqualTuple((62 - StaticHeaderTable.count, false), table.dynamicTable.findExistingHeader(named: "custom-key")!)
+        XCTAssertEqualTuple((62 - StaticHeaderTable.count, false), table.dynamicTable.findExistingHeader(named: "custom-key".utf8)!)
         
         // evict final entry
         table.maxDynamicTableLength = table.dynamicTableLength - 1

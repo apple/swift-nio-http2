@@ -1,9 +1,16 @@
+//===----------------------------------------------------------------------===//
 //
-//  IntegerCodingTests.swift
-//  NIOHPACKTests
+// This source file is part of the SwiftNIO open source project
 //
-//  Created by Jim Dovey on 6/27/18.
+// Copyright (c) 2017-2018 Apple Inc. and the SwiftNIO project authors
+// Licensed under Apache License v2.0
 //
+// See LICENSE.txt for license information
+// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
 
 import XCTest
 import NIO
@@ -11,23 +18,23 @@ import NIO
 
 class IntegerCodingTests : XCTestCase {
     
+    var scratchBuffer = ByteBufferAllocator().buffer(capacity: 11)
+    
     // MARK: - Array-based helpers
     
     private func encodeIntegerToArray(_ value: UInt, prefix: Int) -> [UInt8] {
-        var data = [UInt8](repeating: 0, count: 11)
-        let len = data.withUnsafeMutableBytes {
-            NIOHPACK.encodeInteger(value, to: $0.baseAddress!, prefix: prefix)
-        }
-        data.removeSubrange(len...)
+        var data = [UInt8]()
+        scratchBuffer.clear()
+        let len = NIOHPACK.encodeInteger(value, to: &scratchBuffer, prefix: prefix)
+        data.append(contentsOf: scratchBuffer.viewBytes(at: 0, length: len))
         return data
     }
     
     private func decodeInteger(from array: [UInt8], prefix: Int) throws -> UInt {
-        return try array.withUnsafeBytes {
-            let r: UInt
-            (r, _) = try NIOHPACK.decodeInteger(from: $0, prefix: prefix)
-            return r
-        }
+        scratchBuffer.clear()
+        scratchBuffer.write(bytes: array)
+        let (r, _) = try NIOHPACK.decodeInteger(from: scratchBuffer.readableBytesView, prefix: prefix)
+        return r
     }
     
     // MARK: - Tests

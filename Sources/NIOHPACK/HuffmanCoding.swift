@@ -1,4 +1,3 @@
-// swift-tools-version:4.0
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -17,92 +16,74 @@ import NIO
 
 /// Implements a HPACK-conformant Huffman encoder. Note that this class is *not* thread safe.
 /// The intended use is to be within a single HTTP2StreamChannel or similar, on a single EventLoop.
-public class HuffmanEncoder {
+public struct HuffmanEncoder {
     private static let initialBufferCount = 256
     
-    private var allocator: ByteBufferAllocator
-    private var buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: HuffmanEncoder.initialBufferCount)
-    private var offset = 0
-    private var remainingBits = 8
-    
-    /// Obtains a buffer containing the encoder's current output.
-    public var data: ByteBuffer {
-        var buffer = self.allocator.buffer(capacity: self.count)
-        buffer.write(bytes: self.buffer[..<self.count])
-        return buffer
-    }
-    
-    /// The number of bytes required to hold the encoder's output.
-    public var count: Int {
-        return self.offset + (self.remainingBits == 0 || self.remainingBits == 8 ? 0 : 1)
-    }
-    
-    /// Creates a new HPACK-compliant Huffman decoder.
-    ///
-    /// - Parameter allocator: An allocator used to create `ByteBuffer`s.
-    public init(allocator: ByteBufferAllocator) {
-        self.allocator = allocator
-    }
-    
-    /// Resets the encoder to its starting state, ready to begin encoding new values.
-    public func reset() {
-        // zero the bytes of the buffer, since all our write operations are bitwise ORs.
-        buffer.assign(repeating: 0)
-        offset = 0
-        remainingBits = 8
+    private struct _EncoderState {
+        var offset = 0
+        var remainingBits = 8
+        let buffer: UnsafeMutableRawBufferPointer
+        
+        init(bytes: UnsafeMutableRawBufferPointer) {
+            self.buffer = bytes
+        }
     }
     
     /// Returns the number of *bits* required to encode a given string.
-    private func encodedBitLength(of string: String) -> Int {
-        let clen = string.utf8.reduce(0) { $0 + StaticHuffmanTable[Int($1)].nbits }
+    private func encodedBitLength<C : Collection>(of bytes: C) -> Int where C.Element == UInt8 {
+        let clen = bytes.reduce(0) { $0 + StaticHuffmanTable[Int($1)].nbits }
         // round up to nearest multiple of 8 for EOS prefix
         return (clen + 7) & ~7
+    }
+    
+    /// Returns the number of bytes required to encode a given string.
+    func encodedLength<C : Collection>(of bytes: C) -> Int where C.Element == UInt8 {
+        return self.encodedBitLength(of: bytes) / 8
     }
     
     /// Encodes the given string to the encoder's internal buffer.
     ///
     /// - Parameter string: The string data to encode.
     /// - Returns: The number of bytes used while encoding the string.
-    public func encode(_ string: String) -> Int {
-        let clen = encodedBitLength(of: string)
-        ensureBitsAvailable(clen)
-        let startCount = self.count
+    @discardableResult
+    public mutating func encode<C : Collection>(_ stringBytes: C, toBuffer target: inout ByteBuffer) -> Int where C.Element == UInt8 {
+        let clen = encodedBitLength(of: stringBytes)
+        ensureBitsAvailable(clen, &target)
         
-        for ch in string.utf8 {
-            appendSym_fast(StaticHuffmanTable[Int(ch)])
+        return target.writeWithUnsafeMutableBytes { buf in
+            var state = _EncoderState(bytes: buf)
+            
+            for ch in stringBytes {
+                appendSym_fast(StaticHuffmanTable[Int(ch)], &state)
+            }
+            
+            if state.remainingBits > 0 && state.remainingBits < 8 {
+                // set all remaining bits of the last byte to 1
+                buf[state.offset] |= UInt8(1 << state.remainingBits) - 1
+                state.offset += 1
+                state.remainingBits = (state.offset == buf.count ? 0 : 8)
+            }
+            
+            return state.offset
         }
-        
-        if remainingBits > 0 && remainingBits < 8 {
-            // set all remaining bits of the last byte to 1
-            buffer[offset] |= UInt8(1 << remainingBits) - 1
-            offset += 1
-            remainingBits = (offset == buffer.count ? 0 : 8)
-        }
-        
-        return self.count - startCount
     }
     
-    private func appendSym(_ sym: HuffmanTableEntry) {
-        ensureBitsAvailable(sym.nbits)
-        appendSym_fast(sym)
-    }
-    
-    private func appendSym_fast(_ sym: HuffmanTableEntry) {
+    private mutating func appendSym_fast(_ sym: HuffmanTableEntry, _ state: inout _EncoderState) {
         // will it fit as-is?
-        if sym.nbits == self.remainingBits {
-            self.buffer[self.offset] |= UInt8(sym.bits)
-            self.offset += 1
-            self.remainingBits = self.offset == self.buffer.count ? 0 : 8
-        } else if sym.nbits < self.remainingBits {
-            let diff = self.remainingBits - sym.nbits
-            self.buffer[self.offset] |= UInt8(sym.bits << diff)
-            self.remainingBits -= sym.nbits
+        if sym.nbits == state.remainingBits {
+            state.buffer[state.offset] |= UInt8(sym.bits)
+            state.offset += 1
+            state.remainingBits = state.offset == state.buffer.count ? 0 : 8
+        } else if sym.nbits < state.remainingBits {
+            let diff = state.remainingBits - sym.nbits
+            state.buffer[state.offset] |= UInt8(sym.bits << diff)
+            state.remainingBits -= sym.nbits
         } else {
             var (code, nbits) = sym
             
-            nbits -= self.remainingBits
-            self.buffer[self.offset] |= UInt8(code >> nbits)
-            self.offset += 1
+            nbits -= state.remainingBits
+            state.buffer[state.offset] |= UInt8(code >> nbits)
+            state.offset += 1
             
             if nbits & 0x7 != 0 {
                 // align code to MSB
@@ -111,74 +92,61 @@ public class HuffmanEncoder {
             
             // we can short-circuit if less than 8 bits are remaining
             if nbits < 8 {
-                self.buffer[self.offset] = UInt8(truncatingIfNeeded: code)
-                self.remainingBits = 8 - nbits
+                state.buffer[state.offset] = UInt8(truncatingIfNeeded: code)
+                state.remainingBits = 8 - nbits
                 return
             }
             
             // longer path for larger amounts
             if nbits > 24 {
-                self.buffer[self.offset] = UInt8(truncatingIfNeeded: code >> 24)
+                state.buffer[state.offset] = UInt8(truncatingIfNeeded: code >> 24)
                 nbits -= 8
-                self.offset += 1
+                state.offset += 1
             }
             
             if nbits > 16 {
-                self.buffer[self.offset] = UInt8(truncatingIfNeeded: code >> 16)
+                state.buffer[state.offset] = UInt8(truncatingIfNeeded: code >> 16)
                 nbits -= 8
-                self.offset += 1
+                state.offset += 1
             }
             
             if nbits > 8 {
-                self.buffer[self.offset] = UInt8(truncatingIfNeeded: code >> 8)
+                state.buffer[state.offset] = UInt8(truncatingIfNeeded: code >> 8)
                 nbits -= 8
-                self.offset += 1
+                state.offset += 1
             }
             
             if nbits == 8 {
-                self.buffer[self.offset] = UInt8(truncatingIfNeeded: code)
-                self.offset += 1
-                self.remainingBits = self.offset == buffer.count ? 0 : 8
+                state.buffer[state.offset] = UInt8(truncatingIfNeeded: code)
+                state.offset += 1
+                state.remainingBits = state.offset == state.buffer.count ? 0 : 8
             } else {
-                self.remainingBits = 8 - nbits
-                self.buffer[self.offset] = UInt8(truncatingIfNeeded: code)
+                state.remainingBits = 8 - nbits
+                state.buffer[state.offset] = UInt8(truncatingIfNeeded: code)
             }
         }
     }
     
-    private func ensureBitsAvailable(_ bits: Int) {
-        let bitsLeft = ((self.buffer.count - self.offset) * 8) + self.remainingBits
-        if bitsLeft >= bits {
+    private mutating func ensureBitsAvailable(_ bits: Int, _ buffer: inout ByteBuffer) {
+        let bytesNeeded = bits / 8
+        if bytesNeeded <= buffer.writableBytes {
+            // just zero the requested number of bytes before we start OR-ing in our values
+            buffer.withUnsafeMutableWritableBytes { ptr in
+                ptr.baseAddress!.assumingMemoryBound(to: UInt8.self).assign(repeating: 0, count: bytesNeeded)
+            }
             return
         }
         
-        // We need more space. Deduct our remaining unused bits from the amount we're looking
-        // for to get a byte-rounded value.
-        let nbits = bits - remainingBits
-        let bytesNeeded: Int
-        if (nbits & 0x7) != 0 {
-            // trim to byte length and add one more
-            bytesNeeded = (nbits & ~0x7) + 8
-        } else {
-            // just trim to byte length
-            bytesNeeded = (nbits & ~0x7)
-        }
+        // one extra byte to ensure we have space to fill at the end of the encoded string, if we need it
+        let neededToAdd = bytesNeeded - buffer.writableBytes
+        let newLength = buffer.capacity + neededToAdd
         
-        let bytesAvailable = (self.buffer.count - self.offset) - (self.remainingBits == 0 ? 0 : 1)
-        let neededToAdd = bytesNeeded - bytesAvailable
+        // reallocate the buffer to ensure we have the room we need
+        buffer.changeCapacity(to: newLength)
         
-        // find a nice multiple of 128 bytes
-        let newLength = (self.buffer.count + neededToAdd + 127) & ~127
-        
-        let newBuf = UnsafeMutableRawBufferPointer.allocate(byteCount: newLength, alignment: 1)
-        newBuf.copyMemory(from: UnsafeRawBufferPointer(self.buffer))
-        self.buffer = newBuf.bindMemory(to: UInt8.self)
-        
-        if self.remainingBits == 0 {
-            self.remainingBits = 8
-            if self.offset != 0 {
-                self.offset += 1
-            }
+        // now zero all writable bytes that we expect to use
+        buffer.withUnsafeMutableWritableBytes { ptr in
+            ptr.baseAddress!.assumingMemoryBound(to: UInt8.self).assign(repeating: 0, count: bytesNeeded)
         }
     }
 }
@@ -194,59 +162,53 @@ public enum HuffmanDecoderError : Error
 
 /// A `HuffmanDecoder` is an idempotent class that performs string decoding using
 /// a static table of values. It maintains no internal state, so is thread-safe.
-public class HuffmanDecoder {
+public struct HuffmanDecoder {
+    /// The decoder table. This structure doesn't actually take up any space, I think?
+    let decoderTable = HuffmanDecoderTable()
+    
     /// Initializes a new Huffman decoder.
     public init() {}
     
-    /// Decodes a single string from a given buffer.
+    /// Decodes a single string from a view into a `ByteBuffer`.
     ///
-    /// - Parameter buffer: A `ByteBuffer` containing the entire set of bytes
+    /// - Parameter input: A `ByteBufferView` over the entire set of bytes
     ///                     that comprise the encoded string.
-    /// - Returns: The decoded string value.
+    /// - Parameter output: A `ByteBuffer` into which decoded UTF-8 octets will be
+    ///                     written.
+    /// - Returns: The number of UTF-8 characters written into the output `ByteBuffer`.
     /// - Throws: HuffmanDecoderError if the data could not be decoded.
-    public func decodeString(from buffer: inout ByteBuffer) throws -> String {
-        return try buffer.readWithUnsafeReadableBytes { ptr -> (Int, String) in
-            let str = try decodeString(from: ptr.baseAddress!, count: ptr.count)
-            return (ptr.count, str)
+    @discardableResult
+    public func decodeString(from input: ByteBufferView, into output: inout ByteBuffer) throws -> Int {
+        if input.count == 0 {
+            return 0
         }
-    }
-    
-    /// Decodes a string from a raw byte pointer. Used by ByteBuffer and friends.
-    ///
-    /// Per the nghttp2 implementation, this uses the decoding algorithm & tables described at
-    /// http://graphics.ics.uci.edu/pub/Prefix.pdf (which is apparently no longer available, sigh).
-    ///
-    /// - Parameters:
-    ///   - bytes: Raw octets of the encoded string.
-    ///   - count: The number of whole octets comprising the encoded string.
-    /// - Returns: The decoded string value.
-    /// - Throws: HuffmanDecoderError if the decode failed or produced invalid data.
-    public func decodeString(from bytes: UnsafeRawPointer, count: Int) throws -> String {
-        var state = 0
-        var acceptable = false
-        var decoded = [UInt8]()
-        decoded.reserveCapacity(256)
         
-        let input = UnsafeBufferPointer(start: bytes.assumingMemoryBound(to: UInt8.self), count: count)
+        var state: UInt8 = 0
+        var acceptable = false
+        
+        // we write to an intermediate contiguous array, because write(integer:) goes through
+        // all sorts even when writing individual bytes.
+        var buf: ContiguousArray<UInt8> = []
+        buf.reserveCapacity(max(128, input.count.nextPowerOf2()))
         
         for ch in input {
-            var t = HuffmanDecoderTable[state][Int(ch >> 4)]
+            var t = decoderTable[state: state, nybble: ch >> 4]
             if t.flags.contains(.failure) {
                 throw HuffmanDecoderError.invalidState
             }
             if t.flags.contains(.symbol) {
-                decoded.append(t.sym)
+                buf.append(t.sym)
             }
             
-            t = HuffmanDecoderTable[Int(t.state)][Int(ch) & 0xf]
+            t = decoderTable[state: t.state, nybble: ch & 0xf]
             if t.flags.contains(.failure) {
                 throw HuffmanDecoderError.invalidState
             }
             if t.flags.contains(.symbol) {
-                decoded.append(t.sym)
+                buf.append(t.sym)
             }
             
-            state = Int(t.state)
+            state = t.state
             acceptable = t.flags.contains(.accepted)
         }
         
@@ -254,6 +216,6 @@ public class HuffmanDecoder {
             throw HuffmanDecoderError.invalidState
         }
         
-        return decoded.withUnsafeBufferPointer { String(decoding: $0, as: UTF8.self) }
+        return output.write(bytes: buf)
     }
 }

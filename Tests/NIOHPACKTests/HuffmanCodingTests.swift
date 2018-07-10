@@ -1,9 +1,16 @@
+//===----------------------------------------------------------------------===//
 //
-//  HuffmanCodingTests.swift
-//  NIOHPACKTests
+// This source file is part of the SwiftNIO open source project
 //
-//  Created by Jim Dovey on 6/27/18.
+// Copyright (c) 2017-2018 Apple Inc. and the SwiftNIO project authors
+// Licensed under Apache License v2.0
 //
+// See LICENSE.txt for license information
+// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
 
 import XCTest
 import NIO
@@ -12,8 +19,10 @@ import Foundation
 
 class HuffmanCodingTests: XCTestCase {
     
-    let encoder = HuffmanEncoder(allocator: ByteBufferAllocator())
-    let decoder = HuffmanDecoder()
+    var encoder = HuffmanEncoder()
+    var decoder = HuffmanDecoder()
+    
+    var scratchBuffer: ByteBuffer = ByteBufferAllocator().buffer(capacity: 4096)
     
     let fixtureDirURL = URL(fileURLWithPath: #file).deletingLastPathComponent().appendingPathComponent("Fixtures").absoluteURL
     
@@ -29,22 +38,20 @@ class HuffmanCodingTests: XCTestCase {
     }
     
     func verifyHuffmanCoding(_ string: String, _ bytes: [UInt8], file: StaticString = #file, line: UInt = #line) throws {
-        let numBytes = encoder.encode(string)
+        self.scratchBuffer.clear()
+        
+        let utf8 = string.utf8
+        let numBytes = encoder.encode(utf8, toBuffer: &self.scratchBuffer)
         XCTAssertEqual(numBytes, bytes.count, "Wrong length encoding '\(string)'", file: file, line: line)
         
-        var encoded = encoder.data
-        assertEqualContents(encoded, bytes, file: file, line: line)
+        assertEqualContents(self.scratchBuffer, bytes, file: file, line: line)
         
-        let decoded = try decoder.decodeString(from: &encoded)
+        var buf = ByteBufferAllocator().buffer(capacity: utf8.count)
+        let numDecoded = try decoder.decodeString(from: self.scratchBuffer.readableBytesView, into: &buf)
+        XCTAssertEqual(numDecoded, utf8.count)
+        
+        let decoded = buf.readString(length: buf.readableBytes)
         XCTAssertEqual(decoded, string, "Failed to decode '\(string)'", file: file, line: line)
-        
-        encoder.reset()
-    }
-
-    override func tearDown() {
-        // encoder needs to be cleared before each use: conceptually it's an accumulator
-        // decoder is fine though-- it has no member variables.
-        encoder.reset()
     }
 
     func testBasicCoding() throws {
@@ -95,10 +102,11 @@ class HuffmanCodingTests: XCTestCase {
             text += text
         }
         
-        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: true) {
-            _ = encoder.encode(text)
+        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
+            self.scratchBuffer.clear()
+            startMeasuring()
+            encoder.encode(text.utf8, toBuffer: &self.scratchBuffer)
             stopMeasuring()
-            encoder.reset()
         }
     }
     
@@ -119,10 +127,14 @@ class HuffmanCodingTests: XCTestCase {
             return data.copyBytes(to: bytePtr)
         }
         
+        let view = buffer.readableBytesView
+        var targetBuffer = ByteBufferAllocator().buffer(capacity: data.count)
+        
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            var bufCopy = buffer
+            targetBuffer.clear()
+            
             startMeasuring()
-            _ = try! decoder.decodeString(from: &bufCopy)
+            _ = try! decoder.decodeString(from: view, into: &targetBuffer)
         }
     }
     
@@ -132,10 +144,11 @@ class HuffmanCodingTests: XCTestCase {
             text += text
         }
         
-        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: true) {
-            _ = encoder.encode(text)
+        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
+            self.scratchBuffer.clear()
+            startMeasuring()
+            encoder.encode(text.utf8, toBuffer: &self.scratchBuffer)
             stopMeasuring()
-            encoder.reset()
         }
     }
     
@@ -156,10 +169,17 @@ class HuffmanCodingTests: XCTestCase {
             return data.copyBytes(to: bytePtr)
         }
         
+        let view = buffer.readableBytesView
+        var targetBuffer = ByteBufferAllocator().buffer(capacity: data.count)
+        
+        // ensure the decoder table has been loaded
+        try? verifyHuffmanCoding("302", [0x64, 0x02])
+        
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            var bufCopy = buffer
+            targetBuffer.clear()
+            
             startMeasuring()
-            _ = try! decoder.decodeString(from: &bufCopy)
+            _ = try! decoder.decodeString(from: view, into: &targetBuffer)
         }
     }
 

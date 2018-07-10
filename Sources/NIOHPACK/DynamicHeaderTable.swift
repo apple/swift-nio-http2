@@ -1,4 +1,3 @@
-// swift-tools-version:4.0
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -13,47 +12,54 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOConcurrencyHelpers
+import NIO
 
-class DynamicHeaderTable {
+struct DynamicHeaderTable {
     public static let defaultSize = 4096
-    typealias HeaderTableStore = Array<HeaderTableEntry>
     
     /// The actual table, with items looked up by index.
-    fileprivate var table: HeaderTableStore = []
+    private var storage: HeaderTableStorage
     
-    fileprivate var lock = ReadWriteLock()
+    /// List of indexes to actual values within the table.
+    
     
     /// The length of the contents of the table.
-    ///
-    /// The length of a single entry is defined as the sum of the UTF-8 octet
-    /// lengths of its name and value strings plus 32.
     var length: Int {
-        return self.table.reduce(0) { $0 + $1.length }
+        return self.storage.length
     }
     
     /// The maximum size to which the dynamic table may grow.
     var maximumLength: Int {
-        didSet {
-            if self.length > self.maximumLength {
-                self.purge()
-            }
+        get {
+            return self.storage.maxSize
+        }
+        set {
+            self.storage.setTableSize(to: newValue)
         }
     }
     
     /// The number of items in the table.
     var count: Int {
-        return self.table.count
+        return self.storage.count
     }
     
-    init(maximumLength: Int = DynamicHeaderTable.defaultSize) {
-        self.maximumLength = maximumLength
+    init(maximumLength: Int = DynamicHeaderTable.defaultSize, allocator: ByteBufferAllocator = ByteBufferAllocator()) {
+        self.storage = HeaderTableStorage(maxSize: maximumLength, allocator: allocator)
     }
     
+    /// Subscripts into the dynamic table alone, using a zero-based index.
     subscript(i: Int) -> HeaderTableEntry {
-        return self.table[i]
+        return self.storage[i]
     }
     
+    func view(of index: HPACKHeaderIndex) -> RingBufferView {
+        return self.storage.view(of: index)
+    }
+    
+    // internal for testing
+    func dumpHeaders() -> String {
+        return self.storage.dumpHeaders()
+    }
     
     /// Searches the table for a matching header, optionally with a particular value. If
     /// a match is found, returns the index of the item and an indication whether it contained
@@ -67,40 +73,68 @@ class DynamicHeaderTable {
     /// - Returns: A tuple containing the matching index and, if a value was specified as a
     ///            parameter, an indication whether that value was also found. Returns `nil`
     ///            if no matching header name could be located.
-    func findExistingHeader(named name: String, value: String? = nil) -> (index: Int, containsValue: Bool)? {
-        return self.lock.withReadLock {
-            guard let value = value else {
-                // not looking to match a value, so we can defer to stdlib functions.
-                if let index = self.table.index(where: { $0.name == name }) {
-                    return (index, false)
-                }
-                
-                return nil
+    func findExistingHeader<C : Collection>(named name: C, value: C? = nil) -> (index: Int, containsValue: Bool)? where C.Element == UInt8 {
+        // looking for both name and value, but can settle for just name
+        // thus we'll search manually.
+        // TODO: there's probably a better algorithm for this.
+        var firstNameMatch: Int? = nil
+        for index in self.storage.indices(matching: name) {
+            if firstNameMatch == nil {
+                // record the first (most recent) index with a matching header name,
+                // in case there's no value match.
+                firstNameMatch = index
             }
             
-            // looking for both name and value, but can settle for just name
-            // thus we'll search manually.
-            // TODO: there's probably a better algorithm for this.
-            var firstNameMatch: Int? = nil
-            for (index, entry) in self.table.enumerated() where entry.name == name {
-                if firstNameMatch == nil {
-                    // record the first (most recent) index with a matching header name,
-                    // in case there's no value match.
-                    firstNameMatch = index
-                }
-                
-                if entry.value == value {
-                    // this entry has both the name and the value we're seeking
-                    return (index, true)
-                }
+            if let value = value, self.storage.view(of: self.storage[index].value).matches(value) {
+                // this entry has both the name and the value we're seeking
+                return (index, true)
             }
-            
-            // no value matches -- but did we find a name?
-            if let index = firstNameMatch {
-                return (index, false)
+        }
+        
+        // no value matches -- but did we find a name?
+        if let index = firstNameMatch {
+            return (index, false)
+        } else {
+            // no matches at all
+            return nil
+        }
+    }
+    
+    /// Appends a header to the table. Note that if this succeeds, the new item's index
+    /// is always zero.
+    ///
+    /// This call may result in an empty table, as per RFC 7541 § 4.4:
+    /// > "It is not an error to attempt to add an entry that is larger than the maximum size;
+    /// > an attempt to add an entry larger than the maximum size causes the table to be
+    /// > emptied of all existing entries and results in an empty table."
+    ///
+    /// - Parameters:
+    ///   - name: A collection of UTF-8 code points comprising the name of the header to insert.
+    ///   - value: A collection of UTF-8 code points comprising the value of the header to insert.
+    ///   - evictAutomatically: If `true`, the table will evict existing items to make room. Default is `true`.
+    /// - Returns: `true` if the header was added to the table, `false` if not.
+    mutating func addHeader<C : Collection>(named name: C, value: C, evictAutomatically: Bool = true) throws where C.Element == UInt8 {
+        do {
+            try self.storage.add(name: name, value: value)
+        } catch let error as RingBufferError.BufferOverrun {
+            if evictAutomatically {
+                // purge from the table and try again
+                
+                // if there's still not enough room, then the entry is too large for the table
+                // note that the HTTP2 spec states that we should make this check AFTER evicting
+                // the table's contents: http://httpwg.org/specs/rfc7541.html#entry.addition
+                //
+                //  "It is not an error to attempt to add an entry that is larger than the maximum size; an
+                //   attempt to add an entry larger than the maximum size causes the table to be emptied of
+                //   all existing entries and results in an empty table."
+                
+                self.storage.purge(toRelease: error.amount)
+                return try self.addHeader(named: name, value: value, evictAutomatically: false)
             } else {
-                // no matches at all
-                return nil
+                // ping the error up the stack, with more information
+                throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
+                                                              name: String(decoding: name, as: UTF8.self),
+                                                              value: String(decoding: value, as: UTF8.self))
             }
         }
     }
@@ -114,63 +148,22 @@ class DynamicHeaderTable {
     /// > emptied of all existing entries and results in an empty table."
     ///
     /// - Parameters:
-    ///   - name: The name of the header to insert.
-    ///   - value: The value of the header to insert.
+    ///   - name: A contiguous collection of UTF-8 bytes comprising the name of the header to insert.
+    ///   - value: A contiguous collection of UTF-8 bytes comprising the value of the header to insert.
+    ///   - evictAutomatically: If `true`, the table will evict existing items to make room. Default is `true`.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    func appendHeader(named name: String, value: String) -> Bool {
-        return self.lock.withWriteLock {
-            let entry = HeaderTableEntry(name: name, value: value)
-            if self.length + entry.length > self.maximumLength {
-                self.evict(atLeast: entry.length - (self.maximumLength - self.length))
-                
-                // if there's still not enough room, then the entry is too large for the table
-                // note that the HTTP2 spec states that we should make this check AFTER evicting
-                // the table's contents: http://httpwg.org/specs/rfc7541.html#entry.addition
-                //
-                //  "It is not an error to attempt to add an entry that is larger than the maximum size; an
-                //   attempt to add an entry larger than the maximum size causes the table to be emptied of
-                //   all existing entries and results in an empty table."
-                
-                guard self.length + entry.length <= self.maximumLength else {
-                    return false
-                }
-            }
-            
-            // insert the new item at the start of the array
-            // trust to the implementation to handle this nicely
-            self.table.insert(entry, at: 0)
-            return true
-        }
-    }
-    
-    private func purge() {
-        lock.withWriteLockVoid {
-            if self.length <= self.maximumLength {
-                return
-            }
-            
-            self.evict(atLeast: self.length - self.maximumLength)
-        }
-    }
-    
-    /// Edits the table directly. Only call while write-lock is held.
-    private func evict(atLeast lengthToRelease: Int) {
-        var lenReleased = 0
-        var numRemoved = 0
-        
-        // The HPACK spec dictates that entries be remove from the end of the table
-        // (i.e. oldest removed first).
-        // We scan backwards counting sizes until we meet the amount we need, then
-        // we remove everything in a single call.
-        for entry in self.table.reversed() {
-            lenReleased += entry.length
-            numRemoved += 1
-            
-            if (lenReleased >= lengthToRelease) {
-                break
+    mutating func addHeader<C : ContiguousCollection>(nameBytes: C, valueBytes: C, evictAutomatically: Bool = true) throws where C.Element == UInt8 {
+        do {
+            try self.storage.add(nameBytes: nameBytes, valueBytes: valueBytes)
+        } catch let error as RingBufferError.BufferOverrun {
+            if evictAutomatically {
+                self.storage.purge(toRelease: error.amount)
+                return try self.addHeader(nameBytes: nameBytes, valueBytes: valueBytes, evictAutomatically: false)
+            } else {
+                throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
+                                                              name: String(decoding: nameBytes, as: UTF8.self),
+                                                              value: String(decoding: valueBytes, as: UTF8.self))
             }
         }
-        
-        self.table.removeLast(numRemoved)
     }
 }
