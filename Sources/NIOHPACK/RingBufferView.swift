@@ -24,17 +24,12 @@ extension ByteBufferView {
     }
 }
 
-internal var ringViewCount = 0
-internal var ringViewCopyCount = 0
-
 public extension SimpleRingBuffer {
     public func viewBytes(at index: Int, length: Int) -> ByteBufferView {
-        ringViewCount += 1
         let endIndex = index + length
         if endIndex < self.capacity {
             return self._storage.viewBytes(at: index, length: length)
         } else {
-            ringViewCopyCount += 1
             // need to allocate a copy to get contiguous access :(
             // we know this will work, because we're constraining the bounds
             var buf = self._storage.getSlice(at: index, length: self._storage.capacity - index)!
