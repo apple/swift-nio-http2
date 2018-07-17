@@ -35,18 +35,8 @@ public struct IndexedHeaderTable {
     /// - Returns: A tuple containing the name and value of the stored header.
     /// - Throws: `NIOHPACKErrors.InvalidHeaderIndex` if the supplied index was invalid.
     public func header(at index: Int) throws -> (name: String, value: String) {
-        let views: (RingBufferView, RingBufferView)
-        if index < self.staticTable.count {
-            let entry = self.staticTable[index]    // static table is already 1-based
-            views = (self.staticTable.view(of: entry.name), self.staticTable.view(of: entry.value))
-        } else if index - self.staticTable.count < self.dynamicTable.count {
-            let entry = self.dynamicTable[index - self.staticTable.count]
-            views = (self.dynamicTable.view(of: entry.name), self.dynamicTable.view(of: entry.value))
-        } else {
-            throw NIOHPACKErrors.InvalidHeaderIndex(suppliedIndex: index, availableIndex: self.staticTable.count + self.dynamicTable.count - 1)
-        }
-        
-        return (String(decoding: views.0, as: UTF8.self), String(decoding: views.1, as: UTF8.self))
+        let (nameView, valueView) = try self.headerViews(at: index)
+        return (String(decoding: nameView, as: UTF8.self), String(decoding: valueView, as: UTF8.self))
     }
     
     /// Obtains the header key/value pair at the given index within the table as sequences of
@@ -85,7 +75,11 @@ public struct IndexedHeaderTable {
         return self.firstHeaderMatch(for: name.utf8, value: value?.utf8)
     }
     
-    func firstHeaderMatch<C : Collection>(for name: C, value: C?) -> (index: Int, matchesValue: Bool)? where C.Element == UInt8 {
+    func firstHeaderMatch<Name: Collection, Value: Collection>(for name: Name, value: Value?) -> (index: Int, matchesValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
+        guard let value = value else {
+            return self.staticTable.indices(matching: name).first.map { ($0, false) }
+        }
+        
         var firstHeaderIndex: Int? = nil
         for index in self.staticTable.indices(matching: name) {
             // we've found a name, at least
@@ -93,7 +87,7 @@ public struct IndexedHeaderTable {
                 firstHeaderIndex = index
             }
             
-            if let value = value, self.staticTable.view(of: self.staticTable[index].value).matches(value) {
+            if self.staticTable.view(of: self.staticTable[index].value).matches(value) {
                 return (index, true)
             }
         }
@@ -130,11 +124,26 @@ public struct IndexedHeaderTable {
     ///   - value: The value of the header to insert.
     /// - Returns: `true` if the header was added to the table, `false` if not.
     public mutating func add(headerNamed name: String, value: String) throws {
-        try self.dynamicTable.addHeader(named: name.utf8, value: value.utf8)
+        try self.add(headerNamed: name.utf8, value: value.utf8)
     }
     
-    public mutating func add<C : ContiguousCollection>(headerNameBytes nameBytes: C, valueBytes: C) throws where C.Element == UInt8 {
+    /// Appends a header to the table.
+    ///
+    /// This call may result in an empty table, as per RFC 7541 § 4.4:
+    /// > "It is not an error to attempt to add an entry that is larger than the maximum size;
+    /// > an attempt to add an entry larger than the maximum size causes the table to be
+    /// > emptied of all existing entries and results in an empty table."
+    ///
+    /// - Parameters:
+    ///   - name: A sequence of contiguous bytes containing the name of the header to insert.
+    ///   - value: A sequence of contiguous bytes containing the value of the header to insert.
+    public mutating func add<Name: ContiguousCollection, Value: ContiguousCollection>(headerNameBytes nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         try self.dynamicTable.addHeader(nameBytes: nameBytes, valueBytes: valueBytes)
+    }
+    
+    /// An internal variant, where we've already deconstructed the String into its UTF-8 bytes.
+    internal mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
+        try self.dynamicTable.addHeader(named: name, value: value)
     }
     
     /// The length, in bytes, of the dynamic portion of the header table.

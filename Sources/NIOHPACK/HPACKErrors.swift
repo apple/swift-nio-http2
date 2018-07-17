@@ -27,7 +27,7 @@ public enum NIOHPACKErrors {
         /// The highest index we have available.
         public let availableIndex: Int
         
-        public init(suppliedIndex: Int, availableIndex: Int) {
+        init(suppliedIndex: Int, availableIndex: Int) {
             self.suppliedIndex = suppliedIndex
             self.availableIndex = availableIndex
         }
@@ -40,7 +40,7 @@ public enum NIOHPACKErrors {
         /// The offending index.
         public let index: Int
         
-        public init(index: Int) {
+        init(index: Int) {
             self.index = index
         }
     }
@@ -54,7 +54,7 @@ public enum NIOHPACKErrors {
         /// The available number of bytes.
         public let available: Int
         
-        public init(length: Int, available: Int) {
+        init(length: Int, available: Int) {
             self.length = length
             self.available = available
         }
@@ -65,7 +65,7 @@ public enum NIOHPACKErrors {
         /// The offending bytes.
         public let bytes: ByteBuffer
         
-        public init(bytes: ByteBuffer) {
+        init(bytes: ByteBuffer) {
             self.bytes = bytes
         }
     }
@@ -76,7 +76,7 @@ public enum NIOHPACKErrors {
         /// The offending byte.
         public let byte: UInt8
         
-        public init(byte: UInt8) {
+        init(byte: UInt8) {
             self.byte = byte
         }
     }
@@ -84,25 +84,32 @@ public enum NIOHPACKErrors {
     /// A new header could not be added to the dynamic table. Usually
     /// this means the header itself is larger than the current
     /// dynamic table size.
-    public struct FailedToAddIndexedHeader : NIOHPACKError {
+    public struct FailedToAddIndexedHeader<Name: Collection, Value: Collection> : NIOHPACKError where Name.Element == UInt8, Value.Element == UInt8 {
         /// The table size required to be able to add this header to the table.
         public let bytesNeeded: Int
         
         /// The name of the header that could not be written.
-        public let name: String
+        public let name: Name
         
         /// The value of the header that could not be written.
-        public let value: String
+        public let value: Value
         
-        public init(bytesNeeded: Int, name: String, value: String) {
+        init(bytesNeeded: Int, name: Name, value: Value) {
             self.bytesNeeded = bytesNeeded
             self.name = name
             self.value = value
+        }
+        
+        public static func == (lhs: NIOHPACKErrors.FailedToAddIndexedHeader<Name, Value>, rhs: NIOHPACKErrors.FailedToAddIndexedHeader<Name, Value>) -> Bool {
+            guard lhs.bytesNeeded == rhs.bytesNeeded else {
+                return false
+            }
+            return lhs.name.elementsEqual(rhs.name) && lhs.value.elementsEqual(rhs.value)
         }
     }
     
     /// Ran out of input bytes while decoding.
     public struct InsufficientInput : NIOHPACKError {
-        public init() { }
+        init() { }
     }
 }

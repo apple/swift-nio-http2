@@ -36,15 +36,9 @@ struct HeaderTableEntry {
         return self.name.length + self.value.length + 32
     }
     
-    mutating func adjust(by delta: Int, wrappingAt max: Int) {
+    fileprivate mutating func adjust(by delta: Int, wrappingAt max: Int) {
         name.adjust(by: delta, wrappingAt: max)
         value.adjust(by: delta, wrappingAt: max)
-    }
-}
-
-extension HPACKHeaderIndex : CustomStringConvertible {
-    var description: String {
-        return "\(self.start)..<\(self.start + self.length)"
     }
 }
 
@@ -54,6 +48,9 @@ extension HeaderTableEntry : CustomStringConvertible {
     }
 }
 
+/// Raw bytes storage for the header tables, both static and dynamic. Similar in spirit to
+/// `HPACKHeaders` and `NIOHTTP1.HTTPHeaders`, but uses a ring buffer to hold the bytes to
+/// avoid allocation churn while evicting and replacing entries.
 struct HeaderTableStorage {
     static let defaultMaxSize = 4096
     
@@ -111,7 +108,7 @@ struct HeaderTableStorage {
         return self.findHeaders(matching: name.utf8).map { self.string(idx: $0.value) }
     }
     
-    func findHeaders<C : Collection>(matching name: C) -> [HeaderTableEntry] where C.Element == UInt8 {
+    func findHeaders<C: Collection>(matching name: C) -> [HeaderTableEntry] where C.Element == UInt8 {
         guard !self.headers.isEmpty else {
             return []
         }
@@ -126,7 +123,7 @@ struct HeaderTableStorage {
         return result
     }
     
-    func indices<C : Collection>(matching name: C) -> [Int] where C.Element == UInt8 {
+    func indices<C: Collection>(matching name: C) -> [Int] where C.Element == UInt8 {
         guard !self.headers.isEmpty else {
             return []
         }
@@ -155,7 +152,7 @@ struct HeaderTableStorage {
         if newSize < self.length {
             // need to clear out some things first.
             while newSize < self.length {
-                _ = purgeOne()
+                purgeOne()
             }
         }
         
@@ -176,7 +173,7 @@ struct HeaderTableStorage {
         }
     }
     
-    mutating func add<S : Sequence>(name: S, value: S) throws where S.Element == UInt8 {
+    mutating func add<Name: Collection, Value: Collection>(name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         var len = 0
         do {
             let (nameStart, nameLen, valueStart, valueLen) = try self.encode(name: name, value: value)
@@ -190,7 +187,7 @@ struct HeaderTableStorage {
         }
     }
     
-    mutating func add<C : ContiguousCollection>(nameBytes: C, valueBytes: C) throws where C.Element == UInt8 {
+    mutating func add<Name: ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         var len = 0
         do {
             let (nameStart, nameLen, valueStart, valueLen) = try self.encode(name: nameBytes, value: valueBytes)
@@ -204,19 +201,31 @@ struct HeaderTableStorage {
         }
     }
     
-    private mutating func encode<S : Sequence>(name: S, value: S) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where S.Element == UInt8 {
+    private mutating func encode<Name: Collection, Value: Collection>(name: Name, value: Value) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where Name.Element == UInt8, Value.Element == UInt8 {
+        let bytesNeeded = name.count + value.count
+        guard self.buffer.writableBytes >= bytesNeeded else {
+            throw RingBufferError.BufferOverrun(amount: bytesNeeded - self.buffer.writableBytes)
+        }
+        
         let nstart = self.buffer.writerIndex
         let nlen = try self.buffer.write(bytes: name)
         let vstart = self.buffer.writerIndex
         let vlen = try self.buffer.write(bytes: value)
+        
         return (nstart, nlen, vstart, vlen)
     }
     
-    private mutating func encode<C : ContiguousCollection>(name: C, value: C) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where C.Element == UInt8 {
+    private mutating func encode<Name: ContiguousCollection, Value: ContiguousCollection>(name: Name, value: Value) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where Name.Element == UInt8, Value.Element == UInt8 {
+        let bytesNeeded = name.count + value.count
+        guard self.buffer.writableBytes >= bytesNeeded else {
+            throw RingBufferError.BufferOverrun(amount: bytesNeeded - self.buffer.writableBytes)
+        }
+        
         let nstart = self.buffer.writerIndex
         let nlen = try self.buffer.write(bytes: name)
         let vstart = self.buffer.writerIndex
         let vlen = try self.buffer.write(bytes: value)
+        
         return (nstart, nlen, vstart, vlen)
     }
     
@@ -235,6 +244,10 @@ struct HeaderTableStorage {
         self.length = newLength
     }
     
+    /// Purges `toRelease` bytes from the table, where 'bytes' refers to the byte-count
+    /// of a table entry specified in RFC 7541: [name octets] + [value octets] + 32.
+    ///
+    /// - parameter toRelease: The table entry length of bytes to remove from the table.
     mutating func purge(toRelease count: Int) {
         guard count <= self.length else {
             // clear all the things
@@ -251,6 +264,7 @@ struct HeaderTableStorage {
         }
     }
     
+    @discardableResult
     private mutating func purgeOne() -> Int {
         precondition(self.headers.isEmpty == false, "should not call purgeOne() unless we have something to purge")
         // Remember: we're removing from the *end* of the header list, since we *prepend* new items there, but we're

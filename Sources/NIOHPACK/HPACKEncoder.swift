@@ -14,7 +14,7 @@
 
 import NIO
 
-/// An `HPACKDecoder` maintains its own dynamic header table and uses that to
+/// An `HPACKEncoder` maintains its own dynamic header table and uses that to
 /// encode HTTP headers to an internal byte buffer.
 ///
 /// This encoder functions as an accumulator: each encode operation will append
@@ -24,13 +24,18 @@ import NIO
 /// RFC 7541, appending and evicting items as described there.
 public struct HPACKEncoder {
     /// The default size of the encoder's dynamic header table.
-    public static let defaultDynamicTableSize = DynamicHeaderTable.defaultSize
+    public static var defaultDynamicTableSize: Int { return DynamicHeaderTable.defaultSize }
     private static let defaultDataBufferSize = 128
+    
+    public struct HeaderDefinition {
+        var name: String
+        var value: String
+        var indexing: HPACKIndexing
+    }
     
     // private but tests
     var headerIndexTable: IndexedHeaderTable
     
-    private var huffmanEncoder: HuffmanEncoder
     private var buffer: ByteBuffer
     
     /// The encoder's accumulated data.
@@ -39,7 +44,7 @@ public struct HPACKEncoder {
     }
     
     /// Whether to use Huffman encoding.
-    public var useHuffmanEncoding: Bool = true
+    public let useHuffmanEncoding: Bool
     
     /// The current size of the dynamic table.
     ///
@@ -49,7 +54,7 @@ public struct HPACKEncoder {
     }
     
     /// The maximum allowed size to which the dynamic header table may grow.
-    public var maxDynamicTableSize: Int {
+    public private(set) var maxDynamicTableSize: Int {
         get { return self.headerIndexTable.maxDynamicTableLength }
         set { self.headerIndexTable.maxDynamicTableLength = newValue }
     }
@@ -72,10 +77,10 @@ public struct HPACKEncoder {
     /// - Parameters:
     ///   - allocator: An allocator for `ByteBuffer`s.
     ///   - maxDynamicTableSize: An initial maximum size for the encoder's dynamic header table.
-    public init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = HPACKEncoder.defaultDynamicTableSize) {
+    public init(allocator: ByteBufferAllocator, useHuffmanEncoding: Bool = true, maxDynamicTableSize: Int = HPACKEncoder.defaultDynamicTableSize) {
         self.headerIndexTable = IndexedHeaderTable(maxDynamicTableSize: maxDynamicTableSize)
         self.buffer = allocator.buffer(capacity: HPACKEncoder.defaultDataBufferSize)
-        self.huffmanEncoder = HuffmanEncoder()
+        self.useHuffmanEncoding = useHuffmanEncoding
     }
     
     /// Reset the internal buffer, ready to begin encoding a new header block.
@@ -87,27 +92,21 @@ public struct HPACKEncoder {
     ///
     /// - Parameter headers: A sequence of key/value pairs representing HTTP headers.
     public mutating func append<S: Sequence>(headers: S) throws where S.Element == (name: String, value: String) {
-        for (name, value) in headers {
-            if try self._append(header: name.utf8, value: value.utf8) {
-                try self.headerIndexTable.add(headerNamed: name, value: value)
-            }
-        }
+        try self.append(headers: headers.lazy.map { HeaderDefinition(name: $0.0, value: $0.1, indexing: .indexable) })
     }
     
     /// Appends headers with their specified indexability.
     ///
     /// - Parameter headers: A sequence of key/value/indexability tuples representing HTTP headers.
-    public mutating func append<S : Sequence>(headers: S) throws where S.Element == (name: String, value: String, indexing: HPACKIndexing) {
-        for (name, value, indexing) in headers {
-            switch indexing {
+    public mutating func append<S : Sequence>(headers: S) throws where S.Element == HeaderDefinition {
+        for header in headers {
+            switch header.indexing {
             case .indexable:
-                if try self._append(header: name.utf8, value: value.utf8) {
-                    try self.headerIndexTable.add(headerNamed: name, value: value)
-                }
+                try self._appendIndexed(header: header.name.utf8, value: header.value.utf8)
             case .nonIndexable:
-                self._appendNonIndexed(header: name.utf8, value: value.utf8)
-            case .immutable:
-                self._appendNeverIndexed(header: name.utf8, value: value.utf8)
+                self._appendNonIndexed(header: header.name.utf8, value: header.value.utf8)
+            case .neverIndexed:
+                self._appendNeverIndexed(header: header.name.utf8, value: header.value.utf8)
             }
         }
     }
@@ -119,12 +118,10 @@ public struct HPACKEncoder {
             
             switch header.indexing {
             case .indexable:
-                if try self._append(header: nameView, value: valueView) {
-                    try self.headerIndexTable.add(headerNameBytes: nameView, valueBytes: valueView)
-                }
+                try self._appendIndexed(header: nameView, value: valueView)
             case .nonIndexable:
                 self._appendNonIndexed(header: nameView, value: valueView)
-            case .immutable:
+            case .neverIndexed:
                 self._appendNeverIndexed(header: nameView, value: valueView)
             }
         }
@@ -134,19 +131,17 @@ public struct HPACKEncoder {
     /// it will use an indexed header and literal value, or a literal header and value. The name/value pair
     /// will be indexed for future use.
     public mutating func append(header name: String, value: String) throws {
-        if try self._append(header: name.utf8, value: value.utf8) {
-            try self.headerIndexTable.add(headerNamed: name, value: value)
-        }
+        try self._appendIndexed(header: name.utf8, value: value.utf8)
     }
     
     /// Returns `true` if the item needs to be added to the header table
-    private mutating func _append<C : Collection>(header name: C, value: C) throws -> Bool where C.Element == UInt8 {
+    private mutating func _appendIndexed<Name: Collection, Value: Collection>(header name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         if let (index, hasValue) = self.headerIndexTable.firstHeaderMatch(for: name, value: value) {
             if hasValue {
                 // purely indexed. Nice & simple.
                 self.buffer.write(encodedInteger: UInt(index), prefix: 7, prefixBits: 0x80)
                 // everything is indexed-- nothing more to do!
-                return false
+                return
             } else {
                 // no value, so append the index to represent the name, followed by the value's
                 // length
@@ -161,18 +156,19 @@ public struct HPACKEncoder {
             self.appendEncodedString(value)
         }
         
-        return true
+        // add to the header table
+        try self.headerIndexTable.add(headerNamed: name, value: value)
     }
     
-    private mutating func appendEncodedString<C : Collection>(_ utf8: C) where C.Element == UInt8 {
+    private mutating func appendEncodedString<C: Collection>(_ utf8: C) where C.Element == UInt8 {
         // encode the value
-        if useHuffmanEncoding {
+        if self.useHuffmanEncoding {
             // problem: we need to encode the length before the encoded bytes, so we can't just receive the length
             // after encoding to the target buffer itself. So we have to determine the length first.
-            self.buffer.write(encodedInteger: UInt(self.huffmanEncoder.encodedLength(of: utf8)), prefix: 7, prefixBits: 0x80)
-            self.huffmanEncoder.encode(utf8, toBuffer: &self.buffer)
+            self.buffer.write(encodedInteger: UInt(ByteBuffer.huffmanEncodedLength(of: utf8)), prefix: 7, prefixBits: 0x80)
+            self.buffer.writeHuffmanEncoded(bytes: utf8)
         } else {
-            self.buffer.write(encodedInteger: UInt(utf8.count), prefix: 7)  // prefix bits are clear
+            self.buffer.write(encodedInteger: UInt(utf8.count), prefix: 7, prefixBits: 0)
             self.buffer.write(bytes: utf8)
         }
     }
@@ -183,11 +179,11 @@ public struct HPACKEncoder {
         self._appendNonIndexed(header: header.utf8, value: value.utf8)
     }
     
-    private mutating func _appendNonIndexed<C : Collection>(header: C, value: C) where C.Element == UInt8 {
-        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: nil) {
+    private mutating func _appendNonIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
+        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: value) {
             // we actually don't care if it has a value in this instance; we're only indexing the
             // name.
-            self.buffer.write(encodedInteger: UInt(index), prefix: 4)    // top 4 bits are all zero
+            self.buffer.write(encodedInteger: UInt(index), prefix: 4, prefixBits: 0)
             // now append the value
             self.appendEncodedString(value)
         } else {
@@ -202,8 +198,9 @@ public struct HPACKEncoder {
         self._appendNeverIndexed(header: header.utf8, value: value.utf8)
     }
     
-    private mutating func _appendNeverIndexed<C : Collection>(header: C, value: C) where C.Element == UInt8 {
-        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: nil) {
+    private mutating func _appendNeverIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
+        // compiler doesn't like us passing `nil` here as it can't infer the types, apparently.
+        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: Optional<Value>.none) {
             // we only use the index in this instance
             self.buffer.write(encodedInteger: UInt(index), prefix: 4, prefixBits: 0x10)
             // now append the value
@@ -213,25 +210,5 @@ public struct HPACKEncoder {
             self.appendEncodedString(header)
             self.appendEncodedString(value)
         }
-    }
-}
-
-extension ByteBuffer {
-    /// Shorthand for taking a copy of a ByteBuffer and passing it into a mutating write() method.
-    mutating func copy(from buffer: ByteBuffer) {
-        var buf = buffer
-        self.write(buffer: &buf)
-    }
-}
-
-extension ByteBufferView : CustomDebugStringConvertible {
-    public var debugDescription: String {
-        var desc = "\(self.count) bytes: ["
-        for byte in self {
-            let hexByte = String(byte, radix: 16)
-            desc += " \(hexByte.count == 1 ? "0" : "")\(hexByte)"
-        }
-        desc += " ]"
-        return desc
     }
 }

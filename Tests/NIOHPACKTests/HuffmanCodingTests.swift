@@ -18,10 +18,6 @@ import Foundation
 @testable import NIOHPACK
 
 class HuffmanCodingTests: XCTestCase {
-    
-    var encoder = HuffmanEncoder()
-    var decoder = HuffmanDecoder()
-    
     var scratchBuffer: ByteBuffer = ByteBufferAllocator().buffer(capacity: 4096)
     
     let fixtureDirURL = URL(fileURLWithPath: #file).deletingLastPathComponent().appendingPathComponent("Fixtures").absoluteURL
@@ -41,13 +37,13 @@ class HuffmanCodingTests: XCTestCase {
         self.scratchBuffer.clear()
         
         let utf8 = string.utf8
-        let numBytes = encoder.encode(utf8, toBuffer: &self.scratchBuffer)
+        let numBytes = self.scratchBuffer.writeHuffmanEncoded(bytes: utf8)
         XCTAssertEqual(numBytes, bytes.count, "Wrong length encoding '\(string)'", file: file, line: line)
         
         assertEqualContents(self.scratchBuffer, bytes, file: file, line: line)
         
         var buf = ByteBufferAllocator().buffer(capacity: utf8.count)
-        let numDecoded = try decoder.decodeString(from: self.scratchBuffer.readableBytesView, into: &buf)
+        let numDecoded = try scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
         XCTAssertEqual(numDecoded, utf8.count)
         
         let decoded = buf.readString(length: buf.readableBytes)
@@ -95,6 +91,56 @@ class HuffmanCodingTests: XCTestCase {
         
         try verifyHuffmanCoding(text2, Array(encoded2Data))
     }
+    
+    func testCompareDecodingStrategies() throws {
+        let baseText = "Hello, world. I am a header value; I have Teh Texts. I am going on for quite a long time because I want to ensure that the encoded data buffer needs to be expanded to test out that code. I'll try some meta-characters too: \r\t\n ought to do it, no?"
+        var text = baseText
+        
+        var buf = ByteBufferAllocator().buffer(capacity: text.count)
+        
+        // warm up
+        self.scratchBuffer.clear()
+        self.scratchBuffer.writeHuffmanEncoded(bytes: text.utf8)
+        _ = try self.scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
+        buf.clear()
+        
+        var averages: [Double] = []
+        var iteration = 0
+        repeat {
+            // encode first
+            self.scratchBuffer.clear()
+            self.scratchBuffer.writeHuffmanEncoded(bytes: text.utf8)
+            
+            // look at the decode times
+            huffmanDecoderUsesByteBufferWrite = true
+            buf.changeCapacity(to: text.count)
+            var start = CFAbsoluteTimeGetCurrent()
+            _ = try self.scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
+            let intWriteTime = CFAbsoluteTimeGetCurrent() - start
+            buf.clear()
+            
+            huffmanDecoderUsesByteBufferWrite = false
+            buf.changeCapacity(to: text.count)
+            start = CFAbsoluteTimeGetCurrent()
+            _ = try self.scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
+            let bytesWriteTime = CFAbsoluteTimeGetCurrent() - start
+            buf.clear()
+            
+            let ratio = bytesWriteTime / intWriteTime
+            averages.append(ratio)
+            
+            print("Iteration \(iteration): Decoded octets = \(text.count), Integers = \(intWriteTime)s, Bytes = \(bytesWriteTime)s, Ratio = \(ratio)")
+            
+            // lastly, expand the input text a bit.
+            text += baseText
+            iteration += 1
+            
+        } while text.count < 16000
+        
+        let sum = averages.reduce(0) { $0 + $1 }
+        let average = sum / Double(averages.count)
+        print("Average ratio: \(average)")
+    }
 
     func testBasicEncodingPerformance() {
         var text = "Hello, world. I am a header value; I have Teh Texts. I am going on for quite a long time because I want to ensure that the encoded data buffer needs to be expanded to test out that code. I'll try some meta-characters too: \r\t\n ought to do it, no?"
@@ -102,10 +148,13 @@ class HuffmanCodingTests: XCTestCase {
             text += text
         }
         
+        // warm up the encoder
+        self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
+        
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
             self.scratchBuffer.clear()
             startMeasuring()
-            encoder.encode(text.utf8, toBuffer: &self.scratchBuffer)
+            self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
             stopMeasuring()
         }
     }
@@ -127,14 +176,16 @@ class HuffmanCodingTests: XCTestCase {
             return data.copyBytes(to: bytePtr)
         }
         
-        let view = buffer.readableBytesView
         var targetBuffer = ByteBufferAllocator().buffer(capacity: data.count)
+        
+        // warm up the decoder
+        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
         
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
             targetBuffer.clear()
             
             startMeasuring()
-            _ = try! decoder.decodeString(from: view, into: &targetBuffer)
+            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
         }
     }
     
@@ -144,10 +195,13 @@ class HuffmanCodingTests: XCTestCase {
             text += text
         }
         
+        // warm up the encoder
+        self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
+        
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
             self.scratchBuffer.clear()
             startMeasuring()
-            encoder.encode(text.utf8, toBuffer: &self.scratchBuffer)
+            self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
             stopMeasuring()
         }
     }
@@ -169,17 +223,16 @@ class HuffmanCodingTests: XCTestCase {
             return data.copyBytes(to: bytePtr)
         }
         
-        let view = buffer.readableBytesView
         var targetBuffer = ByteBufferAllocator().buffer(capacity: data.count)
         
         // ensure the decoder table has been loaded
-        try? verifyHuffmanCoding("302", [0x64, 0x02])
+        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
         
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
             targetBuffer.clear()
             
             startMeasuring()
-            _ = try! decoder.decodeString(from: view, into: &targetBuffer)
+            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
         }
     }
 

@@ -340,7 +340,7 @@ public enum HPACKIndexing : CustomStringConvertible {
     case nonIndexable
     /// Header may not be written to the dynamic index table, and proxies must
     /// pass it on as-is without rewriting.
-    case immutable
+    case neverIndexed
     
     public var description: String {
         switch self {
@@ -348,8 +348,8 @@ public enum HPACKIndexing : CustomStringConvertible {
             return "[]"
         case .nonIndexable:
             return "[non-indexable]"
-        case .immutable:
-            return "[immutable]"
+        case .neverIndexed:
+            return "[neverIndexed]"
         }
     }
 }
@@ -373,6 +373,12 @@ struct HPACKHeaderIndex {
             start += delta
         }
         assert(start >= 0, "start must not be negative")
+    }
+}
+
+extension HPACKHeaderIndex : CustomStringConvertible {
+    var description: String {
+        return "\(self.start)..<\(self.start + self.length)"
     }
 }
 

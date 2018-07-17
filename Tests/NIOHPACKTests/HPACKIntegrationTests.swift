@@ -88,7 +88,8 @@ class HPACKIntegrationTests : XCTestCase {
         }
     }
     
-    func testEncoderWithoutHuffmanCoding() throws {
+    // funky names to ensure the encoder tests run before the decoder tests.
+    func testAAEncoderWithoutHuffmanCoding() throws {
         let stories = loadStories(for: .encoding)
         guard stories.count > 0 else {
             // we don't have the data, so don't go failing any tests
@@ -101,19 +102,18 @@ class HPACKIntegrationTests : XCTestCase {
         }
         
         for (idx, story) in stories.enumerated() {
-            print("Encode story \(idx), context = \(String(describing: story.context?.rawValue))")
+            print("Non-Huffman encode story \(idx), context = \(story.context?.rawValue ?? "<none>")")
             if let desc = story.description {
                 print(desc)
             }
             
             let encoded = runEncodeStory(story, idx, huffmanEncoded: false)
             writeOutputStory(encoded, at: idx, to: outputDir)
-            
-            print("")
         }
     }
     
-    func testEncoderWithHuffmanCoding() throws {
+    // funky names to ensure the encoder tests run before the decoder tests.
+    func testABEncoderWithHuffmanCoding() throws {
         let stories = loadStories(for: .encoding)
         guard stories.count > 0 else {
             // we don't have the data, so don't go failing any tests
@@ -126,15 +126,13 @@ class HPACKIntegrationTests : XCTestCase {
         }
         
         for (idx, story) in stories.enumerated() {
-            print("Encode story \(idx), context = \(String(describing: story.context?.rawValue))")
+            print("Huffman encode story \(idx), context = \(story.context?.rawValue ?? "<none>")")
             if let desc = story.description {
                 print(desc)
             }
             
             let encoded = runEncodeStory(story, idx)
             writeOutputStory(encoded, at: idx, to: outputDir)
-            
-            print("")
         }
     }
     
@@ -153,12 +151,12 @@ class HPACKIntegrationTests : XCTestCase {
         }
         
         for (idx, story) in stories.enumerated() {
-            print("Decode story \(idx), context = \(String(describing: story.context?.rawValue))")
+            print("Decode story \(idx), context = \(story.context?.rawValue ?? "<none>")")
             if let desc = story.description {
                 print(desc)
             }
             
-            var decoder = HPACKDecoder()
+            var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
             
             for testCase in story.cases {
                 do {
@@ -172,8 +170,6 @@ class HPACKIntegrationTests : XCTestCase {
                     }
                     let decoded = try decoder.decodeHeaders(from: &bytes)
                     XCTAssertEqual(testCase.headers, decoded)
-                    
-                    print("  \(testCase.seqno) - succeeded.")
                 } catch {
                     print("  \(testCase.seqno) - failed.")
                     XCTFail("Failure in story \(idx), case \(testCase.seqno) - \(error)")
@@ -200,10 +196,8 @@ class HPACKIntegrationTests : XCTestCase {
     
     private func runEncodeStory(_ story: HPACKStory, _ index: Int, huffmanEncoded: Bool = true) -> HPACKStory {
         // do we need to care about the context?
-        var encoder = HPACKEncoder(allocator: ByteBufferAllocator())
-        var decoder = HPACKDecoder()
-        
-        encoder.useHuffmanEncoding = huffmanEncoded
+        var encoder = HPACKEncoder(allocator: ByteBufferAllocator(), useHuffmanEncoding: true)
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
         
         var result = story
         result.cases.removeAll()
@@ -226,8 +220,6 @@ class HPACKIntegrationTests : XCTestCase {
                 // now try to decode it
                 let decoded = try decoder.decodeHeaders(from: &encoded)
                 XCTAssertEqual(storyCase.headers, decoded)
-                
-                print("  \(storyCase.seqno) - succeeded.")
             } catch {
                 print("  \(storyCase.seqno) - failed.")
                 XCTFail("Failure in story \(index), case \(storyCase.seqno) - \(error)")
@@ -322,3 +314,14 @@ fileprivate func encodeHex(data: ByteBuffer) -> String {
     return result
 }
 
+extension ByteBufferView : CustomDebugStringConvertible {
+    public var debugDescription: String {
+        var desc = "\(self.count) bytes: ["
+        for byte in self {
+            let hexByte = String(byte, radix: 16)
+            desc += " \(hexByte.count == 1 ? "0" : "")\(hexByte)"
+        }
+        desc += " ]"
+        return desc
+    }
+}

@@ -54,7 +54,7 @@ class HPACKCodingTests: XCTestCase {
             ("custom-key", "custom-value")
         ])
         
-        var decoder = HPACKDecoder()
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
         XCTAssertEqual(decoder.dynamicTableLength, 0)
         
         let decoded1 = try decoder.decodeHeaders(from: &request1)
@@ -125,7 +125,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqualTuple(headers2[4], try encoder.headerIndexTable.header(at: 63))
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 64))
         
-        var decoder = HPACKDecoder()
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
         XCTAssertEqual(decoder.dynamicTableLength, 0)
         
         let decoded1 = try decoder.decodeHeaders(from: &request1)
@@ -206,7 +206,7 @@ class HPACKCodingTests: XCTestCase {
             ("set-cookie", "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1")
         ])
         
-        var decoder = HPACKDecoder(maxDynamicTableSize: 256)
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator(), maxDynamicTableSize: 256)
         XCTAssertEqual(decoder.dynamicTableLength, 0)
         
         let decoded1 = try decoder.decodeHeaders(from: &response1)
@@ -290,7 +290,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqualTuple(headers3[4], try encoder.headerIndexTable.header(at: 63))
         XCTAssertEqualTuple(headers3[2], try encoder.headerIndexTable.header(at: 64))
         
-        var decoder = HPACKDecoder(maxDynamicTableSize: 256)
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator(), maxDynamicTableSize: 256)
         XCTAssertEqual(decoder.dynamicTableLength, 0)
         
         let decoded1 = try decoder.decodeHeaders(from: &response1)
@@ -358,7 +358,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(encoder.encodedData, request3)
         XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 0)
         
-        var decoder = HPACKDecoder()
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
         XCTAssertEqual(decoder.dynamicTableLength, 0)
         
         let fullHeaders1 = HPACKHeaders([
@@ -396,35 +396,6 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(decoder.dynamicTableLength, 0)
     }
     
-    func _testSomeOddCases() throws {
-        let request1 = buffer(wrapping: [])
-        
-        let headers1 = HPACKHeaders([
-            (":method", "GET"),
-            (":scheme", "http"),
-            (":authority", "rover.ebay.com"),
-            (":path", "/roversync/"),
-            ("user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.8; rv:16.0) Gecko/20100101 Firefox/16.0"),
-            ("accept", "image/png,image/*;q=0.8,*/*;q=0.5"),
-            ("accept-language", "en-US,en;q=0.5"),
-            ("accept-encoding", "gzip, deflate"),
-            ("connection", "keep-alive"),
-            ("referer", "http://www.ebay.com/"),
-            ("cookie", "ebay=%5Esbf%3D%23%5E; dp1=bpbf/%238000000000005276504d^u1p/QEBfX0BAX19AQA**5276504d^; cssg=c67883f113a0a56964e646c6ffaa1abe; s=CgAD4ACBQlm5NYzY3ODgzZjExM2EwYTU2OTY0ZTY0NmM2ZmZhYTFhYmUBSgAYUJZuTTUwOTUxY2NkLjAuMS4zLjE1MS4zLjAuMeN+7JE*; nonsession=CgAFMABhSdlBNNTA5NTFjY2QuMC4xLjEuMTQ5LjMuMC4xAMoAIFn7Hk1jNjc4ODNmMTEzYTBhNTY5NjRlNjQ2YzZmZmFhMWFjMQDLAAFQlSPVMX8u5Z8*")
-        ])
-        
-        var encoder = HPACKEncoder(allocator: allocator)
-        try encoder.append(headers: headers1)
-        var encoded = encoder.encodedData
-        
-        var decoder = HPACKDecoder(allocator: allocator)
-        let decoded = try decoder.decodeHeaders(from: &encoded)
-        XCTAssertEqual(headers1, decoded)
-        //XCTAssertEqual(encoder.encodedData, request1)
-        //XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 57)
-        //XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
-    }
-    
     func testInlineDynamicTableResize() throws {
         var request1 = buffer(wrapping: [0x82, 0x86, 0x84, 0x3F, 0x32, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         
@@ -452,7 +423,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(encoder.maxDynamicTableSize, oddMaxTableSize)
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
         
-        var decoder = HPACKDecoder(maxDynamicTableSize: 22)     // not enough to store the value we expect it to eventually store
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator(), maxDynamicTableSize: 22)     // not enough to store the value we expect it to eventually store
         let decoded: HPACKHeaders
         do {
             decoded = try decoder.decodeHeaders(from: &request1)

@@ -57,7 +57,7 @@ private func base64DecodeByte(_ byte: UInt8) -> Base64DecodedByte {
  - parameter options:    Options for handling invalid input
  - returns:              The decoded bytes.
  */
-private func base64DecodeBytes<C : Collection>(_ bytes: C, ignoreUnknownCharacters: Bool = false) -> [UInt8]? where C.Element == UInt8 {
+private func base64DecodeBytes<C: Collection>(_ bytes: C, ignoreUnknownCharacters: Bool = false) -> [UInt8]? where C.Element == UInt8 {
     var decodedBytes = [UInt8]()
     decodedBytes.reserveCapacity((bytes.count/3)*2)
     
@@ -244,8 +244,7 @@ internal struct HuffmanDecoderFlags : OptionSet
  completely Huffman-decoded the data.
 
  This approach has relatively little indirection, and therefore performs
- relatively well, particularly on implementations like PyPy where the cost of
- loops at the Python-level is not too expensive. The total number of loop
+ relatively well. The total number of loop
  iterations is 4x the number of bytes passed to the decoder.
  */
 internal struct HuffmanDecoderTable {

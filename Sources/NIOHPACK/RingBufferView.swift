@@ -53,7 +53,7 @@ public struct RingBufferView : ContiguousCollection, RandomAccessCollection {
         return RingBufferView(buffer: self.buffer, range: range)
     }
     
-    public func matches<C : ContiguousCollection>(_ other: C) -> Bool where C.Element == UInt8 {
+    public func matches<C: ContiguousCollection>(_ other: C) -> Bool where C.Element == UInt8 {
         return self.withUnsafeBytes { myBytes in
             return other.withUnsafeBytes { theirBytes in
                 guard myBytes.count == theirBytes.count else {
@@ -64,25 +64,8 @@ public struct RingBufferView : ContiguousCollection, RandomAccessCollection {
         }
     }
     
-    public func matches<C : Collection>(_ other: C) -> Bool where C.Element == UInt8 {
-        guard self.count == other.count else {
-            return false
-        }
-        for (mine, theirs) in zip(self, other) {
-            if mine != theirs {
-                return false
-            }
-        }
-        return true
-    }
-    
-    public func matches<S : Sequence>(_ other: S) -> Bool where S.Element == UInt8 {
-        for (mine, theirs) in zip(self, other) {
-            if mine != theirs {
-                return false
-            }
-        }
-        return true
+    public func matches<S: Sequence>(_ other: S) -> Bool where S.Element == UInt8 {
+        return self.elementsEqual(other)
     }
 }
 

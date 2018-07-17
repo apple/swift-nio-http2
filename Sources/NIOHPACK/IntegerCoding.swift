@@ -24,7 +24,7 @@ import NIO
 ///   - prefixBits: Existing bits to place in that first byte of `buffer` before encoding `value`.
 /// - Returns: Returns the number of bytes used to encode the integer.
 @discardableResult
-func encodeInteger<T : UnsignedInteger>(_ value: T, to buffer: inout ByteBuffer,
+func encodeInteger<T: UnsignedInteger>(_ value: T, to buffer: inout ByteBuffer,
                                         prefix: Int, prefixBits: UInt8 = 0) -> Int {
     assert(prefix <= 8)
     assert(prefix >= 1)
@@ -60,7 +60,7 @@ func encodeInteger<T : UnsignedInteger>(_ value: T, to buffer: inout ByteBuffer,
 }
 
 /* private but tests */
-func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> (UInt, Int) {
+func decodeInteger<C: Collection>(from bytes: C, prefix: Int) throws -> (UInt, Int) where C.Element == UInt8 {
     assert(prefix <= 8)
     assert(prefix >= 1)
     
@@ -99,10 +99,10 @@ func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> (UInt, Int
 }
 
 extension ByteBuffer {
-    mutating func readEncodedInteger(withPrefix prefix: Int = 0) throws -> UInt {
+    mutating func readEncodedInteger(withPrefix prefix: Int = 0) throws -> Int {
         let (result, nread) = try decodeInteger(from: self.readableBytesView, prefix: prefix)
         self.moveReaderIndex(forwardBy: nread)
-        return result
+        return Int(result)
     }
     
     mutating func write<T : UnsignedInteger>(encodedInteger value: T, prefix: Int = 0, prefixBits: UInt8 = 0) {

@@ -14,14 +14,13 @@
 
 import NIO
 
+/// Implements the dynamic part of the HPACK header table, as defined in
+/// [RFC 7541 § 2.3](https://httpwg.org/specs/rfc7541.html#dynamic.table).
 struct DynamicHeaderTable {
     public static let defaultSize = 4096
     
     /// The actual table, with items looked up by index.
     private var storage: HeaderTableStorage
-    
-    /// List of indexes to actual values within the table.
-    
     
     /// The length of the contents of the table.
     var length: Int {
@@ -73,10 +72,13 @@ struct DynamicHeaderTable {
     /// - Returns: A tuple containing the matching index and, if a value was specified as a
     ///            parameter, an indication whether that value was also found. Returns `nil`
     ///            if no matching header name could be located.
-    func findExistingHeader<C : Collection>(named name: C, value: C? = nil) -> (index: Int, containsValue: Bool)? where C.Element == UInt8 {
+    func findExistingHeader<Name: Collection, Value: Collection>(named name: Name, value: Value?) -> (index: Int, containsValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
         // looking for both name and value, but can settle for just name
         // thus we'll search manually.
-        // TODO: there's probably a better algorithm for this.
+        guard let value = value else {
+            return self.storage.indices(matching: name).first.map { ($0, false) }
+        }
+        
         var firstNameMatch: Int? = nil
         for index in self.storage.indices(matching: name) {
             if firstNameMatch == nil {
@@ -85,7 +87,7 @@ struct DynamicHeaderTable {
                 firstNameMatch = index
             }
             
-            if let value = value, self.storage.view(of: self.storage[index].value).matches(value) {
+            if self.storage.view(of: self.storage[index].value).matches(value) {
                 // this entry has both the name and the value we're seeking
                 return (index, true)
             }
@@ -113,7 +115,7 @@ struct DynamicHeaderTable {
     ///   - value: A collection of UTF-8 code points comprising the value of the header to insert.
     ///   - evictAutomatically: If `true`, the table will evict existing items to make room. Default is `true`.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader<C : Collection>(named name: C, value: C, evictAutomatically: Bool = true) throws where C.Element == UInt8 {
+    mutating func addHeader<Name: Collection, Value: Collection>(named name: Name, value: Value, evictAutomatically: Bool = true) throws where Name.Element == UInt8, Value.Element == UInt8 {
         do {
             try self.storage.add(name: name, value: value)
         } catch let error as RingBufferError.BufferOverrun {
@@ -133,8 +135,7 @@ struct DynamicHeaderTable {
             } else {
                 // ping the error up the stack, with more information
                 throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
-                                                              name: String(decoding: name, as: UTF8.self),
-                                                              value: String(decoding: value, as: UTF8.self))
+                                                              name: name, value: value)
             }
         }
     }
@@ -152,7 +153,7 @@ struct DynamicHeaderTable {
     ///   - value: A contiguous collection of UTF-8 bytes comprising the value of the header to insert.
     ///   - evictAutomatically: If `true`, the table will evict existing items to make room. Default is `true`.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader<C : ContiguousCollection>(nameBytes: C, valueBytes: C, evictAutomatically: Bool = true) throws where C.Element == UInt8 {
+    mutating func addHeader<Name : ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value, evictAutomatically: Bool = true) throws where Name.Element == UInt8, Value.Element == UInt8 {
         do {
             try self.storage.add(nameBytes: nameBytes, valueBytes: valueBytes)
         } catch let error as RingBufferError.BufferOverrun {
@@ -161,8 +162,7 @@ struct DynamicHeaderTable {
                 return try self.addHeader(nameBytes: nameBytes, valueBytes: valueBytes, evictAutomatically: false)
             } else {
                 throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
-                                                              name: String(decoding: nameBytes, as: UTF8.self),
-                                                              value: String(decoding: valueBytes, as: UTF8.self))
+                                                              name: nameBytes, value: valueBytes)
             }
         }
     }
