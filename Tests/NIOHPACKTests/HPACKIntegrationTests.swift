@@ -16,8 +16,6 @@ import XCTest
 import NIO
 @testable import NIOHPACK
 
-
-
 class HPACKIntegrationTests : XCTestCase {
     
     private let hpackTestsURL: URL = {
@@ -90,6 +88,9 @@ class HPACKIntegrationTests : XCTestCase {
     
     // funky names to ensure the encoder tests run before the decoder tests.
     func testAAEncoderWithoutHuffmanCoding() throws {
+        ringViewCount = 0
+        ringViewCopyCount = 0
+        
         let stories = loadStories(for: .encoding)
         guard stories.count > 0 else {
             // we don't have the data, so don't go failing any tests
@@ -110,10 +111,15 @@ class HPACKIntegrationTests : XCTestCase {
             let encoded = runEncodeStory(story, idx, huffmanEncoded: false)
             writeOutputStory(encoded, at: idx, to: outputDir)
         }
+        
+        print("Ring buffer views created: \(ringViewCount). Number which required copies: \(ringViewCopyCount). Ratio: \(Double(ringViewCopyCount) / Double(ringViewCount) * 100)%")
     }
     
     // funky names to ensure the encoder tests run before the decoder tests.
     func testABEncoderWithHuffmanCoding() throws {
+        ringViewCount = 0
+        ringViewCopyCount = 0
+        
         let stories = loadStories(for: .encoding)
         guard stories.count > 0 else {
             // we don't have the data, so don't go failing any tests
@@ -134,12 +140,19 @@ class HPACKIntegrationTests : XCTestCase {
             let encoded = runEncodeStory(story, idx)
             writeOutputStory(encoded, at: idx, to: outputDir)
         }
+        
+        print("Ring buffer views created: \(ringViewCount). Number which required copies: \(ringViewCopyCount). Ratio: \(Double(ringViewCopyCount) / Double(ringViewCount) * 100)%")
     }
     
     func testDecoder() {
+        ringViewCount = 0
+        ringViewCopyCount = 0
+        
         for test in TestType.allCases where test != .encoding {
             _testDecoder(for: test)
         }
+        
+        print("Ring buffer views created: \(ringViewCount). Number which required copies: \(ringViewCopyCount). Ratio: \(Double(ringViewCopyCount) / Double(ringViewCount) * 100)%")
     }
     
     private func _testDecoder(for test: TestType) {
@@ -196,7 +209,7 @@ class HPACKIntegrationTests : XCTestCase {
     
     private func runEncodeStory(_ story: HPACKStory, _ index: Int, huffmanEncoded: Bool = true) -> HPACKStory {
         // do we need to care about the context?
-        var encoder = HPACKEncoder(allocator: ByteBufferAllocator(), useHuffmanEncoding: true)
+        var encoder = HPACKEncoder(allocator: ByteBufferAllocator(), useHuffmanEncoding: huffmanEncoded)
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
         
         var result = story

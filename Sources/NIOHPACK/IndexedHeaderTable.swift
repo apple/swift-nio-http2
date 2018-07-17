@@ -17,7 +17,7 @@ import NIO
 /// The unified header table used by HTTP/2, encompassing both static and dynamic tables.
 public struct IndexedHeaderTable {
     // private but tests
-    let staticTable = HeaderTableStorage(staticHeaderList: StaticHeaderTable)
+    let staticTable = HeaderTableStorage(allocator: ByteBufferAllocator(), staticHeaderList: StaticHeaderTable)
     var dynamicTable: DynamicHeaderTable
     
     /// Creates a new header table, optionally specifying a maximum size for the dynamic
@@ -46,8 +46,8 @@ public struct IndexedHeaderTable {
     /// - Parameter index: The index to query.
     /// - Returns: A tuple containing the name and value of the stored header.
     /// - Throws: `NIOHPACKErrors.InvalidHeaderIndex` if the supplied index was invalid.
-    public func headerViews(at index: Int) throws -> (name: RingBufferView, value: RingBufferView) {
-        let result: (RingBufferView, RingBufferView)
+    public func headerViews(at index: Int) throws -> (name: ByteBufferView, value: ByteBufferView) {
+        let result: (ByteBufferView, ByteBufferView)
         if index < self.staticTable.count {
             let entry = self.staticTable[index]
             result = (self.staticTable.view(of: entry.name), self.staticTable.view(of: entry.value))

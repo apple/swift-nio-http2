@@ -64,28 +64,28 @@ struct HeaderTableStorage {
         return self.headers.count
     }
     
-    init(maxSize: Int = HeaderTableStorage.defaultMaxSize, allocator: ByteBufferAllocator = ByteBufferAllocator()) {
+    init(allocator: ByteBufferAllocator, maxSize: Int = HeaderTableStorage.defaultMaxSize) {
         self.maxSize = maxSize
-        self.buffer = SimpleRingBuffer(capacity: self.maxSize)
+        self.buffer = SimpleRingBuffer(allocator: allocator, capacity: self.maxSize)
         self.headers = CircularBuffer(initialRingCapacity: self.maxSize / 64)    // rough guess: 64 bytes per header
     }
     
-    init(staticHeaderList: [(String, String)]) {
+    init(allocator: ByteBufferAllocator, staticHeaderList: [(String, String)]) {
         // calculate likely total byte length we will actually need
         // the static table is all ASCII, so character count == byte count here
         let bytesNeeded = staticHeaderList.reduce(0) { $0 + $1.0.count + $1.1.count }
         // set this according to what the length algorithm would normally expect
         
         // now allocate & encode all the things
-        self.buffer = SimpleRingBuffer(capacity: bytesNeeded)
+        self.buffer = SimpleRingBuffer(allocator: allocator, capacity: bytesNeeded)
         self.headers = CircularBuffer(initialRingCapacity: staticHeaderList.count)
         
         var len = 0
         
         for (name, value) in staticHeaderList {
-            let nameStart = self.buffer.writerIndex
+            let nameStart = self.buffer.ringTail
             let nameLen = try! self.buffer.write(string: name)
-            let valueStart = self.buffer.writerIndex
+            let valueStart = self.buffer.ringTail
             let valueLen = try! self.buffer.write(string: value)
             
             let entry = HeaderTableEntry(name: HPACKHeaderIndex(start: nameStart, length: nameLen),
@@ -144,7 +144,7 @@ struct HeaderTableStorage {
         return self.buffer.getString(at: idx.start, length: idx.length)!
     }
     
-    func view(of idx: HPACKHeaderIndex) -> RingBufferView {
+    func view(of idx: HPACKHeaderIndex) -> ByteBufferView {
         return self.buffer.viewBytes(at: idx.start, length: idx.length)
     }
     
@@ -157,17 +157,17 @@ struct HeaderTableStorage {
         }
         
         // if this rebases, we will need to alter all our header indices
-        let startIndex = self.buffer.readerIndex
+        let startIndex = self.buffer.ringHead
         self.buffer.changeCapacity(to: newSize)
         self.maxSize = newSize
         
-        if startIndex == self.buffer.readerIndex {
+        if startIndex == self.buffer.ringHead {
             // no index changes
             return
         }
         
         // otherwise, compute a delta and apply it to all indices
-        let delta = self.buffer.readerIndex - startIndex    // if index decreased, we apply a negative delta
+        let delta = self.buffer.ringHead - startIndex    // if index decreased, we apply a negative delta
         for index in self.headers.indices {
             self.headers[index].adjust(by: delta, wrappingAt: self.buffer.capacity)
         }
@@ -207,9 +207,9 @@ struct HeaderTableStorage {
             throw RingBufferError.BufferOverrun(amount: bytesNeeded - self.buffer.writableBytes)
         }
         
-        let nstart = self.buffer.writerIndex
+        let nstart = self.buffer.ringTail
         let nlen = try self.buffer.write(bytes: name)
-        let vstart = self.buffer.writerIndex
+        let vstart = self.buffer.ringTail
         let vlen = try self.buffer.write(bytes: value)
         
         return (nstart, nlen, vstart, vlen)
@@ -221,9 +221,9 @@ struct HeaderTableStorage {
             throw RingBufferError.BufferOverrun(amount: bytesNeeded - self.buffer.writableBytes)
         }
         
-        let nstart = self.buffer.writerIndex
+        let nstart = self.buffer.ringTail
         let nlen = try self.buffer.write(bytes: name)
-        let vstart = self.buffer.writerIndex
+        let vstart = self.buffer.ringTail
         let vlen = try self.buffer.write(bytes: value)
         
         return (nstart, nlen, vstart, vlen)
@@ -270,7 +270,7 @@ struct HeaderTableStorage {
         // Remember: we're removing from the *end* of the header list, since we *prepend* new items there, but we're
         // removing bytes from the *start* of the storage, because we *append* there.
         let entry = self.headers.removeLast()
-        self.buffer.moveReaderIndex(forwardBy: entry.name.length + entry.value.length)
+        self.buffer.moveHead(forwardBy: entry.name.length + entry.value.length)
         self.length -= entry.length
         return entry.length
     }

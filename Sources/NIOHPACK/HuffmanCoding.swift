@@ -168,8 +168,6 @@ public enum HuffmanDecodeError
 /// The decoder table. This structure doesn't actually take up any space, I think?
 fileprivate let decoderTable = HuffmanDecoderTable()
 
-internal var huffmanDecoderUsesByteBufferWrite = false
-
 extension ByteBuffer {
     
     /// Decodes a huffman-encoded string into a provided `ByteBuffer`.
@@ -189,68 +187,34 @@ extension ByteBuffer {
         
         var state: UInt8 = 0
         var acceptable = false
-        let result: Int
+        let start = output.writerIndex
         
-        if huffmanDecoderUsesByteBufferWrite {
-            let start = output.writerIndex
-            
-            for ch in self.viewBytes(at: index, length: length) {
-                var t = decoderTable[state: state, nybble: ch >> 4]
-                if t.flags.contains(.failure) {
-                    throw HuffmanDecodeError.InvalidState()
-                }
-                if t.flags.contains(.symbol) {
-                    output.write(integer: t.sym)
-                }
-                
-                t = decoderTable[state: t.state, nybble: ch & 0xf]
-                if t.flags.contains(.failure) {
-                    throw HuffmanDecodeError.InvalidState()
-                }
-                if t.flags.contains(.symbol) {
-                    output.write(integer: t.sym)
-                }
-                
-                state = t.state
-                acceptable = t.flags.contains(.accepted)
+        for ch in self.viewBytes(at: index, length: length) {
+            var t = decoderTable[state: state, nybble: ch >> 4]
+            if t.flags.contains(.failure) {
+                throw HuffmanDecodeError.InvalidState()
+            }
+            if t.flags.contains(.symbol) {
+                output.write(integer: t.sym)
             }
             
-            result = output.writerIndex - start
-        } else {
-            // we write to an intermediate contiguous array, because write(integer:) goes through
-            // all sorts even when writing individual bytes.
-            var buf: ContiguousArray<UInt8> = []
-            buf.reserveCapacity(max(128, length.nextPowerOf2()))
-            
-            for ch in self.viewBytes(at: index, length: length) {
-                var t = decoderTable[state: state, nybble: ch >> 4]
-                if t.flags.contains(.failure) {
-                    throw HuffmanDecodeError.InvalidState()
-                }
-                if t.flags.contains(.symbol) {
-                    buf.append(t.sym)
-                }
-                
-                t = decoderTable[state: t.state, nybble: ch & 0xf]
-                if t.flags.contains(.failure) {
-                    throw HuffmanDecodeError.InvalidState()
-                }
-                if t.flags.contains(.symbol) {
-                    buf.append(t.sym)
-                }
-                
-                state = t.state
-                acceptable = t.flags.contains(.accepted)
+            t = decoderTable[state: t.state, nybble: ch & 0xf]
+            if t.flags.contains(.failure) {
+                throw HuffmanDecodeError.InvalidState()
+            }
+            if t.flags.contains(.symbol) {
+                output.write(integer: t.sym)
             }
             
-            result = output.write(bytes: buf)
+            state = t.state
+            acceptable = t.flags.contains(.accepted)
         }
         
         guard acceptable else {
             throw HuffmanDecodeError.InvalidState()
         }
         
-        return result
+        return output.writerIndex - start
     }
     
     /// Reads a huffman-encoded string into a provided `ByteBuffer`, starting at the buffer's

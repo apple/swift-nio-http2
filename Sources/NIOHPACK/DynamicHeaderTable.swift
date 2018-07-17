@@ -43,7 +43,7 @@ struct DynamicHeaderTable {
     }
     
     init(maximumLength: Int = DynamicHeaderTable.defaultSize, allocator: ByteBufferAllocator = ByteBufferAllocator()) {
-        self.storage = HeaderTableStorage(maxSize: maximumLength, allocator: allocator)
+        self.storage = HeaderTableStorage(allocator: allocator, maxSize: maximumLength)
     }
     
     /// Subscripts into the dynamic table alone, using a zero-based index.
@@ -51,7 +51,7 @@ struct DynamicHeaderTable {
         return self.storage[i]
     }
     
-    func view(of index: HPACKHeaderIndex) -> RingBufferView {
+    func view(of index: HPACKHeaderIndex) -> ByteBufferView {
         return self.storage.view(of: index)
     }
     

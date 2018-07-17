@@ -91,56 +91,6 @@ class HuffmanCodingTests: XCTestCase {
         
         try verifyHuffmanCoding(text2, Array(encoded2Data))
     }
-    
-    func testCompareDecodingStrategies() throws {
-        let baseText = "Hello, world. I am a header value; I have Teh Texts. I am going on for quite a long time because I want to ensure that the encoded data buffer needs to be expanded to test out that code. I'll try some meta-characters too: \r\t\n ought to do it, no?"
-        var text = baseText
-        
-        var buf = ByteBufferAllocator().buffer(capacity: text.count)
-        
-        // warm up
-        self.scratchBuffer.clear()
-        self.scratchBuffer.writeHuffmanEncoded(bytes: text.utf8)
-        _ = try self.scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
-        buf.clear()
-        
-        var averages: [Double] = []
-        var iteration = 0
-        repeat {
-            // encode first
-            self.scratchBuffer.clear()
-            self.scratchBuffer.writeHuffmanEncoded(bytes: text.utf8)
-            
-            // look at the decode times
-            huffmanDecoderUsesByteBufferWrite = true
-            buf.changeCapacity(to: text.count)
-            var start = CFAbsoluteTimeGetCurrent()
-            _ = try self.scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
-            let intWriteTime = CFAbsoluteTimeGetCurrent() - start
-            buf.clear()
-            
-            huffmanDecoderUsesByteBufferWrite = false
-            buf.changeCapacity(to: text.count)
-            start = CFAbsoluteTimeGetCurrent()
-            _ = try self.scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
-            let bytesWriteTime = CFAbsoluteTimeGetCurrent() - start
-            buf.clear()
-            
-            let ratio = bytesWriteTime / intWriteTime
-            averages.append(ratio)
-            
-            print("Iteration \(iteration): Decoded octets = \(text.count), Integers = \(intWriteTime)s, Bytes = \(bytesWriteTime)s, Ratio = \(ratio)")
-            
-            // lastly, expand the input text a bit.
-            text += baseText
-            iteration += 1
-            
-        } while text.count < 16000
-        
-        let sum = averages.reduce(0) { $0 + $1 }
-        let average = sum / Double(averages.count)
-        print("Average ratio: \(average)")
-    }
 
     func testBasicEncodingPerformance() {
         var text = "Hello, world. I am a header value; I have Teh Texts. I am going on for quite a long time because I want to ensure that the encoded data buffer needs to be expanded to test out that code. I'll try some meta-characters too: \r\t\n ought to do it, no?"

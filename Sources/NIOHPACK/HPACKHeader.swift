@@ -77,6 +77,9 @@ public struct HPACKHeaders {
     
     /// Construct a `HPACKHeaders` structure.
     ///
+    /// The indexability of all headers is assumed to be the default, i.e. indexable and
+    /// rewritable by proxies.
+    ///
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
     public init(_ headers: [(String, String)] = []) {
@@ -86,6 +89,9 @@ public struct HPACKHeaders {
     }
     
     /// Construct a `HPACKHeaders` structure.
+    ///
+    /// The indexability of all headers is assumed to be the default, i.e. indexable and
+    /// rewritable by proxies.
     ///
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
@@ -111,7 +117,7 @@ public struct HPACKHeaders {
     /// - Parameter name: The header field name. For maximum compatibility this should be an
     ///     ASCII string. For HTTP/2 lowercase header names are strongly encouraged.
     /// - Parameter value: The header field value to add for the given name.
-    public mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
+    private mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         precondition(!name.utf8.contains(where: { !$0.isASCII }), "name must be ASCII")
         if !isKnownUniquelyReferenced(&self._storage) {
             self._storage = self._storage.copy()
@@ -135,7 +141,7 @@ public struct HPACKHeaders {
     /// - Parameter name: The header field name. For maximum compatibility this should be an
     ///     ASCII string. For HTTP/2 lowercase header names are strongly encouraged.
     /// - Parameter value: The header field value to add for the given name.
-    public mutating func add(nameBytes: ByteBufferView, valueBytes: ByteBufferView, indexing: HPACKIndexing = .indexable) {
+    private mutating func add(nameBytes: ByteBufferView, valueBytes: ByteBufferView, indexing: HPACKIndexing = .indexable) {
         precondition(!nameBytes.contains(where: { !$0.isASCII }), "name must be ASCII")
         if !isKnownUniquelyReferenced(&self._storage) {
             self._storage = self._storage.copy()
@@ -146,55 +152,6 @@ public struct HPACKHeaders {
         let valueLength = self._storage.buffer.write(bytes: valueBytes)
         self._storage.headers.append(HPACKHeader(start: nameStart, nameLength: nameLength,
                                                  valueLength: valueLength, indexing: indexing))
-    }
-    
-    /// Add a header name/value pair to the block, replacing any previous values for the
-    /// same header name that are already in the block.
-    ///
-    /// This is a supplemental method to `add` that essentially combines `remove` and `add`
-    /// in a single function. It can be used to ensure that a header block is in a
-    /// well-defined form without having to check whether the value was previously there.
-    /// Like `add`, this method performs case-insensitive comparisons of the header field
-    /// names.
-    ///
-    /// - Parameter name: The header field name. For maximum compatibility this should be an
-    ///     ASCII string. For HTTP/2 lowercase header names are strongly encouraged.
-    /// - Parameter value: The header field value to add for the given name.
-    public mutating func replaceOrAdd(name: String, value: String, indexing: HPACKIndexing = .indexable) {
-        self.remove(name: name)
-        self.add(name: name, value: value, indexing: indexing)
-    }
-    
-    /// Remove all values for a given header name from the block.
-    ///
-    /// This method uses case-insensitive comparisons for the header field name.
-    ///
-    /// - Parameter name: The name of the header field to remove from the block.
-    public mutating func remove(name: String) {
-        guard !self.headers.isEmpty else {
-            return
-        }
-        
-        let utf8 = name.utf8
-        var array: [Int] = []
-        for (idx, header) in self.headers.enumerated() {
-            if self.buffer.equalCaseInsensitiveASCII(view: utf8, at: header.name) {
-                array.append(idx)
-            }
-        }
-        
-        guard !array.isEmpty else {
-            return
-        }
-        
-        if !isKnownUniquelyReferenced(&self._storage) {
-            self._storage = self._storage.copy()
-        }
-        
-        array.reversed().forEach {
-            self._storage.headers.remove(at: $0)
-        }
-        self._storage.continuous = false
     }
     
     /// Retrieve all of the values for a given header field name from the block.

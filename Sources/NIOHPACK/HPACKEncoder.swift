@@ -63,12 +63,8 @@ public struct HPACKEncoder {
     /// into the current packed header block to send to the peer.
     ///
     /// - Parameter size: The new maximum size for the dynamic header table.
-    /// - Parameter sendUpdate: If `true`, sends the new maximum table size to the peer
-    ///                         by encoding the value inline with the current header set.
-    ///                         Default = `true`.
-    public mutating func setMaxDynamicTableSize(_ size: Int, andSendUpdate sendUpdate: Bool = true) {
+    public mutating func setMaxDynamicTableSize(_ size: Int) {
         self.maxDynamicTableSize = size
-        guard sendUpdate else { return }
         self.buffer.write(encodedInteger: UInt(size), prefix: 5, prefixBits: 0x20)
     }
     
