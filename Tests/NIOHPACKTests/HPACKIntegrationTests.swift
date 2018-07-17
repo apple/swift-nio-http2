@@ -86,74 +86,86 @@ class HPACKIntegrationTests : XCTestCase {
         }
     }
     
-    // funky names to ensure the encoder tests run before the decoder tests.
-    func testAAEncoderWithoutHuffmanCoding() throws {
+    private func runEncodingTests(withOutput type: TestType) {
+        let huffmanEncoded = type == .swiftNIOHuffman
         let stories = loadStories(for: .encoding)
         guard stories.count > 0 else {
             // we don't have the data, so don't go failing any tests
             return
         }
         
-        let outputDir = getSourceURL(for: .swiftNIOPlain)
+        let outputDir = getSourceURL(for: type)
         if FileManager.default.fileExists(atPath: outputDir.path) == false {
             try! FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true, attributes: nil)
         }
         
+        var outputs: [HPACKStory] = []
+        
+        let start = CFAbsoluteTimeGetCurrent()
+        
         for (idx, story) in stories.enumerated() {
-            print("Non-Huffman encode story \(idx), context = \(story.context?.rawValue ?? "<none>")")
-            if let desc = story.description {
-                print(desc)
-            }
-            
-            let encoded = runEncodeStory(story, idx, huffmanEncoded: false)
-            writeOutputStory(encoded, at: idx, to: outputDir)
+            let encoded = runEncodeStory(story, idx, huffmanEncoded: huffmanEncoded)
+            outputs.append(encoded)
+        }
+        
+        let end = CFAbsoluteTimeGetCurrent()
+        print("Encoding took \(String(format: "%.02f", end - start)) seconds.")
+        
+        for (idx, story) in outputs.enumerated() {
+            writeOutputStory(story, at: idx, to: outputDir)
         }
     }
     
     // funky names to ensure the encoder tests run before the decoder tests.
-    func testABEncoderWithHuffmanCoding() throws {
-        let stories = loadStories(for: .encoding)
-        guard stories.count > 0 else {
-            // we don't have the data, so don't go failing any tests
-            return
-        }
-        
-        let outputDir = getSourceURL(for: .swiftNIOHuffman)
-        if FileManager.default.fileExists(atPath: outputDir.path) == false {
-            try! FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true, attributes: nil)
-        }
-        
-        for (idx, story) in stories.enumerated() {
-            print("Huffman encode story \(idx), context = \(story.context?.rawValue ?? "<none>")")
-            if let desc = story.description {
-                print(desc)
-            }
-            
-            let encoded = runEncodeStory(story, idx)
-            writeOutputStory(encoded, at: idx, to: outputDir)
-        }
+    func testAAEncoderWithoutHuffmanCoding() {
+        runEncodingTests(withOutput: .swiftNIOPlain)
+    }
+    
+    // funky names to ensure the encoder tests run before the decoder tests.
+    func testABEncoderWithHuffmanCoding() {
+        runEncodingTests(withOutput: .swiftNIOHuffman)
     }
     
     func testDecoder() {
+        var testTimings: [TestType : CFTimeInterval] = [:]
+        
         for test in TestType.allCases where test != .encoding {
-            _testDecoder(for: test)
+            let duration = _testDecoder(for: test)
+            testTimings[test] = duration
+        }
+        
+        print("Test timing metrics:")
+        for (test, duration) in testTimings {
+            let testName = test.rawValue
+            var firstPart = " - \(testName) "
+            if firstPart.count < 40 {
+                firstPart.append(String(repeating: " ", count: 40 - firstPart.count))
+            }
+            
+            print("\(firstPart) : \(String(format: "%.02f", duration)) seconds.")
         }
     }
     
-    private func _testDecoder(for test: TestType) {
-        print("Loading \(test.rawValue)...")
+    private func _testDecoder(for test: TestType) -> CFTimeInterval {
+        let loadStart = CFAbsoluteTimeGetCurrent()
+        print("Loading \(test.rawValue)...", terminator: "")
         let stories = loadStories(for: test)
+        let loadTime = CFAbsoluteTimeGetCurrent() - loadStart
         guard stories.count > 0 else {
             // no input data = no problems
-            return
+            print(" no stories found.")
+            return 0
+        }
+        print(" done. Load time = \(String(format: "%.02f", loadTime)) seconds.")
+        
+        // description comes from first test case
+        if let description = stories.first!.description {
+            print(description)
         }
         
+        let start = CFAbsoluteTimeGetCurrent()
+        
         for (idx, story) in stories.enumerated() {
-            print("Decode story \(idx), context = \(story.context?.rawValue ?? "<none>")")
-            if let desc = story.description {
-                print(desc)
-            }
-            
             var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
             
             for testCase in story.cases {
@@ -164,7 +176,7 @@ class HPACKIntegrationTests : XCTestCase {
                     
                     guard var bytes = testCase.wire else {
                         XCTFail("Decoder story case \(testCase.seqno) has no wire data to decode!")
-                        return
+                        return CFAbsoluteTimeGetCurrent() - start
                     }
                     let decoded = try decoder.decodeHeaders(from: &bytes)
                     XCTAssertEqual(testCase.headers, decoded)
@@ -174,6 +186,8 @@ class HPACKIntegrationTests : XCTestCase {
                 }
             }
         }
+        
+        return CFAbsoluteTimeGetCurrent() - start
     }
     
     private func writeOutputStory(_ story: HPACKStory, at index: Int, to directory: URL) {
