@@ -27,131 +27,11 @@ public enum RingBufferError {
     }
 }
 
-@usableFromInline
-func _wrappingDifference(from: Int, to: Int, within: Int) -> Int {
-    if from <= to {
-        return to - from
-    } else {
-        return (within - from) + to
-    }
-}
-
 public struct SimpleRingBuffer {
     @usableFromInline private(set) var _storage: ByteBuffer
     @usableFromInline private(set) var _ringHead = 0
     @usableFromInline private(set) var _ringTail = 0
     @usableFromInline private(set) var _readableBytes = 0
-    
-    fileprivate init(existingStorage: ByteBuffer, head: Int, tail: Int) {
-        self._storage = existingStorage
-        self._ringHead = head
-        self._ringTail = tail
-        self._readableBytes = NIOHPACK._wrappingDifference(from: head, to: tail, within: existingStorage.capacity)
-    }
-    
-    internal func _makeContiguousCopy() -> SimpleRingBuffer {
-        switch (self._ringHead, self._ringTail) {
-        case (0, let w):
-            // contiguous from start of buffer already, just take a straightforward copy
-            return SimpleRingBuffer(existingStorage: self._storage, head: 0, tail: w)
-        case let (r, w) where r == w:
-            // nothing in the buffer to copy
-            return SimpleRingBuffer(existingStorage: self._storage, head: 0, tail: 0)
-        case let (r, w) where r < w:
-            // contiguous bytes, just copy them in
-            var newBytes = self._storage
-            newBytes.clear()
-            newBytes.write(bytes: self._storage.viewBytes(at: r, length: w - r))
-            return SimpleRingBuffer(existingStorage: newBytes, head: 0, tail: w - r)
-        case let (r, w):
-            // split range, just copy in the subranges
-            var newBytes = self._storage
-            newBytes.write(bytes: self._storage.viewBytes(at: r, length: self._storage.capacity - r))
-            newBytes.write(bytes: self._storage.viewBytes(at: 0, length: w))
-            return SimpleRingBuffer(existingStorage: newBytes, head: 0, tail: self._storage.capacity - r + w)
-        }
-    }
-    
-    private mutating func _makeContiguous() {
-        switch (_ringHead, _ringTail) {
-        case (0, _):
-            // already contiguous from start of buffer
-            break
-            
-        case let (r, w) where r == w:
-            // nothing in the buffer, just move both pointers to zero
-            self._moveHead(to: 0)
-            self._moveTail(to: 0)
-            
-        case let (r, w) where r < w:
-            // contiguous bytes, just need to move them down
-            self._storage.withVeryUnsafeBytes { ptr in
-                let src = UnsafeRawBufferPointer(start: ptr.baseAddress!.advanced(by: r), count: w - r)
-                let dst = UnsafeMutableRawBufferPointer(start: UnsafeMutableRawPointer(mutating: ptr.baseAddress!), count: w - r)
-                dst.copyMemory(from: src)
-            }
-            self._moveTail(to: w - r)
-            self._moveHead(to: 0)
-            
-        case let (r, w) where self._storage.capacity - r <= r - w:
-            // reader is above writer, but we have room in the middle to move the lower
-            // segment forward to make way for the higher segment
-            // i.e.:
-            //      +---------------------------------------+
-            //  1.  |------W                        R-------|
-            //      +---------------------------------------+
-            //
-            //      +---------------------------------------+
-            //  2.  |        ------W                R-------|
-            //      +---------------------------------------+
-            //
-            //      +---------------------------------------+
-            //  3.  |R-------------W                        |
-            //      +---------------------------------------+
-            self._storage.withVeryUnsafeBytes { ptr in
-                let writePtr = UnsafeMutableRawPointer(mutating: ptr.baseAddress!)
-                let endSrc = UnsafeRawBufferPointer(start: ptr.baseAddress!, count: w)
-                let startSrc = UnsafeRawBufferPointer(start: ptr.baseAddress!.advanced(by: r), count: ptr.count - r)
-                
-                writePtr.advanced(by: startSrc.count).copyMemory(from: endSrc.baseAddress!, byteCount: endSrc.count)
-                writePtr.copyMemory(from: startSrc.baseAddress!, byteCount: startSrc.count)
-            }
-            self._moveHead(to: 0)
-            self._moveTail(to: _storage.capacity - r + w)
-            
-        case let (r, w):
-            // every other option has been exhausted. Now we have a buffer
-            // where reader > writer, and there's not enough room in the middle
-            // to move things around. Now while we could look at the available
-            // space and shuffle that many bytes around, it's likely no faster
-            // than reallocating and copying.
-            var newBytes = self._storage
-            newBytes.clear()
-            newBytes.write(bytes: self._storage.viewBytes(at: r, length: self._storage.capacity - r))
-            newBytes.write(bytes: self._storage.viewBytes(at: 0, length: w))
-            self._storage = newBytes
-        }
-    }
-    
-    @inlinable
-    func _hasContiguousWriteSpace(for bytes: Int) -> Bool {
-        switch (self._ringHead, self._ringTail) {
-        case let (r, w) where r >= w:
-            return r - w >= bytes
-        case let (_, w):
-            return self._storage.capacity - w >= bytes
-        }
-    }
-    
-    @inlinable
-    func _hasContiguousReadSpace(for bytes: Int) -> Bool {
-        switch (self._ringHead, self._ringTail) {
-        case let (r, w) where r <= w:
-            return w - r >= bytes
-        case let (r, _):
-            return self._storage.capacity - r >= bytes
-        }
-    }
     
     @inlinable
     mutating func _reallocateStorageAndRebase(capacity: Int) {
@@ -188,16 +68,6 @@ public struct SimpleRingBuffer {
             self._moveTail(to: self._storage.capacity - r + w)
             self._storage = newBytes
         }
-    }
-    
-    @inlinable
-    mutating func _copyStorageAndRebase() {
-        _reallocateStorageAndRebase(capacity: self._storage.capacity)
-    }
-    
-    @usableFromInline
-    func _wrappingDifference(from: Int, to: Int) -> Int {
-        return NIOHPACK._wrappingDifference(from: from, to: to, within: self._storage.capacity)
     }
     
     @inlinable

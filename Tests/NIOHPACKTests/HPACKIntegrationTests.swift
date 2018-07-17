@@ -213,7 +213,11 @@ class HPACKIntegrationTests : XCTestCase {
         
         var result = story
         result.cases.removeAll()
-        result.description = "Encoded using the HPACK implementation of swift-nio-http2: <https://github.com/apple/swift-nio-http2>"
+        if huffmanEncoded {
+            result.description = "Encoded using the HPACK implementation of swift-nio-http2, with static table, dynamic table, and huffman encoded strings: <https://github.com/apple/swift-nio-http2>"
+        } else {
+            result.description = "Encoded using the HPACK implementation of swift-nio-http2, with static table, dynamic table, and plain-text encoded strings: <https://github.com/apple/swift-nio-http2>"
+        }
         
         for storyCase in story.cases {
             do {
