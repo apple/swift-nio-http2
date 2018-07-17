@@ -213,6 +213,7 @@ class HPACKIntegrationTests : XCTestCase {
         
         var result = story
         result.cases.removeAll()
+        result.description = "Encoded using the HPACK implementation of swift-nio-http2: <https://github.com/apple/swift-nio-http2>"
         
         for storyCase in story.cases {
             do {
