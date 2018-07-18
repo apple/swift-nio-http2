@@ -35,7 +35,7 @@ func XCTAssertEqualTuple<T1: Equatable, T2: Equatable>(_ expression1: @autoclosu
 class HeaderTableTests: XCTestCase {
 
     func testStaticHeaderTable() {
-        let table = IndexedHeaderTable()
+        let table = IndexedHeaderTable(allocator: ByteBufferAllocator())
         
         // headers with matching values
         XCTAssertEqualTuple((2, true), table.firstHeaderMatch(for: ":method", value: "GET")!)
@@ -62,7 +62,7 @@ class HeaderTableTests: XCTestCase {
     
     func testDynamicTableInsertion() {
         // NB: I'm using the overall table class to verify the expected indices of dynamic table items.
-        var table = IndexedHeaderTable(maxDynamicTableSize: 1024)
+        var table = IndexedHeaderTable(allocator: ByteBufferAllocator(), maxDynamicTableSize: 1024)
         XCTAssertEqual(table.dynamicTableLength, 0)
         
         XCTAssertNoThrow(try table.add(headerNamed: ":authority", value: "www.example.com"))
@@ -115,6 +115,35 @@ class HeaderTableTests: XCTestCase {
         table.maxDynamicTableLength = table.dynamicTableLength - 1
         XCTAssertEqual(table.dynamicTableLength, 0)
         XCTAssertNil(table.firstHeaderMatch(for: "custom-key", value: "custom-value"))
+    }
+    
+    func testHeaderDump() throws {
+        var table = IndexedHeaderTable(allocator: ByteBufferAllocator())
+        let description = table.dumpHeaders()
+        
+        // construct what we expect
+        var expected = StaticHeaderTable.enumerated().reduce("") {
+            $0 + "\($1.0) - \($1.1.0) : \($1.1.1)\n"
+        }
+        
+        // there will be a newline at the end, followed by no data for the dynamic table
+        expected += "\n"
+        
+        XCTAssertEqual(description, expected)
+        
+        // add an item to the dynamic table
+        try table.add(headerNamed: "custom-key", value: "custom-value")
+        expected += "\(StaticHeaderTable.count) - custom-key : custom-value\n"
+        
+        let description2 = table.dumpHeaders()
+        XCTAssertEqual(description2, expected)
+    }
+    
+    func testHeaderDescription() throws {
+        let table = IndexedHeaderTable(allocator: ByteBufferAllocator())
+        let staticDescription = table.staticTable.description
+        let staticExpected = StaticHeaderTable.description
+        XCTAssertEqual(staticDescription, staticExpected)
     }
 
 }

@@ -57,7 +57,7 @@ struct DynamicHeaderTable {
     
     // internal for testing
     func dumpHeaders() -> String {
-        return self.storage.dumpHeaders()
+        return self.storage.dumpHeaders(offsetBy: StaticHeaderTable.count)
     }
     
     /// Searches the table for a matching header, optionally with a particular value. If

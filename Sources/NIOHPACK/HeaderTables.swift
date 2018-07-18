@@ -276,9 +276,9 @@ struct HeaderTableStorage {
     }
     
     // internal for testing
-    func dumpHeaders() -> String {
+    func dumpHeaders(offsetBy amount: Int = 0) -> String {
         return self.headers.enumerated().reduce("") {
-            $0 + "\($1.0 + StaticHeaderTable.count) - \(self.string(idx: $1.1.name)) : \(self.string(idx: $1.1.value))\n"
+            $0 + "\($1.0 + amount) - \(self.string(idx: $1.1.name)) : \(self.string(idx: $1.1.value))\n"
         }
     }
 }

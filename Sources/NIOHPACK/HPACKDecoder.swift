@@ -68,7 +68,7 @@ public struct HPACKDecoder {
     ///
     /// - Parameter maxDynamicTableSize: Maximum allowed size of the dynamic header table.
     public init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = HPACKDecoder.maxDynamicTableSize) {
-        self.headerTable = IndexedHeaderTable(maxDynamicTableSize: maxDynamicTableSize)
+        self.headerTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)
         
         // start the decode buffer at the requested size of the dynamic header list table, or the default
         // size, whichever is larger.

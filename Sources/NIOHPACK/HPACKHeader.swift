@@ -108,6 +108,18 @@ public struct HPACKHeaders {
         }
     }
     
+    /// Internal initializer to make things easier for unit tests.
+    public init(fullHeaders: [(HPACKIndexing, String, String)]) {
+        var array: [HPACKHeader] = []
+        array.reserveCapacity(fullHeaders.count)
+        
+        self.init(buffer: ByteBufferAllocator().buffer(capacity: 256), headers: array)
+        
+        for (indexing, key, value) in fullHeaders {
+            self.add(name: key, value: value, indexing: indexing)
+        }
+    }
+    
     /// Add a header name/value pair to the block.
     ///
     /// This method is strictly additive: if there are other values for the given header name
@@ -345,7 +357,7 @@ struct HPACKHeader {
     var value: HPACKHeaderIndex
     
     init(start: Int, nameLength: Int, valueLength: Int, indexing: HPACKIndexing = .indexable) {
-        self.indexing = .indexable
+        self.indexing = indexing
         self.name = HPACKHeaderIndex(start: start, length: nameLength)
         self.value = HPACKHeaderIndex(start: start + nameLength, length: valueLength)
     }

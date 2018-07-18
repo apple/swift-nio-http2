@@ -437,4 +437,63 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(decoder.maxDynamicTableLength, oddMaxTableSize)
         XCTAssertEqualTuple(headers1[3], try decoder.headerTable.header(at: 62))
     }
+    
+    func testHPACKHeadersDescription() throws {
+        let headerList1: [(String, String)] = [(":method", "GET"),
+                                               (":scheme", "http"),
+                                               (":path", "/"),
+                                               (":authority", "www.example.com")]
+        let headerList2: [(String, String)] = [(":method", "GET"),
+                                               (":scheme", "http"),
+                                               (":path", "/"),
+                                               (":authority", "www.example.com"),
+                                               ("cache-control", "no-cache")]
+        let headerList3: [(HPACKIndexing, String, String)] = [(.indexable, ":method", "POST"),
+                                                              (.indexable, ":scheme", "https"),
+                                                              (.indexable, ":path", "/send.html"),
+                                                              (.indexable, ":authority", "www.example.com"),
+                                                              (.indexable, "custom-key", "custom-value"),
+                                                              (.nonIndexable, "content-length", "42")]
+        
+        let headers1 = HPACKHeaders(headerList1)
+        let headers2 = HPACKHeaders(headerList2)
+        let headers3 = HPACKHeaders(fullHeaders: headerList3)
+        
+        let description1 = headers1.description
+        let expected1 = headerList1.map { (HPACKIndexing.indexable, $0.0, $0.1) }.description
+        XCTAssertEqual(description1, expected1)
+        
+        let description2 = headers2.description
+        let expected2 = headerList2.map { (HPACKIndexing.indexable, $0.0, $0.1) }.description
+        XCTAssertEqual(description2, expected2)
+        
+        let description3 = headers3.description
+        let expected3 = headerList3.description // already contains indexing where we'd expect
+        XCTAssertEqual(description3, expected3)
+    }
+    
+    func testHPACKHeadersSubscript() throws {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            (":scheme", "http"),
+            (":path", "/"),
+            (":authority", "www.example.com"),
+            ("cache-control", "no-cache"),
+            ("custom-key", "value-1,value-2"),
+            ("set-cookie", "abcdefg,hijklmn,opqrst"),
+            ("custom-key", "value-3")
+        ])
+        
+        XCTAssertEqual(headers[":method"], ["GET"])
+        XCTAssertEqual(headers[":authority"], ["www.example.com"])
+        XCTAssertTrue(headers.contains(name: "cache-control"))
+        XCTAssertTrue(headers.contains(name: "Cache-Control"))
+        XCTAssertFalse(headers.contains(name: "content-length"))
+        
+        XCTAssertEqual(headers["custom-key"], ["value-1,value-2", "value-3"])
+        XCTAssertEqual(headers[canonicalForm: "custom-key"], ["value-1", "value-2", "value-3"])
+        
+        XCTAssertEqual(headers["set-cookie"], ["abcdefg,hijklmn,opqrst"])
+        XCTAssertEqual(headers[canonicalForm: "set-cookie"], ["abcdefg,hijklmn,opqrst"])
+    }
 }

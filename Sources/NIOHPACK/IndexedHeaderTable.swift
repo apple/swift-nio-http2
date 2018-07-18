@@ -17,15 +17,16 @@ import NIO
 /// The unified header table used by HTTP/2, encompassing both static and dynamic tables.
 public struct IndexedHeaderTable {
     // private but tests
-    let staticTable = HeaderTableStorage(allocator: ByteBufferAllocator(), staticHeaderList: StaticHeaderTable)
+    let staticTable: HeaderTableStorage
     var dynamicTable: DynamicHeaderTable
     
     /// Creates a new header table, optionally specifying a maximum size for the dynamic
     /// portion of the table.
     ///
     /// - Parameter maxDynamicTableSize: Maximum size of the dynamic table. Default = 4096.
-    init(maxDynamicTableSize: Int = DynamicHeaderTable.defaultSize) {
-        self.dynamicTable = DynamicHeaderTable(maximumLength: maxDynamicTableSize)
+    init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = DynamicHeaderTable.defaultSize) {
+        self.staticTable = HeaderTableStorage(allocator: allocator, staticHeaderList: StaticHeaderTable)
+        self.dynamicTable = DynamicHeaderTable(maximumLength: maxDynamicTableSize, allocator: allocator)
     }
     
     /// Obtains the header key/value pair at the given index within the table.
@@ -144,6 +145,11 @@ public struct IndexedHeaderTable {
     /// An internal variant, where we've already deconstructed the String into its UTF-8 bytes.
     internal mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         try self.dynamicTable.addHeader(named: name, value: value)
+    }
+    
+    /// Internal for test access.
+    internal func dumpHeaders() -> String {
+        return "\(staticTable.dumpHeaders())\n\(dynamicTable.dumpHeaders())"
     }
     
     /// The length, in bytes, of the dynamic portion of the header table.

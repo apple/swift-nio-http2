@@ -70,6 +70,68 @@ public struct SimpleRingBuffer {
         }
     }
     
+    private mutating func _makeContiguous() {
+        switch (self._ringHead, self._ringTail) {
+        case (0, _):
+            // already contiguous from start of buffer
+            break
+            
+        case let (r, w) where r == w:
+            // nothing in the buffer, just move both pointers to zero
+            self._moveHead(to: 0)
+            self._moveTail(to: 0)
+            
+        case let (r, w) where r < w:
+            // contiguous bytes, just need to move them down
+            self._storage.withVeryUnsafeBytes { ptr in
+                let target = UnsafeMutableRawPointer(mutating: ptr.baseAddress!)
+                target.copyMemory(from: ptr.baseAddress!.advanced(by: r), byteCount: w - r)
+            }
+            self._moveHead(to: 0)
+            self._moveTail(to: w - r)
+            
+        case let (r, w) where self._storage.capacity - r <= r - w:
+            // reader is above writer, but we have room in the middle to move the lower
+            // segment forward to make way for the higher segment
+            // i.e.:
+            //      +---------------------------------------+
+            //  1.  |------W                        R-------|
+            //      +---------------------------------------+
+            //
+            //      +---------------------------------------+
+            //  2.  |        ------W                R-------|
+            //      +---------------------------------------+
+            //
+            //      +---------------------------------------+
+            //  3.  |R-------------W                        |
+            //      +---------------------------------------+
+            self._storage.withVeryUnsafeBytes { ptr in
+                let writePtr = UnsafeMutableRawPointer(mutating: ptr.baseAddress!)
+                let endSrc = UnsafeRawBufferPointer(start: ptr.baseAddress!, count: w)
+                let startSrc = UnsafeRawBufferPointer(start: ptr.baseAddress!.advanced(by: r), count: ptr.count - r)
+                
+                writePtr.advanced(by: startSrc.count).copyMemory(from: endSrc.baseAddress!, byteCount: endSrc.count)
+                writePtr.copyMemory(from: startSrc.baseAddress!, byteCount: startSrc.count)
+            }
+            self._moveHead(to: 0)
+            self._moveTail(to: _storage.capacity - r + w)
+            
+        case let (r, w):
+            // every other option has been exhausted. Now we have a buffer
+            // where reader > writer, and there's not enough room in the middle
+            // to move things around. Now while we could look at the available
+            // space and shuffle that many bytes around, it's likely no faster
+            // than reallocating and copying.
+            var newBytes = self._storage
+            newBytes.clear()
+            newBytes.write(bytes: self._storage.viewBytes(at: r, length: self._storage.capacity - r))
+            newBytes.write(bytes: self._storage.viewBytes(at: 0, length: w))
+            self._storage = newBytes
+            self._moveHead(to: 0)
+            self._moveTail(to: _storage.capacity - r + w)
+        }
+    }
+    
     @inlinable
     mutating func _moveHead(to newIndex: Int) {
         assert(newIndex >= 0 && newIndex <= self._storage.capacity)
@@ -89,7 +151,7 @@ public struct SimpleRingBuffer {
             // wrap it around
             newIndex -= self._storage.capacity
             // now test that it didn't pass writer
-            assert(newIndex < self._ringTail)
+            assert(newIndex <= self._ringTail)
         }
         
         self._moveHead(to: newIndex)
@@ -226,10 +288,16 @@ public struct SimpleRingBuffer {
                 // first part...
                 let firstPart = ptr.count - index
                 let secondPart = underestimatedCount - firstPart
-                let (_, firstIdx) = UnsafeMutableBufferPointer(start: base, count: firstPart).initialize(from: bytes)
+                
+                // split into two sub-sequences that won't go bang inside _copyMemory() if the available target memory is
+                // less than the sequence's 'underestimatedCount'.
+                let firstSubSequence = bytes.dropLast(secondPart)
+                let secondSubSequence = bytes.dropFirst(firstPart)
+                
+                let (_, firstIdx) = UnsafeMutableBufferPointer(start: base, count: firstPart).initialize(from: firstSubSequence)
                 // second part...
                 base = UnsafeMutablePointer(mutating: ptr.baseAddress!.assumingMemoryBound(to: UInt8.self))
-                let (iterator, idx) = UnsafeMutableBufferPointer(start: base, count: secondPart).initialize(from: bytes.dropFirst(firstIdx))
+                let (iterator, idx) = UnsafeMutableBufferPointer(start: base, count: secondPart).initialize(from: secondSubSequence)
                 assert(firstIdx + idx == underestimatedCount)
                 remainderWritten = try _setRemainder(iterator: iterator, at: idx, available: ptr.count - firstIdx + idx)
             }
@@ -275,6 +343,10 @@ public struct SimpleRingBuffer {
         
         // we know this capacity is ok
         self._reallocateStorageAndRebase(capacity: newCapacity)
+    }
+    
+    public mutating func makeContiguous() {
+        self._makeContiguous()
     }
     
     /// This vends a pointer to the storage of the `CircularByteBuffer`. It's marked as _very unsafe_ because it might contain
@@ -368,7 +440,7 @@ extension SimpleRingBuffer {
         }
         
         return self.withVeryUnsafeBytes { ptr in
-            if capacity - index <= length {
+            if self.capacity - length >= index {
                 // single read
                 return Array(UnsafeBufferPointer<UInt8>(start: ptr.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self), count: length))
             } else {
