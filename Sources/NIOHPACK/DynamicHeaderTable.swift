@@ -73,12 +73,15 @@ struct DynamicHeaderTable {
     ///            parameter, an indication whether that value was also found. Returns `nil`
     ///            if no matching header name could be located.
     func findExistingHeader<Name: Collection, Value: Collection>(named name: Name, value: Value?) -> (index: Int, containsValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
-        // looking for both name and value, but can settle for just name
-        // thus we'll search manually.
+        // looking for both name and value, but can settle for just name if no value
+        // has been provided. Return the first matching name (lowest index) in that case.
         guard let value = value else {
             return self.storage.indices(matching: name).first.map { ($0, false) }
         }
         
+        // If we have a value, locate the index of the lowest header which contains that
+        // value, but if no value matches, return the index of the lowest header with a
+        // matching name alone.
         var firstNameMatch: Int? = nil
         for index in self.storage.indices(matching: name) {
             if firstNameMatch == nil {
@@ -113,13 +116,12 @@ struct DynamicHeaderTable {
     /// - Parameters:
     ///   - name: A collection of UTF-8 code points comprising the name of the header to insert.
     ///   - value: A collection of UTF-8 code points comprising the value of the header to insert.
-    ///   - evictAutomatically: If `true`, the table will evict existing items to make room. Default is `true`.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader<Name: Collection, Value: Collection>(named name: Name, value: Value, evictAutomatically: Bool = true) throws where Name.Element == UInt8, Value.Element == UInt8 {
+    mutating func addHeader<Name: Collection, Value: Collection>(named name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         do {
             try self.storage.add(name: name, value: value)
         } catch let error as RingBufferError.BufferOverrun {
-            if evictAutomatically {
+            if self.storage.count > 0 {
                 // purge from the table and try again
                 
                 // if there's still not enough room, then the entry is too large for the table
@@ -131,7 +133,7 @@ struct DynamicHeaderTable {
                 //   all existing entries and results in an empty table."
                 
                 self.storage.purge(toRelease: error.amount)
-                return try self.addHeader(named: name, value: value, evictAutomatically: false)
+                return try self.addHeader(named: name, value: value)
             } else {
                 // ping the error up the stack, with more information
                 throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
@@ -151,15 +153,14 @@ struct DynamicHeaderTable {
     /// - Parameters:
     ///   - name: A contiguous collection of UTF-8 bytes comprising the name of the header to insert.
     ///   - value: A contiguous collection of UTF-8 bytes comprising the value of the header to insert.
-    ///   - evictAutomatically: If `true`, the table will evict existing items to make room. Default is `true`.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader<Name : ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value, evictAutomatically: Bool = true) throws where Name.Element == UInt8, Value.Element == UInt8 {
+    mutating func addHeader<Name : ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         do {
             try self.storage.add(nameBytes: nameBytes, valueBytes: valueBytes)
         } catch let error as RingBufferError.BufferOverrun {
-            if evictAutomatically {
+            if self.storage.count > 0 {
                 self.storage.purge(toRelease: error.amount)
-                return try self.addHeader(nameBytes: nameBytes, valueBytes: valueBytes, evictAutomatically: false)
+                return try self.addHeader(nameBytes: nameBytes, valueBytes: valueBytes)
             } else {
                 throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
                                                               name: nameBytes, value: valueBytes)
