@@ -222,7 +222,7 @@ class HPACKIntegrationTests : XCTestCase {
         for storyCase in story.cases {
             do {
                 if let tableSize = storyCase.headerTableSize {
-                    encoder.setMaxDynamicTableSize(tableSize)
+                    encoder.setDynamicTableSize(tableSize)
                     decoder.maxDynamicTableLength = tableSize
                 }
                 

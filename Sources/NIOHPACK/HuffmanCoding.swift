@@ -14,8 +14,9 @@
 
 import NIO
 
-/// Implements a HPACK-conformant Huffman encoder. Note that this class is *not* thread safe.
-/// The intended use is to be within a single HTTP2StreamChannel or similar, on a single EventLoop.
+/// Adds HPACK-conformant Huffman encoding to `ByteBuffer`. Note that the implementation is *not*
+/// thread safe. The intended use is to be within a single HTTP2StreamChannel or similar, on a
+/// single EventLoop.
 extension ByteBuffer {
     fileprivate struct _EncoderState {
         var offset = 0
@@ -39,7 +40,7 @@ extension ByteBuffer {
     /// - Parameter string: The string data to encode.
     /// - Returns: The number of bytes used while encoding the string.
     @discardableResult
-    public mutating func setHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
+    mutating func setHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
         let clen = ByteBuffer.encodedBitLength(of: stringBytes)
         self.ensureBitsAvailable(clen)
         
@@ -62,7 +63,7 @@ extension ByteBuffer {
     }
     
     @discardableResult
-    public mutating func writeHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
+    mutating func writeHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
         let written = self.setHuffmanEncoded(bytes: stringBytes)
         self.moveWriterIndex(forwardBy: written)
         return written
@@ -179,7 +180,7 @@ extension ByteBuffer {
     /// - Returns: The number of UTF-8 characters written into the output `ByteBuffer`.
     /// - Throws: HuffmanDecodeError if the data could not be decoded.
     @discardableResult
-    public func getHuffmanEncodedString(at index: Int, length: Int, into output: inout ByteBuffer) throws -> Int {
+    func getHuffmanEncodedString(at index: Int, length: Int, into output: inout ByteBuffer) throws -> Int {
         precondition(index + length <= self.capacity, "Requested range out of bounds: \(index ..< index+length) vs. \(self.capacity)")
         if length == 0 {
             return 0
@@ -226,7 +227,7 @@ extension ByteBuffer {
     /// - Returns: The number of UTF-8 characters written into the output `ByteBuffer`.
     /// - Throws: HuffmanDecodeError if the data could not be decoded.
     @discardableResult
-    public mutating func readHuffmanEncodedString(of length: Int, into output: inout ByteBuffer) throws -> Int {
+    mutating func readHuffmanEncodedString(of length: Int, into output: inout ByteBuffer) throws -> Int {
         let result = try self.getHuffmanEncodedString(at: self.readerIndex, length: length, into: &output)
         self.moveReaderIndex(forwardBy: length)
         return result

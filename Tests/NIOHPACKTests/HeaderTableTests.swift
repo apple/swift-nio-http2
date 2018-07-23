@@ -86,21 +86,21 @@ class HeaderTableTests: XCTestCase {
         XCTAssertEqualTuple((64, true), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)
         
         // should evict the first-inserted value (:authority = www.example.com)
-        table.maxDynamicTableLength = 128
+        table.dynamicTableAllowedLength = 128
         XCTAssertEqual(table.dynamicTableLength, 164 - 57)
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "custom-key", value: "custom-value")!)
         XCTAssertEqualTuple((62, false), table.firstHeaderMatch(for: "custom-key", value: "other-value")!)
         XCTAssertEqualTuple((63, true), table.firstHeaderMatch(for: "cache-control", value: "no-cache")!)
         XCTAssertEqualTuple((1, false), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)   // will find the header name in static table
         
-        table.maxDynamicTableLength = 64
+        table.dynamicTableAllowedLength = 64
         XCTAssertEqual(table.dynamicTableLength, 164 - 110)
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "custom-key", value: "custom-value")!)
         XCTAssertEqualTuple((62, false), table.firstHeaderMatch(for: "custom-key", value: "other-value")!)
         XCTAssertEqualTuple((24, false), table.firstHeaderMatch(for: "cache-control", value: "no-cache")!)  // will find the header name in static table
         XCTAssertEqualTuple((1, false), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)   // will find the header name in static table
         
-        table.maxDynamicTableLength = 164 - 110    // should cause no evictions
+        table.dynamicTableAllowedLength = 164 - 110    // should cause no evictions
         XCTAssertEqual(table.dynamicTableLength, 164 - 110)
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "custom-key", value: "custom-value")!)
         
@@ -112,7 +112,7 @@ class HeaderTableTests: XCTestCase {
         }
         
         // evict final entry
-        table.maxDynamicTableLength = table.dynamicTableLength - 1
+        table.dynamicTableAllowedLength = table.dynamicTableLength - 1
         XCTAssertEqual(table.dynamicTableLength, 0)
         XCTAssertNil(table.firstHeaderMatch(for: "custom-key", value: "custom-value"))
     }

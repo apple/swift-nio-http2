@@ -20,16 +20,14 @@ public struct HPACKHeaders {
     final private class _Storage {
         var buffer: ByteBuffer
         var headers: [HPACKHeader]
-        var continuous: Bool
         
-        init(buffer: ByteBuffer, headers: [HPACKHeader], continuous: Bool) {
+        init(buffer: ByteBuffer, headers: [HPACKHeader]) {
             self.buffer = buffer
             self.headers = headers
-            self.continuous = continuous
         }
         
         func copy() -> _Storage {
-            return .init(buffer: self.buffer, headers: self.headers, continuous: self.continuous)
+            return .init(buffer: self.buffer, headers: self.headers)
         }
     }
     private var _storage: _Storage
@@ -40,10 +38,6 @@ public struct HPACKHeaders {
     
     fileprivate var headers: [HPACKHeader] {
         return self._storage.headers
-    }
-    
-    fileprivate var continuous: Bool {
-        return self._storage.continuous
     }
     
     /// Returns the `String` for the given `HPACKHeaderIndex`.
@@ -59,20 +53,10 @@ public struct HPACKHeaders {
         return self.headers.map { $0.name }
     }
     
-    public var description: String {
-        var headersArray: [(HPACKIndexing, String, String)] = []
-        headersArray.reserveCapacity(self.headers.count)
-        
-        for h in self.headers {
-            headersArray.append((h.indexing, self.string(idx: h.name), self.string(idx: h.value)))
-        }
-        return headersArray.description
-    }
-    
     /// Constructor used to create a set of contiguous headers from an encoded
     /// header buffer.
     init(buffer: ByteBuffer, headers: [HPACKHeader]) {
-        self._storage = _Storage(buffer: buffer, headers: headers, continuous: true)
+        self._storage = _Storage(buffer: buffer, headers: headers)
     }
     
     /// Construct a `HPACKHeaders` structure.
@@ -109,7 +93,7 @@ public struct HPACKHeaders {
     }
     
     /// Internal initializer to make things easier for unit tests.
-    public init(fullHeaders: [(HPACKIndexing, String, String)]) {
+    init(fullHeaders: [(HPACKIndexing, String, String)]) {
         var array: [HPACKHeader] = []
         array.reserveCapacity(fullHeaders.count)
         
@@ -251,7 +235,7 @@ public struct HPACKHeaders {
     }
 }
 
-extension HPACKHeaders : Sequence {
+extension HPACKHeaders: Sequence {
     public typealias Element = (name: String, value: String, indexable: HPACKIndexing)
     
     /// An iterator of HTTP header fields.
@@ -275,8 +259,19 @@ extension HPACKHeaders : Sequence {
     }
 }
 
-extension HPACKHeaders : Equatable
-{
+extension HPACKHeaders: CustomStringConvertible {
+    public var description: String {
+        var headersArray: [(HPACKIndexing, String, String)] = []
+        headersArray.reserveCapacity(self.headers.count)
+        
+        for h in self.headers {
+            headersArray.append((h.indexing, self.string(idx: h.name), self.string(idx: h.value)))
+        }
+        return headersArray.description
+    }
+}
+
+extension HPACKHeaders: Equatable {
     public static func == (lhs: HPACKHeaders, rhs: HPACKHeaders) -> Bool {
         guard lhs.headers.count == rhs.headers.count else {
             return false
@@ -300,7 +295,7 @@ extension HPACKHeaders : Equatable
 
 /// Defines the types of indexing and rewriting operations a decoder may take with
 /// regard to this header.
-public enum HPACKIndexing : CustomStringConvertible {
+public enum HPACKIndexing: CustomStringConvertible {
     /// Header may be written into the dynamic index table or may be rewritten by
     /// proxy servers.
     case indexable
@@ -345,7 +340,7 @@ struct HPACKHeaderIndex {
     }
 }
 
-extension HPACKHeaderIndex : CustomStringConvertible {
+extension HPACKHeaderIndex: CustomStringConvertible {
     var description: String {
         return "\(self.start)..<\(self.start + self.length)"
     }

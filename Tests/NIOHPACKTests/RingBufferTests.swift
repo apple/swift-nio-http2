@@ -17,7 +17,7 @@ import NIO
 @testable import NIOHPACK
 
 class RingBufferTests : XCTestCase {
-    var ring: SimpleRingBuffer = SimpleRingBuffer(allocator: ByteBufferAllocator(), capacity: 32)
+    var ring: StringRing = StringRing(allocator: ByteBufferAllocator(), capacity: 32)
     
     override func setUp() {
         ring.clear()
@@ -29,7 +29,7 @@ class RingBufferTests : XCTestCase {
         XCTAssertEqual(ring.readableBytes, readable, file: file, line: line)
     }
     
-    func testReadAndWriteBytes() throws {
+    func testWriteAndUnwriteBytes() throws {
         assertRingState(0, 0, 0)
         
         let bytes: [UInt8] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -38,22 +38,6 @@ class RingBufferTests : XCTestCase {
         
         ring.unwrite(byteCount: 5)
         assertRingState(0, 5, 5)
-        
-        let peekedBytes = ring.peekBytes(length: 5)
-        XCTAssertNotNil(peekedBytes)
-        XCTAssertEqual(peekedBytes!.count, 5)
-        assertRingState(0, 5, 5)
-        
-        let readBytes = ring.readBytes(length: 5)
-        XCTAssertNotNil(readBytes)
-        XCTAssertEqual(readBytes!.count, 5)
-        assertRingState(5, 5, 0)
-        
-        ring.unread(byteCount: 5)
-        assertRingState(0, 5, 5)
-        
-        XCTAssertEqual(ring.readBytes(length: 5), readBytes)
-        assertRingState(5, 5, 0)
     }
     
     func testReadAndWriteStrings() throws {
@@ -121,25 +105,6 @@ class RingBufferTests : XCTestCase {
         try ring.write(bytes: bytes)
         assertRingState(28, 4, 8)
         
-        let readBytes = ring.readBytes(length: 8)
-        XCTAssertEqual(readBytes, bytes)
-        assertRingState(4, 4, 0)
-        
-        ring.unread(byteCount: 8)
-        assertRingState(28, 4, 8)
-        
-        let peeked = ring.peekBytes(length: 8)
-        XCTAssertEqual(peeked, bytes)
-        assertRingState(28, 4, 8)
-        
-        let readHalf = ring.readBytes(length: 4)
-        XCTAssertNotNil(readHalf)
-        XCTAssertEqual(readHalf!.count, 4)
-        assertRingState(0, 4, 4)
-        
-        ring.unread(byteCount: 4)
-        assertRingState(28, 4, 8)
-        
         ring.unwrite(byteCount: 8)
         assertRingState(28, 28, 0)
         
@@ -201,18 +166,22 @@ class RingBufferTests : XCTestCase {
     }
     
     func testRebasing() throws {
+        // NB: the check for newCapacity == currentCapacity is in `changeCapacity(to:)`,
+        // so since we're calling the internal function, we can take advantage of the
+        // fact that it doesn't check that input and just rebase.
+        
         // case 1: already contiguous, head at zero.
         try ring.write(staticString: "This is a test string")
         assertRingState(0, 21, 21)
         
-        ring.makeContiguous()
+        ring._reallocateStorageAndRebase(capacity: 32)
         assertRingState(0, 21, 21)
         
         // case 2: buffer is empty, head not at zero
         ring.moveHead(forwardBy: 21)
         assertRingState(21, 21, 0)
         
-        ring.makeContiguous()
+        ring._reallocateStorageAndRebase(capacity: 32)
         assertRingState(0, 0, 0)
         
         // case 3: already contiguous, head not at zero
@@ -221,7 +190,7 @@ class RingBufferTests : XCTestCase {
         ring.moveHead(forwardBy: 5)     // "is a test string"
         assertRingState(5, 21, 16)
         
-        ring.makeContiguous()
+        ring._reallocateStorageAndRebase(capacity: 32)
         assertRingState(0, 16, 16)
         
         // case 4: non-contiguous, room in the middle to shuffle
@@ -237,7 +206,7 @@ class RingBufferTests : XCTestCase {
         try ring.write(staticString: "Wraps Buffer")
         assertRingState(21, 1, 12)
         
-        ring.makeContiguous()
+        ring._reallocateStorageAndRebase(capacity: 32)
         assertRingState(0, 12, 12)
         
         // case 5: non-contiguous, not enough room to make two copies
@@ -247,7 +216,7 @@ class RingBufferTests : XCTestCase {
         try ring.write(staticString: "This is a test string again")
         assertRingState(12, 7, 27)
         
-        ring.makeContiguous()
+        ring._reallocateStorageAndRebase(capacity: 32)
         assertRingState(0, 27, 27)
     }
 }

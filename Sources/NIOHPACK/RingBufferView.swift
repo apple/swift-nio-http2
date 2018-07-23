@@ -24,8 +24,8 @@ extension ByteBufferView {
     }
 }
 
-public extension SimpleRingBuffer {
-    public func viewBytes(at index: Int, length: Int) -> ByteBufferView {
+extension StringRing {
+    func viewBytes(at index: Int, length: Int) -> ByteBufferView {
         let endIndex = index + length
         if endIndex < self.capacity {
             return self._storage.viewBytes(at: index, length: length)

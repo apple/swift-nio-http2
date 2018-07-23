@@ -39,6 +39,11 @@ public struct HPACKDecoder {
         return headerTable.dynamicTableLength
     }
     
+    var allowedDynamicTableLength: Int {
+        get { return self.headerTable.dynamicTableAllowedLength }
+        set { self.headerTable.dynamicTableAllowedLength = newValue }
+    }
+    
     /// A string value discovered in a HPACK buffer. The value can either indicate an entry
     /// in the header table index or the start of an inline literal string.
     enum HPACKString {
@@ -59,9 +64,9 @@ public struct HPACKDecoder {
     /// to be the sum of [name-octet-count] + [value-octet-count] + 32 for
     /// each header it contains.
     public internal(set) var maxDynamicTableLength: Int {
-        get { return headerTable.maxDynamicTableLength }
+        get { return headerTable.dynamicTableAllowedLength }
         /* private but tests */
-        set { headerTable.maxDynamicTableLength = newValue }
+        set { headerTable.dynamicTableAllowedLength = newValue }
     }
     
     /// Creates a new decoder
@@ -141,7 +146,24 @@ public struct HPACKDecoder {
         case let x where x & 0xe0 == 0x20:
             // 0b001xxxxx -- three-bit prefix, five bits of value
             // dynamic header table size update
-            self.headerTable.maxDynamicTableLength = try Int(buffer.readEncodedInteger(withPrefix: 5))
+            let newMaxLength = try Int(buffer.readEncodedInteger(withPrefix: 5))
+            
+            // RFC 7541 § 4.2 <https://httpwg.org/specs/rfc7541.html#maximum.table.size> gives us two conditions:
+            //
+            // 1. "the chosen size MUST stay lower than or equal to the maximum set by the protocol."
+            guard newMaxLength <= self.headerTable.maxDynamicTableLength else {
+                throw NIOHPACKErrors.InvalidDynamicTableSize(requestedSize: newMaxLength, allowedSize: self.headerTable.maxDynamicTableLength)
+            }
+            
+            // 2. "This dynamic table size update MUST occur at the beginning of the first header block
+            //    following the change to the dynamic table size."
+            guard self.decodeBuffer.readableBytes == 0 else {
+                // If our decode buffer has any data in it, then this is out of place.
+                // Treat it as an invalid input
+                throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
+            }
+            
+            self.headerTable.dynamicTableAllowedLength = newMaxLength
             return nil
             
         default:

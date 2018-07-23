@@ -36,11 +36,21 @@ public struct HPACKEncoder {
     // private but tests
     var headerIndexTable: IndexedHeaderTable
     
+    private let allocator: ByteBufferAllocator
     private var buffer: ByteBuffer
+    private var newDynamicTableSize: Int? = nil
     
     /// The encoder's accumulated data.
     public var encodedData: ByteBuffer {
-        return self.buffer
+        if let newSize = self.newDynamicTableSize {
+            // prepend an encoded table resize command
+            var result = self.allocator.buffer(capacity: self.buffer.readableBytes + 11)    // largest possible required space
+            result.write(encodedInteger: UInt(newSize), prefix: 5, prefixBits: 0x20)
+            result.write(bytes: self.buffer.readableBytesView)  // write(buffer:) will remove bytes read from the input buffer
+            return result
+        } else {
+            return self.buffer
+        }
     }
     
     /// Whether to use Huffman encoding.
@@ -53,19 +63,43 @@ public struct HPACKEncoder {
         return self.headerIndexTable.dynamicTableLength
     }
     
-    /// The maximum allowed size to which the dynamic header table may grow.
-    public private(set) var maxDynamicTableSize: Int {
+    /// The current maximum size to which the dynamic header table may grow.
+    public private(set) var allowedDynamicTableSize: Int {
+        get { return self.headerIndexTable.dynamicTableAllowedLength }
+        set { self.headerIndexTable.dynamicTableAllowedLength = newValue }
+    }
+    
+    /// The hard maximum size of the dynamic header table, set via an HTTP/2
+    /// SETTINGS frame.
+    public var maximumDynamicTableSize: Int {
         get { return self.headerIndexTable.maxDynamicTableLength }
         set { self.headerIndexTable.maxDynamicTableLength = newValue }
     }
     
-    /// Sets the maximum size for the dynamic table and optionally encodes the new value
-    /// into the current packed header block to send to the peer.
+    /// Sets the maximum size for the dynamic table and encodes the new value
+    /// at the start of the current packed header block to send to the peer.
+    ///
+    /// - note: The size cannot grow beyond the maximum allotted by the most recent
+    ///         acknowledged SETTINGS_HEADER_TABLE_SIZE. It will truncate to that
+    ///         value automatically.
     ///
     /// - Parameter size: The new maximum size for the dynamic header table.
-    public mutating func setMaxDynamicTableSize(_ size: Int) {
-        self.maxDynamicTableSize = size
-        self.buffer.write(encodedInteger: UInt(size), prefix: 5, prefixBits: 0x20)
+    public mutating func setDynamicTableSize(_ size: Int) {
+        // this can only be encoded at the beginning of a header block. Therefore, we keep it
+        // on the side and prepend it in when handing out our encoded data.
+        if let existingNewSize = self.newDynamicTableSize {
+            // only change things when growing the buffer. Don't grow then shrink, because
+            // we will send only the larger size to the peer.
+            if size > existingNewSize && size <= self.headerIndexTable.maxDynamicTableLength {
+                let newSize = min(max(size, existingNewSize), self.headerIndexTable.maxDynamicTableLength)
+                self.newDynamicTableSize = newSize
+                self.allowedDynamicTableSize = newSize
+            }
+        } else {
+            let newSize = min(size, self.headerIndexTable.maxDynamicTableLength)
+            self.newDynamicTableSize = newSize
+            self.allowedDynamicTableSize = newSize
+        }
     }
     
     /// Initializer and returns a new HPACK encoder.
@@ -75,6 +109,7 @@ public struct HPACKEncoder {
     ///   - maxDynamicTableSize: An initial maximum size for the encoder's dynamic header table.
     public init(allocator: ByteBufferAllocator, useHuffmanEncoding: Bool = true, maxDynamicTableSize: Int = HPACKEncoder.defaultDynamicTableSize) {
         self.headerIndexTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)
+        self.allocator = allocator
         self.buffer = allocator.buffer(capacity: HPACKEncoder.defaultDataBufferSize)
         self.useHuffmanEncoding = useHuffmanEncoding
     }
@@ -82,6 +117,7 @@ public struct HPACKEncoder {
     /// Reset the internal buffer, ready to begin encoding a new header block.
     public mutating func reset() {
         buffer.clear()
+        newDynamicTableSize = nil
     }
     
     /// Appends headers in the default fashion: indexed if possible, literal+indexable if not.
@@ -107,6 +143,9 @@ public struct HPACKEncoder {
         }
     }
     
+    /// Appends a set of headers with their associated indexability.
+    ///
+    /// - Parameter headers: A `HPACKHeaders` structure containing a set of HTTP/2 header values.
     public mutating func append(headers: HPACKHeaders) throws {
         for header in headers.headerIndices {
             let nameView = headers.view(of: header.name)

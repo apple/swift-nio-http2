@@ -157,9 +157,18 @@ public struct IndexedHeaderTable {
         return self.dynamicTable.length
     }
     
-    /// The maximum allowed length of the dynamic portion of the header table.
+    /// The current allowed length of the dynamic portion of the header table. May be
+    /// less than the current protocol-assigned maximum supplied by a SETTINGS frame.
+    public var dynamicTableAllowedLength: Int {
+        get { return self.dynamicTable.allowedLength }
+        set { self.dynamicTable.allowedLength = newValue }
+    }
+    
+    /// The hard limit on the size to which the dynamic table may grow. Only a SETTINGS
+    /// frame can change this: it can't grow beyond this size due to changes within
+    /// header blocks.
     public var maxDynamicTableLength: Int {
-        get { return self.dynamicTable.maximumLength }
-        set { self.dynamicTable.maximumLength = newValue }
+        get { return self.dynamicTable.maximumTableLength }
+        set { self.dynamicTable.maximumTableLength = newValue }
     }
 }

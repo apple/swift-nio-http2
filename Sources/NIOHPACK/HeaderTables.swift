@@ -54,7 +54,7 @@ extension HeaderTableEntry : CustomStringConvertible {
 struct HeaderTableStorage {
     static let defaultMaxSize = 4096
     
-    private var buffer: SimpleRingBuffer
+    private var buffer: StringRing
     private var headers: CircularBuffer<HeaderTableEntry>
     
     private(set) var maxSize: Int
@@ -66,7 +66,7 @@ struct HeaderTableStorage {
     
     init(allocator: ByteBufferAllocator, maxSize: Int = HeaderTableStorage.defaultMaxSize) {
         self.maxSize = maxSize
-        self.buffer = SimpleRingBuffer(allocator: allocator, capacity: self.maxSize)
+        self.buffer = StringRing(allocator: allocator, capacity: self.maxSize)
         self.headers = CircularBuffer(initialRingCapacity: self.maxSize / 64)    // rough guess: 64 bytes per header
     }
     
@@ -77,7 +77,7 @@ struct HeaderTableStorage {
         // set this according to what the length algorithm would normally expect
         
         // now allocate & encode all the things
-        self.buffer = SimpleRingBuffer(allocator: allocator, capacity: bytesNeeded)
+        self.buffer = StringRing(allocator: allocator, capacity: bytesNeeded)
         self.headers = CircularBuffer(initialRingCapacity: staticHeaderList.count)
         
         var len = 0
@@ -149,6 +149,7 @@ struct HeaderTableStorage {
     }
     
     mutating func setTableSize(to newSize: Int) {
+        precondition(newSize >= 0)
         if newSize < self.length {
             // need to clear out some things first.
             while newSize < self.length {
@@ -188,24 +189,34 @@ struct HeaderTableStorage {
     }
     
     mutating func add<Name: ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
-        var len = 0
+        let (nameStart, nameLen, valueStart, valueLen) = try self.encode(name: nameBytes, value: valueBytes)
+        
         do {
-            let (nameStart, nameLen, valueStart, valueLen) = try self.encode(name: nameBytes, value: valueBytes)
-            len = nameLen + valueLen
-            
             try prependHeaderEntry(nameStart: nameStart, nameLen: nameLen, valueStart: valueStart, valueLen: valueLen)
         } catch {
-            // NB: moving backwards here
-            self.buffer.unwrite(byteCount: len)
+            // remove everything written by the `encode(name:value:)` call above
+            self.buffer.unwrite(byteCount: nameLen + valueLen)
             throw error
         }
     }
     
-    private mutating func encode<Name: Collection, Value: Collection>(name: Name, value: Value) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where Name.Element == UInt8, Value.Element == UInt8 {
-        let bytesNeeded = name.count + value.count
-        guard self.buffer.writableBytes >= bytesNeeded else {
-            throw RingBufferError.BufferOverrun(amount: bytesNeeded - self.buffer.writableBytes)
+    private mutating func ensureSpaceAvailable(_ amount: Int) throws {
+        if self.buffer.writableBytes >= amount {
+            // all is good in the world
+            return
         }
+        
+        let extraNeeded = amount - self.buffer.writableBytes
+        self.purge(toRelease: extraNeeded)
+        
+        if self.buffer.writableBytes >= amount {
+            // still not enough actual room:
+            throw RingBufferError.BufferOverrun(amount: amount - self.buffer.writableBytes)
+        }
+    }
+    
+    private mutating func encode<Name: Collection, Value: Collection>(name: Name, value: Value) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where Name.Element == UInt8, Value.Element == UInt8 {
+        try ensureSpaceAvailable(name.count + value.count)
         
         let nstart = self.buffer.ringTail
         let nlen = try self.buffer.write(bytes: name)
@@ -216,10 +227,7 @@ struct HeaderTableStorage {
     }
     
     private mutating func encode<Name: ContiguousCollection, Value: ContiguousCollection>(name: Name, value: Value) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where Name.Element == UInt8, Value.Element == UInt8 {
-        let bytesNeeded = name.count + value.count
-        guard self.buffer.writableBytes >= bytesNeeded else {
-            throw RingBufferError.BufferOverrun(amount: bytesNeeded - self.buffer.writableBytes)
-        }
+        try ensureSpaceAvailable(name.count + value.count)
         
         let nstart = self.buffer.ringTail
         let nlen = try self.buffer.write(bytes: name)
@@ -234,10 +242,15 @@ struct HeaderTableStorage {
         let valueIndex = HPACKHeaderIndex(start: valueStart, length: valueLen)
         let entry = HeaderTableEntry(name: nameIndex, value: valueIndex)
         
-        let newLength = self.length + entry.length
+        var newLength = self.length + entry.length
         if newLength > self.maxSize {
-            // Danger, Will Robinson!
-            throw RingBufferError.BufferOverrun(amount: newLength - maxSize)
+            self.purge(toRelease: newLength - maxSize)
+            newLength = self.length + entry.length
+            
+            if newLength > self.maxSize {
+                // Danger, Will Robinson! We can't free up enough space!
+                throw RingBufferError.BufferOverrun(amount: newLength - self.maxSize)
+            }
         }
         
         self.headers.prepend(entry)
@@ -249,7 +262,7 @@ struct HeaderTableStorage {
     ///
     /// - parameter toRelease: The table entry length of bytes to remove from the table.
     mutating func purge(toRelease count: Int) {
-        guard count <= self.length else {
+        guard count < self.length else {
             // clear all the things
             self.headers.removeAll()
             self.buffer.clear()
@@ -293,7 +306,7 @@ extension HeaderTableStorage : CustomStringConvertible {
     }
 }
 
-private extension SimpleRingBuffer {
+private extension StringRing {
     func equalCaseInsensitiveASCII<C : Collection>(view: C, at index: HPACKHeaderIndex) -> Bool where C.Element == UInt8 {
         guard view.count == index.length else {
             return false

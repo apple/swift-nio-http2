@@ -27,13 +27,21 @@ struct DynamicHeaderTable {
         return self.storage.length
     }
     
-    /// The maximum size to which the dynamic table may grow.
-    var maximumLength: Int {
+    /// The size to which the dynamic table may currently grow.
+    var allowedLength: Int {
         get {
             return self.storage.maxSize
         }
         set {
             self.storage.setTableSize(to: newValue)
+        }
+    }
+    
+    var maximumTableLength: Int {
+        didSet {
+            if self.allowedLength > maximumTableLength {
+                self.allowedLength = maximumTableLength
+            }
         }
     }
     
@@ -44,6 +52,8 @@ struct DynamicHeaderTable {
     
     init(maximumLength: Int = DynamicHeaderTable.defaultSize, allocator: ByteBufferAllocator = ByteBufferAllocator()) {
         self.storage = HeaderTableStorage(allocator: allocator, maxSize: maximumLength)
+        self.maximumTableLength = maximumLength
+        self.allowedLength = maximumLength  // until we're told otherwise, this is what we assume the other side expects.
     }
     
     /// Subscripts into the dynamic table alone, using a zero-based index.
@@ -58,6 +68,11 @@ struct DynamicHeaderTable {
     // internal for testing
     func dumpHeaders() -> String {
         return self.storage.dumpHeaders(offsetBy: StaticHeaderTable.count)
+    }
+    
+    // internal for testing -- clears the dynamic table
+    mutating func clear() {
+        self.storage.purge(toRelease: self.storage.length)
     }
     
     /// Searches the table for a matching header, optionally with a particular value. If
@@ -121,24 +136,9 @@ struct DynamicHeaderTable {
         do {
             try self.storage.add(name: name, value: value)
         } catch let error as RingBufferError.BufferOverrun {
-            if self.storage.count > 0 {
-                // purge from the table and try again
-                
-                // if there's still not enough room, then the entry is too large for the table
-                // note that the HTTP2 spec states that we should make this check AFTER evicting
-                // the table's contents: http://httpwg.org/specs/rfc7541.html#entry.addition
-                //
-                //  "It is not an error to attempt to add an entry that is larger than the maximum size; an
-                //   attempt to add an entry larger than the maximum size causes the table to be emptied of
-                //   all existing entries and results in an empty table."
-                
-                self.storage.purge(toRelease: error.amount)
-                return try self.addHeader(named: name, value: value)
-            } else {
-                // ping the error up the stack, with more information
-                throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
-                                                              name: name, value: value)
-            }
+            // ping the error up the stack, with more information
+            throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
+                                                          name: name, value: value)
         }
     }
     
@@ -154,17 +154,13 @@ struct DynamicHeaderTable {
     ///   - name: A contiguous collection of UTF-8 bytes comprising the name of the header to insert.
     ///   - value: A contiguous collection of UTF-8 bytes comprising the value of the header to insert.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader<Name : ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
+    mutating func addHeader<Name: ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         do {
             try self.storage.add(nameBytes: nameBytes, valueBytes: valueBytes)
         } catch let error as RingBufferError.BufferOverrun {
-            if self.storage.count > 0 {
-                self.storage.purge(toRelease: error.amount)
-                return try self.addHeader(nameBytes: nameBytes, valueBytes: valueBytes)
-            } else {
-                throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
-                                                              name: nameBytes, value: valueBytes)
-            }
+            // convert the error to something more useful/meaningful to client code.
+            throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
+                                                          name: nameBytes, value: valueBytes)
         }
     }
 }

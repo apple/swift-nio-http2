@@ -397,7 +397,10 @@ class HPACKCodingTests: XCTestCase {
     }
     
     func testInlineDynamicTableResize() throws {
-        var request1 = buffer(wrapping: [0x82, 0x86, 0x84, 0x3F, 0x32, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        var request1 = buffer(wrapping: [0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        let request2 = buffer(wrapping: [0x3f, 0xe1, 0x1f, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        var request3 = buffer(wrapping: [0x3f, 0xe1, 0x20, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        var request4 = buffer(wrapping: [0x82, 0x86, 0x3f, 0x32, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         
         let headers1 = HPACKHeaders([
             (":method", "GET"),
@@ -409,21 +412,22 @@ class HPACKCodingTests: XCTestCase {
         let oddMaxTableSize = 81
         
         var encoder = HPACKEncoder(allocator: allocator)
-        XCTAssertNotEqual(encoder.maxDynamicTableSize, oddMaxTableSize)
+        XCTAssertNotEqual(encoder.allowedDynamicTableSize, oddMaxTableSize)
         
         // adding these all manually to ensure our table size insert happens
+        encoder.setDynamicTableSize(oddMaxTableSize)
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
         XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
         XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
-        encoder.setMaxDynamicTableSize(oddMaxTableSize)
         XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
         
         XCTAssertEqual(encoder.encodedData, request1)
         XCTAssertEqual(encoder.dynamicTableSize, 57)
-        XCTAssertEqual(encoder.maxDynamicTableSize, oddMaxTableSize)
+        XCTAssertEqual(encoder.allowedDynamicTableSize, oddMaxTableSize)
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
         
-        var decoder = HPACKDecoder(allocator: ByteBufferAllocator(), maxDynamicTableSize: 22)     // not enough to store the value we expect it to eventually store
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
+        decoder.allowedDynamicTableLength = 22      // not enough to store the value we expect it to eventually store
         let decoded: HPACKHeaders
         do {
             decoded = try decoder.decodeHeaders(from: &request1)
@@ -436,6 +440,77 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(decoded, headers1)
         XCTAssertEqual(decoder.maxDynamicTableLength, oddMaxTableSize)
         XCTAssertEqualTuple(headers1[3], try decoder.headerTable.header(at: 62))
+        
+        // Now, ensure some special cases.
+        request1.moveReaderIndex(to: 0) // make the data available again in our sample buffer
+        
+        // 1 - we can tell an encoder to encode the table size at any time, and it will encode
+        //     a buffer with the new size correctly placed at the start of the buffer.
+        encoder.setDynamicTableSize(4096)
+        encoder.reset()     // prevent it being written to a header list
+        encoder.headerIndexTable.dynamicTable.clear()
+        
+        XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
+        XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
+        XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
+        encoder.setDynamicTableSize(oddMaxTableSize)     // should be moved to the front of the encoded buffer
+        XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
+        
+        // still produces data with the resize at the start of the buffer
+        XCTAssertEqual(encoder.encodedData, request1)
+        
+        encoder.setDynamicTableSize(4096)
+        encoder.reset()
+        encoder.headerIndexTable.dynamicTable.clear()
+        
+        // 2 - We can set multiple sizes, and only the largest will be sent.
+        XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
+        XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
+        XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
+        encoder.setDynamicTableSize(64)
+        encoder.setDynamicTableSize(oddMaxTableSize /* 81 */)     // should be moved to the front of the encoded buffer
+        encoder.setDynamicTableSize(75)
+        XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
+        
+        XCTAssertEqual(encoder.encodedData, request1)
+        
+        // 3 - Encoder will truncate the input value to the protocol max size.
+        // NB: current size is 81 bytes.
+        encoder.reset()
+        encoder.headerIndexTable.dynamicTable.clear()
+        
+        encoder.setDynamicTableSize(8192)       // should be truncated to 4096
+        XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
+        XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
+        XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
+        XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
+        
+        XCTAssertEqual(encoder.encodedData, request2)
+        
+        // 4 - Decoder will not accept a table size greater than the maximum permitted.
+        decoder.allowedDynamicTableLength = 4096
+        decoder.headerTable.dynamicTable.clear()
+        
+        do {
+            _ = try decoder.decodeHeaders(from: &request3)
+            XCTFail("Decode should have failed with InvalidDynamicTableSize")
+        } catch _ as NIOHPACKErrors.InvalidDynamicTableSize {
+            // this is expected
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        
+        // 5 - Decoder will not accept a table size update unless it appears at the start of a header block.
+        decoder.headerTable.dynamicTable.clear()
+        
+        do {
+            _ = try decoder.decodeHeaders(from: &request4)
+            XCTFail("Decode should have failed with IllegalDynamicTableSizeChange")
+        } catch _ as NIOHPACKErrors.IllegalDynamicTableSizeChange {
+            // this is expected
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
     }
     
     func testHPACKHeadersDescription() throws {
