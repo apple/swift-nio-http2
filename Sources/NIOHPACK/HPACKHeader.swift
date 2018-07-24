@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
+import NIOHTTP1
 
 /// Very similar to `NIOHTTP1.HTTPHeaders`, but we have our own version to make some
 /// small changes inside.
@@ -59,6 +60,13 @@ public struct HPACKHeaders {
         self._storage = _Storage(buffer: buffer, headers: headers)
     }
     
+    /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
+    init(_ httpHeaders: HTTPHeaders) {
+        // TODO(jim): Once we make HTTPHeaders' internals visible to us, we can just copy the buffer
+        // and map the headers.
+        self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
+    }
+    
     /// Construct a `HPACKHeaders` structure.
     ///
     /// The indexability of all headers is assumed to be the default, i.e. indexable and
@@ -66,7 +74,7 @@ public struct HPACKHeaders {
     ///
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
-    public init(_ headers: [(String, String)] = []) {
+    init(_ headers: [(String, String)] = []) {
         // Note: this initializer exists because of https://bugs.swift.org/browse/SR-7415.
         // Otherwise we'd only have the one below with a default argument for `allocator`.
         self.init(headers, allocator: ByteBufferAllocator())
@@ -80,7 +88,7 @@ public struct HPACKHeaders {
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
     ///     - allocator: The allocator to use to allocate the underlying storage.
-    public init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
+    init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
         // Reserve enough space in the array to hold all indices.
         var array: [HPACKHeader] = []
         array.reserveCapacity(headers.count)

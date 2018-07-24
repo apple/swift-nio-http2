@@ -373,14 +373,14 @@ extension StringRing {
         return self.withVeryUnsafeBytes { ptr in
             if self.capacity - index >= length {
                 // single read
-                return String(decoding: UnsafeBufferPointer(start: ptr.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self), count: length), as: UTF8.self)
+                return String(decoding: ptr[index..<(index+length)], as: UTF8.self)
             } else {
                 // double read-- we will need to provide an intermediate buffer for the String API to read.
                 let firstPart = self.capacity - index
                 var bytes = ContiguousArray<UInt8>()
                 bytes.reserveCapacity(length)
-                bytes.append(contentsOf: UnsafeBufferPointer(start: ptr.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self), count: firstPart))
-                bytes.append(contentsOf: UnsafeBufferPointer(start: ptr.baseAddress!.assumingMemoryBound(to: UInt8.self), count: length - firstPart))
+                bytes.append(contentsOf: ptr[index..<(index+firstPart)])
+                bytes.append(contentsOf: ptr[0..<(length-firstPart)])
                 return String(decoding: bytes, as: UTF8.self)
             }
         }

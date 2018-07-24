@@ -32,7 +32,7 @@ let package = Package(
         .target(name: "NIOHTTP2",
             dependencies: ["NIO", "NIOHTTP1", "NIOTLS", "CNIONghttp2"]),
         .target(name: "NIOHPACK",
-            dependencies: ["NIO", "NIOConcurrencyHelpers"]),
+            dependencies: ["NIO", "NIOConcurrencyHelpers", "NIOHTTP1"]),
         .testTarget(name: "NIOHTTP2Tests",
             dependencies: ["NIO", "NIOHTTP1", "NIOHTTP2"]),
         .testTarget(name: "NIOHPACKTests",
