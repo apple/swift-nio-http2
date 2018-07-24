@@ -50,7 +50,7 @@ class RingBufferTests : XCTestCase {
         ring.unwrite(byteCount: 7)      // " string"
         assertRingState(0, 14, 14)      // "This is a test"
         
-        let peekedString = ring.peekString(length: 7)     // "This is"
+        let peekedString = ring.getString(at: ring.ringHead, length: 7)     // "This is"
         XCTAssertNotNil(peekedString)
         XCTAssertEqual(peekedString, "This is")
         assertRingState(0, 14, 14)
@@ -78,7 +78,7 @@ class RingBufferTests : XCTestCase {
         ring.unwrite(byteCount: 7)      // " string"
         assertRingState(0, 14, 14)      // "This is a test"
         
-        let peekedStaticString = ring.peekString(length: 7)     // "This is"
+        let peekedStaticString = ring.getString(at: ring.ringHead, length: 7)     // "This is"
         XCTAssertNotNil(peekedStaticString)
         XCTAssertEqual(peekedString, "This is")
         assertRingState(0, 14, 14)
@@ -116,7 +116,7 @@ class RingBufferTests : XCTestCase {
         ring.unwrite(byteCount: 7)      // " string"
         assertRingState(28, 10, 14)      // "This is a test"
         
-        let peekedString = ring.peekString(length: 7)     // "This is"
+        let peekedString = ring.getString(at: ring.ringHead, length: 7)     // "This is"
         XCTAssertNotNil(peekedString)
         XCTAssertEqual(peekedString, "This is")
         assertRingState(28, 10, 14)
@@ -145,7 +145,7 @@ class RingBufferTests : XCTestCase {
         ring.unwrite(byteCount: 7)      // " string"
         assertRingState(28, 10, 14)      // "This is a test"
         
-        let peekedStaticString = ring.peekString(length: 7)     // "This is"
+        let peekedStaticString = ring.getString(at: ring.ringHead, length: 7)     // "This is"
         XCTAssertNotNil(peekedStaticString)
         XCTAssertEqual(peekedStaticString, "This is")
         assertRingState(28, 10, 14)

@@ -17,13 +17,9 @@ import NIO
 enum RingBufferError {
     /// Error type thrown when a write would overrun the bounds of a
     /// CircularByteBuffer.
-    public struct BufferOverrun : Error, Equatable {
+    struct BufferOverrun : Error, Equatable {
         /// The amount by which the write would overrun.
-        public let amount: Int
-        
-        public init(amount: Int) {
-            self.amount = amount
-        }
+        let amount: Int
     }
 }
 
@@ -147,93 +143,19 @@ struct StringRing {
         self._readableBytes += byteCount
     }
     
-    @_inlineable
-    mutating func set<S: ContiguousCollection>(bytes: S, at index: Int) throws -> Int where S.Element == UInt8 {
-        let totalCount = bytes.count
-        guard totalCount <= self.writableBytes else {
-            throw RingBufferError.BufferOverrun(amount: Int(totalCount - self._storage.capacity))
-        }
-        
-        let firstPart = self._storage.capacity - index
-        if firstPart >= bytes.count {
-            _storage.set(bytes: bytes, at: index)
-        } else {
-            let secondPart = bytes.count - firstPart
-            bytes.withUnsafeBytes { ptr in
-                _storage.set(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress!, count: firstPart), at: index)
-                _storage.set(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress!.advanced(by: firstPart), count: secondPart), at: 0)
+    private var _contiguousWriteSpace: Int {
+        switch (self._ringHead, self._ringTail) {
+        case let (r, w) where r == w:
+            if self._readableBytes == self.capacity {
+                return 0
             }
-        }
-        return bytes.count
-    }
-    
-    @_inlineable
-    mutating func set<S : Sequence>(bytes: S, at index: Int) throws -> Int where S.Element == UInt8 {
-        assert(!([Array<S.Element>.self, StaticString.self, ContiguousArray<S.Element>.self, UnsafeRawBufferPointer.self, UnsafeBufferPointer<UInt8>.self].contains(where: { (t: Any.Type) -> Bool in t == type(of: bytes) })),
-               "called the slower set<S: Sequence> function even though \(S.self) is a ContiguousCollection")
-        guard bytes.underestimatedCount <= self.writableBytes else {
-            throw RingBufferError.BufferOverrun(amount: Int(self._storage.capacity) - bytes.underestimatedCount)
-        }
-        
-        // it *should* fit. Let's see though.
-        let underestimatedCount = bytes.underestimatedCount
-        
-        return try self._storage.withVeryUnsafeBytes { ptr in
-            var base = UnsafeMutablePointer(mutating: ptr.baseAddress!.advanced(by: index).assumingMemoryBound(to: UInt8.self))
-            let highestWritableAddress = self._ringHead > self._ringTail ? min(ptr.count, self._ringHead) : ptr.count
-            let remainderWritten: Int
-            
-            // since we end up with an iterator from either the base sequence type or its subsequence type, we handle
-            // the clash of generics by passing that on to another (generic on iterator type) function to handle.
-            func _setRemainder<I : IteratorProtocol>(iterator: I, at index: Int, available: Int) throws -> Int where I.Element == UInt8 {
-                var iterator = iterator
-                var idx = Int(index)
-                var written: Int = 0
-                while let b = iterator.next() {
-                    guard written <= available else {
-                        // how much space?
-                        var needed = 1
-                        while let _ = iterator.next() {
-                            needed += 1
-                        }
-                        throw RingBufferError.BufferOverrun(amount: needed)
-                    }
-                    
-                    // loop around if necessary
-                    if idx >= ptr.count {
-                        idx = 0
-                    }
-                    base[idx] = b
-                    idx += 1
-                    written += 1
-                }
-                
-                return written
-            }
-            
-            if highestWritableAddress - index >= underestimatedCount {
-                let (iterator, idx) = UnsafeMutableBufferPointer(start: base, count: underestimatedCount).initialize(from: bytes)
-                assert(idx == underestimatedCount)
-                remainderWritten = try _setRemainder(iterator: iterator, at: index + idx, available: self.writableBytes - idx)
-            } else {
-                // first part...
-                let firstPart = ptr.count - index
-                let secondPart = underestimatedCount - firstPart
-                
-                // split into two sub-sequences that won't go bang inside _copyMemory() if the available target memory is
-                // less than the sequence's 'underestimatedCount'.
-                let firstSubSequence = bytes.dropLast(secondPart)
-                let secondSubSequence = bytes.dropFirst(firstPart)
-                
-                let (_, firstIdx) = UnsafeMutableBufferPointer(start: base, count: firstPart).initialize(from: firstSubSequence)
-                // second part...
-                base = UnsafeMutablePointer(mutating: ptr.baseAddress!.assumingMemoryBound(to: UInt8.self))
-                let (iterator, idx) = UnsafeMutableBufferPointer(start: base, count: secondPart).initialize(from: secondSubSequence)
-                assert(firstIdx + idx == underestimatedCount)
-                remainderWritten = try _setRemainder(iterator: iterator, at: idx, available: ptr.count - firstIdx + idx)
-            }
-            
-            return underestimatedCount + remainderWritten
+            fallthrough
+        case let (r, w) where r < w:
+            return self.capacity - w
+        case let (r, w) where r > w:
+            return r - w
+        default:
+            fatalError("This should be unreachable")
         }
     }
     
@@ -293,6 +215,69 @@ struct StringRing {
         self.moveHead(to: 0)
         self._readableBytes = 0
     }
+    
+    /// Write `bytes`, a `ContiguousCollection` of `UInt8` into this `StringRing`. Moves the writer index forward by the number of bytes written.
+    /// This method is likely more efficient than the one operating on plain `Collection` as it will use `memcpy` to copy all the bytes in one go.
+    ///
+    /// - parameters:
+    ///     - bytes: A `ContiguousCollection` of `UInt8` to be written.
+    /// - returns: The number of bytes written or `bytes.count`.
+    @discardableResult
+    @_inlineable @_versioned
+    mutating func write<C: ContiguousCollection>(bytes: C) throws -> Int where C.Element == UInt8 {
+        let totalCount = bytes.count
+        guard totalCount <= self.writableBytes else {
+            throw RingBufferError.BufferOverrun(amount: Int(totalCount - self._storage.capacity))
+        }
+        
+        let firstPart = self._storage.capacity - self._ringTail
+        if firstPart >= bytes.count {
+            _storage.set(bytes: bytes, at: self._ringTail)
+        } else {
+            let secondPart = bytes.count - firstPart
+            bytes.withUnsafeBytes { ptr in
+                _storage.set(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress!, count: firstPart), at: self._ringTail)
+                _storage.set(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress!.advanced(by: firstPart), count: secondPart), at: 0)
+            }
+        }
+        
+        self.moveTail(forwardBy: totalCount)
+        return totalCount
+    }
+    
+    /// Write `bytes`, a `Collection` of `UInt8` into this `StringRing`. Moves the writer index forward by the number of bytes written.
+    ///
+    /// - parameters:
+    ///     - bytes: A `Collection` of `UInt8` to be written.
+    /// - returns: The number of bytes written or `bytes.count`.
+    @discardableResult
+    @_inlineable @_versioned
+    mutating func write<C : Collection>(bytes: C) throws -> Int where C.Element == UInt8 {
+        assert(!([Array<C.Element>.self, StaticString.self, ContiguousArray<C.Element>.self, UnsafeRawBufferPointer.self, UnsafeBufferPointer<UInt8>.self].contains(where: { (t: Any.Type) -> Bool in t == type(of: bytes) })),
+               "called the slower set<S: Collection> function even though \(C.self) is a ContiguousCollection")
+        guard bytes.count <= self.writableBytes else {
+            throw RingBufferError.BufferOverrun(amount: Int(self._storage.capacity) - bytes.underestimatedCount)
+        }
+        
+        // is this a contiguous write?
+        let contiguousWriteSpace = self._contiguousWriteSpace
+        guard bytes.count <= contiguousWriteSpace else {
+            // multiple writes -- split and recurse
+            let firstPart = bytes.prefix(contiguousWriteSpace)
+            let secondPart = bytes.dropFirst(contiguousWriteSpace)
+            return try self.write(bytes: firstPart) + self.write(bytes: secondPart)
+        }
+        
+        // single write, should be straightforward
+        self._storage.withVeryUnsafeBytes { ptr in
+            let targetAddr = UnsafeMutableRawPointer(mutating: ptr.baseAddress!.advanced(by: self._ringTail))
+            let target = UnsafeMutableRawBufferPointer(start: targetAddr, count: bytes.count)
+            target.copyBytes(from: bytes)
+        }
+        
+        self.moveTail(forwardBy: bytes.count)
+        return bytes.count
+    }
 }
 
 extension StringRing {
@@ -314,21 +299,9 @@ extension StringRing {
     ///     - string: The string to write.
     /// - returns: The number of bytes written.
     @discardableResult
+    @_inlineable
     mutating func write(staticString string: StaticString) throws -> Int {
-        let written = try self.set(staticString: string, at: self.ringTail)
-        self.moveTail(forwardBy: written)
-        return written
-    }
-    
-    /// Write the static `string` into this `StringRing` at `index` using UTF-8 encoding, moving the writer index forward appropriately.
-    ///
-    /// - parameters:
-    ///     - string: The string to write.
-    ///     - index: The index for the first serialized byte.
-    /// - returns: The number of bytes written.
-    @discardableResult
-    internal mutating func set(staticString string: StaticString, at index: Int) throws -> Int {
-        return try self.set(bytes: UnsafeRawBufferPointer(start: string.utf8Start, count: string.utf8CodeUnitCount), at: index)
+        return try self.write(bytes: UnsafeRawBufferPointer(start: string.utf8Start, count: string.utf8CodeUnitCount))
     }
     
     // MARK: String APIs
@@ -339,21 +312,9 @@ extension StringRing {
     ///     - string: The string to write.
     /// - returns: The number of bytes written.
     @discardableResult
+    @_inlineable
     mutating func write(string: String) throws -> Int {
-        let written = try self.set(string: string, at: self.ringTail)
-        self.moveTail(forwardBy: written)
-        return written
-    }
-    
-    /// Write `string` into this `StringRing` at `index` using UTF-8 encoding. Does not move the writer index.
-    ///
-    /// - parameters:
-    ///     - string: The string to write.
-    ///     - index: The index for the first serialized byte.
-    /// - returns: The number of bytes written.
-    @discardableResult
-    internal mutating func set(string: String, at index: Int) throws -> Int {
-        return try self.set(bytes: string.utf8, at: index)
+        return try self.write(bytes: string.utf8)
     }
     
     /// Get the string at `index` from this `StringRing` decoding using the UTF-8 encoding. Does not move the reader index.
@@ -386,15 +347,6 @@ extension StringRing {
         }
     }
     
-    func peekString(length: Int) -> String? {
-        precondition(length >= 0, "length must not be negative")
-        guard length <= self.readableBytes else {
-            return nil
-        }
-        
-        return self.getString(at: self.ringHead, length: length)
-    }
-    
     mutating func readString(length: Int) -> String? {
         precondition(length >= 0, "length must not be negative")
         guard length <= self.readableBytes else {
@@ -403,32 +355,5 @@ extension StringRing {
         
         defer { self.moveHead(forwardBy: length) }
         return self.getString(at: self.ringHead, length: length)
-    }
-    
-    /// Write `bytes`, a `Sequence` of `UInt8` into this `StringRing`. Moves the writer index forward by the number of bytes written.
-    ///
-    /// - parameters:
-    ///     - bytes: A `Collection` of `UInt8` to be written.
-    /// - returns: The number of bytes written or `bytes.count`.
-    @discardableResult
-    @_inlineable
-    mutating func write<S: Sequence>(bytes: S) throws -> Int where S.Element == UInt8 {
-        let written = try set(bytes: bytes, at: self.ringTail)
-        self.moveTail(forwardBy: written)
-        return written
-    }
-    
-    /// Write `bytes`, a `ContiguousCollection` of `UInt8` into this `StringRing`. Moves the writer index forward by the number of bytes written.
-    /// This method is likely more efficient than the one operating on plain `Collection` as it will use `memcpy` to copy all the bytes in one go.
-    ///
-    /// - parameters:
-    ///     - bytes: A `ContiguousCollection` of `UInt8` to be written.
-    /// - returns: The number of bytes written or `bytes.count`.
-    @discardableResult
-    @_inlineable
-    mutating func write<S: ContiguousCollection>(bytes: S) throws -> Int where S.Element == UInt8 {
-        let written = try set(bytes: bytes, at: self.ringTail)
-        self.moveTail(forwardBy: written)
-        return written
     }
 }
