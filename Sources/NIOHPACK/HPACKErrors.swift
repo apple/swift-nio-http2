@@ -95,4 +95,11 @@ public enum NIOHPACKErrors {
     
     /// Ran out of input bytes while decoding.
     public struct InsufficientInput : NIOHPACKError {}
+    
+    /// HPACK encoder asked to begin a new header block while partway through encoding
+    /// another block.
+    public struct EncoderAlreadyActive : NIOHPACKError {}
+    
+    /// HPACK encoder asked to append a header without first calling `beginEncoding(allocator:)`.
+    public struct EncoderNotStarted : NIOHPACKError {}
 }

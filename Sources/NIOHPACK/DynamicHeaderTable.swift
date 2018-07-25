@@ -50,7 +50,7 @@ struct DynamicHeaderTable {
         return self.storage.count
     }
     
-    init(maximumLength: Int = DynamicHeaderTable.defaultSize, allocator: ByteBufferAllocator = ByteBufferAllocator()) {
+    init(allocator: ByteBufferAllocator, maximumLength: Int = DynamicHeaderTable.defaultSize) {
         self.storage = HeaderTableStorage(allocator: allocator, maxSize: maximumLength)
         self.maximumTableLength = maximumLength
         self.allowedLength = maximumLength  // until we're told otherwise, this is what we assume the other side expects.

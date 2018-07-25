@@ -26,7 +26,7 @@ public struct IndexedHeaderTable {
     /// - Parameter maxDynamicTableSize: Maximum size of the dynamic table. Default = 4096.
     init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = DynamicHeaderTable.defaultSize) {
         self.staticTable = HeaderTableStorage(allocator: allocator, staticHeaderList: StaticHeaderTable)
-        self.dynamicTable = DynamicHeaderTable(maximumLength: maxDynamicTableSize, allocator: allocator)
+        self.dynamicTable = DynamicHeaderTable(allocator: allocator, maximumLength: maxDynamicTableSize)
     }
     
     /// Obtains the header key/value pair at the given index within the table.

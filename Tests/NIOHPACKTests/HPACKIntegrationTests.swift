@@ -222,16 +222,16 @@ class HPACKIntegrationTests : XCTestCase {
         for storyCase in story.cases {
             do {
                 if let tableSize = storyCase.headerTableSize {
-                    encoder.setDynamicTableSize(tableSize)
+                    try encoder.setDynamicTableSize(tableSize)
                     decoder.maxDynamicTableLength = tableSize
                 }
                 
+                try encoder.beginEncoding(allocator: ByteBufferAllocator())
                 try encoder.append(headers: storyCase.headers)
                 
                 var outputCase = storyCase
-                var encoded = encoder.encodedData
+                var encoded = try encoder.endEncoding()
                 outputCase.wire = encoded
-                encoder.reset()
                 result.cases.append(outputCase)
                 
                 // now try to decode it

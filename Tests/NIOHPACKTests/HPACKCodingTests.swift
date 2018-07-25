@@ -105,21 +105,23 @@ class HPACKCodingTests: XCTestCase {
         ])
         
         var encoder = HPACKEncoder(allocator: allocator)
+        
+        try encoder.beginEncoding(allocator: allocator)
         try encoder.append(headers: headers1)
-        XCTAssertEqual(encoder.encodedData, request1)
+        XCTAssertEqual(try encoder.endEncoding(), request1)
         XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 57)
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
         
-        encoder.reset()
+        try encoder.beginEncoding(allocator: allocator)
         try encoder.append(headers: headers2)
-        XCTAssertEqual(encoder.encodedData, request2)
+        XCTAssertEqual(try encoder.endEncoding(), request2)
         XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 110)
         XCTAssertEqualTuple(headers2[4], try encoder.headerIndexTable.header(at: 62))
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 63))
         
-        encoder.reset()
+        try encoder.beginEncoding(allocator: allocator)
         try encoder.append(headers: headers3)
-        XCTAssertEqual(encoder.encodedData, request3)
+        XCTAssertEqual(try encoder.endEncoding(), request3)
         XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 164)
         XCTAssertEqualTuple(headers3[4], try encoder.headerIndexTable.header(at: 62))
         XCTAssertEqualTuple(headers2[4], try encoder.headerIndexTable.header(at: 63))
@@ -268,24 +270,26 @@ class HPACKCodingTests: XCTestCase {
         ])
         
         var encoder = HPACKEncoder(allocator: allocator)
+        
+        try encoder.beginEncoding(allocator: allocator)
         try encoder.append(headers: headers1)
-        XCTAssertEqual(encoder.encodedData, response1)
+        XCTAssertEqual(try encoder.endEncoding(), response1)
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
         XCTAssertEqualTuple(headers1[2], try encoder.headerIndexTable.header(at: 63))
         XCTAssertEqualTuple(headers1[1], try encoder.headerIndexTable.header(at: 64))
         XCTAssertEqualTuple(headers1[0], try encoder.headerIndexTable.header(at: 65))
         
-        encoder.reset()
+        try encoder.beginEncoding(allocator: allocator)
         try encoder.append(headers: headers2)
-        XCTAssertEqual(encoder.encodedData, response2)
+        XCTAssertEqual(try encoder.endEncoding(), response2)
         XCTAssertEqualTuple(headers2[0], try encoder.headerIndexTable.header(at: 62))
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 63))
         XCTAssertEqualTuple(headers1[2], try encoder.headerIndexTable.header(at: 64))
         XCTAssertEqualTuple(headers1[1], try encoder.headerIndexTable.header(at: 65))
         
-        encoder.reset()
+        try encoder.beginEncoding(allocator: allocator)
         try encoder.append(headers: headers3)
-        XCTAssertEqual(encoder.encodedData, response3)
+        XCTAssertEqual(try encoder.endEncoding(), response3)
         XCTAssertEqualTuple(headers3[5], try encoder.headerIndexTable.header(at: 62))
         XCTAssertEqualTuple(headers3[4], try encoder.headerIndexTable.header(at: 63))
         XCTAssertEqualTuple(headers3[2], try encoder.headerIndexTable.header(at: 64))
@@ -338,24 +342,26 @@ class HPACKCodingTests: XCTestCase {
         let h3NeverIndex = (name: "custom-key", value: "custom-value")
         
         var encoder = HPACKEncoder(allocator: allocator)
+        
+        try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(headers: headers1))
-        encoder.appendNonIndexed(header: h1NoIndex.name, value: h1NoIndex.value)
-        XCTAssertEqual(encoder.encodedData, request1)
+        try encoder.appendNonIndexed(header: h1NoIndex.name, value: h1NoIndex.value)
+        XCTAssertEqual(try encoder.endEncoding(), request1)
         XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 0)
         
-        encoder.reset()
+        try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(headers: headers1))
-        encoder.appendNonIndexed(header: h1NoIndex.name, value: h1NoIndex.value)
-        encoder.appendNonIndexed(header: h2NoIndex.name, value: h2NoIndex.value)
-        encoder.appendNonIndexed(header: h3NeverIndex.name, value: h3NeverIndex.value)
-        XCTAssertEqual(encoder.encodedData, request2)
+        try encoder.appendNonIndexed(header: h1NoIndex.name, value: h1NoIndex.value)
+        try encoder.appendNonIndexed(header: h2NoIndex.name, value: h2NoIndex.value)
+        try encoder.appendNonIndexed(header: h3NeverIndex.name, value: h3NeverIndex.value)
+        XCTAssertEqual(try encoder.endEncoding(), request2)
         XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 0)
         
-        encoder.reset()
+        try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(headers: headers3))
-        encoder.appendNeverIndexed(header: h1NoIndex.name, value: h1NoIndex.value)
-        encoder.appendNeverIndexed(header: h3NeverIndex.name, value: h3NeverIndex.value)
-        XCTAssertEqual(encoder.encodedData, request3)
+        try encoder.appendNeverIndexed(header: h1NoIndex.name, value: h1NoIndex.value)
+        try encoder.appendNeverIndexed(header: h3NeverIndex.name, value: h3NeverIndex.value)
+        XCTAssertEqual(try encoder.endEncoding(), request3)
         XCTAssertEqual(encoder.headerIndexTable.dynamicTableLength, 0)
         
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
@@ -398,6 +404,7 @@ class HPACKCodingTests: XCTestCase {
     
     func testInlineDynamicTableResize() throws {
         var request1 = buffer(wrapping: [0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        let request15 = buffer(wrapping: [0x3f, 0x21, 0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         let request2 = buffer(wrapping: [0x3f, 0xe1, 0x1f, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         var request3 = buffer(wrapping: [0x3f, 0xe1, 0x20, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         var request4 = buffer(wrapping: [0x82, 0x86, 0x3f, 0x32, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
@@ -415,13 +422,14 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertNotEqual(encoder.allowedDynamicTableSize, oddMaxTableSize)
         
         // adding these all manually to ensure our table size insert happens
-        encoder.setDynamicTableSize(oddMaxTableSize)
+        try encoder.setDynamicTableSize(oddMaxTableSize)
+        try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
         XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
         XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
         XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
         
-        XCTAssertEqual(encoder.encodedData, request1)
+        XCTAssertEqual(try encoder.endEncoding(), request1)
         XCTAssertEqual(encoder.dynamicTableSize, 57)
         XCTAssertEqual(encoder.allowedDynamicTableSize, oddMaxTableSize)
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
@@ -444,48 +452,55 @@ class HPACKCodingTests: XCTestCase {
         // Now, ensure some special cases.
         request1.moveReaderIndex(to: 0) // make the data available again in our sample buffer
         
-        // 1 - we can tell an encoder to encode the table size at any time, and it will encode
-        //     a buffer with the new size correctly placed at the start of the buffer.
-        encoder.setDynamicTableSize(4096)
-        encoder.reset()     // prevent it being written to a header list
+        // 1 - if we try to change the size mid-buffer, it'll throw an error.
+        try encoder.setDynamicTableSize(4096)
+        // consume the table size change
+        try encoder.beginEncoding(allocator: ByteBufferAllocator())
+        _ = try encoder.endEncoding()
         encoder.headerIndexTable.dynamicTable.clear()
         
+        try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
         XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
         XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
-        encoder.setDynamicTableSize(oddMaxTableSize)     // should be moved to the front of the encoded buffer
+        XCTAssertThrowsError(try encoder.setDynamicTableSize(oddMaxTableSize)) // should throw
         XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
         
-        // still produces data with the resize at the start of the buffer
-        XCTAssertEqual(encoder.encodedData, request1)
+        // No resize information, but the rest of the block will be there
+        XCTAssertEqual(try encoder.endEncoding(), request1.getSlice(at: 2, length: request1.readableBytes - 2))
         
-        encoder.setDynamicTableSize(4096)
-        encoder.reset()
+        try encoder.setDynamicTableSize(4096)
+        // consume the table size change
+        try encoder.beginEncoding(allocator: ByteBufferAllocator())
+        _ = try encoder.endEncoding()
         encoder.headerIndexTable.dynamicTable.clear()
         
-        // 2 - We can set multiple sizes, and only the largest will be sent.
+        // 2 - We can set multiple sizes, and both the smallest and the latest will be sent.
+        try encoder.setDynamicTableSize(64)
+        try encoder.setDynamicTableSize(75)
+        try encoder.setDynamicTableSize(oddMaxTableSize /* 81 */)
+        
+        try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
         XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
         XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
-        encoder.setDynamicTableSize(64)
-        encoder.setDynamicTableSize(oddMaxTableSize /* 81 */)     // should be moved to the front of the encoded buffer
-        encoder.setDynamicTableSize(75)
         XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
         
-        XCTAssertEqual(encoder.encodedData, request1)
+        XCTAssertEqual(try encoder.endEncoding(), request15)
         
         // 3 - Encoder will truncate the input value to the protocol max size.
         // NB: current size is 81 bytes.
-        encoder.reset()
         encoder.headerIndexTable.dynamicTable.clear()
         
-        encoder.setDynamicTableSize(8192)       // should be truncated to 4096
+        try encoder.setDynamicTableSize(8192)       // should be truncated to 4096
+        
+        try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
         XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
         XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
         XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
         
-        XCTAssertEqual(encoder.encodedData, request2)
+        XCTAssertEqual(try encoder.endEncoding(), request2)
         
         // 4 - Decoder will not accept a table size greater than the maximum permitted.
         decoder.allowedDynamicTableLength = 4096

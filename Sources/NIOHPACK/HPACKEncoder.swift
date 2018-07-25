@@ -33,25 +33,17 @@ public struct HPACKEncoder {
         var indexing: HPACKIndexing
     }
     
+    private enum EncoderState {
+        case idle(maxTableSize: Int)
+        case resized(currentMaxTableSize: Int, smallestMaxTableSize: Int?)
+        case encoding(maxTableSize: Int)
+    }
+    
     // private but tests
     var headerIndexTable: IndexedHeaderTable
     
-    private let allocator: ByteBufferAllocator
-    private var buffer: ByteBuffer
-    private var newDynamicTableSize: Int? = nil
-    
-    /// The encoder's accumulated data.
-    public var encodedData: ByteBuffer {
-        if let newSize = self.newDynamicTableSize {
-            // prepend an encoded table resize command
-            var result = self.allocator.buffer(capacity: self.buffer.readableBytes + 11)    // largest possible required space
-            result.write(encodedInteger: UInt(newSize), prefix: 5, prefixBits: 0x20)
-            result.write(bytes: self.buffer.readableBytesView)  // write(buffer:) will remove bytes read from the input buffer
-            return result
-        } else {
-            return self.buffer
-        }
-    }
+    private var state: EncoderState
+    private var buffer: ByteBuffer!
     
     /// Whether to use Huffman encoding.
     public let useHuffmanEncoding: Bool
@@ -84,22 +76,31 @@ public struct HPACKEncoder {
     ///         value automatically.
     ///
     /// - Parameter size: The new maximum size for the dynamic header table.
-    public mutating func setDynamicTableSize(_ size: Int) {
-        // this can only be encoded at the beginning of a header block. Therefore, we keep it
-        // on the side and prepend it in when handing out our encoded data.
-        if let existingNewSize = self.newDynamicTableSize {
-            // only change things when growing the buffer. Don't grow then shrink, because
-            // we will send only the larger size to the peer.
-            if size > existingNewSize && size <= self.headerIndexTable.maxDynamicTableLength {
-                let newSize = min(max(size, existingNewSize), self.headerIndexTable.maxDynamicTableLength)
-                self.newDynamicTableSize = newSize
-                self.allowedDynamicTableSize = newSize
+    public mutating func setDynamicTableSize(_ size: Int) throws {
+        // clip to the largest permitted size
+        let size = min(size, self.maximumDynamicTableSize)
+        
+        switch self.state {
+        case .idle:
+            self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: nil)
+        case let .resized(currentSize, smallestSize):
+            if let smallest = smallestSize {
+                if size < smallest {
+                    self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: nil)
+                } else {
+                    self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: smallest)
+                }
+            } else if size < currentSize {
+                self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: nil)
+            } else {
+                self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: currentSize)
             }
-        } else {
-            let newSize = min(size, self.headerIndexTable.maxDynamicTableLength)
-            self.newDynamicTableSize = newSize
-            self.allowedDynamicTableSize = newSize
+        case .encoding:
+            throw NIOHPACKErrors.EncoderAlreadyActive()
         }
+        
+        // set the new size on our dynamic table
+        self.allowedDynamicTableSize = size
     }
     
     /// Initializer and returns a new HPACK encoder.
@@ -109,18 +110,50 @@ public struct HPACKEncoder {
     ///   - maxDynamicTableSize: An initial maximum size for the encoder's dynamic header table.
     public init(allocator: ByteBufferAllocator, useHuffmanEncoding: Bool = true, maxDynamicTableSize: Int = HPACKEncoder.defaultDynamicTableSize) {
         self.headerIndexTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)
-        self.allocator = allocator
-        self.buffer = allocator.buffer(capacity: HPACKEncoder.defaultDataBufferSize)
         self.useHuffmanEncoding = useHuffmanEncoding
+        self.state = .idle(maxTableSize: maxDynamicTableSize)
     }
     
-    /// Reset the internal buffer, ready to begin encoding a new header block.
-    public mutating func reset() {
-        buffer.clear()
-        newDynamicTableSize = nil
+    /// Sets up the encoder to begin encoding a new header block.
+    ///
+    /// - Parameter allocator: Used to allocate the `ByteBuffer` that will contain the encoded
+    ///                        bytes, obtained from `endEncoding()`.
+    public mutating func beginEncoding(allocator: ByteBufferAllocator) throws {
+        if case .encoding = self.state {
+            throw NIOHPACKErrors.EncoderAlreadyActive()
+        }
+        
+        // create a buffer
+        self.buffer = allocator.buffer(capacity: 128)   // arbitrary size
+        switch self.state {
+        case .idle(let size):
+            self.state = .encoding(maxTableSize: size)
+        case let .resized(size, nil):
+            // one resize
+            self.buffer.write(encodedInteger: UInt(size), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding(maxTableSize: size)
+        case let .resized(size, smallestSize?):
+            // two resizes, one smaller than the other
+            self.buffer.write(encodedInteger: UInt(smallestSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt(size), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding(maxTableSize: size)
+        default:
+            break
+        }
     }
     
-    /// Appends headers in the default fashion: indexed if possible, literal+indexable if not.
+    /// Finishes encoding the current header block and returns the resulting buffer.
+    public mutating func endEncoding() throws -> ByteBuffer {
+        guard case let .encoding(size) = self.state else {
+            throw NIOHPACKErrors.EncoderNotStarted()
+        }
+        
+        self.state = .idle(maxTableSize: size)
+        defer { self.buffer = nil }
+        return self.buffer
+    }
+    
+    /// Appends() headers in the default fashion: indexed if possible, literal+indexable if not.
     ///
     /// - Parameter headers: A sequence of key/value pairs representing HTTP headers.
     public mutating func append<S: Sequence>(headers: S) throws where S.Element == (name: String, value: String) {
@@ -131,6 +164,10 @@ public struct HPACKEncoder {
     ///
     /// - Parameter headers: A sequence of key/value/indexability tuples representing HTTP headers.
     public mutating func append<S : Sequence>(headers: S) throws where S.Element == HeaderDefinition {
+        guard case .encoding = self.state else {
+            throw NIOHPACKErrors.EncoderNotStarted()
+        }
+        
         for header in headers {
             switch header.indexing {
             case .indexable:
@@ -147,6 +184,10 @@ public struct HPACKEncoder {
     ///
     /// - Parameter headers: A `HPACKHeaders` structure containing a set of HTTP/2 header values.
     public mutating func append(headers: HPACKHeaders) throws {
+        guard case .encoding = self.state else {
+            throw NIOHPACKErrors.EncoderNotStarted()
+        }
+        
         for header in headers.headerIndices {
             let nameView = headers.view(of: header.name)
             let valueView = headers.view(of: header.value)
@@ -166,6 +207,9 @@ public struct HPACKEncoder {
     /// it will use an indexed header and literal value, or a literal header and value. The name/value pair
     /// will be indexed for future use.
     public mutating func append(header name: String, value: String) throws {
+        guard case .encoding = self.state else {
+            throw NIOHPACKErrors.EncoderNotStarted()
+        }
         try self._appendIndexed(header: name.utf8, value: value.utf8)
     }
     
@@ -210,7 +254,10 @@ public struct HPACKEncoder {
     
     /// Appends a header that is *not* to be entered into the dynamic header table, but allows that
     /// stipulation to be overriden by a proxy server/rewriter.
-    public mutating func appendNonIndexed(header: String, value: String) {
+    public mutating func appendNonIndexed(header: String, value: String) throws {
+        guard case .encoding = self.state else {
+            throw NIOHPACKErrors.EncoderNotStarted()
+        }
         self._appendNonIndexed(header: header.utf8, value: value.utf8)
     }
     
@@ -229,7 +276,10 @@ public struct HPACKEncoder {
     }
     
     /// Appends a header that is *never* indexed, preventing even rewriting proxies from doing so.
-    public mutating func appendNeverIndexed(header: String, value: String) {
+    public mutating func appendNeverIndexed(header: String, value: String) throws {
+        guard case .encoding = self.state else {
+            throw NIOHPACKErrors.EncoderNotStarted()
+        }
         self._appendNeverIndexed(header: header.utf8, value: value.utf8)
     }
     
