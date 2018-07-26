@@ -27,7 +27,11 @@ struct DynamicHeaderTable {
         return self.storage.length
     }
     
-    /// The size to which the dynamic table may currently grow.
+    /// The size to which the dynamic table may currently grow. Represents
+    /// the current maximum length signaled by the peer via a table-resize
+    /// value at the start of an encoded header block.
+    ///
+    /// - note: This value cannot exceed `self.maximumTableLength`.
     var allowedLength: Int {
         get {
             return self.storage.maxSize
@@ -37,6 +41,8 @@ struct DynamicHeaderTable {
         }
     }
     
+    /// The maximum permitted size of the dynamic header table as set
+    /// through a SETTINGS_HEADER_TABLE_SIZE value in a SETTINGS frame.
     var maximumTableLength: Int {
         didSet {
             if self.allowedLength > maximumTableLength {
