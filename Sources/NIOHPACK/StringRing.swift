@@ -30,7 +30,7 @@ struct StringRing {
     @_versioned private(set) var _readableBytes = 0
     
     // private but tests
-    @_inlineable
+    @_inlineable @_versioned
     mutating func _reallocateStorageAndRebase(capacity: Int) {
         let capacity = max(self._storage.capacity, capacity)
         switch (self._ringHead, self._ringTail) {
@@ -67,13 +67,13 @@ struct StringRing {
         }
     }
     
-    @_inlineable
+    @_inlineable @_versioned
     mutating func moveHead(to newIndex: Int) {
         precondition(newIndex >= 0 && newIndex <= self._storage.capacity)
         self._ringHead = newIndex
     }
     
-    @_inlineable
+    @_inlineable @_versioned
     mutating func moveHead(forwardBy amount: Int) {
         precondition(amount >= 0)
         let readerIsBelowWriter = self._ringHead <= self._ringTail
@@ -93,13 +93,13 @@ struct StringRing {
         self._readableBytes -= amount
     }
     
-    @_inlineable
+    @_inlineable @_versioned
     mutating func moveTail(to newIndex: Int) {
         precondition(newIndex >= 0 && newIndex <= self._storage.capacity)
         self._ringTail = newIndex
     }
     
-    @_inlineable
+    @_inlineable @_versioned
     mutating func moveTail(forwardBy amount: Int) {
         precondition(amount >= 0)
         let writerIsBelowReader = self._ringTail < self._ringHead
@@ -119,7 +119,7 @@ struct StringRing {
         self._readableBytes += amount
     }
     
-    @_inlineable
+    @_inlineable @_versioned
     mutating func unwrite(byteCount: Int) {
         precondition(byteCount >= 0)
         precondition(byteCount <= self.readableBytes)
@@ -131,7 +131,7 @@ struct StringRing {
         self._readableBytes -= byteCount
     }
     
-    @_inlineable
+    @_inlineable @_versioned
     mutating func unread(byteCount: Int) {
         precondition(byteCount >= 0)
         precondition(byteCount <= self.writableBytes)
@@ -149,7 +149,7 @@ struct StringRing {
             if self._readableBytes == self.capacity {
                 return 0
             }
-            fallthrough
+            return self.capacity - w
         case let (r, w) where r < w:
             return self.capacity - w
         case let (r, w) where r > w:
@@ -202,7 +202,7 @@ struct StringRing {
     /// uninitialised memory and it's undefined behaviour to read it. In most cases you should use `withUnsafeReadableBytes`.
     ///
     /// - warning: Do not escape the pointer from the closure for later use.
-    @_inlineable
+    @_inlineable @_versioned
     func withVeryUnsafeBytes<T>(_ body: (UnsafeRawBufferPointer) throws -> T) rethrows -> T {
         return try self._storage.withVeryUnsafeBytes(body)
     }
@@ -281,12 +281,10 @@ struct StringRing {
 }
 
 extension StringRing {
-    @_inlineable @_versioned
     internal var ringHead: Int {
         return self._ringHead
     }
     
-    @_inlineable @_versioned
     internal var ringTail: Int {
         return self._ringTail
     }
@@ -299,7 +297,6 @@ extension StringRing {
     ///     - string: The string to write.
     /// - returns: The number of bytes written.
     @discardableResult
-    @_inlineable
     mutating func write(staticString string: StaticString) throws -> Int {
         return try self.write(bytes: UnsafeRawBufferPointer(start: string.utf8Start, count: string.utf8CodeUnitCount))
     }
@@ -312,7 +309,6 @@ extension StringRing {
     ///     - string: The string to write.
     /// - returns: The number of bytes written.
     @discardableResult
-    @_inlineable
     mutating func write(string: String) throws -> Int {
         return try self.write(bytes: string.utf8)
     }

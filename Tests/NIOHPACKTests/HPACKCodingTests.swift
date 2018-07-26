@@ -404,8 +404,7 @@ class HPACKCodingTests: XCTestCase {
     
     func testInlineDynamicTableResize() throws {
         var request1 = buffer(wrapping: [0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
-        let request15 = buffer(wrapping: [0x3f, 0x21, 0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
-        let request2 = buffer(wrapping: [0x3f, 0xe1, 0x1f, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        let request2 = buffer(wrapping: [0x3f, 0x21, 0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         var request3 = buffer(wrapping: [0x3f, 0xe1, 0x20, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         var request4 = buffer(wrapping: [0x82, 0x86, 0x3f, 0x32, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
         
@@ -486,25 +485,20 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
         XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
         
-        XCTAssertEqual(try encoder.endEncoding(), request15)
+        XCTAssertEqual(try encoder.endEncoding(), request2)
         
-        // 3 - Encoder will truncate the input value to the protocol max size.
+        // 3 - Encoder will throw if the requested size exceeds the maximum value.
         // NB: current size is 81 bytes.
         encoder.headerIndexTable.dynamicTable.clear()
         
-        try encoder.setDynamicTableSize(8192)       // should be truncated to 4096
-        
-        try encoder.beginEncoding(allocator: allocator)
-        XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
-        XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
-        XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
-        XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
-        
-        XCTAssertEqual(try encoder.endEncoding(), request2)
-        
-        // 4 - Decoder will not accept a table size greater than the maximum permitted.
-        decoder.allowedDynamicTableLength = 4096
-        decoder.headerTable.dynamicTable.clear()
+        XCTAssertThrowsError(try encoder.setDynamicTableSize(8192)) { error in
+            guard let err = error as? NIOHPACKErrors.InvalidDynamicTableSize else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(err.requestedSize, 8192)
+            XCTAssertEqual(err.allowedSize, 4096)
+        }
         
         do {
             _ = try decoder.decodeHeaders(from: &request3)

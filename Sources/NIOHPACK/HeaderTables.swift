@@ -72,9 +72,9 @@ struct HeaderTableStorage {
     
     init(allocator: ByteBufferAllocator, staticHeaderList: [(String, String)]) {
         // calculate likely total byte length we will actually need
-        // the static table is all ASCII, so character count == byte count here
+        // the static table is all ASCII, so character count == byte count here,
+        // so we don't need to convert to UTF-8 bytes just to get byte length.
         let bytesNeeded = staticHeaderList.reduce(0) { $0 + $1.0.count + $1.1.count }
-        // set this according to what the length algorithm would normally expect
         
         // now allocate & encode all the things
         self.buffer = StringRing(allocator: allocator, capacity: bytesNeeded)
@@ -108,36 +108,20 @@ struct HeaderTableStorage {
         return self.findHeaders(matching: name.utf8).map { self.string(idx: $0.value) }
     }
     
+    @_specialize(where C == String.UTF8View)
     func findHeaders<C: Collection>(matching name: C) -> [HeaderTableEntry] where C.Element == UInt8 {
-        guard !self.headers.isEmpty else {
-            return []
+        return self.headers.lazy.filter {
+            self.buffer.equalCaseInsensitiveASCII(view: name, at: $0.name)
         }
-        
-        var result = [HeaderTableEntry]()
-        for header in self.headers {
-            if self.buffer.equalCaseInsensitiveASCII(view: name, at: header.name) {
-                result.append(header)
-            }
-        }
-        
-        return result
     }
     
+    @_specialize(where C == String.UTF8View)   // from String-based API
+    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     func indices<C: Collection>(matching name: C) -> [Int] where C.Element == UInt8 {
-        guard !self.headers.isEmpty else {
-            return []
-        }
-        
-        var result = [Int]()
-        
-        for (idx, header) in self.headers.enumerated() {
-            if self.buffer.equalCaseInsensitiveASCII(view: name, at: header.name) {
-                result.append(idx)
-            }
-        }
-        
-        // no matches
-        return result
+        // Returns a LazyFilterCollection
+        return self.headers.enumerated().lazy.filter {
+            self.buffer.equalCaseInsensitiveASCII(view: name, at: $1.name)
+        }.map { (idx, header) in idx }
     }
     
     func string(idx: HPACKHeaderIndex) -> String {

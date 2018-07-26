@@ -8,6 +8,8 @@
 import NIO
 
 extension ByteBufferView {
+    @_inlineable
+    @_specialize(where C == ByteBufferView)
     public func matches<C: ContiguousCollection>(_ other: C) -> Bool where C.Element == UInt8 {
         return self.withUnsafeBytes { myBytes in
             return other.withUnsafeBytes { theirBytes in
@@ -19,6 +21,8 @@ extension ByteBufferView {
         }
     }
     
+    @_inlineable
+    @_specialize(where S == String.UTF8View)
     public func matches<S: Sequence>(_ other: S) -> Bool where S.Element == UInt8 {
         return self.elementsEqual(other)
     }

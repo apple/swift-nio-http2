@@ -24,8 +24,8 @@ import NIO
 ///   - prefixBits: Existing bits to place in that first byte of `buffer` before encoding `value`.
 /// - Returns: Returns the number of bytes used to encode the integer.
 @discardableResult
-func encodeInteger<T: UnsignedInteger>(_ value: T, to buffer: inout ByteBuffer,
-                                        prefix: Int, prefixBits: UInt8 = 0) -> Int {
+func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
+                   prefix: Int, prefixBits: UInt8 = 0) -> Int {
     assert(prefix <= 8)
     assert(prefix >= 1)
     
@@ -48,7 +48,7 @@ func encodeInteger<T: UnsignedInteger>(_ value: T, to buffer: inout ByteBuffer,
     
     // deduct the initial [prefix] bits from the value, then encode it seven bits at a time into
     // the remaining bytes.
-    var n = value - T(k)
+    var n = value - UInt(k)
     while n >= 128 {
         let nextByte = (1 << 7) | UInt8(n & 0x7f)
         buffer.write(integer: nextByte)
@@ -60,7 +60,7 @@ func encodeInteger<T: UnsignedInteger>(_ value: T, to buffer: inout ByteBuffer,
 }
 
 /* private but tests */
-func decodeInteger<C: Collection>(from bytes: C, prefix: Int) throws -> (UInt, Int) where C.Element == UInt8 {
+func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> (UInt, Int) {
     assert(prefix <= 8)
     assert(prefix >= 1)
     
@@ -105,7 +105,7 @@ extension ByteBuffer {
         return Int(result)
     }
     
-    mutating func write<T : UnsignedInteger>(encodedInteger value: T, prefix: Int = 0, prefixBits: UInt8 = 0) {
+    mutating func write(encodedInteger value: UInt, prefix: Int = 0, prefixBits: UInt8 = 0) {
         encodeInteger(value, to: &self, prefix: prefix, prefixBits: prefixBits)
     }
 }

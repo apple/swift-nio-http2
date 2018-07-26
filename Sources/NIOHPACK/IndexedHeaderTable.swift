@@ -17,7 +17,9 @@ import NIO
 /// The unified header table used by HTTP/2, encompassing both static and dynamic tables.
 public struct IndexedHeaderTable {
     // private but tests
+    @_versioned
     let staticTable: HeaderTableStorage
+    @_versioned
     var dynamicTable: DynamicHeaderTable
     
     /// Creates a new header table, optionally specifying a maximum size for the dynamic
@@ -76,6 +78,8 @@ public struct IndexedHeaderTable {
         return self.firstHeaderMatch(for: name.utf8, value: value?.utf8)
     }
     
+    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
+    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     func firstHeaderMatch<Name: Collection, Value: Collection>(for name: Name, value: Value?) -> (index: Int, matchesValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
         guard let value = value else {
             return self.staticTable.indices(matching: name).first.map { ($0, false) }
@@ -138,11 +142,13 @@ public struct IndexedHeaderTable {
     /// - Parameters:
     ///   - name: A sequence of contiguous bytes containing the name of the header to insert.
     ///   - value: A sequence of contiguous bytes containing the value of the header to insert.
+    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)
     public mutating func add<Name: ContiguousCollection, Value: ContiguousCollection>(headerNameBytes nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         try self.dynamicTable.addHeader(nameBytes: nameBytes, valueBytes: valueBytes)
     }
     
     /// An internal variant, where we've already deconstructed the String into its UTF-8 bytes.
+    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
     internal mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         try self.dynamicTable.addHeader(named: name, value: value)
     }

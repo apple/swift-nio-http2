@@ -34,9 +34,9 @@ public struct HPACKEncoder {
     }
     
     private enum EncoderState {
-        case idle(maxTableSize: Int)
-        case resized(currentMaxTableSize: Int, smallestMaxTableSize: Int?)
-        case encoding(maxTableSize: Int)
+        case idle
+        case resized(smallestMaxTableSize: Int?)
+        case encoding
     }
     
     // private but tests
@@ -71,32 +71,30 @@ public struct HPACKEncoder {
     /// Sets the maximum size for the dynamic table and encodes the new value
     /// at the start of the current packed header block to send to the peer.
     ///
-    /// - note: The size cannot grow beyond the maximum allotted by the most recent
-    ///         acknowledged SETTINGS_HEADER_TABLE_SIZE. It will truncate to that
-    ///         value automatically.
-    ///
     /// - Parameter size: The new maximum size for the dynamic header table.
+    /// - Throws: If the encoder is currently in use, or if the requested size
+    ///           exceeds the maximum value negotiated with the peer.
     public mutating func setDynamicTableSize(_ size: Int) throws {
-        // clip to the largest permitted size
-        let size = min(size, self.maximumDynamicTableSize)
+        guard size <= self.maximumDynamicTableSize else {
+            throw NIOHPACKErrors.InvalidDynamicTableSize(requestedSize: size, allowedSize: self.maximumDynamicTableSize)
+        }
+        guard size != self.allowedDynamicTableSize else {
+            // no need to change anything
+            return
+        }
         
         switch self.state {
         case .idle:
-            self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: nil)
-        case let .resized(currentSize, smallestSize):
-            if let smallest = smallestSize {
-                if size < smallest {
-                    self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: nil)
-                } else {
-                    self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: smallest)
-                }
-            } else if size < currentSize {
-                self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: nil)
-            } else {
-                self.state = .resized(currentMaxTableSize: size, smallestMaxTableSize: currentSize)
-            }
+            self.state = .resized(smallestMaxTableSize: nil)
+        case .resized(nil) where size > self.allowedDynamicTableSize:
+            self.state = .resized(smallestMaxTableSize: self.allowedDynamicTableSize)
+        case .resized(let smallest?) where size < smallest:
+            self.state = .resized(smallestMaxTableSize: nil)
         case .encoding:
             throw NIOHPACKErrors.EncoderAlreadyActive()
+        default:
+            // we don't need to change smallest recorded resize value
+            break
         }
         
         // set the new size on our dynamic table
@@ -111,7 +109,7 @@ public struct HPACKEncoder {
     public init(allocator: ByteBufferAllocator, useHuffmanEncoding: Bool = true, maxDynamicTableSize: Int = HPACKEncoder.defaultDynamicTableSize) {
         self.headerIndexTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)
         self.useHuffmanEncoding = useHuffmanEncoding
-        self.state = .idle(maxTableSize: maxDynamicTableSize)
+        self.state = .idle
     }
     
     /// Sets up the encoder to begin encoding a new header block.
@@ -126,17 +124,17 @@ public struct HPACKEncoder {
         // create a buffer
         self.buffer = allocator.buffer(capacity: 128)   // arbitrary size
         switch self.state {
-        case .idle(let size):
-            self.state = .encoding(maxTableSize: size)
-        case let .resized(size, nil):
+        case .idle:
+            self.state = .encoding
+        case .resized(nil):
             // one resize
-            self.buffer.write(encodedInteger: UInt(size), prefix: 5, prefixBits: 0x20)
-            self.state = .encoding(maxTableSize: size)
-        case let .resized(size, smallestSize?):
+            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding
+        case let .resized(smallestSize?):
             // two resizes, one smaller than the other
             self.buffer.write(encodedInteger: UInt(smallestSize), prefix: 5, prefixBits: 0x20)
-            self.buffer.write(encodedInteger: UInt(size), prefix: 5, prefixBits: 0x20)
-            self.state = .encoding(maxTableSize: size)
+            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding
         default:
             break
         }
@@ -144,11 +142,11 @@ public struct HPACKEncoder {
     
     /// Finishes encoding the current header block and returns the resulting buffer.
     public mutating func endEncoding() throws -> ByteBuffer {
-        guard case let .encoding(size) = self.state else {
+        guard case .encoding = self.state else {
             throw NIOHPACKErrors.EncoderNotStarted()
         }
         
-        self.state = .idle(maxTableSize: size)
+        self.state = .idle
         defer { self.buffer = nil }
         return self.buffer
     }
@@ -214,6 +212,8 @@ public struct HPACKEncoder {
     }
     
     /// Returns `true` if the item needs to be added to the header table
+    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
+    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     private mutating func _appendIndexed<Name: Collection, Value: Collection>(header name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         if let (index, hasValue) = self.headerIndexTable.firstHeaderMatch(for: name, value: value) {
             if hasValue {
@@ -239,6 +239,8 @@ public struct HPACKEncoder {
         try self.headerIndexTable.add(headerNamed: name, value: value)
     }
     
+    @_specialize(where C == String.UTF8View)   // from String-based API
+    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     private mutating func appendEncodedString<C: Collection>(_ utf8: C) where C.Element == UInt8 {
         // encode the value
         if self.useHuffmanEncoding {
@@ -261,6 +263,8 @@ public struct HPACKEncoder {
         self._appendNonIndexed(header: header.utf8, value: value.utf8)
     }
     
+    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
+    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     private mutating func _appendNonIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
         if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: value) {
             // we actually don't care if it has a value in this instance; we're only indexing the
@@ -283,6 +287,8 @@ public struct HPACKEncoder {
         self._appendNeverIndexed(header: header.utf8, value: value.utf8)
     }
     
+    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
+    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     private mutating func _appendNeverIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
         // compiler doesn't like us passing `nil` here as it can't infer the types, apparently.
         if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: Optional<Value>.none) {

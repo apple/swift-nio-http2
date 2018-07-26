@@ -30,7 +30,7 @@ class HPACKIntegrationTests : XCTestCase {
         return result
     }()
     
-    private enum TestType : String, CaseIterable {
+    private enum TestType : String {
         case encoding = "raw-data"
         
         case swiftNIOPlain = "swift-nio-hpack-plain-text"
@@ -49,6 +49,13 @@ class HPACKIntegrationTests : XCTestCase {
         case haskellNaiveHuffman = "haskell-http2-naive-huffman"
         case haskellLinear = "haskell-http2-linear"
         case haskellLinearHuffman = "haskell-http2-linear-huffman"
+        
+        static let allCases: [TestType] = [
+            .encoding, .swiftNIOPlain, .swiftNIOHuffman, .node, .python, .go,
+            .nghttp2, .nghttp2ChangeTableSize, .nghttp2LargeTables,
+            .haskellStatic, .haskellStaticHuffman, .haskellNaive, .haskellNaiveHuffman,
+            .haskellLinear, .haskellLinearHuffman
+        ]
     }
     
     private func getSourceURL(for type: TestType) -> URL {

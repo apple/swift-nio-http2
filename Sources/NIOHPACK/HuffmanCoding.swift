@@ -24,6 +24,8 @@ extension ByteBuffer {
     }
     
     /// Returns the number of *bits* required to encode a given string.
+    @_specialize(where C == String.UTF8View)   // from String-based API
+    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     fileprivate static func encodedBitLength<C : Collection>(of bytes: C) -> Int where C.Element == UInt8 {
         let clen = bytes.reduce(0) { $0 + StaticHuffmanTable[Int($1)].nbits }
         // round up to nearest multiple of 8 for EOS prefix
@@ -31,6 +33,8 @@ extension ByteBuffer {
     }
     
     /// Returns the number of bytes required to encode a given string.
+    @_specialize(where C == String.UTF8View)   // from String-based API
+    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     static func huffmanEncodedLength<C : Collection>(of bytes: C) -> Int where C.Element == UInt8 {
         return self.encodedBitLength(of: bytes) / 8
     }
@@ -39,6 +43,8 @@ extension ByteBuffer {
     ///
     /// - Parameter string: The string data to encode.
     /// - Returns: The number of bytes used while encoding the string.
+    @_specialize(where C == String.UTF8View)   // from String-based API
+    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     @discardableResult
     mutating func setHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
         let clen = ByteBuffer.encodedBitLength(of: stringBytes)
@@ -62,6 +68,8 @@ extension ByteBuffer {
         }
     }
     
+    @_specialize(where C == String.UTF8View)   // from String-based API
+    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     @discardableResult
     mutating func writeHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
         let written = self.setHuffmanEncoded(bytes: stringBytes)
