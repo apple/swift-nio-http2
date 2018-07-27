@@ -109,19 +109,33 @@ struct HeaderTableStorage {
     }
     
     @_specialize(where C == String.UTF8View)
-    func findHeaders<C: Collection>(matching name: C) -> [HeaderTableEntry] where C.Element == UInt8 {
-        return self.headers.lazy.filter {
+    func findHeaders<C: Collection>(matching name: C) -> AnyCollection<HeaderTableEntry> where C.Element == UInt8 {
+        // LazyFilterCollection<CircularBuffer<HeaderTableEntry>>
+        let lazy = self.headers.lazy.filter {
             self.buffer.equalCaseInsensitiveASCII(view: name, at: $0.name)
         }
+        return AnyCollection(lazy)
     }
     
     @_specialize(where C == String.UTF8View)   // from String-based API
     @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
-    func indices<C: Collection>(matching name: C) -> [Int] where C.Element == UInt8 {
-        // Returns a LazyFilterCollection
-        return self.headers.enumerated().lazy.filter {
+    func indices<C: Collection>(matching name: C) -> AnySequence<Int> where C.Element == UInt8 {
+        // LazyMapSequence<LazyFilterSequence<EnumeratedSequence<CircularBuffer<HeaderTableEntry>>>, Int>
+        let result = self.headers.enumerated().lazy.filter {
             self.buffer.equalCaseInsensitiveASCII(view: name, at: $1.name)
         }.map { (idx, header) in idx }
+        return AnySequence(result)
+    }
+    
+    @_specialize(where C == String.UTF8View)
+    @_specialize(where C == ByteBufferView)
+    func firstIndex<C : Collection>(matching name: C) -> Int? where C.Element == UInt8 {
+        for (idx, header) in self.headers.enumerated() {
+            if self.buffer.equalCaseInsensitiveASCII(view: name, at: header.name) {
+                return idx
+            }
+        }
+        return nil
     }
     
     func string(idx: HPACKHeaderIndex) -> String {

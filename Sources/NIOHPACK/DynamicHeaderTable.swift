@@ -99,7 +99,8 @@ struct DynamicHeaderTable {
         // looking for both name and value, but can settle for just name if no value
         // has been provided. Return the first matching name (lowest index) in that case.
         guard let value = value else {
-            return self.storage.indices(matching: name).first.map { ($0, false) }
+            // no `first` on AnySequence, just `first(where:)`
+            return self.storage.firstIndex(matching: name).map { ($0, false) }
         }
         
         // If we have a value, locate the index of the lowest header which contains that

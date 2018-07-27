@@ -82,7 +82,8 @@ public struct IndexedHeaderTable {
     @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     func firstHeaderMatch<Name: Collection, Value: Collection>(for name: Name, value: Value?) -> (index: Int, matchesValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
         guard let value = value else {
-            return self.staticTable.indices(matching: name).first.map { ($0, false) }
+            // AnySequence only has `first(where:)` method, not `first` property.
+            return self.staticTable.firstIndex(matching: name).map { ($0, false) }
         }
         
         var firstHeaderIndex: Int? = nil
