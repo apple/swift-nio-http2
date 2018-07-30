@@ -108,23 +108,23 @@ struct HeaderTableStorage {
         return self.findHeaders(matching: name.utf8).map { self.string(idx: $0.value) }
     }
     
+    typealias LazyMatchingHeadersCollection = LazyFilterCollection<CircularBuffer<HeaderTableEntry>>
+    typealias LazyMatchingIndicesSequence = LazyMapSequence<LazyFilterSequence<EnumeratedSequence<CircularBuffer<HeaderTableEntry>>>, Int>
+    
     @_specialize(where C == String.UTF8View)
-    func findHeaders<C: Collection>(matching name: C) -> AnyCollection<HeaderTableEntry> where C.Element == UInt8 {
+    func findHeaders<C: Collection>(matching name: C) -> LazyMatchingHeadersCollection where C.Element == UInt8 {
         // LazyFilterCollection<CircularBuffer<HeaderTableEntry>>
-        let lazy = self.headers.lazy.filter {
+        return self.headers.lazy.filter {
             self.buffer.equalCaseInsensitiveASCII(view: name, at: $0.name)
         }
-        return AnyCollection(lazy)
     }
     
     @_specialize(where C == String.UTF8View)   // from String-based API
     @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
-    func indices<C: Collection>(matching name: C) -> AnySequence<Int> where C.Element == UInt8 {
-        // LazyMapSequence<LazyFilterSequence<EnumeratedSequence<CircularBuffer<HeaderTableEntry>>>, Int>
-        let result = self.headers.enumerated().lazy.filter {
+    func indices<C: Collection>(matching name: C) -> LazyMatchingIndicesSequence where C.Element == UInt8 {
+        return self.headers.enumerated().lazy.filter {
             self.buffer.equalCaseInsensitiveASCII(view: name, at: $1.name)
         }.map { (idx, header) in idx }
-        return AnySequence(result)
     }
     
     @_specialize(where C == String.UTF8View)
