@@ -151,7 +151,7 @@ extension ByteBuffer {
         let newLength = self.capacity + neededToAdd
         
         // reallocate to ensure we have the room we need
-        self.changeCapacity(to: newLength)
+        self.reserveCapacity(newLength)
         
         // now zero all writable bytes that we expect to use
         self.withUnsafeMutableWritableBytes { ptr in

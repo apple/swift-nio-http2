@@ -36,11 +36,11 @@ struct StringRing {
         switch (self._ringHead, self._ringTail) {
         case (0, _):
             // indices don't need to change
-            self._storage.changeCapacity(to: capacity)
+            self._storage.reserveCapacity(capacity)
             
         case let (r, w) where r == w:
             // make a new store and zero indices
-            self._storage.changeCapacity(to: capacity)
+            self._storage.reserveCapacity(capacity)
             self.moveHead(to: 0)
             self.moveTail(to: 0)
             
@@ -48,7 +48,7 @@ struct StringRing {
             // move the middle bit down and reset the indices
             var newBytes = self._storage
             newBytes.clear()
-            newBytes.changeCapacity(to: capacity)
+            newBytes.reserveCapacity(capacity)
             newBytes.write(bytes: self._storage.viewBytes(at: r, length: w - r))
             self._storage = newBytes
             self.moveHead(to: 0)
@@ -58,7 +58,7 @@ struct StringRing {
             // two copies are needed
             var newBytes = self._storage
             newBytes.clear()
-            newBytes.changeCapacity(to: capacity)
+            newBytes.reserveCapacity(capacity)
             newBytes.write(bytes: self._storage.viewBytes(at: r, length: self._storage.capacity - r))
             newBytes.write(bytes: self._storage.viewBytes(at: 0, length: w))
             self.moveHead(to: 0)
