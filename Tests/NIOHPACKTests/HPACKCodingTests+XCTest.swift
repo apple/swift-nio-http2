@@ -32,6 +32,8 @@ extension HPACKCodingTests {
                 ("testResponseHeadersWithHuffmanCoding", testResponseHeadersWithHuffmanCoding),
                 ("testNonIndexedRequest", testNonIndexedRequest),
                 ("testInlineDynamicTableResize", testInlineDynamicTableResize),
+                ("testHPACKHeadersDescription", testHPACKHeadersDescription),
+                ("testHPACKHeadersSubscript", testHPACKHeadersSubscript),
            ]
    }
 }

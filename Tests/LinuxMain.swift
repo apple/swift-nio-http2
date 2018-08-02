@@ -36,6 +36,7 @@ import XCTest
          testCase(HuffmanCodingTests.allTests),
          testCase(IntegerCodingTests.allTests),
          testCase(ReentrancyTests.allTests),
+         testCase(RingBufferTests.allTests),
          testCase(SimpleClientServerTests.allTests),
     ])
 #endif
