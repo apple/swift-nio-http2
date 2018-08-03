@@ -108,15 +108,15 @@ class HPACKIntegrationTests : XCTestCase {
         
         var outputs: [HPACKStory] = []
         
-        let start = CFAbsoluteTimeGetCurrent()
+        let start = Date()
         
         for (idx, story) in stories.enumerated() {
             let encoded = runEncodeStory(story, idx, huffmanEncoded: huffmanEncoded)
             outputs.append(encoded)
         }
         
-        let end = CFAbsoluteTimeGetCurrent()
-        print("Encoding took \(String(format: "%.02f", end - start)) seconds.")
+        let end = Date()
+        print("Encoding took \(String(format: "%.02f", end.timeIntervalSince(start))) seconds.")
         
         for (idx, story) in outputs.enumerated() {
             writeOutputStory(story, at: idx, to: outputDir)
@@ -134,7 +134,7 @@ class HPACKIntegrationTests : XCTestCase {
     }
     
     func testDecoder() {
-        var testTimings: [TestType : CFTimeInterval] = [:]
+        var testTimings: [TestType : TimeInterval] = [:]
         
         for test in TestType.allCases where test != .encoding {
             let duration = _testDecoder(for: test)
@@ -153,11 +153,11 @@ class HPACKIntegrationTests : XCTestCase {
         }
     }
     
-    private func _testDecoder(for test: TestType) -> CFTimeInterval {
-        let loadStart = CFAbsoluteTimeGetCurrent()
+    private func _testDecoder(for test: TestType) -> TimeInterval {
+        let loadStart = Date()
         print("Loading \(test.rawValue)...", terminator: "")
         let stories = loadStories(for: test)
-        let loadTime = CFAbsoluteTimeGetCurrent() - loadStart
+        let loadTime = Date().timeIntervalSince(loadStart)
         guard stories.count > 0 else {
             // no input data = no problems
             print(" no stories found.")
@@ -170,7 +170,7 @@ class HPACKIntegrationTests : XCTestCase {
             print(description)
         }
         
-        let start = CFAbsoluteTimeGetCurrent()
+        let start = Date()
         
         for (idx, story) in stories.enumerated() {
             var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
@@ -183,7 +183,7 @@ class HPACKIntegrationTests : XCTestCase {
                     
                     guard var bytes = testCase.wire else {
                         XCTFail("Decoder story case \(testCase.seqno) has no wire data to decode!")
-                        return CFAbsoluteTimeGetCurrent() - start
+                        return Date().timeIntervalSince(start)
                     }
                     let decoded = try decoder.decodeHeaders(from: &bytes)
                     XCTAssertEqual(testCase.headers, decoded)
@@ -194,7 +194,7 @@ class HPACKIntegrationTests : XCTestCase {
             }
         }
         
-        return CFAbsoluteTimeGetCurrent() - start
+        return Date().timeIntervalSince(start)
     }
     
     private func writeOutputStory(_ story: HPACKStory, at index: Int, to directory: URL) {
