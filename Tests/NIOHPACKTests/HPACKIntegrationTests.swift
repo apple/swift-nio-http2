@@ -64,7 +64,7 @@ class HPACKIntegrationTests : XCTestCase {
     
     private func loadStories(for test: TestType) -> [HPACKStory] {
         let url = self.getSourceURL(for: test)
-        guard let contents = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]).sorted(by: {$0.lastPathComponent < $1.lastPathComponent}) else {
+        guard let contents = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: []).sorted(by: {$0.lastPathComponent < $1.lastPathComponent}) else {
             return []
         }
         
@@ -203,7 +203,6 @@ class HPACKIntegrationTests : XCTestCase {
             .appendingPathExtension("json")
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
-        encoder.keyEncodingStrategy = .convertToSnakeCase
         
         do {
             let data = try encoder.encode(story)
