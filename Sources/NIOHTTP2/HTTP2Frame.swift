@@ -21,88 +21,45 @@ public struct HTTP2Frame {
     /// The payload of this HTTP/2 frame.
     public var payload: FramePayload
 
-    /// The frame flags as an 8-bit integer. To set/unset well-defined flags, consider using the
-    /// other properties on this object (e.g. `endStream`).
-    public var flags: UInt8
+    /// The frame flags.
+    public var flags: FrameFlags
 
     /// The frame stream ID as a 32-bit integer.
     public var streamID: HTTP2StreamID
 
+    private func _hasFlag(_ flag: FrameFlags) -> Bool {
+        return self.flags.contains(flag)
+            }
+    
+    private mutating func _setFlagIfValid(_ flag: FrameFlags) {
+        if self.payload.allowedFlags.contains(flag) {
+            self.flags.formUnion(flag)
+        }
+            }
+
     // Whether the END_STREAM flag bit is set.
     public var endStream: Bool {
-        get {
-            switch self.payload {
-            case .data, .headers:
-                return (self.flags & UInt8(NGHTTP2_FLAG_END_STREAM.rawValue) != 0)
-            default:
-                return false
-            }
+        get { return self._hasFlag(.endStream) }
+        set { self._setFlagIfValid(.endStream) }
         }
-        set {
-            switch self.payload {
-            case .data, .headers:
-                self.flags |= UInt8(NGHTTP2_FLAG_END_STREAM.rawValue)
-            default:
-                break
-            }
-        }
-    }
 
     // Whether the PADDED flag bit is set.
     public var padded: Bool {
-        get {
-            switch self.payload {
-            case .data, .headers, .pushPromise:
-                return (self.flags & UInt8(NGHTTP2_FLAG_PADDED.rawValue) != 0)
-            default:
-                return false
-            }
+        get { return self._hasFlag(.padded) }
+        set { self._setFlagIfValid(.padded) }
         }
-        set {
-            switch self.payload {
-            case .data, .headers, .pushPromise:
-                self.flags |= UInt8(NGHTTP2_FLAG_PADDED.rawValue)
-            default:
-                break
-            }
-        }
-    }
 
     // Whether the PRIORITY flag bit is set.
     public var priority: Bool {
-        get {
-            if case .headers = self.payload {
-                 return (self.flags & UInt8(NGHTTP2_FLAG_PRIORITY.rawValue) != 0)
-            } else {
-                return false
+        get { return self._hasFlag(.priority) }
+        set { self._setFlagIfValid(.priority) }
             }
-        }
-        set {
-            if case .headers = self.payload {
-                self.flags |= UInt8(NGHTTP2_FLAG_PRIORITY.rawValue)
-            }
-        }
-    }
 
     // Whether the ACK flag bit is set.
     public var ack: Bool {
-        get {
-            switch self.payload {
-            case .settings, .ping:
-                return (self.flags & UInt8(NGHTTP2_FLAG_ACK.rawValue) != 0)
-            default:
-                return false
+        get { return self._hasFlag(.ack) }
+        set { self._setFlagIfValid(.ack) }
             }
-        }
-        set {
-            switch self.payload {
-            case .settings, .ping:
-                self.flags |= UInt8(NGHTTP2_FLAG_ACK.rawValue)
-            default:
-                break
-            }
-        }
-    }
 
     public enum FramePayload {
         case data(IOData)
@@ -114,15 +71,86 @@ public struct HTTP2Frame {
         case ping(HTTP2PingData)
         case goAway(lastStreamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, opaqueData: ByteBuffer?)
         case windowUpdate(windowSizeIncrement: Int)
-        case alternativeService
+        case continuation(HTTPHeaders)
+        case alternativeService(origin: String?, field: ByteBuffer?)
+        case blocked
+        case origin([String])
+        case cacheDigest(origin: String?, digest: ByteBuffer?)
+        
+        var code: UInt8 {
+            switch self {
+            case .data:                 return 0x0
+            case .headers:              return 0x1
+            case .priority:             return 0x2
+            case .rstStream:            return 0x3
+            case .settings:             return 0x4
+            case .pushPromise:          return 0x5
+            case .ping:                 return 0x6
+            case .goAway:               return 0x7
+            case .windowUpdate:         return 0x8
+            case .continuation:         return 0x9
+            case .alternativeService:   return 0xa
+            case .blocked:              return 0xb
+            case .origin:               return 0xc
+            case .cacheDigest:          return 0xd
+            }
+        }
+        
+        var allowedFlags: FrameFlags {
+            switch self {
+            case .data:
+                return [.padded, .endStream]
+            case .headers:
+                return [.endStream, .endHeaders, .padded, .priority]
+            case .pushPromise:
+                return [.endHeaders, .padded]
+            case .continuation:
+                return .endHeaders
+            case .cacheDigest:
+                return [.reset, .complete]
+                
+            case .settings, .ping:
+                return .ack
+                
+            case .priority, .rstStream, .goAway, .windowUpdate,
+                 .alternativeService, .blocked, .origin:
+                return []
+            }
+        }
+    }
+    
+    public struct FrameFlags : OptionSet {
+        public typealias RawValue = UInt8
+        
+        public private(set) var rawValue: UInt8
+        
+        public init(rawValue: UInt8) {
+            self.rawValue = rawValue
+        }
+        
+        public static let endStream     = FrameFlags(rawValue: 0x01)
+        public static let ack           = FrameFlags(rawValue: 0x01)
+        public static let reset         = FrameFlags(rawValue: 0x01)
+        public static let complete      = FrameFlags(rawValue: 0x02)
+        public static let endHeaders    = FrameFlags(rawValue: 0x04)
+        public static let padded        = FrameFlags(rawValue: 0x08)
+        public static let priority      = FrameFlags(rawValue: 0x20)
+        
+        // useful for test cases
+        internal static var allFlags: FrameFlags = [.endStream, .endHeaders, .padded, .priority]
     }
 }
 
 
 internal extension HTTP2Frame {
+    internal init(streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, payload: HTTP2Frame.FramePayload) {
+        self.streamID = streamID
+        self.flags = flags.intersection(payload.allowedFlags)
+        self.payload = payload
+    }
     internal init(streamID: HTTP2StreamID, flags: UInt8, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
-        self.flags = flags
+        self.flags = FrameFlags(rawValue: flags).intersection(payload.allowedFlags)
         self.payload = payload
     }
 }
@@ -131,7 +159,7 @@ public extension HTTP2Frame {
     /// Constructs a frame header for a given stream ID. All flags are unset.
     public init(streamID: HTTP2StreamID, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
-        self.flags = 0
+        self.flags = []
         self.payload = payload
     }
 }

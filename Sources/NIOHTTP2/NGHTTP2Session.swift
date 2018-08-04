@@ -626,7 +626,15 @@ class NGHTTP2Session {
             self.sendGoAway(frame: frame)
         case .windowUpdate:
             fatalError("not implemented")
+        case .continuation(_):
+            fatalError("shouldn't see this from NGHTTP2")
         case .alternativeService:
+            fatalError("not implemented")
+        case .blocked:
+            fatalError("not implemented")
+        case .origin(_):
+            fatalError("not implemented")
+        case .cacheDigest:
             fatalError("not implemented")
         }
     }

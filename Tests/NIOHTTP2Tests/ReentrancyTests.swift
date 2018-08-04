@@ -95,7 +95,7 @@ final class ReentrancyTests: XCTestCase {
 
         // Here we're going to prepare some frames: specifically, we're going to send a SETTINGS frame and a PING frame at the same time.
         // We need to send two frames to try to catch any ordering problems we might hit.
-        let settings: [HTTP2Setting] = [HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]
+        let settings: [HTTP2Setting] = [.enablePush(false), .maxConcurrentStreams(5)]
         let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(settings))
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5)))
         self.clientChannel.write(settingsFrame, promise: nil)
@@ -133,7 +133,7 @@ final class ReentrancyTests: XCTestCase {
 
         // Here we're going to prepare some frames: specifically, we're going to send a SETTINGS frame and a PING frame at the same time.
         // We need to send two frames to try to catch any ordering problems we might hit.
-        let settings: [HTTP2Setting] = [HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]
+        let settings: [HTTP2Setting] = [.enablePush(false), .maxConcurrentStreams(5)]
         let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(settings))
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5)))
         self.clientChannel.write(settingsFrame, promise: nil)
@@ -165,7 +165,7 @@ final class ReentrancyTests: XCTestCase {
 
         // Here we're going to prepare some frames: specifically, we're going to send a SETTINGS frame and a PING frame at the same time.
         // We need to send two frames to try to catch any ordering problems we might hit.
-        let settings: [HTTP2Setting] = [HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]
+        let settings: [HTTP2Setting] = [.enablePush(false), .maxConcurrentStreams(5)]
         let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(settings))
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5)))
         self.clientChannel.write(settingsFrame, promise: nil)

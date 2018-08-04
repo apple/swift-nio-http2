@@ -526,10 +526,10 @@ class SimpleClientServerTests: XCTestCase {
     }
 
     func testOverridingDefaultSettings() throws {
-        let initialSettings = [
-            HTTP2Setting(parameter: .maxHeaderListSize, value: 1000),
-            HTTP2Setting(parameter: .initialWindowSize, value: 100),
-            HTTP2Setting(parameter: .enablePush, value: 0)
+        let initialSettings: [HTTP2Setting] = [
+            .maxHeaderListSize(1000),
+            .initialWindowSize(100),
+            .enablePush(false)
         ]
         XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client, initialSettings: initialSettings)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())

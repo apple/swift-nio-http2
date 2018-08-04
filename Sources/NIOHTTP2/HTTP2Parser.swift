@@ -18,9 +18,9 @@ import CNIONghttp2
 /// NIO's default settings used for initial settings values on HTTP/2 streams, when the user hasn't
 /// overridden that. This limits the max concurrent streams to 100, and limits the max header list
 /// size to 16kB, to avoid trivial resource exhaustion on NIO HTTP/2 users.
-public let nioDefaultSettings = [
-    HTTP2Setting(parameter: .maxConcurrentStreams, value: 100),
-    HTTP2Setting(parameter: .maxHeaderListSize, value: 1<<16)
+public let nioDefaultSettings: [HTTP2Setting] = [
+    .maxConcurrentStreams(100),
+    .maxHeaderListSize(1<<16)
 ]
 
 
