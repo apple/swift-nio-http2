@@ -183,9 +183,9 @@ class SimpleClientServerTests: XCTestCase {
     }
 
     /// Establish a basic HTTP/2 connection.
-    func basicHTTP2Connection() throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())
+    func basicHTTP2Connection(maxCachedClosedStreams: Int = 1024) throws {
+        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client, maxCachedClosedStreams: maxCachedClosedStreams)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server, maxCachedClosedStreams: maxCachedClosedStreams)).wait())
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 
@@ -1226,6 +1226,93 @@ class SimpleClientServerTests: XCTestCase {
         // Check we saw the frame and the event.
         XCTAssertTrue(handler.seenEvent)
         XCTAssertTrue(handler.seenFrame)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testManyConcurrentInactiveStreams() throws {
+        let maxCachedClosedStreams = 128
+
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection(maxCachedClosedStreams: maxCachedClosedStreams)
+
+        // Obtain some request data.
+        let requestHeaders = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+
+        // We're going to initiate and then close more than maxCachedClosedStreams streams.
+        // Nothing bad should happen here.
+        for _ in 0...maxCachedClosedStreams {
+            // We're now going to try to send a request from the client to the server.
+            let clientStreamID = HTTP2StreamID()
+            let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(requestHeaders))
+            var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+            reqBodyFrame.endStream = true
+
+            let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+            // Let's send a quick response back.
+            var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+            respFrame.endStream = true
+            try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+        }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testDontRemoveActiveStreams() throws {
+        // This is a bit of a regression test, not a generally useful one. See https://github.com/apple/swift-nio-http2/pull/11/
+        // for more.
+        let maxCachedClosedStreams = 128
+
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection(maxCachedClosedStreams: maxCachedClosedStreams)
+
+        // Obtain some request data.
+        let requestHeaders = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+
+        // We're going to initiate and then close one fewer than maxCachedClosedStreams streams.
+        // Nothing bad should happen here.
+        for _ in 0..<(maxCachedClosedStreams - 2) {
+            let clientStreamID = HTTP2StreamID()
+            let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(requestHeaders))
+            var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+            reqBodyFrame.endStream = true
+
+            let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+            // Let's send a quick response back.
+            var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+            respFrame.endStream = true
+            try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+        }
+
+        // Ok, now we're going to open *two* streams. In the old, broken code, the opening of the second
+        // stream would discard the first *open* stream, instead of one of the dead old ones.
+        let clientStreamIDs = (0..<2).map { _ in HTTP2StreamID() }
+        let clientFrames = clientStreamIDs.map { HTTP2Frame(streamID: $0, payload: .headers(requestHeaders)) }
+        let serverStreamIDs = try self.assertFramesRoundTrip(frames: clientFrames, sender: self.clientChannel, receiver: self.serverChannel).map { $0.streamID }
+
+        // Now we're going to send the two data frames for these streams.
+        // In the old broken version of this code, this will fail because we accidentally deleted one of our two *open*
+        // stream states, instead of one of the 1024 closed ones. Booleans are hard.
+        let clientDataFrames = clientStreamIDs.map { HTTP2Frame(streamID: $0, payload: .data(.byteBuffer(requestBody))) }
+        try self.assertFramesRoundTrip(frames: clientDataFrames, sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Clean it up with the server now.
+        let serverFrames = serverStreamIDs.map { streamID -> HTTP2Frame in
+            var respFrame = HTTP2Frame(streamID: streamID, payload: .headers(responseHeaders))
+            respFrame.endStream = true
+            return respFrame
+        }
+        try self.assertFramesRoundTrip(frames: serverFrames, sender: self.serverChannel, receiver: self.clientChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
