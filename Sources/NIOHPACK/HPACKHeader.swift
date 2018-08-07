@@ -285,8 +285,8 @@ extension HPACKHeaders: Equatable {
             return false
         }
         
-        let lhsNames = Set(lhs.names.map { lhs.string(idx: $0).lowercased() })
-        let rhsNames = Set(rhs.names.map { rhs.string(idx: $0).lowercased() })
+        let lhsNames = Set(lhs.names.lazy.map { lhs.string(idx: $0).lowercased() })
+        let rhsNames = Set(rhs.names.lazy.map { rhs.string(idx: $0).lowercased() })
         guard lhsNames == rhsNames else {
             return false
         }
@@ -339,12 +339,12 @@ struct HPACKHeaderIndex {
     }
     
     mutating func adjust(by delta: Int, wrappingAt max: Int) {
-        if start + delta < 0 {
-            start += max + delta
+        if self.start + delta < 0 {
+            self.start += max + delta
         } else {
-            start += delta
+            self.start += delta
         }
-        assert(start >= 0, "start must not be negative")
+        assert(self.start >= 0, "start must not be negative")
     }
 }
 

@@ -114,19 +114,19 @@ public struct HPACKDecoder {
         // this function if at least one byte is available to read.
         let initial: UInt8 = buffer.getInteger(at: buffer.readerIndex)!
         switch initial {
-        case let x where x & 0x80 == 0x80:
+        case let x where x & 0b1000_0000 == 0b1000_0000:
             // 0b1xxxxxxx -- one-bit prefix, seven bits of value
             // purely-indexed header field/value
             let hidx = try buffer.readEncodedInteger(withPrefix: 7)
             return try self.decodeIndexedHeader(from: Int(hidx))
             
-        case let x where x & 0xc0 == 0x40:
+        case let x where x & 0b1100_0000 == 0b0100_0000:
             // 0b01xxxxxx -- two-bit prefix, six bits of value
             // literal header with possibly-indexed name
             let hidx = try buffer.readEncodedInteger(withPrefix: 6)
             return try self.decodeLiteralHeader(from: &buffer, headerName: HPACKString(fromEncodedInteger: hidx), addToIndex: true)
             
-        case let x where x & 0xf0 == 0x00:
+        case let x where x & 0b1111_0000 == 0b0000_0000:
             // 0b0000xxxx -- four-bit prefix, four bits of value
             // literal header with possibly-indexed name, not added to dynamic table
             let hidx = try buffer.readEncodedInteger(withPrefix: 4)
@@ -134,7 +134,7 @@ public struct HPACKDecoder {
             header.indexing = .nonIndexable
             return header
             
-        case let x where x & 0xf0 == 0x10:
+        case let x where x & 0b1111_0000 == 0b0001_0000:
             // 0b0001xxxx -- four-bit prefix, four bits of value
             // literal header with possibly-indexed name, never added to dynamic table nor
             // rewritten by proxies
@@ -143,7 +143,7 @@ public struct HPACKDecoder {
             header.indexing = .neverIndexed
             return header
             
-        case let x where x & 0xe0 == 0x20:
+        case let x where x & 0b1110_0000 == 0b0010_0000:
             // 0b001xxxxx -- three-bit prefix, five bits of value
             // dynamic header table size update
             let newMaxLength = try Int(buffer.readEncodedInteger(withPrefix: 5))
