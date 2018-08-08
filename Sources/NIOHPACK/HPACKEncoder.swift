@@ -212,8 +212,6 @@ public struct HPACKEncoder {
     }
     
     /// Returns `true` if the item needs to be added to the header table
-    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
-    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     private mutating func _appendIndexed<Name: Collection, Value: Collection>(header name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         if let (index, hasValue) = self.headerIndexTable.firstHeaderMatch(for: name, value: value) {
             if hasValue {
@@ -239,8 +237,6 @@ public struct HPACKEncoder {
         try self.headerIndexTable.add(headerNamed: name, value: value)
     }
     
-    @_specialize(where C == String.UTF8View)   // from String-based API
-    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     private mutating func appendEncodedString<C: Collection>(_ utf8: C) where C.Element == UInt8 {
         // encode the value
         if self.useHuffmanEncoding {
@@ -263,8 +259,6 @@ public struct HPACKEncoder {
         self._appendNonIndexed(header: header.utf8, value: value.utf8)
     }
     
-    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
-    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     private mutating func _appendNonIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
         if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: value) {
             // we actually don't care if it has a value in this instance; we're only indexing the
@@ -287,8 +281,6 @@ public struct HPACKEncoder {
         self._appendNeverIndexed(header: header.utf8, value: value.utf8)
     }
     
-    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
-    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     private mutating func _appendNeverIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
         // compiler doesn't like us passing `nil` here as it can't infer the types, apparently.
         if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: Optional<Value>.none) {

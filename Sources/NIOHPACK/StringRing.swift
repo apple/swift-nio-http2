@@ -24,13 +24,12 @@ enum RingBufferError {
 }
 
 struct StringRing {
-    @_versioned private(set) var _storage: ByteBuffer
-    @_versioned private(set) var _ringHead = 0
-    @_versioned private(set) var _ringTail = 0
-    @_versioned private(set) var _readableBytes = 0
+    private(set) var _storage: ByteBuffer
+    private(set) var _ringHead = 0
+    private(set) var _ringTail = 0
+    private(set) var _readableBytes = 0
     
     // private but tests
-    @_inlineable @_versioned
     mutating func _reallocateStorageAndRebase(capacity: Int) {
         let capacity = max(self._storage.capacity, capacity)
         switch (self._ringHead, self._ringTail) {
@@ -67,13 +66,11 @@ struct StringRing {
         }
     }
     
-    @_inlineable @_versioned
     mutating func moveHead(to newIndex: Int) {
         precondition(newIndex >= 0 && newIndex <= self._storage.capacity)
         self._ringHead = newIndex
     }
     
-    @_inlineable @_versioned
     mutating func moveHead(forwardBy amount: Int) {
         precondition(amount >= 0)
         let readerIsBelowWriter = self._ringHead <= self._ringTail
@@ -93,13 +90,11 @@ struct StringRing {
         self._readableBytes -= amount
     }
     
-    @_inlineable @_versioned
     mutating func moveTail(to newIndex: Int) {
         precondition(newIndex >= 0 && newIndex <= self._storage.capacity)
         self._ringTail = newIndex
     }
     
-    @_inlineable @_versioned
     mutating func moveTail(forwardBy amount: Int) {
         precondition(amount >= 0)
         let writerIsBelowReader = self._ringTail < self._ringHead
@@ -119,7 +114,6 @@ struct StringRing {
         self._readableBytes += amount
     }
     
-    @_inlineable @_versioned
     mutating func unwrite(byteCount: Int) {
         precondition(byteCount >= 0)
         precondition(byteCount <= self.readableBytes)
@@ -131,7 +125,6 @@ struct StringRing {
         self._readableBytes -= byteCount
     }
     
-    @_inlineable @_versioned
     mutating func unread(byteCount: Int) {
         precondition(byteCount >= 0)
         precondition(byteCount <= self.writableBytes)
@@ -202,7 +195,6 @@ struct StringRing {
     /// uninitialised memory and it's undefined behaviour to read it. In most cases you should use `withUnsafeReadableBytes`.
     ///
     /// - warning: Do not escape the pointer from the closure for later use.
-    @_inlineable @_versioned
     func withVeryUnsafeBytes<T>(_ body: (UnsafeRawBufferPointer) throws -> T) rethrows -> T {
         return try self._storage.withVeryUnsafeBytes(body)
     }
@@ -223,7 +215,6 @@ struct StringRing {
     ///     - bytes: A `ContiguousCollection` of `UInt8` to be written.
     /// - returns: The number of bytes written or `bytes.count`.
     @discardableResult
-    @_inlineable @_versioned
     mutating func write<C: ContiguousCollection>(bytes: C) throws -> Int where C.Element == UInt8 {
         let totalCount = bytes.count
         guard totalCount <= self.writableBytes else {
@@ -234,10 +225,9 @@ struct StringRing {
         if firstPart >= bytes.count {
             _storage.set(bytes: bytes, at: self._ringTail)
         } else {
-            let secondPart = bytes.count - firstPart
             bytes.withUnsafeBytes { ptr in
-                _storage.set(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress!, count: firstPart), at: self._ringTail)
-                _storage.set(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress!.advanced(by: firstPart), count: secondPart), at: 0)
+                _storage.set(bytes: ptr[..<(ptr.startIndex + firstPart)], at: self._ringTail)
+                _storage.set(bytes: ptr[(ptr.startIndex + firstPart)...], at: 0)
             }
         }
         
@@ -251,7 +241,6 @@ struct StringRing {
     ///     - bytes: A `Collection` of `UInt8` to be written.
     /// - returns: The number of bytes written or `bytes.count`.
     @discardableResult
-    @_inlineable @_versioned
     mutating func write<C : Collection>(bytes: C) throws -> Int where C.Element == UInt8 {
         assert(!([Array<C.Element>.self, StaticString.self, ContiguousArray<C.Element>.self, UnsafeRawBufferPointer.self, UnsafeBufferPointer<UInt8>.self].contains(where: { (t: Any.Type) -> Bool in t == type(of: bytes) })),
                "called the slower set<S: Collection> function even though \(C.self) is a ContiguousCollection")
@@ -270,6 +259,10 @@ struct StringRing {
         
         // single write, should be straightforward
         self._storage.withVeryUnsafeBytes { ptr in
+            let mutable = UnsafeMutableRawBufferPointer(mutating: ptr)
+            let tailPtr = UnsafeMutableRawBufferPointer(rebasing: mutable[(mutable.startIndex + self._ringTail)...])
+            tailPtr.copyBytes(from: bytes)
+            
             let targetAddr = UnsafeMutableRawPointer(mutating: ptr.baseAddress!.advanced(by: self._ringTail))
             let target = UnsafeMutableRawBufferPointer(start: targetAddr, count: bytes.count)
             target.copyBytes(from: bytes)

@@ -93,8 +93,6 @@ struct DynamicHeaderTable {
     /// - Returns: A tuple containing the matching index and, if a value was specified as a
     ///            parameter, an indication whether that value was also found. Returns `nil`
     ///            if no matching header name could be located.
-    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
-    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     func findExistingHeader<Name: Collection, Value: Collection>(named name: Name, value: Value?) -> (index: Int, containsValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
         // looking for both name and value, but can settle for just name if no value
         // has been provided. Return the first matching name (lowest index) in that case.
@@ -141,7 +139,6 @@ struct DynamicHeaderTable {
     ///   - name: A collection of UTF-8 code points comprising the name of the header to insert.
     ///   - value: A collection of UTF-8 code points comprising the value of the header to insert.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    @_specialize(where Name == String.UTF8View, Value == String.UTF8View)   // from String-based API
     mutating func addHeader<Name: Collection, Value: Collection>(named name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         do {
             try self.storage.add(name: name, value: value)
@@ -164,7 +161,6 @@ struct DynamicHeaderTable {
     ///   - name: A contiguous collection of UTF-8 bytes comprising the name of the header to insert.
     ///   - value: A contiguous collection of UTF-8 bytes comprising the value of the header to insert.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    @_specialize(where Name == ByteBufferView, Value == ByteBufferView)     // from HPACKHeaders-based API
     mutating func addHeader<Name: ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         do {
             try self.storage.add(nameBytes: nameBytes, valueBytes: valueBytes)

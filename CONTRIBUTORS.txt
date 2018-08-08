@@ -13,7 +13,6 @@ needs to be listed here.
 
 - Cory Benfield <cbenfield@apple.com>
 - Jim Dovey <jimdovey@mac.com>
-- Johannes Weiß <github@tux4u.de>
 - Johannes Weiß <johannesweiss@apple.com>
 - Tim <0xTim@users.noreply.github.com>
 - tomer doron <tomer.doron@gmail.com>

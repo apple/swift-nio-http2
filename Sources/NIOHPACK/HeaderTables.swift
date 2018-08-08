@@ -111,7 +111,6 @@ struct HeaderTableStorage {
     typealias LazyMatchingHeadersCollection = LazyFilterCollection<CircularBuffer<HeaderTableEntry>>
     typealias LazyMatchingIndicesSequence = LazyMapSequence<LazyFilterSequence<EnumeratedSequence<CircularBuffer<HeaderTableEntry>>>, Int>
     
-    @_specialize(where C == String.UTF8View)
     func findHeaders<C: Collection>(matching name: C) -> LazyMatchingHeadersCollection where C.Element == UInt8 {
         // LazyFilterCollection<CircularBuffer<HeaderTableEntry>>
         return self.headers.lazy.filter {
@@ -119,16 +118,12 @@ struct HeaderTableStorage {
         }
     }
     
-    @_specialize(where C == String.UTF8View)   // from String-based API
-    @_specialize(where C == ByteBufferView)    // from HPACKHeaders-based API
     func indices<C: Collection>(matching name: C) -> LazyMatchingIndicesSequence where C.Element == UInt8 {
         return self.headers.enumerated().lazy.filter {
             self.buffer.equalCaseInsensitiveASCII(view: name, at: $1.name)
         }.map { (idx, header) in idx }
     }
     
-    @_specialize(where C == String.UTF8View)
-    @_specialize(where C == ByteBufferView)
     func firstIndex<C : Collection>(matching name: C) -> Int? where C.Element == UInt8 {
         for (idx, header) in self.headers.enumerated() {
             if self.buffer.equalCaseInsensitiveASCII(view: name, at: header.name) {
@@ -311,10 +306,9 @@ private extension StringRing {
         }
         return withVeryUnsafeBytes { buffer in
             // This should never happens as we control when this is called. Adding an assert to ensure this.
-            let address = buffer.baseAddress!.assumingMemoryBound(to: UInt8.self)
             for (idx, byte) in view.enumerated() {
                 // TODO(jim): Not a big fan of the modulo operation here.
-                guard byte.isASCII && address.advanced(by: ((index.start + idx) % self.capacity)).pointee & 0xdf == byte & 0xdf else {
+                guard byte.isASCII && buffer[(index.start + idx) % self.capacity] & 0xdf == byte & 0xdf else {
                     return false
                 }
             }
