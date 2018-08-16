@@ -58,6 +58,7 @@ extension SimpleClientServerTests {
                 ("testManyConcurrentInactiveStreams", testManyConcurrentInactiveStreams),
                 ("testDontRemoveActiveStreams", testDontRemoveActiveStreams),
                 ("testCachingInteractionWithMaxConcurrentStreams", testCachingInteractionWithMaxConcurrentStreams),
+                ("testBadClientMagic", testBadClientMagic),
            ]
    }
 }
