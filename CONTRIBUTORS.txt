@@ -12,7 +12,10 @@ needs to be listed here.
 ### Contributors
 
 - Cory Benfield <cbenfield@apple.com>
+- Jim Dovey <jimdovey@mac.com>
 - Johannes Weiß <johannesweiss@apple.com>
+- Tim <0xTim@users.noreply.github.com>
+- tomer doron <tomer@apple.com>
 
 **Updating this list**
 
