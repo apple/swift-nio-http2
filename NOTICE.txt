@@ -41,3 +41,12 @@ This product contains a derivation of the Tony Stone's 'process_test_files.rb'.
     * https://www.apache.org/licenses/LICENSE-2.0
   * HOMEPAGE:
     * https://codegists.com/snippet/ruby/generate_xctest_linux_runnerrb_tonystone_ruby
+
+---
+
+The unit tests make use of 'hpack-test-case' by jxck, summerwind, kazu-yamamoto, and tatsuhiro-t.
+
+  * LICENSE (MIT):
+    * https://opensource.org/licenses/MIT
+  * HOMEPAGE:
+    * https://github.com/http2jp/hpack-test-case
