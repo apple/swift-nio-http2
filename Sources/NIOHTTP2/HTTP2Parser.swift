@@ -156,16 +156,27 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     private let mode: ParserMode
     private let initialSettings: [HTTP2Setting]
     private let reentrancyManager = ReentrancyManager()
+    private let maxCachedClosedStreams: Int
 
-    public init(mode: ParserMode, initialSettings: [HTTP2Setting] = nioDefaultSettings) {
+    /// Create a `HTTP2Parser`.
+    ///
+    /// - parameters:
+    ///     - mode: The mode for the parser to operate in: server or client.
+    ///     - initialSettings: The initial settings used for the connection, to be sent in the
+    ///         connection preamble.
+    ///     - maxCachedClosedStreams: The maximum number of streams for which metadata will be preserved
+    ///         to handle delayed frames (e.g. DATA frames that were already in flight after stream reset
+    ///         or GOAWAY).
+    public init(mode: ParserMode, initialSettings: [HTTP2Setting] = nioDefaultSettings, maxCachedClosedStreams: Int = 1024) {
         self.mode = mode
         self.initialSettings = initialSettings
+        self.maxCachedClosedStreams = maxCachedClosedStreams
     }
 
     public func channelActive(ctx: ChannelHandlerContext) {
         self.session = NGHTTP2Session(mode: self.mode,
                                       allocator: ctx.channel.allocator,
-                                      maxCachedStreamIDs: 1024,  // TODO(cory): Make configurable
+                                      maxCachedStreamIDs: self.maxCachedClosedStreams,
                                       frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
                                       sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) },
                                       userEventFunction: { ctx.fireUserInboundEventTriggered($0) })
