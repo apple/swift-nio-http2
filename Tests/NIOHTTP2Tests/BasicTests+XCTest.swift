@@ -27,6 +27,7 @@ extension BasicTests {
    static var allTests : [(String, (BasicTests) -> () throws -> Void)] {
       return [
                 ("testCanInitializeInnerSession", testCanInitializeInnerSession),
+                ("testThrowsErrorOnBasicProtocolViolation", testThrowsErrorOnBasicProtocolViolation),
            ]
    }
 }
