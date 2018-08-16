@@ -18,6 +18,21 @@ import Foundation
 @testable import NIOHPACK
 
 class HuffmanCodingTests: XCTestCase {
+    /// Control timing-sensitive tests from command-line in run-time:
+    ///     ENABLE_TIMING_TESTS=false swift test
+    ///     ENABLED_SANITIZERS=true swift test -fsanitize=thread
+    /// or during compile time:
+    ///     swift test -fsanitize=thread -DENABLED_SANITIZERS
+    let timeSensitiveTestEnabled: Bool = {
+        #if ENABLED_SANITIZERS
+        return false
+        #else
+        let env = ProcessInfo.processInfo.environment
+        return ((env["ENABLED_SANITIZERS"] ?? "false") == "false")
+            && ((env["ENABLE_TIMING_TESTS"] ?? "true") == "true")
+        #endif
+    }()
+
     var scratchBuffer: ByteBuffer = ByteBufferAllocator().buffer(capacity: 4096)
     
     let fixtureDirURL = URL(fileURLWithPath: #file).deletingLastPathComponent().appendingPathComponent("Fixtures").absoluteURL
@@ -93,6 +108,8 @@ class HuffmanCodingTests: XCTestCase {
     }
 
     func testBasicEncodingPerformance() {
+        guard self.timeSensitiveTestEnabled else { return }
+
         var text = "Hello, world. I am a header value; I have Teh Texts. I am going on for quite a long time because I want to ensure that the encoded data buffer needs to be expanded to test out that code. I'll try some meta-characters too: \r\t\n ought to do it, no?"
         while text.count < 1024 * 128 {
             text += text
@@ -110,6 +127,8 @@ class HuffmanCodingTests: XCTestCase {
     }
     
     func testBasicDecodingPerformance() {
+        guard self.timeSensitiveTestEnabled else { return }
+
         let url = fixtureDirURL.appendingPathComponent("large_huffman_b64.txt")
         guard let base64Data = try? Data(contentsOf: url) else {
             XCTFail("Couldn't load fixture data")
@@ -140,6 +159,8 @@ class HuffmanCodingTests: XCTestCase {
     }
     
     func testComplexEncodingPerformance() {
+        guard self.timeSensitiveTestEnabled else { return }
+
         var text = "午セイ谷高ぐふあト食71入ツエヘナ津県を類及オモ曜一購ごきわ致掲ぎぐず敗文輪へけり鯖審ヘ塊米卸呪おぴ。"
         while text.utf8.count < 128 * 1024 {
             text += text
@@ -157,6 +178,8 @@ class HuffmanCodingTests: XCTestCase {
     }
     
     func testComplexDecodingPerformance() {
+        guard self.timeSensitiveTestEnabled else { return }
+
         let url = fixtureDirURL.appendingPathComponent("large_complex_huffman_b64.txt")
         guard let base64Data = try? Data(contentsOf: url) else {
             XCTFail("Couldn't load fixture data")
