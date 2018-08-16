@@ -57,6 +57,7 @@ extension SimpleClientServerTests {
                 ("testStreamCloseEventForGoawayFiresAfterFrame", testStreamCloseEventForGoawayFiresAfterFrame),
                 ("testManyConcurrentInactiveStreams", testManyConcurrentInactiveStreams),
                 ("testDontRemoveActiveStreams", testDontRemoveActiveStreams),
+                ("testCachingInteractionWithMaxConcurrentStreams", testCachingInteractionWithMaxConcurrentStreams),
            ]
    }
 }
