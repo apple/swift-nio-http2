@@ -49,6 +49,7 @@ fileprivate class ReentrancyManager {
     enum ProcessingResult {
         case `continue`
         case complete
+        case error(Error)
     }
 
     enum EOFType {
@@ -92,7 +93,16 @@ fileprivate class ReentrancyManager {
         self.processing = true
         defer { self.processing = false }
 
-        while case .continue = processOneOperation(ctx: ctx, body) { }
+        while true {
+            switch processOneOperation(ctx: ctx, body) {
+            case .continue:
+                continue
+            case .complete:
+                return
+            case .error(let error):
+                ctx.fireErrorCaught(error)
+            }
+        }
     }
 
     private func processOneOperation(ctx: ChannelHandlerContext, _ body: (Operation, ChannelHandlerContext) -> ProcessingResult) -> ProcessingResult {
@@ -127,11 +137,12 @@ fileprivate class ReentrancyManager {
 
         // Now we want to send some data. If this returns .continue, we want to spin
         // around keep going. If this returns .complete, we can go ahead and flush.
-        if case .complete = body(.doOneWrite, ctx) {
+        let result = body(.doOneWrite, ctx)
+        if case .complete = result {
             self.mustFlush = false
             return body(.flush, ctx)
         } else {
-            return .continue
+            return result
         }
     }
 }
@@ -239,7 +250,11 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     private func process(_ operation: ReentrancyManager.Operation, _ context: ChannelHandlerContext) -> ReentrancyManager.ProcessingResult {
         switch operation {
         case .feedInput(var input):
-            self.session.feedInput(buffer: &input)
+            do {
+                try self.session.feedInput(buffer: &input)
+            } catch {
+                return .error(error)
+            }
             return .continue
         case .feedOutput(let frame, let promise):
             self.session.feedOutput(frame: frame, promise: promise)

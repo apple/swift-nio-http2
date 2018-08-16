@@ -1345,4 +1345,49 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testBadClientMagic() throws {
+        class WaitForErrorHandler: ChannelInboundHandler {
+            typealias InboundIn = Never
+
+            private var errorSeenPromise: EventLoopPromise<Error>?
+
+            init(errorSeenPromise: EventLoopPromise<Error>) {
+                self.errorSeenPromise = errorSeenPromise
+            }
+
+            func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+                XCTFail("shouldnt' have received \(data)")
+            }
+
+            func errorCaught(ctx: ChannelHandlerContext, error: Error) {
+                if let errorSeenPromise = self.errorSeenPromise {
+                    errorSeenPromise.succeed(result: error)
+                } else {
+                    XCTFail("extra error \(error) received")
+                }
+            }
+        }
+
+        let errorSeenPromise: EventLoopPromise<Error> = self.clientChannel.eventLoop.newPromise()
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: WaitForErrorHandler(errorSeenPromise: errorSeenPromise)).wait())
+
+        self.clientChannel?.pipeline.fireChannelActive()
+        self.serverChannel?.pipeline.fireChannelActive()
+
+        var buffer = self.clientChannel.allocator.buffer(capacity: 16)
+        buffer.write(staticString: "GET / HTTP/1.1\r\nHost: apple.com\r\n\r\n")
+        XCTAssertNoThrow(try self.clientChannel.writeAndFlush(buffer).wait())
+
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        XCTAssertNoThrow(try XCTAssertEqual(NIOHTTP2Errors.BadClientMagic(),
+                                            errorSeenPromise.futureResult.wait() as? NIOHTTP2Errors.BadClientMagic))
+        let clientReceived: ByteBuffer? = self.clientChannel.readInbound()
+        XCTAssertNotNil(clientReceived)
+
+        XCTAssertNoThrow(try XCTAssertFalse(self.clientChannel.finish()))
+        XCTAssertNoThrow(try XCTAssertFalse(self.serverChannel.finish()))
+    }
 }

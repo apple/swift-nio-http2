@@ -586,15 +586,17 @@ class NGHTTP2Session {
         precondition(rc == 0)
     }
 
-    public func feedInput(buffer: inout ByteBuffer) {
-        buffer.withUnsafeReadableBytes { data in
+    public func feedInput(buffer: inout ByteBuffer) throws {
+        try buffer.withUnsafeReadableBytes { data in
             switch nghttp2_session_mem_recv(self.session, data.baseAddress?.assumingMemoryBound(to: UInt8.self), data.count) {
             case let x where x >= 0:
                 precondition(x == data.count, "did not consume all bytes")
             case Int(NGHTTP2_ERR_NOMEM.rawValue):
                 fatalError("out of memory")
-            case let x:
-                fatalError("error \(x)")
+            case Int(NGHTTP2_ERR_BAD_CLIENT_MAGIC.rawValue):
+                throw NIOHTTP2Errors.BadClientMagic()
+            case let nghttp2ErrorCode:
+                throw NIOHTTP2Errors.InternalError(nghttp2ErrorCode: nghttp2_error(rawValue: Int32(nghttp2ErrorCode)))
             }
         }
     }

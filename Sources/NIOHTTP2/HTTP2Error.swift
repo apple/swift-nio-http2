@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import CNIONghttp2
+
 public protocol NIOHTTP2Error: Equatable, Error { }
 
 /// Errors that NIO raises when handling HTTP/2 connections.
@@ -43,6 +45,18 @@ public enum NIOHTTP2Errors {
         public init(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode) {
             self.streamID = streamID
             self.errorCode = errorCode
+        }
+    }
+
+    public struct BadClientMagic: NIOHTTP2Error {
+        public init() {}
+    }
+
+    public struct InternalError: NIOHTTP2Error {
+        internal var nghttp2ErrorCode: nghttp2_error
+
+        internal init(nghttp2ErrorCode: nghttp2_error) {
+            self.nghttp2ErrorCode = nghttp2ErrorCode
         }
     }
 }
