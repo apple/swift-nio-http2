@@ -137,7 +137,7 @@ public struct HTTP2Frame {
         public static let priority      = FrameFlags(rawValue: 0x20)
         
         // useful for test cases
-        internal static var allFlags: FrameFlags = [.endStream, .endHeaders, .padded, .priority]
+        internal static var allFlags: FrameFlags = [.endStream, .complete, .endHeaders, .padded, .priority]
     }
 }
 
