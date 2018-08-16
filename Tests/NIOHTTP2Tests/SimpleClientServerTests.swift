@@ -1317,4 +1317,32 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testCachingInteractionWithMaxConcurrentStreams() throws {
+        // Here we test that having MAX_CONCURRENT_STREAMS higher than the cached closed streams does nothing.
+        // Also added for https://github.com/apple/swift-nio-http2/pull/11/
+        let maxCachedClosedStreams = 64
+
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection(maxCachedClosedStreams: maxCachedClosedStreams)
+
+        // Obtain some request data.
+        let requestHeaders = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        // Here we're going to issue exactly the number of streams we're willing to cache.
+        let clientStreamIDs = (0..<(maxCachedClosedStreams - 1)).map { _ in HTTP2StreamID() }
+        let clientHeadersFrames = clientStreamIDs.map { HTTP2Frame(streamID: $0, payload: .headers(requestHeaders)) }
+        try self.assertFramesRoundTrip(frames: clientHeadersFrames, sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Now we send one more. In the bad code, this crashes.
+        let finalStreamID = HTTP2StreamID()
+        let explosionFrame = HTTP2Frame(streamID: finalStreamID, payload: .headers(requestHeaders))
+        try self.assertFramesRoundTrip(frames: [explosionFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // If we got here, all is well. We can tear down.
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

@@ -284,9 +284,22 @@ fileprivate struct StreamManager {
 
     // Discard old and unnecessary streams.
     private mutating func purgeOldStreams() {
-        while self.streamMap.count >= maxSize {
-            let lowestStreamID = self.streamMap.filter { !$0.value.active }.keys.sorted().first { $0 != 0 && $0 != Int32.max }!
-            self.streamMap.removeValue(forKey: lowestStreamID)
+        // If the stream map is not full, we don't purge.
+        guard self.streamMap.count >= self.maxSize else { return }
+
+        // It's full, time to purge some entries.
+        var purgeableStreamIDIterator = self.streamMap.lazy.filter { entry in
+            if entry.key == 0 || entry.key == Int32.max {
+                // Exclude the streams with max or min stream IDs.
+                return false
+            }
+
+            // We only want inactive streams.
+            return !entry.value.active
+        }.map { $0.key }.sorted().makeIterator()
+
+        while self.streamMap.count >= maxSize, let toPurge = purgeableStreamIDIterator.next() {
+            self.streamMap.removeValue(forKey: toPurge)
         }
     }
 }
