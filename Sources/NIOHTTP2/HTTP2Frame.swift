@@ -109,7 +109,7 @@ public struct HTTP2Frame {
         }
     }
     
-    public struct FrameFlags : OptionSet {
+    public struct FrameFlags: OptionSet {
         public typealias RawValue = UInt8
         
         public private(set) var rawValue: UInt8
