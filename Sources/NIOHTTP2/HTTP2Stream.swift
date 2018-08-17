@@ -12,9 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIO
 import NIOHTTP1
-import NIOHPACK
 
 private extension HTTPHeaders {
     /// Whether this `HTTPHeaders` corresponds to a final response or not.
@@ -110,14 +108,6 @@ final class HTTP2Stream {
     /// Whether this stream is still active on the connection. Streams that are not active on the connection are
     /// safe to prune.
     var active: Bool = false
-    
-    /// An HPACK decoder for this stream, handling integer and Huffman decoding and the management of a dynamic
-    /// header table.
-    var decoder: HPACKDecoder
-    
-    /// An HPACK encoder, handling integer and huffman encoding, header packing, and dynamic header table
-    /// management.
-    var encoder: HPACKEncoder
 
     /// The headers state machine for outbound headers.
     ///
@@ -129,8 +119,6 @@ final class HTTP2Stream {
         self.outboundHeaderStateMachine = HTTP2HeadersStateMachine(mode: mode)
         self.streamID = streamID
         self.dataProvider = HTTP2DataProvider()
-        self.decoder = HPACKDecoder(allocator: ByteBufferAllocator())
-        self.encoder = HPACKEncoder(allocator: ByteBufferAllocator())
     }
 
     /// Called to determine the type of a new outbound header block, so as to manage it appropriately.

@@ -23,43 +23,43 @@ public struct HTTP2Frame {
 
     /// The frame flags.
     public var flags: FrameFlags
-
+    
     /// The frame stream ID as a 32-bit integer.
     public var streamID: HTTP2StreamID
-
+    
     private func _hasFlag(_ flag: FrameFlags) -> Bool {
         return self.flags.contains(flag)
-            }
+    }
     
     private mutating func _setFlagIfValid(_ flag: FrameFlags) {
         if self.payload.allowedFlags.contains(flag) {
             self.flags.formUnion(flag)
         }
-            }
-
+    }
+    
     // Whether the END_STREAM flag bit is set.
     public var endStream: Bool {
         get { return self._hasFlag(.endStream) }
         set { self._setFlagIfValid(.endStream) }
-        }
-
+    }
+    
     // Whether the PADDED flag bit is set.
     public var padded: Bool {
         get { return self._hasFlag(.padded) }
         set { self._setFlagIfValid(.padded) }
-        }
-
+    }
+    
     // Whether the PRIORITY flag bit is set.
     public var priority: Bool {
         get { return self._hasFlag(.priority) }
         set { self._setFlagIfValid(.priority) }
-            }
-
+    }
+    
     // Whether the ACK flag bit is set.
     public var ack: Bool {
         get { return self._hasFlag(.ack) }
         set { self._setFlagIfValid(.ack) }
-            }
+    }
 
     public enum FramePayload {
         case data(IOData)
@@ -71,11 +71,8 @@ public struct HTTP2Frame {
         case ping(HTTP2PingData)
         case goAway(lastStreamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, opaqueData: ByteBuffer?)
         case windowUpdate(windowSizeIncrement: Int)
-        case continuation(HTTPHeaders)
         case alternativeService(origin: String?, field: ByteBuffer?)
-        case blocked
         case origin([String])
-        case cacheDigest(origin: String?, digest: ByteBuffer?)
         
         var code: UInt8 {
             switch self {
@@ -88,11 +85,8 @@ public struct HTTP2Frame {
             case .ping:                 return 0x6
             case .goAway:               return 0x7
             case .windowUpdate:         return 0x8
-            case .continuation:         return 0x9
             case .alternativeService:   return 0xa
-            case .blocked:              return 0xb
             case .origin:               return 0xc
-            case .cacheDigest:          return 0xd
             }
         }
         
@@ -104,16 +98,12 @@ public struct HTTP2Frame {
                 return [.endStream, .endHeaders, .padded, .priority]
             case .pushPromise:
                 return [.endHeaders, .padded]
-            case .continuation:
-                return .endHeaders
-            case .cacheDigest:
-                return [.reset, .complete]
                 
             case .settings, .ping:
                 return .ack
                 
             case .priority, .rstStream, .goAway, .windowUpdate,
-                 .alternativeService, .blocked, .origin:
+                 .alternativeService, .origin:
                 return []
             }
         }
@@ -130,14 +120,12 @@ public struct HTTP2Frame {
         
         public static let endStream     = FrameFlags(rawValue: 0x01)
         public static let ack           = FrameFlags(rawValue: 0x01)
-        public static let reset         = FrameFlags(rawValue: 0x01)
-        public static let complete      = FrameFlags(rawValue: 0x02)
         public static let endHeaders    = FrameFlags(rawValue: 0x04)
         public static let padded        = FrameFlags(rawValue: 0x08)
         public static let priority      = FrameFlags(rawValue: 0x20)
         
         // useful for test cases
-        internal static var allFlags: FrameFlags = [.endStream, .complete, .endHeaders, .padded, .priority]
+        internal static var allFlags: FrameFlags = [.endStream, .endHeaders, .padded, .priority]
     }
 }
 
