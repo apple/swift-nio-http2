@@ -59,24 +59,6 @@ public enum NIOHTTP2Errors {
             self.nghttp2ErrorCode = nghttp2ErrorCode
         }
     }
-
-    /// Received/decoded data was invalid.
-    public struct InvalidSettings: NIOHTTP2Error {
-        /// The network identifier of the setting being read.
-        public var settingCode: UInt16
-        
-        /// The offending value.
-        public var value: Int32
-
-        /// The error code associated with the error.
-        public var errorCode: HTTP2ErrorCode
-
-        public init(setting: UInt16, value: Int32, errorCode: HTTP2ErrorCode) {
-            self.settingCode = setting
-            self.value = value
-            self.errorCode = errorCode
-        }
-    }
 }
 
 

@@ -457,7 +457,7 @@ class NGHTTP2Session {
             }
             nioFramePayload = .settings(settings)
         case NGHTTP2_PUSH_PROMISE.rawValue:
-            nioFramePayload = .pushPromise
+            nioFramePayload = .pushPromise(self.headersAccumulation)
         case NGHTTP2_PING.rawValue:
             nioFramePayload = .ping(HTTP2PingData(withTuple: frame.ping.opaque_data))
         case NGHTTP2_GOAWAY.rawValue:
