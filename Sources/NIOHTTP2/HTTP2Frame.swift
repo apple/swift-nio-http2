@@ -108,7 +108,7 @@ public struct HTTP2Frame {
         ///
         /// For more information on server push in HTTP/2, see
         /// [RFC 7540 § 8.2](https://httpwg.org/specs/rfc7540.html#rfc.section.8.2).
-        case pushPromise(HTTPHeaders)
+        case pushPromise
         
         /// A PING frame, used to measure round-trip time between endpoints.
         ///
