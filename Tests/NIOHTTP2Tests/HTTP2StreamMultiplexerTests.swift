@@ -179,7 +179,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         let streamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID(knownID: Int32($0)) }
         for streamID in streamIDs {
             var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-            frame.endStream = true
+            frame.flags.insert(.endStream)
             XCTAssertNoThrow(try self.channel.writeInbound(frame))
         }
         XCTAssertEqual(completedChannelCount, 0)
@@ -202,7 +202,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // First, set up the frames we want to send/receive.
         let streamID = HTTP2StreamID(knownID: Int32(1))
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
+        frame.flags.insert(.endStream)
         let rstStreamFrame = HTTP2Frame(streamID: streamID, payload: .rstStream(.cancel))
 
         let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
@@ -236,7 +236,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // First, set up the frames we want to send/receive.
         let streamID = HTTP2StreamID(knownID: Int32(1))
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
+        frame.flags.insert(.endStream)
         let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
 
         let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
@@ -613,7 +613,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         let secondStreamID = HTTP2StreamID(knownID: 3)
         for streamID in [firstStreamID, secondStreamID] {
             var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-            frame.endStream = true
+            frame.flags.insert(.endStream)
             XCTAssertNoThrow(try self.channel.writeInbound(frame))
         }
         XCTAssertEqual(channels.count, 2)
@@ -649,7 +649,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Let's open a stream.
         let streamID = HTTP2StreamID(knownID: 1)
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
+        frame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
         XCTAssertNotNil(channel)
 
@@ -680,7 +680,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Let's open a stream.
         let streamID = HTTP2StreamID(knownID: 1)
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
+        frame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
         XCTAssertNotNil(channel)
 
@@ -711,7 +711,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Let's open a stream.
         let streamID = HTTP2StreamID(knownID: 1)
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
+        frame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
         XCTAssertNotNil(channel)
 
@@ -949,7 +949,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Let's open a stream.
         let streamID = HTTP2StreamID(knownID: 1)
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
+        frame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
 
         // No handlerRemoved so far.
@@ -980,7 +980,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Let's open a stream.
         let streamID = HTTP2StreamID(knownID: 1)
         var frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
-        frame.endStream = true
+        frame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
 
         // No handlerRemoved so far.

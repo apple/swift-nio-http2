@@ -201,14 +201,14 @@ class SimpleClientServerTests: XCTestCase {
         let clientStreamID = HTTP2StreamID()
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
+        reqBodyFrame.flags.insert(.endStream)
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
         // Let's send a quick response back.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
         var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-        respFrame.endStream = true
+        respFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
@@ -232,7 +232,7 @@ class SimpleClientServerTests: XCTestCase {
             let streamID = HTTP2StreamID()
             let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(requestHeaders))
             var reqBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(requestBody)))
-            reqBodyFrame.endStream = true
+            reqBodyFrame.flags.insert(.endStream)
 
             self.clientChannel.write(reqFrame, promise: nil)
             self.clientChannel.write(reqBodyFrame, promise: nil)
@@ -303,13 +303,13 @@ class SimpleClientServerTests: XCTestCase {
         var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
         requestBody.write(staticString: "A simple HTTP/2 request.")
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
+        reqBodyFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel)
 
         // The server will respond, closing this stream.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
         var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-        respFrame.endStream = true
+        respFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // The server can now GOAWAY down to stream 1. We evaluate the bytes here ourselves becuase the client won't see this frame.
@@ -355,7 +355,7 @@ class SimpleClientServerTests: XCTestCase {
 
         // Now we'll try to send this in a DATA frame.
         var dataFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(buffer)))
-        dataFrame.endStream = true
+        dataFrame.flags.insert(.endStream)
         self.clientChannel.writeAndFlush(dataFrame, promise: nil)
         self.interactInMemory(self.clientChannel, self.serverChannel)
 
@@ -372,7 +372,7 @@ class SimpleClientServerTests: XCTestCase {
         // Now send a response from the server and shut things down.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
         var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-        respFrame.endStream = true
+        respFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
@@ -392,14 +392,14 @@ class SimpleClientServerTests: XCTestCase {
             let clientStreamID = HTTP2StreamID()
             let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
             var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.fileRegion(region)))
-            reqBodyFrame.endStream = true
+            reqBodyFrame.flags.insert(.endStream)
 
             let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
             // Let's send a quick response back.
             let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
             var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-            respFrame.endStream = true
+            respFrame.flags.insert(.endStream)
             try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
         }
 
@@ -432,7 +432,7 @@ class SimpleClientServerTests: XCTestCase {
 
             // Ok, we're gonna send the body here. This should create 4 streams.
             var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.fileRegion(region)))
-            reqBodyFrame.endStream = true
+            reqBodyFrame.flags.insert(.endStream)
             self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
             self.interactInMemory(self.clientChannel, self.serverChannel)
 
@@ -449,7 +449,7 @@ class SimpleClientServerTests: XCTestCase {
             // Let's send a quick response back.
             let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
             var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-            respFrame.endStream = true
+            respFrame.flags.insert(.endStream)
             try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
             // No frames left.
@@ -500,12 +500,12 @@ class SimpleClientServerTests: XCTestCase {
 
         // Let's complete one of the streams by sending data for the first stream on the client, and responding on the server.
         var dataFrame = HTTP2Frame(streamID: clientStreamIDs.first!, payload: .data(.byteBuffer(requestBody)))
-        dataFrame.endStream = true
+        dataFrame.flags.insert(.endStream)
         self.clientChannel.writeAndFlush(dataFrame, promise: nil)
 
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
         var respFrame = HTTP2Frame(streamID: serverStreamIDs.first!, payload: .headers(responseHeaders))
-        respFrame.endStream = true
+        respFrame.flags.insert(.endStream)
         self.serverChannel.writeAndFlush(respFrame, promise: nil)
 
         // Now we expect the following things to have happened: 1) the client will have seen the server's response,
@@ -580,7 +580,7 @@ class SimpleClientServerTests: XCTestCase {
         let clientStreamID = HTTP2StreamID()
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
+        reqBodyFrame.flags.insert(.endStream)
         self.clientChannel.write(reqFrame, promise: nil)
 
         var receivedError: Error? = nil
@@ -610,7 +610,7 @@ class SimpleClientServerTests: XCTestCase {
         let clientStreamID = HTTP2StreamID()
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
+        reqBodyFrame.flags.insert(.endStream)
         self.clientChannel.write(reqFrame, promise: nil)
 
         var receivedError: Error? = nil
@@ -722,7 +722,7 @@ class SimpleClientServerTests: XCTestCase {
         let clientStreamID = HTTP2StreamID()
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
+        reqBodyFrame.flags.insert(.endStream)
         self.clientChannel.write(reqFrame, promise: nil)
         self.clientChannel.write(reqBodyFrame, promise: nil)
 
@@ -764,7 +764,7 @@ class SimpleClientServerTests: XCTestCase {
         for _ in 0..<63 {
             self.clientChannel.write(reqBodyFrame, promise: nil)
         }
-        reqBodyFrame.endStream = true
+        reqBodyFrame.flags.insert(.endStream)
         self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
 
         // Ok, we now want to send this data to the server.
@@ -991,7 +991,7 @@ class SimpleClientServerTests: XCTestCase {
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
         let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
         var trailerFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(trailers))
-        trailerFrame.endStream = true
+        trailerFrame.flags.insert(.endStream)
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame, trailerFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
@@ -999,7 +999,7 @@ class SimpleClientServerTests: XCTestCase {
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
         let respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
         var respTrailersFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(trailers))
-        respTrailersFrame.endStream = true
+        respTrailersFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame, respTrailersFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
@@ -1014,7 +1014,7 @@ class SimpleClientServerTests: XCTestCase {
         let headers = HTTPHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
         let clientStreamID = HTTP2StreamID()
         var reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
-        reqFrame.endStream = true
+        reqFrame.flags.insert(.endStream)
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
@@ -1026,7 +1026,7 @@ class SimpleClientServerTests: XCTestCase {
         // Now we send the final response back.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
         var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-        respFrame.endStream = true
+        respFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
@@ -1083,7 +1083,7 @@ class SimpleClientServerTests: XCTestCase {
         let clientStreamID = HTTP2StreamID()
         let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        reqBodyFrame.endStream = true
+        reqBodyFrame.flags.insert(.endStream)
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
@@ -1094,7 +1094,7 @@ class SimpleClientServerTests: XCTestCase {
         // Let's send a quick response back.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
         var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-        respFrame.endStream = true
+        respFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // Now the streams are closed, they should have seen user events.
@@ -1250,13 +1250,13 @@ class SimpleClientServerTests: XCTestCase {
             let clientStreamID = HTTP2StreamID()
             let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(requestHeaders))
             var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-            reqBodyFrame.endStream = true
+            reqBodyFrame.flags.insert(.endStream)
 
             let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
             // Let's send a quick response back.
             var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-            respFrame.endStream = true
+            respFrame.flags.insert(.endStream)
             try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
         }
 
@@ -1284,13 +1284,13 @@ class SimpleClientServerTests: XCTestCase {
             let clientStreamID = HTTP2StreamID()
             let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(requestHeaders))
             var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-            reqBodyFrame.endStream = true
+            reqBodyFrame.flags.insert(.endStream)
 
             let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
             // Let's send a quick response back.
             var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
-            respFrame.endStream = true
+            respFrame.flags.insert(.endStream)
             try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
         }
 
@@ -1309,7 +1309,7 @@ class SimpleClientServerTests: XCTestCase {
         // Clean it up with the server now.
         let serverFrames = serverStreamIDs.map { streamID -> HTTP2Frame in
             var respFrame = HTTP2Frame(streamID: streamID, payload: .headers(responseHeaders))
-            respFrame.endStream = true
+            respFrame.flags.insert(.endStream)
             return respFrame
         }
         try self.assertFramesRoundTrip(frames: serverFrames, sender: self.serverChannel, receiver: self.clientChannel)

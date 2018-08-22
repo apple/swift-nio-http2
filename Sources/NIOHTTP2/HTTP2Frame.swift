@@ -26,40 +26,6 @@ public struct HTTP2Frame {
     
     /// The frame stream ID as a 32-bit integer.
     public var streamID: HTTP2StreamID
-    
-    private func _hasFlag(_ flag: FrameFlags) -> Bool {
-        return self.flags.contains(flag)
-    }
-    
-    private mutating func _setFlagIfValid(_ flag: FrameFlags) {
-        if self.payload.allowedFlags.contains(flag) {
-            self.flags.formUnion(flag)
-        }
-    }
-    
-    // Whether the END_STREAM flag bit is set.
-    public var endStream: Bool {
-        get { return self._hasFlag(.endStream) }
-        set { self._setFlagIfValid(.endStream) }
-    }
-    
-    // Whether the PADDED flag bit is set.
-    public var padded: Bool {
-        get { return self._hasFlag(.padded) }
-        set { self._setFlagIfValid(.padded) }
-    }
-    
-    // Whether the PRIORITY flag bit is set.
-    public var priority: Bool {
-        get { return self._hasFlag(.priority) }
-        set { self._setFlagIfValid(.priority) }
-    }
-    
-    // Whether the ACK flag bit is set.
-    public var ack: Bool {
-        get { return self._hasFlag(.ack) }
-        set { self._setFlagIfValid(.ack) }
-    }
 
     /// Frame-type-specific payload data.
     public enum FramePayload {
@@ -201,7 +167,7 @@ public struct HTTP2Frame {
         
         /// PADDED flag. Valid on DATA, HEADERS, CONTINUATION, and PUSH_PROMISE frames.
         ///
-        /// NB: swift-nio-http2 does not pad outgoing frames.
+        /// NB: swift-nio-http2 does not automatically pad outgoing frames.
         public static let padded        = FrameFlags(rawValue: 0x08)
         
         /// PRIORITY flag. Valid on HEADERS frames, specifically as the first frame sent

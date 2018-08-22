@@ -94,13 +94,13 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
             } else {
                 let respHead = HTTPResponseHead(http2HeaderBlock: headers)
                 ctx.fireChannelRead(self.wrapInboundOut(.head(respHead)))
-                if frame.endStream {
+                if frame.flags.contains(.endStream) {
                     ctx.fireChannelRead(self.wrapInboundOut(.end(nil)))
                 }
             }
         case .data(.byteBuffer(let b)):
             ctx.fireChannelRead(self.wrapInboundOut(.body(b)))
-            if frame.endStream {
+            if frame.flags.contains(.endStream) {
                 ctx.fireChannelRead(self.wrapInboundOut(.end(nil)))
             }
         case .alternativeService, .rstStream, .priority, .windowUpdate:
@@ -131,7 +131,7 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
             }
 
             var frame = HTTP2Frame(streamID: self.streamID, payload: payload)
-            frame.endStream = true
+            frame.flags.insert(.endStream)
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }
@@ -170,13 +170,13 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
             } else {
                 let reqHead = HTTPRequestHead(http2HeaderBlock: headers)
                 ctx.fireChannelRead(self.wrapInboundOut(.head(reqHead)))
-                if frame.endStream {
+                if frame.flags.contains(.endStream) {
                     ctx.fireChannelRead(self.wrapInboundOut(.end(nil)))
                 }
             }
         case .data(.byteBuffer(let b)):
             ctx.fireChannelRead(self.wrapInboundOut(.body(b)))
-            if frame.endStream {
+            if frame.flags.contains(.endStream) {
                 ctx.fireChannelRead(self.wrapInboundOut(.end(nil)))
             }
         case .alternativeService, .rstStream, .priority, .windowUpdate:
@@ -207,7 +207,7 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
             }
 
             var frame = HTTP2Frame(streamID: self.streamID, payload: payload)
-            frame.endStream = true
+            frame.flags.insert(.endStream)
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }
