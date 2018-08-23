@@ -52,6 +52,9 @@ public struct HTTP2SettingsParameter {
 
     /// Corresponds to SETTINGS_MAX_HEADER_LIST_SIZE
     public static let maxHeaderListSize = HTTP2SettingsParameter(6)
+    
+    /// Corresponds to SETTINGS_ENABLE_CONNECT_PROTOCOL from RFC 8441.
+    public static let enableConnectProtocol = HTTP2SettingsParameter(8)
 }
 
 extension HTTP2SettingsParameter: Equatable {

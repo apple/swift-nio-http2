@@ -150,6 +150,10 @@ extension EmbeddedChannel {
 }
 
 extension HTTP2Frame {
+    var ack: Bool {
+        return self.flags.contains(.ack)
+    }
+    
     /// Asserts that the given frame is a SETTINGS frame.
     func assertSettingsFrame(expectedSettings: [HTTP2Setting], ack: Bool, file: StaticString = #file, line: UInt = #line) {
         guard case .settings(let values) = self.payload else {
@@ -196,7 +200,7 @@ extension HTTP2Frame {
         guard case .headers(let payload) = frame.payload else {
             preconditionFailure("Headers frames can never match non-headers frames")
         }
-        self.assertHeadersFrame(endStream: frame.endStream,
+        self.assertHeadersFrame(endStream: frame.flags.contains(.endStream),
                                 streamID: frame.streamID.networkStreamID!,
                                 payload: payload,
                                 file: file,
@@ -211,8 +215,8 @@ extension HTTP2Frame {
             return
         }
 
-        XCTAssertEqual(self.endStream, endStream,
-                       "Unexpected endStream: expected \(endStream), got \(self.endStream)", file: file, line: line)
+        XCTAssertEqual(self.flags.contains(.endStream), endStream,
+                       "Unexpected endStream: expected \(endStream), got \(self.flags.contains(.endStream))", file: file, line: line)
         XCTAssertEqual(self.streamID.networkStreamID!, streamID,
                        "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
         XCTAssertEqual(payload, actualPayload, "Non-equal payloads: expected \(payload), got \(actualPayload)", file: file, line: line)
@@ -231,7 +235,7 @@ extension HTTP2Frame {
             preconditionFailure("Data frames can never match non-data frames")
         }
 
-        self.assertDataFrame(endStream: frame.endStream,
+        self.assertDataFrame(endStream: frame.flags.contains(.endStream),
                              streamID: frame.streamID.networkStreamID!,
                              payload: expectedPayload,
                              file: file,
@@ -245,8 +249,8 @@ extension HTTP2Frame {
             return
         }
 
-        XCTAssertEqual(self.endStream, endStream,
-                       "Unexpected endStream: expected \(endStream), got \(self.endStream)", file: file, line: line)
+        XCTAssertEqual(self.flags.contains(.endStream), endStream,
+                       "Unexpected endStream: expected \(endStream), got \(self.flags.contains(.endStream))", file: file, line: line)
         XCTAssertEqual(self.streamID.networkStreamID!, streamID,
                        "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
         XCTAssertEqual(actualPayload, payload,

@@ -628,6 +628,8 @@ class NGHTTP2Session {
             fatalError("not implemented")
         case .alternativeService:
             fatalError("not implemented")
+        case .origin(_):
+            fatalError("not implemented")
         }
     }
 
@@ -675,7 +677,7 @@ class NGHTTP2Session {
             preconditionFailure("Attempting to send non-headers frame")
         }
 
-        let isEndStream = frame.endStream
+        let isEndStream = frame.flags.contains(.endStream)
         let flags = isEndStream ? UInt8(NGHTTP2_FLAG_END_STREAM.rawValue) : UInt8(0)
 
         guard let networkStreamID = frame.streamID.networkStreamID else {
@@ -742,7 +744,7 @@ class NGHTTP2Session {
         streamState.dataProvider.bufferWrite(write: data, promise: promise)
 
         // If this has END_STREAM set, we do not expect trailers.
-        if frame.endStream {
+        if frame.flags.contains(.endStream) {
             streamState.dataProvider.bufferEOF(trailers: nil)
         }
 
