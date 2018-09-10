@@ -115,7 +115,6 @@ extension HTTP2StreamMultiplexer {
     ///         failed if an error occurs.
     ///     - streamStateInitializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
-    /// - returns: An `EventLoopFuture` that completes with the new channel.
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
         guard let ourChannel = self.channel else {
             promise?.fail(error: ChannelError.ioOnClosedChannel)
