@@ -1,0 +1,1639 @@
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the SwiftNIO open source project
+//
+// Copyright (c) 2017-2018 Apple Inc. and the SwiftNIO project authors
+// Licensed under Apache License v2.0
+//
+// See LICENSE.txt for license information
+// See CONTRIBUTORS.txt for the list of SwiftNIO project authors
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+//===----------------------------------------------------------------------===//
+
+import XCTest
+
+import NIO
+import NIOHTTP1
+@testable import NIOHTTP2
+
+func assertSucceeds(_ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
+    switch body() {
+    case .succeed:
+        return
+    case let result:
+        XCTFail("Result \(result)", file: file, line: line)
+    }
+}
+
+func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
+    switch body() {
+    case .connectionError(underlyingError: _, type: type):
+        return
+    case let result:
+        XCTFail("Expected connection error type \(type), got \(result)", file: file, line: line)
+    }
+}
+
+func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
+    switch body() {
+    case .streamError(underlyingError: _, type: type):
+        return
+    case let result:
+        XCTFail("Expected stream error type \(type), got \(result)", file: file, line: line)
+    }
+}
+
+func assertIgnored(_ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
+    switch body() {
+    case .ignoreFrame:
+        return
+    case let result:
+        XCTFail("Expected to ignore frame, got \(result)", file: file, line: line)
+    }
+}
+
+class ConnectionStateMachineTests: XCTestCase {
+    var server: HTTP2ConnectionStateMachine!
+    var client: HTTP2ConnectionStateMachine!
+
+    static let requestHeaders = {
+        return HTTPHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+    }()
+
+    static let responseHeaders = {
+        return HTTPHeaders([(":status", "200"), ("server", "NIO")])
+    }()
+
+    static let trailers = {
+        return HTTPHeaders([("x-trailers", "yes")])
+    }()
+
+    override func setUp() {
+        self.server = .init(role: .server)
+        self.client = .init(role: .client)
+    }
+
+    private func exchangePreamble() {
+        assertSucceeds(self.client.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+
+        assertSucceeds(self.server.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+    }
+
+    private func setupServerGoaway(streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID], file: StaticString = #file, line: UInt = #line) {
+        self.exchangePreamble()
+
+        // Client opens streams.
+        for streamID in streamsToOpen {
+            assertSucceeds(self.client.sendHeaders(streamID: streamID, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+            assertSucceeds(self.server.receiveHeaders(streamID: streamID, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        }
+
+        // Server sends a reset.
+        var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
+        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Server closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
+        assertSucceeds(result, file: file, line: line)
+
+        (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
+        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Client closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
+        assertSucceeds(result, file: file, line: line)
+    }
+
+    private func setupClientGoaway(clientStreamID: HTTP2StreamID, streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID], file: StaticString = #file, line: UInt = #line) {
+        self.exchangePreamble()
+
+        // Client opens its stream, server sends response.
+        assertSucceeds(self.client.sendHeaders(streamID: clientStreamID, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: clientStreamID, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendHeaders(streamID: clientStreamID, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: clientStreamID, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // Server opens streams.
+        for streamID in streamsToOpen {
+            assertSucceeds(self.server.sendPushPromise(originalStreamID: clientStreamID, childStreamID: streamID, headers: ConnectionStateMachineTests.requestHeaders))
+            assertSucceeds(self.client.receivePushPromise(originalStreamID: clientStreamID, childStreamID: streamID, headers: ConnectionStateMachineTests.requestHeaders))
+        }
+
+        // Client sends a reset.
+        var (result, resetStreams) = self.client.sendGoaway(lastStreamID: lastStreamID)
+        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Client closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
+        assertSucceeds(result, file: file, line: line)
+
+        (result, resetStreams) = self.server.receiveGoaway(lastStreamID: lastStreamID)
+        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Server closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
+        assertSucceeds(result, file: file, line: line)
+    }
+
+    func testSimpleRequestResponseFlow() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        XCTAssertTrue(self.client.fullyQuiesced)
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testOpeningConnectionWhileServerPreambleMissing() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        // Here the client sends its SETTINGS frame, and then immediately sends its HEADERS.
+        assertSucceeds(self.client.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Server receives
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Server sends its preamble, then ACKs, then sends its response.
+        assertSucceeds(self.server.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        // Client receives.
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        // Client ACKs
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+
+        // Cleanup
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        XCTAssertTrue(self.client.fullyQuiesced)
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testServerSendsItsPreambleFirst() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        // Here the server sends its SETTINGS frame and the client receives it before its even sent its own.
+        assertSucceeds(self.server.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+
+        // Now the client sends back with an ACK and then sends HEADERS
+        assertSucceeds(self.client.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Now the server receives, sends its ACK back, as well as its response.
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        // Client receives.
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        // Cleanup
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        XCTAssertTrue(self.client.fullyQuiesced)
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testMoreComplexStreamLifecycle() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
+
+        // Now both sides send another DATA frame and then trailers. Oooooh, trailers.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+
+        // Cleanup
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        XCTAssertTrue(self.client.fullyQuiesced)
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testServerCannotInitiateStreamsWithHeaders() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertConnectionError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+    }
+
+    func testSimpleServerPush() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFour = HTTP2StreamID(knownID: 4)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Server cannot push right away
+        assertStreamError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        var tempClient = self.client!
+        assertStreamError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Server sends its headers
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // Server pushes, suceeeds, and completes the pushed response.
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Server attempts to push with invalid stream ID, fails. Client rejects it too.
+        assertConnectionError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders))
+        tempClient = self.client!
+        assertConnectionError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Server attempts to push on stream two, fails. Client rejects it too.
+        assertStreamError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamTwo, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        tempClient = self.client!
+        assertStreamError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamTwo, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Server completes both streams.
+        assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        // Cleanup
+        assertSucceeds(self.client.sendGoaway(lastStreamID: streamTwo).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: streamTwo).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        XCTAssertTrue(self.client.fullyQuiesced)
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testSimpleStreamResetFlow() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        assertSucceeds(self.server.sendRstStream(streamID: streamOne))
+        assertSucceeds(self.client.receiveRstStream(streamID: streamOne))
+
+        // Client attempts to send on this stream fail. Servers ignore the frame.
+        assertConnectionError(type: .streamClosed, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertIgnored(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        XCTAssertTrue(self.client.fullyQuiesced)
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testHeadersOnClosedStreamAfterServerGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
+
+        // Server attempts to send on a closed stream fails, and clients reject that attempt as well.
+        // Client attempts to send on a closed stream fails, but the server ignores such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryClient.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertIgnored(temporaryServer.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+    }
+
+    func testDataOnClosedStreamAfterServerGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
+
+        // Server attempts to send on a closed stream fails, and clients reject that attempt as well.
+        // Client attempts to send on a closed stream fails, but the server ignores such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryClient.receiveData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
+        assertIgnored(temporaryServer.receiveData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
+    }
+
+    func testWindowUpdateOnClosedStreamAfterServerGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
+
+        // Server attempts to send on a closed stream fails, and clients reject that attempt as well.
+        // Client attempts to send on a closed stream fails, but the server ignores such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendWindowUpdate(streamID: streamFive, windowIncrement: 15))
+        assertConnectionError(type: .streamClosed, temporaryClient.receiveWindowUpdate(streamID: streamFive, windowIncrement: 15))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendWindowUpdate(streamID: streamFive, windowIncrement: 15))
+        assertIgnored(temporaryServer.receiveWindowUpdate(streamID: streamFive, windowIncrement: 15))
+    }
+
+    func testRstStreamOnClosedStreamAfterServerGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
+
+        // Server attempts to send on a closed stream fails, and clients reject that attempt as well.
+        // Client attempts to send on a closed stream fails, but the server ignores such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendRstStream(streamID: streamFive))
+        assertConnectionError(type: .streamClosed, temporaryClient.receiveRstStream(streamID: streamFive))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendRstStream(streamID: streamFive))
+        assertIgnored(temporaryServer.receiveRstStream(streamID: streamFive))
+    }
+
+    func testPushesAfterServerGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
+
+        // Server cannot push on the recently closed stream, client rejects it.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendPushPromise(originalStreamID: streamFive, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .streamClosed, temporaryClient.receivePushPromise(originalStreamID: streamFive, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Server can successfully push on still-open stream.
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertSucceeds(temporaryServer.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(temporaryClient.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(temporaryServer.sendPushPromise(originalStreamID: streamThree, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(temporaryClient.receivePushPromise(originalStreamID: streamThree, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+    }
+
+    func testClientMayNotInitiateNewStreamAfterServerGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive], lastStreamID: streamThree, expectedToClose: [streamFive])
+
+        // Client has received GOAWAY, cannot initiate new stream. Server ignores this, as it may have been in flight.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .protocolError, temporaryClient.sendHeaders(streamID: streamSeven, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertIgnored(temporaryServer.receiveHeaders(streamID: streamSeven, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+    }
+
+    func testHeadersOnClosedStreamAfterClientGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamSix = HTTP2StreamID(knownID: 6)
+
+        self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
+
+        // Server attempts to send on a closed stream fails, but clients ignore that attempt.
+        // Client attempts to send on a closed stream fails, and the server rejects such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertIgnored(temporaryClient.receiveHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryServer.receiveHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+    }
+
+    func testDataOnClosedStreamAfterClientGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamSix = HTTP2StreamID(knownID: 6)
+
+        self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
+
+        // Server attempts to send on a closed stream fails, but clients ignore that attempt.
+        // Client attempts to send on a closed stream fails, and the server rejects such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
+        assertIgnored(temporaryClient.receiveData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryServer.receiveData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
+    }
+
+    func testWindowUpdateOnClosedStreamAfterClientGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamSix = HTTP2StreamID(knownID: 6)
+
+        self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
+
+        // Server attempts to send on a closed stream fails, but clients ignore that attempt.
+        // Client attempts to send on a closed stream fails, and the server rejects such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendWindowUpdate(streamID: streamFour, windowIncrement: 15))
+        assertIgnored(temporaryClient.receiveWindowUpdate(streamID: streamFour, windowIncrement: 15))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendWindowUpdate(streamID: streamFour, windowIncrement: 15))
+        assertConnectionError(type: .streamClosed, temporaryServer.receiveWindowUpdate(streamID: streamFour, windowIncrement: 15))
+    }
+
+    func testRstStreamOnClosedStreamAfterClientGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamSix = HTTP2StreamID(knownID: 6)
+
+        self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
+
+        // Server attempts to send on a closed stream fails, but clients ignore that attempt.
+        // Client attempts to send on a closed stream fails, and the server rejects such frames.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryServer.sendRstStream(streamID: streamFour))
+        assertIgnored(temporaryClient.receiveRstStream(streamID: streamFour))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .streamClosed, temporaryClient.sendRstStream(streamID: streamFour))
+        assertConnectionError(type: .streamClosed, temporaryServer.receiveRstStream(streamID: streamFour))
+    }
+
+    func testServerMayNotInitiateNewStreamAfterClientGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamSix = HTTP2StreamID(knownID: 6)
+        let streamEight = HTTP2StreamID(knownID: 8)
+
+        self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
+
+        // Server has received GOAWAY, cannot initiate new stream. Client ignores this, as it may have been in flight.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .protocolError, temporaryServer.sendPushPromise(originalStreamID: streamOne, childStreamID: streamEight, headers: ConnectionStateMachineTests.requestHeaders))
+        assertIgnored(temporaryClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamEight, headers: ConnectionStateMachineTests.requestHeaders))
+    }
+
+    func testSendingFramesBeforePrefaceIsIllegal() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        // We only need one of the state machines here.
+        assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendPing())
+        assertConnectionError(type: .protocolError, self.client.sendPriority())
+        assertConnectionError(type: .protocolError, self.client.sendPushPromise(originalStreamID: streamOne, childStreamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.client.sendRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 15))
+        assertConnectionError(type: .protocolError, self.client.sendGoaway(lastStreamID: streamOne).0)
+    }
+
+    func testSendingFramesBeforePrefaceAfterReceivedPrefaceIsIllegal() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        assertSucceeds(self.client.receiveSettings([], flags: .init(rawValue: 0)))
+
+        // We only need one of the state machines here.
+        assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendPing())
+        assertConnectionError(type: .protocolError, self.client.sendPriority())
+        assertConnectionError(type: .protocolError, self.client.sendPushPromise(originalStreamID: streamOne, childStreamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.client.sendRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 15))
+        assertConnectionError(type: .protocolError, self.client.sendGoaway(lastStreamID: streamOne).0)
+    }
+
+    func testSendingFramesBeforePrefaceAfterReceivedPrefaceAndGoawayIsIllegal() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        assertSucceeds(self.server.receiveSettings([], flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+
+        // We only need one of the state machines here.
+        assertConnectionError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.sendPing())
+        assertConnectionError(type: .protocolError, self.server.sendPriority())
+        assertConnectionError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.server.sendRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 15))
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamOne).0)
+    }
+
+    func testReceivingFramesBeforePrefaceIsIllegal() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        // We only need one of the state machines here.
+        assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.receivePing())
+        assertConnectionError(type: .protocolError, self.client.receivePriority())
+        assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.client.receiveRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 15))
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamOne).0)
+    }
+
+    func testReceivingFramesBeforePrefaceAfterSentPrefaceIsIllegal() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // We only need one of the state machines here.
+        assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.receivePing())
+        assertConnectionError(type: .protocolError, self.client.receivePriority())
+        assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.client.receiveRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 15))
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamOne).0)
+    }
+
+    func testReceivingFramesBeforePrefaceAfterSentPrefaceAndGoawayIsIllegal() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+
+        // We only need one of the state machines here.
+        assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.receivePing())
+        assertConnectionError(type: .protocolError, self.server.receivePriority())
+        assertConnectionError(type: .protocolError, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.server.receiveRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 15))
+        assertConnectionError(type: .protocolError, self.server.receiveGoaway(lastStreamID: streamOne).0)
+    }
+
+    func testRatchetingGoaway() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: [])
+
+        // Now the server ratchets down slowly.
+        for (lastStreamID, dropping) in [(streamFive, streamSeven), (streamThree, streamFive), (streamOne, streamThree), (.rootStream, streamOne)] {
+            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            assertSucceeds(result)
+
+            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            assertSucceeds(result)
+        }
+    }
+
+    func testRatchetingGoawayForBothPeers() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: [])
+
+        // Now the client quiesces the server.
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+
+        // Now the server ratchets down slowly.
+        for (lastStreamID, dropping) in [(streamFive, streamSeven), (streamThree, streamFive), (streamOne, streamThree), (.rootStream, streamOne)] {
+            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            assertSucceeds(result)
+
+            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            assertSucceeds(result)
+        }
+    }
+
+    func testInvalidGoawayFrames() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamThree = HTTP2StreamID(knownID: 3)
+
+        self.exchangePreamble()
+
+        // Client opens streams, server opens one back (just to be safe).
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // The following operations aren't valid transitions from active.
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamTwo).0)
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamTwo).0)
+
+        // Transfer to quiescing.
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        // The following operations are now invalid.
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamTwo).0)
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamTwo).0)
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamThree).0)
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamThree).0)
+    }
+
+    func testCanSendRequestsWithoutReceivingPreface() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        // Client sends preface.
+        assertSucceeds(self.client.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+
+        // Client opens a stream
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        // We can now do all of the streamy things.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertSucceeds(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertSucceeds(self.client.sendRstStream(streamID: streamOne))
+        assertSucceeds(self.server.receiveRstStream(streamID: streamOne))
+
+        // We can also do all the connectiony things.
+        assertSucceeds(self.client.sendPing())
+        assertSucceeds(self.server.receivePing())
+        assertSucceeds(self.client.sendPriority())
+        assertSucceeds(self.server.receivePriority())
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+
+        // Server can bring the connection up by sending its own preface back.
+        assertSucceeds(self.server.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+
+        // Both sides quiesce, which will end the connection.
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        XCTAssertTrue(self.client.fullyQuiesced)
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testCanQuiesceAndSendRequestsWithoutReceivingPreface() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        // Client sends preface.
+        assertSucceeds(self.client.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+
+        // Client quiesces, then opens a stream.
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        // We can now do all of the streamy things.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertSucceeds(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertSucceeds(self.client.sendRstStream(streamID: streamOne))
+        assertSucceeds(self.server.receiveRstStream(streamID: streamOne))
+
+        // We can also do all the connectiony things.
+        assertSucceeds(self.client.sendPing())
+        assertSucceeds(self.server.receivePing())
+        assertSucceeds(self.client.sendPriority())
+        assertSucceeds(self.server.receivePriority())
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+    }
+
+    func testFullyQuiescedConnection() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFour = HTTP2StreamID(knownID: 4)
+
+        self.exchangePreamble()
+
+        // Client opens a stream, so does the server.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Both sides quiesce this.
+        assertSucceeds(self.client.sendGoaway(lastStreamID: streamTwo).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: streamTwo).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+
+        // All the streamy operations work on stream one except push promise.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertSucceeds(self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertSucceeds(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertSucceeds(self.client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+
+        assertSucceeds(self.client.sendRstStream(streamID: streamTwo))
+        assertSucceeds(self.server.sendRstStream(streamID: streamTwo))
+        assertIgnored(self.server.receiveRstStream(streamID: streamTwo))
+        assertIgnored(self.client.receiveRstStream(streamID: streamTwo))
+
+        // All the connection operations still work.
+        assertSucceeds(self.client.sendPing())
+        assertSucceeds(self.server.sendPing())
+        assertSucceeds(self.server.receivePing())
+        assertSucceeds(self.client.receivePing())
+        assertSucceeds(self.client.sendPriority())
+        assertSucceeds(self.server.sendPriority())
+        assertSucceeds(self.server.receivePriority())
+        assertSucceeds(self.client.receivePriority())
+
+        // But the server cannot push a new stream.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+
+        assertConnectionError(type: .protocolError, temporaryServer.sendPushPromise(originalStreamID: streamOne, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        assertIgnored(temporaryClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // And the client cannot initiate a new stream with headers.
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .protocolError, temporaryClient.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertIgnored(temporaryServer.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        XCTAssertFalse(self.server.fullyQuiesced)
+        XCTAssertFalse(self.client.fullyQuiesced)
+
+        // Resetting the remaining active stream closes the connection.
+        assertSucceeds(self.server.sendRstStream(streamID: streamOne))
+        assertSucceeds(self.client.receiveRstStream(streamID: streamOne))
+
+        XCTAssertTrue(self.server.fullyQuiesced)
+        XCTAssertTrue(self.client.fullyQuiesced)
+    }
+
+    func testImplicitConnectionCompletion() {
+        // Connections can become totally idle by way of the server quiescing the client, and then having no outstanding streams.
+        // This test validates that we spot it and consider the connection closed at this stage.
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        // Client opens a stream.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server sends goaway.
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        XCTAssertFalse(self.client.fullyQuiesced)
+        XCTAssertFalse(self.server.fullyQuiesced)
+
+        // Ok, there are two ways this stream can be closed: via headers, or via rst_stream. Either of these should cause the connection to be closed.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertSucceeds(temporaryServer.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(temporaryClient.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        XCTAssertTrue(temporaryServer.fullyQuiesced)
+        XCTAssertTrue(temporaryClient.fullyQuiesced)
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertSucceeds(temporaryServer.sendRstStream(streamID: streamOne))
+        assertSucceeds(temporaryClient.receiveRstStream(streamID: streamOne))
+        XCTAssertTrue(temporaryServer.fullyQuiesced)
+        XCTAssertTrue(temporaryClient.fullyQuiesced)
+    }
+
+    func testClosedStreamsForbidAllActivity() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        self.exchangePreamble()
+
+        // Close the connection by quiescing from server.
+        assertSucceeds(self.server.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: .rootStream).0)
+
+        // Stream specific things don't work.
+        assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertConnectionError(type: .protocolError, self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertConnectionError(type: .protocolError, self.client.sendRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.server.receiveRstStream(streamID: streamOne))
+        assertConnectionError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Connectiony things don't work either.
+        assertConnectionError(type: .protocolError, self.client.sendPing())
+        assertConnectionError(type: .protocolError, self.server.receivePing())
+        assertConnectionError(type: .protocolError, self.client.sendPriority())
+        assertConnectionError(type: .protocolError, self.server.receivePriority())
+        assertConnectionError(type: .protocolError, self.client.sendSettings([]))
+        assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .init()))
+
+        // Duplicate goaway is cool though.
+        assertIgnored(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertIgnored(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+    }
+
+    func testPushesAfterSendingPrefaceAreInvalid() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        // Server sends its preface.
+        assertSucceeds(self.server.sendSettings(HTTP2Settings()))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+
+        // Pushing in this state fails.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .protocolError, temporaryServer.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, temporaryClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+    }
+
+    func testClientsMayNotPush() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        // Client sends its preface.
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+
+        // The client may not push here.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .protocolError, temporaryClient.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, temporaryServer.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // What if the client now quiesced?
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertSucceeds(temporaryClient.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(temporaryServer.receiveGoaway(lastStreamID: .rootStream).0)
+        assertConnectionError(type: .protocolError, temporaryClient.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, temporaryServer.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // What if the client became active?
+        assertSucceeds(self.server.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings([], flags: .ack))
+        assertSucceeds(self.client.receiveSettings([], flags: .init()))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertConnectionError(type: .protocolError, temporaryClient.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, temporaryServer.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+    }
+
+    func testMaySendSettingsInAllStates() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        // During setup, we can send settings.
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+
+        // If we quiesce during setup we can still send settings.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertSucceeds(temporaryClient.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(temporaryServer.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(temporaryClient.sendSettings([]))
+        assertSucceeds(temporaryServer.receiveSettings([], flags: .init()))
+        assertSucceeds(temporaryServer.sendSettings([]))
+        assertSucceeds(temporaryClient.receiveSettings([], flags: .init()))
+
+        // We can also activate.
+        assertSucceeds(self.server.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings([], flags: .ack))
+        assertSucceeds(self.client.receiveSettings([], flags: .init()))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+
+        // When active we can send settings.
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertSucceeds(temporaryClient.sendSettings([]))
+        assertSucceeds(temporaryServer.receiveSettings([], flags: .init()))
+        assertSucceeds(temporaryServer.sendSettings([]))
+        assertSucceeds(temporaryClient.receiveSettings([], flags: .init()))
+
+        // When quiesced by one peer we can send settings.
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.server.sendSettings([]))
+        assertSucceeds(self.client.receiveSettings([], flags: .init()))
+
+        // Bring up a stream just to keep the system from shutting down.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Now quiesce the other way. We can still send settings.
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.server.sendSettings([]))
+        assertSucceeds(self.client.receiveSettings([], flags: .init()))
+    }
+
+    func testValidatingFlowControlOnFullyActiveConnections() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // The default value of the flow control window is 65535. So let's see if we can hit it. First, let's send 65535 bytes from client to server.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 65535, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 65535, isEndStreamSet: false))
+
+        // Now the server opens the *stream window only*.
+        assertSucceeds(self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 1000))
+        assertSucceeds(self.client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1000))
+
+        // The client cannot send more than one byte on this stream.
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+        assertConnectionError(type: .flowControlError, temporaryClient.sendData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+        assertConnectionError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+
+        // Now the server opens the connection flow control window.
+        assertSucceeds(self.server.sendWindowUpdate(streamID: .rootStream, windowIncrement: 65535))
+        assertSucceeds(self.client.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 65535))
+
+        // The client may now send 1000 bytes.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+
+        // But any attempt to send more fails, again.
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertStreamError(type: .flowControlError, temporaryClient.sendData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+        assertStreamError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+
+        // The server can increase the flow control window by sending a SETTINGS frame with the appropriate new setting.
+        // This adds 1000 to the window size.
+        assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)]))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init()))
+
+        // In this state, the client may send new data, but if the server doesn't receive the ACK first it holds the client to the new value.
+        temporaryServer = self.server!
+        temporaryClient = self.client!
+        assertSucceeds(temporaryClient.sendData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertStreamError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+
+        // Once the server receives the ACK, it's fine.
+        assertSucceeds(self.server.receiveSettings([], flags: .ack))
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+
+        // Open the flow control window of the stream.
+        assertSucceeds(self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 65535))
+        assertSucceeds(self.client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 65535))
+
+        // At this stage the stream has a window size of 65535, but the connection should not have gained the extra 2000 bytes from the change in
+        // SETTINGS_INITIAL_WINDOW_SIZE, so it should have a size of 63535. Verify this by exceeding it.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 63535, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 63535, isEndStreamSet: false))
+        assertConnectionError(type: .flowControlError, self.client.sendData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+        assertConnectionError(type: .flowControlError, self.server.receiveData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+    }
+
+    func testTrailersWithoutData() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+    }
+
+    func testServerResponseEndsBeforeRequestFinishes() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
+    }
+
+    func testPushedResponsesMayHaveBodies() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendData(streamID: streamTwo, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamTwo, flowControlledBytes: 1024, isEndStreamSet: true))
+    }
+
+    func testDataFramesWithoutEndStream() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        // We can send some DATA frames while only the client has opened.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+
+        // We can send some more while the server has opened.
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+
+        // And we can send some after the server is done.
+        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+    }
+
+    func testSendingCompleteRequestBeforeResponse() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        // We can send a complete request before the remote peer sends us anything.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
+
+        // The remote peer can then respond.
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+    }
+
+    func testWindowUpdateValidity() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        self.exchangePreamble()
+
+        // WindowUpdate frames are valid in a wide range of states. This test validates them in all of them, including proving that errors are correctly reported.
+        func assertCanWindowUpdate(client: HTTP2ConnectionStateMachine, server: HTTP2ConnectionStateMachine, file: StaticString = #file, line: UInt = #line) {
+            var client = client
+            var server = server
+
+            assertSucceeds(client.sendWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
+            assertSucceeds(server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
+            assertStreamError(type: .flowControlError, client.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
+            assertStreamError(type: .flowControlError, server.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
+
+            assertSucceeds(server.sendWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
+            assertSucceeds(client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
+            assertStreamError(type: .flowControlError, server.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
+            assertStreamError(type: .flowControlError, client.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
+        }
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertCanWindowUpdate(client: self.client, server: self.server)
+
+        var tempClient = self.client!
+        var tempServer = self.server!
+
+        // If we close the client side of the stream, it's ok for the client to send. The server may not send, but the client will tolerate it.
+        assertSucceeds(tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+
+        assertSucceeds(tempClient.sendWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertSucceeds(tempServer.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertStreamError(type: .flowControlError, tempClient.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
+        assertStreamError(type: .flowControlError, tempServer.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
+        assertStreamError(type: .protocolError, tempServer.sendWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertSucceeds(tempClient.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertStreamError(type: .protocolError, tempServer.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
+        assertSucceeds(tempClient.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max))) // Weird, but we don't have the data to enforce this.
+
+        // If the server is active, it's fine.
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertCanWindowUpdate(client: self.client, server: self.server)
+
+        // If we close now it's ok for the client to send. The server may not send, but the client will tolerate it.
+        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        tempClient = self.client!
+        tempServer = self.server!
+        assertSucceeds(tempClient.sendWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertSucceeds(tempServer.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertStreamError(type: .flowControlError, tempClient.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
+        assertStreamError(type: .flowControlError, tempServer.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
+        assertStreamError(type: .protocolError, server.sendWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertSucceeds(client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertStreamError(type: .protocolError, server.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
+        assertSucceeds(client.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))  // Weird, but we don't have the data to enforce this.
+
+        // What if the server pushes? This one is actually a bit tricky: the client is allowed to, but the server is not.
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        tempClient = self.client!
+        tempServer = self.server!
+        assertSucceeds(tempClient.sendWindowUpdate(streamID: streamTwo, windowIncrement: 15))
+        assertSucceeds(tempServer.receiveWindowUpdate(streamID: streamTwo, windowIncrement: 15))
+        assertStreamError(type: .flowControlError, tempClient.sendWindowUpdate(streamID: streamTwo, windowIncrement: UInt32(Int32.max)))
+        assertStreamError(type: .flowControlError, tempServer.receiveWindowUpdate(streamID: streamTwo, windowIncrement: UInt32(Int32.max)))
+        assertStreamError(type: .protocolError, tempServer.sendWindowUpdate(streamID: streamTwo, windowIncrement: 15))
+        assertStreamError(type: .protocolError, tempClient.receiveWindowUpdate(streamID: streamTwo, windowIncrement: 15))
+    }
+
+    func testWindowIncrementsOfSizeZeroArentOk() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        var tempClient = self.client!
+        var tempServer = self.server!
+        assertStreamError(type: .protocolError, tempClient.sendWindowUpdate(streamID: streamOne, windowIncrement: 0))
+        assertStreamError(type: .protocolError, tempServer.receiveWindowUpdate(streamID: streamOne, windowIncrement: 0))
+
+        tempClient = self.client!
+        tempServer = self.server!
+        assertConnectionError(type: .protocolError, tempClient.sendWindowUpdate(streamID: .rootStream, windowIncrement: 0))
+        assertConnectionError(type: .protocolError, tempServer.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 0))
+    }
+
+    func testCannotSendDataFrames() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        self.exchangePreamble()
+
+        // There are many states where we cannot send DATA frames.
+        var tempClient = self.client!
+        var tempServer = self.server!
+
+        // We can't do it before we've opened a stream.
+        assertConnectionError(type: .protocolError, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // We can't send it after we have sent end stream, or before we've sent our headers.
+        tempClient = self.client!
+        tempServer = self.server!
+        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempClient.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // The client still can't do it, regardless of what the server just did.
+        tempClient = self.client!
+        tempServer = self.server!
+        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // The client can't send on pushed streams either.
+        tempClient = self.client!
+        tempServer = self.server!
+        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: true))
+
+        // Neither peer can send on closed streams.
+        tempClient = self.client!
+        tempServer = self.server!
+        assertConnectionError(type: .streamClosed, tempClient.sendData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .streamClosed, tempServer.receiveData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .streamClosed, tempServer.sendData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .streamClosed, tempClient.receiveData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
+    }
+
+    func testChangingInitialWindowSizeLotsOfStreams() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamFive = HTTP2StreamID(knownID: 5)
+        let streamSeven = HTTP2StreamID(knownID: 7)
+
+        self.exchangePreamble()
+
+        // We're going to set up several streams in different states, and then mess with the flow control window in all of them at the same time.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamSeven, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamSeven, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamSeven, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamSeven, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamFive, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamFive, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamFive, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamFive, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.server.sendHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // We're going to update the initial window size, adding 1000 to it. This should update for every stream. We do this both ways.
+        assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)]))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init()))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+
+        assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)]))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init()))
+        assertSucceeds(self.server.receiveSettings([], flags: .ack))
+
+        // We're also adding 10000 to the connection window to get it out of the way.
+        assertSucceeds(self.client.sendWindowUpdate(streamID: .rootStream, windowIncrement: 10000))
+        assertSucceeds(self.server.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 10000))
+        assertSucceeds(self.server.sendWindowUpdate(streamID: .rootStream, windowIncrement: 10000))
+        assertSucceeds(self.client.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 10000))
+
+        // For streams one, three, and two the server is going to send headers. The goal is to have all streams be active for the server to send a data frame.
+        for streamID in [streamOne, streamThree, streamTwo] {
+            assertSucceeds(self.server.sendHeaders(streamID: streamID, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+            assertSucceeds(self.client.receiveHeaders(streamID: streamID, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        }
+
+        // Now the server is going to send data frames for 66535 bytes, consuming the stream window. It'll then prove it by sending one more byte and failing.
+        for streamID in [streamOne, streamTwo, streamThree, streamFour, streamFive, streamSeven] {
+            var tempClient = self.client!
+            var tempServer = self.server!
+            assertSucceeds(tempServer.sendData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertSucceeds(tempClient.receiveData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempServer.sendData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempClient.receiveData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
+        }
+
+        // The client can only send on streams three and five, but it will.
+        for streamID in [streamThree, streamFive] {
+            var tempClient = self.client!
+            var tempServer = self.server!
+            assertSucceeds(tempClient.sendData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertSucceeds(tempServer.receiveData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempClient.sendData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempServer.receiveData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
+        }
+    }
+
+    func testTooManyHeadersArentOk() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Client cannot send more headers on stream one
+        var tempClient = self.client!
+        var tempServer = self.server!
+        assertStreamError(type: .protocolError, tempClient.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, tempServer.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+
+        // Client could never send headers on stream two
+        tempClient = self.client!
+        tempServer = self.server!
+        assertStreamError(type: .protocolError, tempClient.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, tempServer.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+    }
+
+    func testInvalidChangesToConnectionFlowControlWindow() {
+        self.exchangePreamble()
+
+        // The client cannot send window updates that take us past Int32.max. The default size is 65535. Let's try to take us one past this.
+        let update = UInt32(Int32.max) - 65535 + 1
+        assertConnectionError(type: .flowControlError, self.client.sendWindowUpdate(streamID: .rootStream, windowIncrement: update))
+        assertConnectionError(type: .flowControlError, self.server.receiveWindowUpdate(streamID: .rootStream, windowIncrement: update))
+
+        // It's also forbidden to send window updates of size 0.
+        assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: .rootStream, windowIncrement: 0))
+        assertConnectionError(type: .protocolError, self.server.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 0))
+    }
+
+    func testSettingsACKWithoutOutstandingSettingsIsAnError() {
+        self.exchangePreamble()
+
+        // We don't keep track of un-acked settings on the receive side and don't provide a "sendSettingsAck" function.
+        assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .ack))
+    }
+
+    func testClientsMustCreateStreamsWithOddStreamIDs() {
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        self.exchangePreamble()
+
+        assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+    }
+
+    func testClientsServersMayNotCreateStreamsBackwards() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamFour = HTTP2StreamID(knownID: 4)
+
+        self.exchangePreamble()
+
+        // Client opens stream 3, server opens stream four.
+        assertSucceeds(self.client.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamThree, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamThree, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Client may not open stream one now!
+        var tempClient = self.client!
+        var tempServer = self.server!
+        assertConnectionError(type: .protocolError, tempClient.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .protocolError, tempServer.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+
+        // Server may not open stream two now.
+        tempClient = self.client!
+        tempServer = self.server!
+        assertConnectionError(type: .protocolError, tempServer.sendPushPromise(originalStreamID: streamThree, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamThree, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+    }
+
+    func testUnknownSettingsAreIgnored() {
+        self.exchangePreamble()
+
+        assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .init(extensionSetting: 88), value: 65536)]))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .init(extensionSetting: 88), value: 65536)], flags: .init()))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+    }
+
+    func testMaxConcurrentStreamsEnforcement() {
+        // Client is going to set SETTINGS_MAX_CONCURRENT_STREAMS to 5, server will set it to 50.
+        assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)], flags: .init(rawValue: 0)))
+
+        assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 50)]))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 50)], flags: .init(rawValue: 0)))
+
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+
+        // Firstly, the client will create 50 streams. This should work just fine.
+        let clientStreamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID(knownID: $0) }
+        let serverStreamIDs = stride(from: 2, to: 11, by: 2).map { HTTP2StreamID(knownID: $0) }
+
+        for streamID in clientStreamIDs {
+            assertSucceeds(self.client.sendHeaders(streamID: streamID, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+            assertSucceeds(self.server.receiveHeaders(streamID: streamID, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+            assertSucceeds(self.server.sendHeaders(streamID: streamID, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+            assertSucceeds(self.client.receiveHeaders(streamID: streamID, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        }
+
+        // The server will now create its 5.
+        for streamID in serverStreamIDs {
+            assertSucceeds(self.server.sendPushPromise(originalStreamID: clientStreamIDs.first!, childStreamID: streamID, headers: ConnectionStateMachineTests.requestHeaders))
+            assertSucceeds(self.client.receivePushPromise(originalStreamID: clientStreamIDs.first!, childStreamID: streamID, headers: ConnectionStateMachineTests.requestHeaders))
+        }
+
+        // Neither the client nor the server can create new streams
+        let stream101 = HTTP2StreamID(knownID: 101)
+        let stream12 = HTTP2StreamID(knownID: 12)
+
+        var tempClient = self.client!
+        var tempServer = self.server!
+        assertConnectionError(type: .protocolError, tempClient.sendHeaders(streamID: stream101, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .protocolError, tempServer.receiveHeaders(streamID: stream101, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        tempClient = self.client!
+        tempServer = self.server!
+        assertConnectionError(type: .protocolError, tempServer.sendPushPromise(originalStreamID: clientStreamIDs.first!, childStreamID: stream12, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: clientStreamIDs.first!, childStreamID: stream12, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // We can drop the value of SETTINGS_MAX_CONCURRENT_STREAMS without error.
+        assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 2)]))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 2)], flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+
+        // The server can now cleanly close all but two of the existing streams.
+        for streamID in clientStreamIDs.dropLast(2) {
+            assertSucceeds(self.server.sendHeaders(streamID: streamID, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+            assertSucceeds(self.client.receiveHeaders(streamID: streamID, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        }
+
+        // The client still cannot initiate new streams here.
+        tempClient = self.client!
+        tempServer = self.server!
+        assertConnectionError(type: .protocolError, tempClient.sendHeaders(streamID: stream101, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertConnectionError(type: .protocolError, tempServer.receiveHeaders(streamID: stream101, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server can now drop one more stream.
+        assertSucceeds(self.server.sendHeaders(streamID: clientStreamIDs.last!, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: clientStreamIDs.last!, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+
+        // Now the client can open a new one!
+        assertSucceeds(self.client.sendHeaders(streamID: stream101, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: stream101, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+    }
+
+    func testDisablingPushPreventsPush() {
+        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamTwo = HTTP2StreamID(knownID: 2)
+
+        // Client is going to set SETTINGS_ENABLE_PUSH to false.
+        assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 0)]))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 0)], flags: .init(rawValue: 0)))
+
+        assertSucceeds(self.server.sendSettings([]))
+        assertSucceeds(self.client.receiveSettings([], flags: .init(rawValue: 0)))
+
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+
+        // Client initiates a stream.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // Server may not push.
+        var tempClient = self.client!
+        var tempServer = self.server!
+        assertConnectionError(type: .protocolError, tempServer.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Client can re-enable push.
+        assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 1)]))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 1)], flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+
+        // Push is now allowed.
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Out-of-bounds push values are forbidden.
+        assertConnectionError(type: .protocolError, self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 2)]))
+        assertConnectionError(type: .protocolError, self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 2)], flags: .init(rawValue: 0)))
+    }
+}
+

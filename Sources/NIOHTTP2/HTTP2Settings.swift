@@ -13,6 +13,11 @@
 //===----------------------------------------------------------------------===//
 import CNIONghttp2
 
+/// A collection of HTTP/2 settings.
+///
+/// This is a typealias because we may change this into a custom structure at some stage.
+public typealias HTTP2Settings = [HTTP2Setting]
+
 /// A HTTP/2 settings parameter that allows representing both known and unknown HTTP/2
 /// settings parameters.
 public struct HTTP2SettingsParameter {
