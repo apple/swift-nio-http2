@@ -102,6 +102,29 @@ extension HTTP2StreamID: Hashable {
 }
 
 
+// MARK:- Comparable conformance for HTTP2StreamID
+//
+// TODO(cory): Rewrite this when we can abandon this insane representation.
+extension HTTP2StreamID: Comparable {
+    public static func <(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        switch (lhs.networkStreamID, rhs.networkStreamID) {
+        case (.none, .none):
+            // Worst-case, neither has reached the network yet. In this case we aim to get a stable sort
+            // by ordering the object identifier.
+            return ObjectIdentifier(lhs) < ObjectIdentifier(rhs)
+        case (.none, .some):
+            // The lhs has not seen the network yet, so it's larger than any hypothetical rhs.
+            return false
+        case (.some, .none):
+            // The rhs has not seen the network yet, so it's larger than any hypothetical rhs.
+            return true
+        case (.some(let l), .some(let r)):
+            return l < r
+        }
+    }
+}
+
+
 extension HTTP2StreamID: CustomDebugStringConvertible {
     public var debugDescription: String {
         var streamIDDescription: String = "unknown"
