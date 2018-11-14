@@ -65,7 +65,15 @@ public class HTTP2StreamID {
     ///
     /// This is used to initialize the global "stream 0" stream ID.
     internal init(knownID: Int32) {
+        precondition(knownID >= 0)
         self.actualStreamID = knownID
+    }
+    
+    /// Create a `HTTP2StreamID` from a 32-bit value received as part of a frame.
+    ///
+    /// This will ignore the most significant bit of the provided value.
+    internal init(networkID: UInt32) {
+        self.actualStreamID = Int32(networkID & ~0x8000_0000)
     }
 
     /// The stream ID used on the network, if there is one.
@@ -82,14 +90,23 @@ public class HTTP2StreamID {
     /// Resolve the abstract stream ID to a real one.
     internal func resolve(to newID: Int32) {
         precondition(self.actualStreamID == -1)
+        precondition(newID > 0)
         self.actualStreamID = newID
     }
 }
 
 // MARK:- Equatable conformance for HTTP2StreamID
 extension HTTP2StreamID: Equatable {
-    public static func ==(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        return lhs === rhs
+    public static func == (lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        switch (lhs.networkStreamID, rhs.networkStreamID) {
+        case (.none, .none):
+            /// old functionality: compare addresses
+            return lhs === rhs
+        case (.none, .some), (.some, .none):
+            return false
+        case (.some(let l), .some(let r)):
+            return l == r
+        }
     }
 }
 

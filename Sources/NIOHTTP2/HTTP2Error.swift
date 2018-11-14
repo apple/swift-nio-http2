@@ -59,6 +59,30 @@ public enum NIOHTTP2Errors {
             self.nghttp2ErrorCode = nghttp2ErrorCode
         }
     }
+    
+    public struct StreamError: NIOHTTP2Error {
+        public var code: HTTP2ErrorCode
+        
+        public init(code: HTTP2ErrorCode) {
+            self.code = code
+        }
+    }
+    
+    public struct ConnectionError: NIOHTTP2Error {
+        public var code: HTTP2ErrorCode
+        
+        public init(code: HTTP2ErrorCode) {
+            self.code = code
+        }
+    }
+    
+    public struct Unsupported: NIOHTTP2Error {
+        public var info: String
+        
+        internal init(info: String) {
+            self.info = info
+        }
+    }
 }
 
 

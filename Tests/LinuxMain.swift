@@ -30,6 +30,7 @@ import XCTest
          testCase(BasicTests.allTests),
          testCase(HPACKCodingTests.allTests),
          testCase(HPACKIntegrationTests.allTests),
+         testCase(HTTP2FrameParserTests.allTests),
          testCase(HTTP2StreamMultiplexerTests.allTests),
          testCase(HTTP2ToHTTP1CodecTests.allTests),
          testCase(HeaderTableTests.allTests),

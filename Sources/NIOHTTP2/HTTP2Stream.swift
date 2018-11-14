@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import NIOHTTP1
+import NIOHPACK
 
 private extension HTTPHeaders {
     /// Whether this `HTTPHeaders` corresponds to a final response or not.
