@@ -48,6 +48,7 @@ extension SimpleClientServerTests {
                 ("testFailingUnflushedWritesForGoaway", testFailingUnflushedWritesForGoaway),
                 ("testFailingFlushedWritesForGoaway", testFailingFlushedWritesForGoaway),
                 ("testSendingTrailers", testSendingTrailers),
+                ("testSendingTrailersWhenDataProviderIsIdle", testSendingTrailersWhenDataProviderIsIdle),
                 ("test1XXResponseHeaderFields", test1XXResponseHeaderFields),
                 ("testPriorityFramesAreNotEmitted", testPriorityFramesAreNotEmitted),
                 ("testStreamClosedWithNoError", testStreamClosedWithNoError),
