@@ -693,6 +693,14 @@ class NGHTTP2Session {
             // TODO(cory): Error handling.
             precondition(isEndStream)
             streamData.dataProvider.bufferEOF(trailers: headers)
+
+            if case .pending = streamData.dataProvider.state {
+                // The data provider is currently in the pending state, we need to tell nghttp2 it's active again so
+                // the trailers get emitted.
+                let rc = nghttp2_session_resume_data(self.session, frame.streamID.networkStreamID!)
+                precondition(rc == 0)
+                streamData.dataProvider.didResume()
+            }
             return
         }
 
