@@ -75,6 +75,17 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         ctx.write(data, promise: promise)
     }
 
+    public func channelActive(ctx: ChannelHandlerContext) {
+        // We just got channelActive. Any previously existing channels may be marked active.
+        for channel in self.streams.values {
+            // We double-check the channel activity here, because it's possible action taken during
+            // the activation of one of the child channels will cause the parent to close!
+            if ctx.channel.isActive {
+                channel.performActivation()
+            }
+        }
+    }
+
     public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
         // The only event we care about right now is StreamClosedEvent, and in particular
         // we only care about it if we still have the stream channel for the stream
