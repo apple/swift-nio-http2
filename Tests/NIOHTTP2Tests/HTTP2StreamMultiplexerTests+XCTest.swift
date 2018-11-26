@@ -54,6 +54,9 @@ extension HTTP2StreamMultiplexerTests {
                 ("testWritesOnCreatedChannelAreDelayed", testWritesOnCreatedChannelAreDelayed),
                 ("testWritesAreCancelledOnFailingInitializer", testWritesAreCancelledOnFailingInitializer),
                 ("testFailingInitializerDoesNotWrite", testFailingInitializerDoesNotWrite),
+                ("testCreatedChildChannelDoesNotActivateEarly", testCreatedChildChannelDoesNotActivateEarly),
+                ("testCreatedChildChannelActivatesIfParentIsActive", testCreatedChildChannelActivatesIfParentIsActive),
+                ("testInitiatedChildChannelActivates", testInitiatedChildChannelActivates),
            ]
    }
 }
