@@ -16,7 +16,6 @@ import NIO
 import CNIONghttp2
 import NIOHTTP1
 
-
 fileprivate extension HTTPHeaders {
     fileprivate init(requestHead: HTTPRequestHead, protocolString: String) {
         self.init()

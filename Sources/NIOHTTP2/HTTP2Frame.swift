@@ -14,6 +14,7 @@
 
 import NIO
 import NIOHTTP1
+import NIOHPACK
 import CNIONghttp2
 
 /// A representation of a single HTTP/2 frame.
@@ -41,7 +42,7 @@ public struct HTTP2Frame {
         /// frames into a single `FramePayload.headers` instance.
         ///
         /// See [RFC 7540 § 6.2](https://httpwg.org/specs/rfc7540.html#rfc.section.6.2).
-        case headers(HTTPHeaders)
+        case headers(HPACKHeaders)
         
         /// A PRIORITY frame, used to change priority and dependency ordering among
         /// streams.
