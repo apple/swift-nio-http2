@@ -39,7 +39,7 @@ private func withCallbacks<T>(fn: (OpaquePointer) throws -> T) rethrows -> T {
         nghttp2_session_callbacks_del(nghttp2Callbacks)
     }
 
-    nghttp2_session_callbacks_set_error_callback(nghttp2Callbacks, errorCallback)
+    CNIONghttp2_nghttp2_session_callbacks_set_error_callback(nghttp2Callbacks, errorCallback)
     nghttp2_session_callbacks_set_on_frame_recv_callback(nghttp2Callbacks, onFrameRecvCallback)
     nghttp2_session_callbacks_set_on_begin_frame_callback(nghttp2Callbacks, onBeginFrameCallback)
     nghttp2_session_callbacks_set_on_data_chunk_recv_callback(nghttp2Callbacks, onDataChunkRecvCallback)
