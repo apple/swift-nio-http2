@@ -15,6 +15,7 @@
 import XCTest
 import NIO
 import NIOHTTP1
+import CNIONghttp2
 @testable import NIOHTTP2
 
 /// A channel handler that passes writes through but fires EOF once the first one hits.
@@ -275,9 +276,8 @@ class SimpleClientServerTests: XCTestCase {
         self.serverChannel.writeAndFlush(goAwayFrame, promise: nil)
         self.interactInMemory(self.clientChannel, self.serverChannel)
 
-        // The client should not receive this GOAWAY frame, as it has shut down.
-        self.clientChannel.assertNoFramesReceived()
-
+        // In some nghttp2 versions the client will receive a GOAWAY, in others
+        // it will not. There is no meaningful assertion to apply here.
         // All should be good.
         self.serverChannel.assertNoFramesReceived()
         XCTAssertNoThrow(try self.clientChannel.finish())
@@ -969,9 +969,8 @@ class SimpleClientServerTests: XCTestCase {
         // The data frame write should have exploded. nghttp2 synthesises an error code for this.
         XCTAssertEqual((writeError as? NIOHTTP2Errors.StreamClosed)?.streamID, clientStreamID)
 
-        // No other frames should be emitted.
-        self.clientChannel.assertNoFramesReceived()
-        self.serverChannel.assertNoFramesReceived()
+        // No other frames should be emitted, but we're ok if they were: depending on performance
+        // we may see a WINDOW_UPDATE or two here depending on timings.
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
@@ -1000,7 +999,18 @@ class SimpleClientServerTests: XCTestCase {
         let respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
         var respTrailersFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(trailers))
         respTrailersFrame.flags.insert(.endStream)
-        try self.assertFramesRoundTrip(frames: [respFrame, respTrailersFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // v1.11.0 onwards don't send a 0-length DATA frame here, but earlier ones do. We send it explicitly to get
+        // the output to match on all platforms.
+        let expectedFrames: [HTTP2Frame]
+        if CNIONghttp2_nghttp2_version_number() < 0x011100 {
+            let emptyDataFrame = HTTP2Frame(streamID: serverStreamID, payload: .data(.byteBuffer(self.serverChannel.allocator.buffer(capacity: 0))))
+            expectedFrames = [respFrame, emptyDataFrame, respTrailersFrame]
+        } else {
+            expectedFrames = [respFrame, respTrailersFrame]
+        }
+
+        try self.assertFramesRoundTrip(frames: expectedFrames, sender: self.serverChannel, receiver: self.clientChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
@@ -1026,8 +1036,15 @@ class SimpleClientServerTests: XCTestCase {
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
-        // Now we can send the next trailers.
-        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [trailerFrame], sender: self.clientChannel, receiver: self.serverChannel))
+        // Now we can send the next trailers. Again, old versions of nghttp2 send an empty data frame here too.
+        var expectedFrames: [HTTP2Frame]
+        if CNIONghttp2_nghttp2_version_number() < 0x011100 {
+            let emptyDataFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(self.clientChannel.allocator.buffer(capacity: 0))))
+            expectedFrames = [emptyDataFrame, trailerFrame]
+        } else {
+            expectedFrames = [trailerFrame]
+        }
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: expectedFrames, sender: self.clientChannel, receiver: self.serverChannel))
 
         // Let's send a quick response back. This response should also contain trailers.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
@@ -1035,7 +1052,14 @@ class SimpleClientServerTests: XCTestCase {
         var respTrailersFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(trailers))
         respTrailersFrame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel))
-        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [respTrailersFrame], sender: self.serverChannel, receiver: self.clientChannel))
+
+        if CNIONghttp2_nghttp2_version_number() < 0x011100 {
+            let emptyDataFrame = HTTP2Frame(streamID: serverStreamID, payload: .data(.byteBuffer(self.serverChannel.allocator.buffer(capacity: 0))))
+            expectedFrames = [emptyDataFrame, respTrailersFrame]
+        } else {
+            expectedFrames = [respTrailersFrame]
+        }
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: expectedFrames, sender: self.serverChannel, receiver: self.clientChannel))
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
