@@ -29,6 +29,7 @@ import XCTest
    XCTMain([
          testCase(BasicTests.allTests),
          testCase(ConnectionStateMachineTests.allTests),
+         testCase(FlowControlHandlerTests.allTests),
          testCase(HPACKCodingTests.allTests),
          testCase(HPACKIntegrationTests.allTests),
          testCase(HTTP2StreamMultiplexerTests.allTests),
