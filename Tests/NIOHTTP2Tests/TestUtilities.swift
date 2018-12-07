@@ -23,6 +23,7 @@ import XCTest
 import NIO
 import NIOHTTP1
 import NIOHTTP2
+import NIOHPACK
 
 struct NoFrameReceived: Error { }
 
@@ -197,20 +198,22 @@ extension HTTP2Frame {
 
     /// Asserts that a given frame is a HEADERS frame matching this one.
     func assertHeadersFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
-        guard case .headers(let payload) = frame.payload else {
+        guard case .headers(let payload, let priority) = frame.payload else {
             preconditionFailure("Headers frames can never match non-headers frames")
         }
         self.assertHeadersFrame(endStream: frame.flags.contains(.endStream),
                                 streamID: frame.streamID.networkStreamID!,
                                 payload: payload,
+                                priority: priority,
                                 file: file,
                                 line: line)
     }
 
     /// Asserts the given frame is a HEADERS frame.
-    func assertHeadersFrame(endStream: Bool, streamID: Int32, payload: HTTPHeaders,
+    func assertHeadersFrame(endStream: Bool, streamID: Int32, payload: HPACKHeaders,
+                            priority: HTTP2Frame.StreamPriorityData? = nil,
                             file: StaticString = #file, line: UInt = #line) {
-        guard case .headers(let actualPayload) = self.payload else {
+        guard case .headers(let actualPayload, let actualPriority) = self.payload else {
             XCTFail("Expected HEADERS frame, got \(self.payload) instead", file: file, line: line)
             return
         }
@@ -220,6 +223,7 @@ extension HTTP2Frame {
         XCTAssertEqual(self.streamID.networkStreamID!, streamID,
                        "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
         XCTAssertEqual(payload, actualPayload, "Non-equal payloads: expected \(payload), got \(actualPayload)", file: file, line: line)
+        XCTAssertEqual(priority, actualPriority, "Non-equal priorities: expected \(String(describing: priority)), got \(String(describing: actualPriority))", file: file, line: line)
     }
 
     /// Asserts that a given frame is a DATA frame matching this one.

@@ -61,7 +61,7 @@ public struct HPACKHeaders {
     }
     
     /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
-    init(_ httpHeaders: HTTPHeaders) {
+    public init(httpHeaders: HTTPHeaders) {
         // TODO(jim): Once we make HTTPHeaders' internals visible to us, we can just copy the buffer
         // and map the headers.
         self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
@@ -74,7 +74,7 @@ public struct HPACKHeaders {
     ///
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
-    init(_ headers: [(String, String)] = []) {
+    public init(_ headers: [(String, String)] = []) {
         // Note: this initializer exists because of https://bugs.swift.org/browse/SR-7415.
         // Otherwise we'd only have the one below with a default argument for `allocator`.
         self.init(headers, allocator: ByteBufferAllocator())
@@ -88,7 +88,7 @@ public struct HPACKHeaders {
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
     ///     - allocator: The allocator to use to allocate the underlying storage.
-    init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
+    public init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
         // Reserve enough space in the array to hold all indices.
         var array: [HPACKHeader] = []
         array.reserveCapacity(headers.count)
@@ -112,6 +112,19 @@ public struct HPACKHeaders {
         }
     }
     
+    /// Append a list of headers from a CONTINUATION block.
+    ///
+    /// - Parameter headers: The parsed contents of a header block fragment.
+    public mutating func addContinuation(_ headers: HPACKHeaders) {
+        // Determine delta for all offsets.
+        let delta = self._storage.buffer.readableBytes
+        self._storage.buffer.write(bytes: headers._storage.buffer.readableBytesView)
+        self._storage.headers.reserveCapacity(self._storage.headers.count + headers._storage.headers.count)
+        for hdr in headers._storage.headers {
+            self._storage.headers.append(hdr.offset(by: delta))
+        }
+    }
+    
     /// Add a header name/value pair to the block.
     ///
     /// This method is strictly additive: if there are other values for the given header name
@@ -121,7 +134,7 @@ public struct HPACKHeaders {
     /// - Parameter name: The header field name. For maximum compatibility this should be an
     ///     ASCII string. For HTTP/2 lowercase header names are strongly encouraged.
     /// - Parameter value: The header field value to add for the given name.
-    private mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
+    public mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         precondition(!name.utf8.contains(where: { !$0.isASCII }), "name must be ASCII")
         if !isKnownUniquelyReferenced(&self._storage) {
             self._storage = self._storage.copy()
@@ -363,6 +376,11 @@ struct HPACKHeader {
         self.indexing = indexing
         self.name = HPACKHeaderIndex(start: start, length: nameLength)
         self.value = HPACKHeaderIndex(start: start + nameLength, length: valueLength)
+    }
+    
+    func offset(by offset: Int) -> HPACKHeader {
+        return HPACKHeader(start: self.name.start + offset, nameLength: self.name.length,
+                           valueLength: self.value.length, indexing: self.indexing)
     }
 }
 

@@ -15,6 +15,7 @@
 import NIO
 import NIOHTTP1
 import CNIONghttp2
+import NIOHPACK
 
 /// A helper function that manages the lifetime of a pointer to an `nghttp2_option` structure.
 private func withSessionOptions<T>(fn: (OpaquePointer) throws -> T) rethrows -> T {
@@ -436,7 +437,7 @@ class NGHTTP2Session {
             // by the remote peer if the data frame is much smaller than this buffer.
             nioFramePayload = .data(.byteBuffer(self.dataAccumulation))
         case NGHTTP2_HEADERS.rawValue:
-            nioFramePayload = .headers(self.headersAccumulation)
+            nioFramePayload = .headers(HPACKHeaders(httpHeaders: self.headersAccumulation), nil)
 
             /// If we are a server, the first headers frame on a new stream should cause us to create our stream state and store it.
             if case .server = self.mode, frame.headers.cat == NGHTTP2_HCAT_REQUEST {
@@ -457,7 +458,8 @@ class NGHTTP2Session {
             }
             nioFramePayload = .settings(settings)
         case NGHTTP2_PUSH_PROMISE.rawValue:
-            nioFramePayload = .pushPromise
+            nioFramePayload = .pushPromise(HTTP2StreamID(knownID: frame.push_promise.promised_stream_id),
+                                           HPACKHeaders(httpHeaders: self.headersAccumulation))
         case NGHTTP2_PING.rawValue:
             nioFramePayload = .ping(HTTP2PingData(withTuple: frame.ping.opaque_data))
         case NGHTTP2_GOAWAY.rawValue:
@@ -673,7 +675,7 @@ class NGHTTP2Session {
     /// That means all this state must be ready to go once we've submitted the headers frame to nghttp2. This function
     /// is responsible for getting all our ducks in a row.
     private func sendHeaders(frame: HTTP2Frame) {
-        guard case .headers(let headers) = frame.payload else {
+        guard case .headers(let headers, _) = frame.payload else {
             preconditionFailure("Attempting to send non-headers frame")
         }
 
@@ -682,23 +684,23 @@ class NGHTTP2Session {
 
         guard let networkStreamID = frame.streamID.networkStreamID else {
             // This must be a request: delegate to that function.
-            self.sendRequest(streamID: frame.streamID, flags: flags, headers: headers)
+            self.sendRequest(streamID: frame.streamID, flags: flags, headers: headers.asH1Headers())
             return
         }
 
         let streamData = self.streamIDManager.getStreamData(for: networkStreamID)!
-        let blockType = streamData.newOutboundHeaderBlock(block: headers)
+        let blockType = streamData.newOutboundHeaderBlock(block: headers.asH1Headers())
         if blockType == .trailer {
             // Trailers are a tricky beast, as they must be submitted via the data provider. They count as EOF.
             // TODO(cory): Error handling.
             precondition(isEndStream)
-            streamData.dataProvider.bufferEOF(trailers: headers)
+            streamData.dataProvider.bufferEOF(trailers: headers.asH1Headers())
             return
         }
 
         // Ok, we know we have some kind of response header here, we can submit it directly.
         assert(self.mode == .server)
-        let rc = headers.withNGHTTP2Headers(allocator: self.allocator) { vec, count in
+        let rc = headers.asH1Headers().withNGHTTP2Headers(allocator: self.allocator) { vec, count in
             nghttp2_submit_headers(self.session,
                                    flags,
                                    networkStreamID,

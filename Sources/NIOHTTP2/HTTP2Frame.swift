@@ -27,6 +27,13 @@ public struct HTTP2Frame {
     
     /// The frame stream ID as a 32-bit integer.
     public var streamID: HTTP2StreamID
+    
+    /// Stream priority data, used in PRIORITY frames and optionally in HEADERS frames.
+    public struct StreamPriorityData : Equatable {
+        public var exclusive: Bool
+        public var dependency: HTTP2StreamID
+        public var weight: UInt8
+    }
 
     /// Frame-type-specific payload data.
     public enum FramePayload {
@@ -42,13 +49,13 @@ public struct HTTP2Frame {
         /// frames into a single `FramePayload.headers` instance.
         ///
         /// See [RFC 7540 § 6.2](https://httpwg.org/specs/rfc7540.html#rfc.section.6.2).
-        case headers(HPACKHeaders)
+        case headers(HPACKHeaders, StreamPriorityData?)
         
         /// A PRIORITY frame, used to change priority and dependency ordering among
         /// streams.
         ///
         /// See [RFC 7540 § 6.3](https://httpwg.org/specs/rfc7540.html#rfc.section.6.3).
-        case priority
+        case priority(StreamPriorityData)
         
         /// A RST_STREAM (reset stream) frame, sent when a stream has encountered an error
         /// condition and needs to be terminated as a result.
@@ -75,7 +82,7 @@ public struct HTTP2Frame {
         ///
         /// For more information on server push in HTTP/2, see
         /// [RFC 7540 § 8.2](https://httpwg.org/specs/rfc7540.html#rfc.section.8.2).
-        case pushPromise
+        case pushPromise(HTTP2StreamID, HPACKHeaders)
         
         /// A PING frame, used to measure round-trip time between endpoints.
         ///

@@ -100,7 +100,15 @@ public class HTTP2StreamID {
 // MARK:- Equatable conformance for HTTP2StreamID
 extension HTTP2StreamID: Equatable {
     public static func ==(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        return lhs === rhs
+        switch (lhs.networkStreamID, rhs.networkStreamID) {
+        case (.none, .none):
+            /// old functionality: compare addresses
+            return lhs === rhs
+        case (.none, .some), (.some, .none):
+            return false
+        case (.some(let l), .some(let r)):
+            return l == r
+        }
     }
 }
 
