@@ -1247,7 +1247,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         // Open a new stream.
         XCTAssertFalse(activated)
         let streamID = HTTP2StreamID(knownID: 1)
-        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HPACKHeaders(), nil))
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
         XCTAssertTrue(activated)
 
