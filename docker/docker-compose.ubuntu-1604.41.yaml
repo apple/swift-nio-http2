@@ -8,7 +8,6 @@ services:
       args:
         ubuntu_version : "16.04"
         swift_version : "4.1"
-        install_nghttp2_from_source: "true"
 
   test:
     image: swift-nio-http2:ubuntu-16.04-4.1

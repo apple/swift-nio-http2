@@ -106,12 +106,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             self.autoRead = autoRead
             return initializer?(self, self.streamID) ?? self.eventLoop.newSucceededFuture(result: ())
         }.map {
-            self.state.activate()
-            self.pipeline.fireChannelActive()
-            if self.autoRead {
-                self.read0()
+            // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
+            // If parent is not active, we expect to receive a channelActive later.
+            if self.parent!.isActive {
+                self.performActivation()
             }
-            self.deliverPendingWrites()
         }
 
         f.whenFailure { (error: Error) in
@@ -122,6 +121,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             }
         }
         return f
+    }
+
+    /// Activates this channel.
+    internal func performActivation() {
+        precondition(self.parent?.isActive ?? false, "Parent must be active to activate the child")
+        self.state.activate()
+        self.pipeline.fireChannelActive()
+        if self.autoRead {
+            self.read0()
+        }
+        self.deliverPendingWrites()
     }
 
     private var _pipeline: ChannelPipeline!

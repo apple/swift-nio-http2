@@ -40,7 +40,7 @@ private func withCallbacks<T>(fn: (OpaquePointer) throws -> T) rethrows -> T {
         nghttp2_session_callbacks_del(nghttp2Callbacks)
     }
 
-    nghttp2_session_callbacks_set_error_callback(nghttp2Callbacks, errorCallback)
+    CNIONghttp2_nghttp2_session_callbacks_set_error_callback(nghttp2Callbacks, errorCallback)
     nghttp2_session_callbacks_set_on_frame_recv_callback(nghttp2Callbacks, onFrameRecvCallback)
     nghttp2_session_callbacks_set_on_begin_frame_callback(nghttp2Callbacks, onBeginFrameCallback)
     nghttp2_session_callbacks_set_on_data_chunk_recv_callback(nghttp2Callbacks, onDataChunkRecvCallback)
@@ -695,6 +695,14 @@ class NGHTTP2Session {
             // TODO(cory): Error handling.
             precondition(isEndStream)
             streamData.dataProvider.bufferEOF(trailers: headers.asH1Headers())
+
+            if case .pending = streamData.dataProvider.state {
+                // The data provider is currently in the pending state, we need to tell nghttp2 it's active again so
+                // the trailers get emitted.
+                let rc = nghttp2_session_resume_data(self.session, frame.streamID.networkStreamID!)
+                precondition(rc == 0)
+                streamData.dataProvider.didResume()
+            }
             return
         }
 

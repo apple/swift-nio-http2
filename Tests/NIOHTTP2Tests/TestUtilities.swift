@@ -120,7 +120,7 @@ extension XCTestCase {
         var receivedFrames = [HTTP2Frame]()
 
         for frame in frames {
-            let receivedFrame = try receiver.assertReceivedFrame()
+            let receivedFrame = try receiver.assertReceivedFrame(file: file, line: line)
             receivedFrame.assertFrameMatches(this: frame, file: file, line: line)
             receivedFrames.append(receivedFrame)
         }
