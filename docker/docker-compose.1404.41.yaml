@@ -3,13 +3,13 @@ version: "3"
 services:
 
   runtime-setup:
-    image: swift-nio-http2:ubuntu-14.04-4.1
+    image: swift-nio-http2:14.04-4.1
     build:
       args:
-        ubuntu_version : "14.04"
-        swift_version : "4.1"
+        ubuntu_version: "14.04"
+        swift_version: "4.1"
         install_curl_from_source: "true"
         install_nghttp2_from_source: "true"
 
   test:
-    image: swift-nio-http2:ubuntu-14.04-4.1
+    image: swift-nio-http2:14.04-4.1
