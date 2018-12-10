@@ -54,10 +54,45 @@ class HTTP2FrameDecoder {
     private var allocator: ByteBufferAllocator
     private var currentHeaderFrame: HTTP2Frame? = nil
     
+    /// Creates a new HTTP2 frame decoder.
+    ///
+    /// - parameter allocator: A `ByteBufferAllocator` used when accumulating blocks of data
+    ///                        and decoding headers.
     init(allocator: ByteBufferAllocator) {
         self.allocator = allocator
     }
     
+    
+    /// Reads at most one frame's worth of bytes from the input buffer, and returns a decoded
+    /// frame if one has been completely received.
+    ///
+    /// The method's effect on the input buffer and its return value depend on the content of
+    /// the buffer:
+    ///
+    /// - If the input buffer contains more bytes beyond the current frame, those bytes will
+    ///   remain in the buffer; you may continue calling `decode(bytes:)` until the buffer is
+    ///   empty, or until its size does not change.
+    /// - If a given buffer does not contain a complete frame header (9 bytes), this method
+    ///   will take no action, and the buffer will remain unchanged when the method returns.
+    /// - If the buffer does not contain an entire frame including payload, it will be cached
+    ///   internally by the decoder, and the next call to `decode(bytes:)` will append any
+    ///   new bytes to that cache in an effort to complete that frame's payload.
+    /// - When enough bytes to decode an entire frame have been accumulated or provided, the
+    ///   resultant frame will be returned. If the entire frame and its payload have not yet
+    ///   been accumulated, `nil` will be returned.
+    /// - If we gather enough bytes to construct a frame, but that frame is invalid or malformed,
+    ///   we consume all the bytes and throw the error specified in RFC 7540.
+    ///
+    /// - note: The HTTP/2 protocol specifies that unknown frame types should be ignored. This
+    ///         implementation will silently collect and drop all bytes associated with frames
+    ///         whose type is unrecognized; it will not throw an error or otherwise provide
+    ///         those bytes for processing elsewhere.
+    ///
+    /// - Parameter bytes: Raw bytes received, ready to decode. On exit, any consumed bytes
+    ///                    will no longer be in the buffer.
+    /// - Returns: A decoded frame type or `nil` if more bytes are needed to complete the frame.
+    /// - Throws: Errors specified by RFC 7540 § 6 for mis-sized frames or incorrect
+    ///           stream/connection association.
     func decode(bytes: inout ByteBuffer) throws -> HTTP2Frame? {
         switch self.state {
         case .idle:
@@ -507,10 +542,22 @@ class HTTP2FrameEncoder {
     }
     
     /// Encodes the frame and optionally returns one or more blobs of data
-    /// ready for the system. These would include anything of potentially flexible
+    /// ready for the system.
+    ///
+    /// Returned data blobs would include anything of potentially flexible
     /// length, such as DATA payloads, header fragments in HEADERS or PUSH_PROMISE
     /// frames, and so on. This is to avoid manually copying chunks of data which
-    /// we could just enqueue separately in sequence on the channel.
+    /// we could just enqueue separately in sequence on the channel. Generally, if
+    /// we have a byte buffer somewhere, we will return that separately rather than
+    /// copy it into another buffer, with the corresponding allocation overhead.
+    ///
+    /// - Parameters:
+    ///   - frame: The frame to encode.
+    ///   - buf: Destination buffer for the encoded frame.
+    /// - Returns: An array containing zero or more additional buffers to send, in
+    ///            order. These may contain data frames' payload bytes, encoded
+    ///            header fragments, etc.
+    /// - Throws: Errors returned from HPACK encoder.
     func encode(frame: HTTP2Frame, to buf: inout ByteBuffer) throws -> [IOData] {
         // note our starting point
         let start = buf.writerIndex
