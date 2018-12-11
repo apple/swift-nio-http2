@@ -33,8 +33,8 @@ RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-3.9 
 
 # modern curl, if needed
 ARG install_curl_from_source
-RUN [ ! -z $install_curl_from_source ] || apt-get install -y curl libcurl3 libz-dev
-RUN [ -z $install_curl_from_source ] || apt-get install -y libssl-dev
+RUN [ ! -z $install_curl_from_source ] || { apt-get update && apt-get install -y curl libcurl4-openssl-dev libz-dev; }
+RUN [ -z $install_curl_from_source ] || { apt-get update && apt-get install -y libssl-dev; }
 RUN [ -z $install_curl_from_source ] || mkdir $HOME/.curl
 RUN [ -z $install_curl_from_source ] || wget -q https://curl.haxx.se/download/curl-7.50.3.tar.gz -O $HOME/curl.tar.gz
 RUN [ -z $install_curl_from_source ] || tar xzf $HOME/curl.tar.gz --directory $HOME/.curl --strip-components=1
@@ -50,16 +50,13 @@ RUN [ -z $install_nghttp2_from_source ] || tar xzf $HOME/nghttp2.tar.gz --direct
 RUN [ -z $install_nghttp2_from_source ] || ( cd $HOME/.nghttp2 && ./configure && make && make install && cd - )
 RUN [ -z $install_nghttp2_from_source ] || ldconfig
 
-# ruby and jazzy for docs generation
-RUN apt-add-repository -y ppa:brightbox/ruby-ng
-RUN apt-get update
-RUN apt-get install -y ruby2.4 ruby2.4-dev libsqlite3-dev
-RUN gem install jazzy --no-ri --no-rdoc
-
 # swift
 ARG swift_version=4.0.3
+ARG swift_flavour=RELEASE
+ARG swift_builds_suffix=release
+
 RUN mkdir $HOME/.swift
-RUN wget -q https://swift.org/builds/swift-${swift_version}-release/ubuntu$(echo $ubuntu_version | sed 's/\.//g')/swift-${swift_version}-RELEASE/swift-${swift_version}-RELEASE-ubuntu${ubuntu_version}.tar.gz -O $HOME/swift.tar.gz
+RUN wget -q "https://swift.org/builds/swift-${swift_version}-${swift_builds_suffix}/ubuntu$(echo $ubuntu_version | sed 's/\.//g')/swift-${swift_version}-${swift_flavour}/swift-${swift_version}-${swift_flavour}-ubuntu${ubuntu_version}.tar.gz" -O $HOME/swift.tar.gz
 RUN tar xzf $HOME/swift.tar.gz --directory $HOME/.swift --strip-components=1
 RUN echo 'export PATH="$HOME/.swift/usr/bin:$PATH"' >> $HOME/.profile
 RUN echo 'export LINUX_SOURCEKIT_LIB_PATH="$HOME/.swift/usr/lib"' >> $HOME/.profile
