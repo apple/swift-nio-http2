@@ -41,6 +41,9 @@ RUN [ -z $install_curl_from_source ] || tar xzf $HOME/curl.tar.gz --directory $H
 RUN [ -z $install_curl_from_source ] || ( cd $HOME/.curl && ./configure --with-ssl && make && make install && cd - )
 RUN [ -z $install_curl_from_source ] || ldconfig
 
+# ruby
+RUN apt-get update && apt-get install -y ruby
+
 # nghttp2
 ARG install_nghttp2_from_source
 RUN [ ! -z $install_nghttp2_from_source ] || apt-get install -y nghttp2 libnghttp2-dev
