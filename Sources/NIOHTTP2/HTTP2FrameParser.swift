@@ -8,51 +8,41 @@
 import NIO
 import NIOHPACK
 
-/// A temporary item used to hold onto the HPACK encoder/decoder. Something in the real stream state engine will
-/// take its place soon.
-class HTTP2StreamData {
-    static private var lookup: Dictionary<HTTP2StreamID, HTTP2StreamData> = [:]
-    
-    static func getStream(for streamID: HTTP2StreamID, allocator: ByteBufferAllocator) -> HTTP2StreamData {
-        if let stream = lookup[streamID] {
-            return stream
-        }
-        
-        let stream = HTTP2StreamData(streamID: streamID, allocator: allocator)
-        lookup[streamID] = stream
-        return stream
-    }
-    
-    var encoder: HPACKEncoder
-    var decoder: HPACKDecoder
-    
-    let streamID: HTTP2StreamID
-    
-    init(streamID: HTTP2StreamID, allocator: ByteBufferAllocator) {
-        // TODO: let's pass through a decent value for table sizes here.
-        self.encoder = HPACKEncoder(allocator: allocator)
-        self.decoder = HPACKDecoder(allocator: allocator)
-        self.streamID = streamID
-    }
-    
-    // internal so tests can see it.
-    class func reset() {
-        lookup.removeAll()
-    }
-}
-
 /// Ingests HTTP/2 data and produces frames. You feed data in, and sometimes you'll get a complete frame out.
-class HTTP2FrameDecoder {
-    private var streamDecoders: Dictionary<HTTP2StreamID, HPACKDecoder> = [:]
+struct HTTP2FrameDecoder {
+    private var headerDecoder: HPACKDecoder
+    
+    private struct IgnoredFrame : Error {}
     
     private enum ParserState {
+        /// We are not in the middle of parsing any frames.
         case idle
+        
+        /// We are accumulating payload bytes for a single frame.
         case accumulatingData(FrameHeader, ByteBuffer)
+        
+        /// We are receiving bytes from a DATA frame payload, and are emitting multiple DATA frames,
+        /// one for each chunk of bytes we see here.
+        case simulatingDataFrames(originalHeader: FrameHeader, padding: UInt8, remainingBytes: Int)
+        
+        /// We are accumulating a CONTINUATION frame.
+        case accumulatingContinuationPayload(originalHeader: FrameHeader, headerBytes: ByteBuffer, continuationHeader: FrameHeader, continuationBytes: ByteBuffer)
+        
+        // We are waiting for a new CONTINUATION frame to arrive.
+        case accumulatingHeaderBlockFragments(FrameHeader, ByteBuffer)
+    }
+    
+    private var isIdle: Bool {
+        switch self.state {
+        case .idle:
+            return true
+        default:
+            return false
+        }
     }
     
     private var state: ParserState = .idle
     private var allocator: ByteBufferAllocator
-    private var currentHeaderFrame: HTTP2Frame? = nil
     
     /// Creates a new HTTP2 frame decoder.
     ///
@@ -60,6 +50,7 @@ class HTTP2FrameDecoder {
     ///                        and decoding headers.
     init(allocator: ByteBufferAllocator) {
         self.allocator = allocator
+        self.headerDecoder = HPACKDecoder(allocator: allocator)
     }
     
     
@@ -93,25 +84,95 @@ class HTTP2FrameDecoder {
     /// - Returns: A decoded frame type or `nil` if more bytes are needed to complete the frame.
     /// - Throws: Errors specified by RFC 7540 § 6 for mis-sized frames or incorrect
     ///           stream/connection association.
-    func decode(bytes: inout ByteBuffer) throws -> HTTP2Frame? {
+    mutating func decode(bytes: inout ByteBuffer) throws -> HTTP2Frame? {
         switch self.state {
         case .idle:
-            return try readPotentialFrame(from: &bytes)
+            return try self.readPotentialFrame(from: &bytes)
         case .accumulatingData(let header, var currentBytes):
             let required = header.length - currentBytes.readableBytes
             if bytes.readableBytes >= required {
-                let view = bytes.viewBytes(at: bytes.readerIndex, length: required)
-                currentBytes.write(bytes: view)
-                bytes.moveReaderIndex(forwardBy: required)
-                return try readFrame(withHeader: header, from: &currentBytes)
+                var slice = bytes.readSlice(length: required)!
+                currentBytes.write(buffer: &slice)
+                return try self.readFrame(withHeader: header, from: &currentBytes)
             } else {
                 currentBytes.write(buffer: &bytes)  // consume entire input buffer
                 return nil  // no frame (yet)
             }
+        case .simulatingDataFrames(let header, let padding, let remaining):
+            let streamID = HTTP2StreamID(knownID: Int32(header.rawStreamID & ~0x8000_0000))
+            let flags = HTTP2Frame.FrameFlags(rawValue: header.flags)
+            if bytes.readableBytes < remaining {
+                // ping out a fake DATA frame containing these bytes, without the END_STREAM flag being set
+                let slice = bytes
+                bytes.clear()   // consuming all the bytes
+                self.state = .simulatingDataFrames(originalHeader: header, padding: padding, remainingBytes: remaining - slice.readableBytes)
+                return HTTP2Frame(streamID: streamID, flags: [], payload: .data(.byteBuffer(slice)))
+            } else {
+                // we have all remaining bytes, so we include .endStream bit (if set in original frame)
+                var slice = bytes.readSlice(length: remaining)!
+                if padding > 0 {
+                    // trim padding from the bytes we attach to the parsed frame
+                    slice.moveWriterIndex(to: slice.writerIndex - Int(padding))
+                }
+                self.state = .idle
+                return HTTP2Frame(streamID: streamID, flags: flags, payload: .data(.byteBuffer(slice)))
+            }
+        case .accumulatingHeaderBlockFragments(let header, var buffer):
+            // special case since we only accept CONTINUATION frames in this state
+            guard let continuationHeader = bytes.readFrameHeader() else {
+                return nil      // don't have another header yet
+            }
+            
+            guard continuationHeader.type == 0x9 /* CONTINUATION */ else {
+                // invalid frame: this is a connection error
+                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            }
+            
+            let flags = HTTP2Frame.FrameFlags(rawValue: continuationHeader.flags)
+            
+            var cbytes: ByteBuffer
+            if bytes.readableBytes >= continuationHeader.length {
+                cbytes = bytes.readSlice(length: continuationHeader.length)!
+                buffer.write(buffer: &cbytes)
+                
+                if (flags.contains(.endHeaders)) {
+                    // we're done: send out a frame
+                    return try self.emitSyntheticHeadersFrame(header, bytes: &buffer)
+                } else {
+                    self.state = .accumulatingHeaderBlockFragments(header, buffer)
+                }
+            } else {
+                cbytes = bytes
+                bytes.clear()
+                self.state = .accumulatingContinuationPayload(originalHeader: header, headerBytes: buffer, continuationHeader: continuationHeader, continuationBytes: cbytes)
+            }
+            return nil  // no frame to return yet
+            
+        case .accumulatingContinuationPayload(let originalHeader, var headerPayload, let continuationHeader, var continuationBytes):
+            let required = continuationHeader.length - continuationBytes.readableBytes
+            if bytes.readableBytes >= required {
+                var slice = bytes.readSlice(length: required)!
+                headerPayload.write(buffer: &continuationBytes)
+                headerPayload.write(buffer: &slice)
+                
+                // pretend it's one big HEADERS or PUSH_PROMISE frame
+                return try self.emitSyntheticHeadersFrame(originalHeader, bytes: &headerPayload)
+            } else {
+                continuationBytes.write(buffer: &bytes)
+                return nil
+            }
         }
     }
     
-    private func readPotentialFrame(from bytes: inout ByteBuffer) throws -> HTTP2Frame? {
+    private mutating func emitSyntheticHeadersFrame(_ originalHeader: FrameHeader, bytes: inout ByteBuffer) throws -> HTTP2Frame? {
+        let newHeader = FrameHeader(length: bytes.readableBytes, type: originalHeader.type,
+                                    flags: originalHeader.flags | HTTP2Frame.FrameFlags.endHeaders.rawValue,
+                                    rawStreamID: originalHeader.rawStreamID)
+        return try self.readFrame(withHeader: newHeader, from: &bytes)      // pretend it's one big HEADERS or PUSH_PROMISE frame
+    }
+    
+    private mutating func readPotentialFrame(from bytes: inout ByteBuffer) throws -> HTTP2Frame? {
+        assert(self.isIdle)
         guard let header = bytes.readFrameHeader() else {
             return nil
         }
@@ -119,16 +180,58 @@ class HTTP2FrameDecoder {
         if bytes.readableBytes >= header.length {
             // we can read the entire thing already
             return try self.readFrame(withHeader: header, from: &bytes)
-        } else {
+        } else if header.type != 0 /* DATA frame */ {
             // start accumulating bytes and update our state
             var buffer = allocator.buffer(capacity: header.length)
             buffer.write(buffer: &bytes)    // consumes the bytes from the input buffer
             self.state = .accumulatingData(header, buffer)
             return nil
+        } else {
+            if bytes.readableBytes == 0 {
+                // we only have the header of a DATA frame. Don't emit a frame, but keep the header around
+                // to synthesize more once we have the data.
+                if header.flags & 0x08 != 0 {
+                    // it's padded. We can't enter .simulatingDataFrames without knowing our pad length, so
+                    // work around this by un-reading the header bytes and returning nil.
+                    bytes.moveReaderIndex(to: bytes.readerIndex - 9)
+                } else {
+                    // no padding to read, so everything to follow is payload: just enter simulation state
+                    // with all bytes remaining.
+                    self.state = .simulatingDataFrames(originalHeader: header, padding: 0, remainingBytes: header.length)
+                }
+                
+                return nil
+            }
+            
+            // Received a partial DATA frame: return current bytes as a single frame, then simulate
+            // further frames as more of the payload arrives
+            let streamID = HTTP2StreamID(knownID: Int32(header.rawStreamID & ~0x8000_0000))
+            guard streamID != .rootStream else {
+                // DATA frames MUST be associated with a stream. If a DATA frame is received whose
+                // stream identifier field is 0x0, the recipient MUST respond with a connection error
+                // (Section 5.4.1) of type PROTOCOL_ERROR.
+                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            }
+            
+            var slice = bytes
+            let consumed = slice.readableBytes
+            bytes.clear()       // consumed all the bytes
+            
+            let flags = HTTP2Frame.FrameFlags(rawValue: header.flags)
+            let padding: UInt8
+            if flags.contains(.padded) {
+                padding = slice.readInteger()!
+            } else {
+                padding = 0
+            }
+            self.state = .simulatingDataFrames(originalHeader: header, padding: padding, remainingBytes: header.length - consumed)
+            
+            // NB: our synthetic frames never claim padding, nor are they (by definition) a stream end
+            return HTTP2Frame(streamID: streamID, flags: [], payload: .data(.byteBuffer(slice)))
         }
     }
     
-    private func readFrame(withHeader header: FrameHeader, from bytes: inout ByteBuffer) throws -> HTTP2Frame? {
+    private mutating func readFrame(withHeader header: FrameHeader, from bytes: inout ByteBuffer) throws -> HTTP2Frame? {
         assert(bytes.readableBytes >= header.length, "Buffer should contain at least \(header.length) bytes.")
         
         let flags = HTTP2Frame.FrameFlags(rawValue: header.flags)
@@ -145,400 +248,382 @@ class HTTP2FrameDecoder {
         }
         
         let payload: HTTP2Frame.FramePayload
-        switch header.type {
-        case 0:
-            // DATA frame : RFC 7540 § 6.1
-            guard streamID != .rootStream else {
-                // DATA frames MUST be associated with a stream. If a DATA frame is received whose
-                // stream identifier field is 0x0, the recipient MUST respond with a connection error
-                // (Section 5.4.1) of type PROTOCOL_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-            }
-            
-            let padding: UInt8
-            let dataLen: Int
-            if flags.contains(.padded) {
-                padding = bytes.readInteger()!
-                dataLen = header.length - 1 - Int(padding)
-                if dataLen <= 0 {
-                    // If the length of the padding is the length of the frame payload or greater,
-                    // the recipient MUST treat this as a connection error (Section 5.4.1) of type
-                    // PROTOCOL_ERROR.
-                    throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        do {
+            switch header.type {
+            case 0:
+                payload = try self.parseDataFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
+            case 1:
+                if flags.contains(.endHeaders) {
+                    payload = try self.parseHeadersFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
+                } else {
+                    let slice = bytes.readSlice(length: header.length)!
+                    self.state = .accumulatingHeaderBlockFragments(header, slice)
+                    return nil
                 }
-            } else {
-                padding = 0
-                dataLen = header.length
-            }
-            
-            let buf: ByteBuffer
-            if bytes.readableBytes == dataLen {
-                buf = bytes
-            } else {
-                buf = bytes.readSlice(length: dataLen)!
-            }
-            
-            payload = .data(.byteBuffer(buf))
-            
-        case 1:
-            // HEADERS frame : RFC 7540 § 6.2
-            guard streamID != .rootStream else {
-                // HEADERS frames MUST be associated with a stream. If a HEADERS frame is received whose
-                // stream identifier field is 0x0, the recipient MUST respond with a connection error
-                // (Section 5.4.1) of type PROTOCOL_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-            }
-            
-            let stream = HTTP2StreamData.getStream(for: streamID, allocator: self.allocator)
-            var bytesToRead = header.length
-            
-            let padding: UInt8
-            if flags.contains(.padded) {
-                padding = bytes.readInteger()!
-                bytesToRead -= 1
-                if bytesToRead <= Int(padding) {
-                    // Padding that exceeds the size remaining for the header block fragment
-                    // MUST be treated as a PROTOCOL_ERROR.
-                    throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            case 2:
+                payload = try self.parsePriorityFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
+            case 3:
+                payload = try self.parseRstStreamFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
+            case 4:
+                payload = try self.parseSettingsFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
+            case 5:
+                if flags.contains(.endHeaders) {
+                    payload = try self.parsePushPromiseFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
+                } else {
+                    // don't emit the frame, store it and wait for CONTINUATION frames to arrive
+                    let slice = bytes.readSlice(length: header.length)!
+                    self.state = .accumulatingHeaderBlockFragments(header, slice)
+                    return nil
                 }
-            } else {
-                padding = 0
-            }
-            
-            let priorityData: HTTP2Frame.StreamPriorityData?
-            if flags.contains(.priority) {
-                let raw: UInt32 = bytes.readInteger()!
-                priorityData = HTTP2Frame.StreamPriorityData(exclusive: (raw & 0x8000_0000 != 0),
-                                                             dependency: HTTP2StreamID(knownID: Int32(raw & ~0x8000_0000)),
-                                                             weight: bytes.readInteger()!)
-                bytesToRead -= 5
-            } else {
-                priorityData = nil
-            }
-            
-            // slice the input buffer if necessary
-            let headerByteSize = bytesToRead - Int(padding)
-            let headers: HPACKHeaders
-            if bytes.readableBytes == headerByteSize {
-                headers = try stream.decoder.decodeHeaders(from: &bytes)
-            } else {
-                // slice out the relevant chunk of data
-                var slice = bytes.readSlice(length: headerByteSize)!
-                headers = try stream.decoder.decodeHeaders(from: &slice)
-            }
-            
-            payload = .headers(headers, priorityData)
-            
-        case 2:
-            // PRIORITY frame : RFC 7540 § 6.3
-            guard streamID != .rootStream else {
-                // The PRIORITY frame always identifies a stream. If a PRIORITY frame is received
-                // with a stream identifier of 0x0, the recipient MUST respond with a connection error
-                // (Section 5.4.1) of type PROTOCOL_ERROR.
+            case 6:
+                payload = try self.parsePingFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
+            case 7:
+                payload = try self.parseGoAwayFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
+            case 8:
+                payload = try self.parseWindowUpdateFramePayload(length: header.length, bytes: &bytes)
+            case 9:
+                // CONTINUATION frame should never be found here -- if they are, they're out of sequence
                 throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            case 10:
+                payload = try self.parseAltSvcFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
+            case 11:
+                payload = try self.parseOriginFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
+            default:
+                // RFC 7540 § 4.1 https://httpwg.org/specs/rfc7540.html#FrameHeader
+                //    "Implementations MUST ignore and discard any frame that has a type that is unknown."
+                throw IgnoredFrame()
             }
-            guard header.length == 5 else {
-                // A PRIORITY frame with a length other than 5 octets MUST be treated as a stream
-                // error (Section 5.4.2) of type FRAME_SIZE_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-            }
-            
-            let raw: UInt32 = bytes.readInteger()!
-            let priorityData = HTTP2Frame.StreamPriorityData(exclusive: raw & 0x8000_0000 != 0,
-                                                             dependency: HTTP2StreamID(knownID: Int32(raw & ~0x8000_0000)),
-                                                             weight: bytes.readInteger()!)
-            payload = .priority(priorityData)
-            
-        case 3:
-            // RST_STREAM frame : RFC 7540 § 6.4
-            guard streamID != .rootStream else {
-                // RST_STREAM frames MUST be associated with a stream. If a RST_STREAM frame is
-                // received with a stream identifier of 0x0, the recipient MUST treat this as a
-                // connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-            }
-            guard header.length == 4 else {
-                // A RST_STREAM frame with a length other than 4 octets MUST be treated as a
-                // connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-            }
-            
-            let errcode: UInt32 = bytes.readInteger()!
-            payload = .rstStream(HTTP2ErrorCode(errcode))
-            
-        case 4:
-            // SETTINGS frame : RFC 7540 § 6.5
-            guard streamID == .rootStream else {
-                // SETTINGS frames always apply to a connection, never a single stream. The stream
-                // identifier for a SETTINGS frame MUST be zero (0x0). If an endpoint receives a
-                // SETTINGS frame whose stream identifier field is anything other than 0x0, the
-                // endpoint MUST respond with a connection error (Section 5.4.1) of type
-                // PROTOCOL_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-            }
-            if flags.contains(.ack) {
-                guard header.length == 0 else {
-                    // When [the ACK flag] is set, the payload of the SETTINGS frame MUST be empty.
-                    // Receipt of a SETTINGS frame with the ACK flag set and a length field value
-                    // other than 0 MUST be treated as a connection error (Section 5.4.1) of type
-                    // FRAME_SIZE_ERROR.
-                    throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-                }
-            } else if header.length == 0 || header.length % 6 != 0 {
-                // A SETTINGS frame with a length other than a multiple of 6 octets MUST be treated
-                // as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-            }
-            
-            var settings: [HTTP2Setting] = []
-            settings.reserveCapacity(header.length / 6)
-            
-            var consumed = 0
-            while consumed < header.length {
-                // TODO: name here should be HTTP2SettingsParameter(fromNetwork:), but that's currently defined for NGHTTP2's Int32 value
-                let identifier = HTTP2SettingsParameter(fromPayload: bytes.readInteger()!)
-                let value: UInt32 = bytes.readInteger()!
-                
-                settings.append(HTTP2Setting(parameter: identifier, value: Int(value)))
-                consumed += 6
-            }
-            
-            payload = .settings(settings)
-            
-        case 5:
-            // PUSH_PROMISE frame : RFC 7540 § 6.6
-            guard streamID != .rootStream else {
-                // The stream identifier of a PUSH_PROMISE frame indicates the stream it is associated with.
-                // If the stream identifier field specifies the value 0x0, a recipient MUST respond with a
-                // connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-            }
-            
-            let stream = HTTP2StreamData.getStream(for: streamID, allocator: self.allocator)
-            var bytesToRead = header.length
-            
-            let padding: UInt8
-            if flags.contains(.padded) {
-                padding = bytes.readInteger()!
-                bytesToRead -= 1
-            } else {
-                padding = 0
-            }
-            
-            let raw: UInt32 = bytes.readInteger()!
-            let promisedStreamID = HTTP2StreamID(knownID: Int32(raw & ~0x8000_0000))
-            bytesToRead -= 4
-            
-            let headerByteLen = bytesToRead - Int(padding)
-            let headers: HPACKHeaders
-            if bytes.readableBytes == headerByteLen {
-                headers = try stream.decoder.decodeHeaders(from: &bytes)
-            } else {
-                // slice out the relevant chunk of data
-                var slice = bytes.readSlice(length: headerByteLen)!
-                headers = try stream.decoder.decodeHeaders(from: &slice)
-            }
-            
-            payload = .pushPromise(promisedStreamID, headers)
-            
-        case 6:
-            // PING frame : RFC 7540 § 6.7
-            guard header.length == 8 else {
-                // Receipt of a PING frame with a length field value other than 8 MUST be treated
-                // as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-            }
-            guard streamID == .rootStream else {
-                // PING frames are not associated with any individual stream. If a PING frame is
-                // received with a stream identifier field value other than 0x0, the recipient MUST
-                // respond with a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-            }
-            
-            var tuple: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0)
-            withUnsafeMutableBytes(of: &tuple) { ptr -> Void in
-                bytes.readWithUnsafeReadableBytes { bytesPtr -> Int in
-                    ptr.copyBytes(from: bytesPtr[0..<8])
-                    return 8
-                }
-            }
-            
-            payload = .ping(HTTP2PingData(withTuple: tuple))
-            
-        case 7:
-            // GOAWAY frame : RFC 7540 § 6.8
-            guard streamID == .rootStream else {
-                // The GOAWAY frame applies to the connection, not a specific stream. An endpoint
-                // MUST treat a GOAWAY frame with a stream identifier other than 0x0 as a connection
-                // error (Section 5.4.1) of type PROTOCOL_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-            }
-            
-            guard header.length >= 8 else {
-                // Must have at least 8 bytes of data (last-stream-id plus error-code).
-                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-            }
-            
-            let raw: UInt32 = bytes.readInteger()!
-            let errcode: UInt32 = bytes.readInteger()!
-            
-            let debugData: ByteBuffer?
-            let extraLen = header.length - 8
-            if extraLen > 0 {
-                debugData = bytes.readSlice(length: extraLen)
-            } else {
-                debugData = nil
-            }
-            
-            payload = .goAway(lastStreamID: HTTP2StreamID(knownID: Int32(raw & ~0x8000_000)),
-                              errorCode: HTTP2ErrorCode(errcode), opaqueData: debugData)
-            
-        case 8:
-            // WINDOW_UPDATE frame : RFC 7540 § 6.9
-            guard header.length == 4 else {
-                // A WINDOW_UPDATE frame with a length other than 4 octets MUST be treated as a
-                // connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
-                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-            }
-            
-            let raw: UInt32 = bytes.readInteger()!
-            payload = .windowUpdate(windowSizeIncrement: Int(raw & ~0x8000_0000))
-            
-        case 9:
-            // special case, in another function
-            return try self.parseContinuation(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
-            
-        case 10:
-            // ALTSVC frame : RFC 7838 § 4
-            guard header.length >= 2 else {
-                // Must be at least two bytes, to contain the length of the optional 'Origin' field.
-                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
-            }
-            
-            let originLen: UInt16 = bytes.readInteger()!
-            let origin: String?
-            if originLen > 0 {
-                origin = bytes.readString(length: Int(originLen))!
-            } else {
-                origin = nil
-            }
-            
-            let fieldLen = header.length - 2 - Int(originLen)
-            let value: ByteBuffer?
-            if fieldLen != 0 {
-                value = bytes.readSlice(length: fieldLen)!
-            } else {
-                value = nil
-            }
-            
-            payload = .alternativeService(origin: origin, field: value)
-            
-        case 11:
-            // ORIGIN frame : RFC 8336 § 2
-            guard streamID == .rootStream else {
-                // The ORIGIN frame MUST be sent on stream 0; an ORIGIN frame on any
-                // other stream is invalid and MUST be ignored.
-                return nil
-            }
-            
-            var origins: [String] = []
-            var remaining = header.length
-            while remaining > 0 {
-                guard remaining >= 2 else {
-                    // If less than two bytes remain, this is a malformed frame.
-                    throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-                }
-                let originLen: UInt16 = bytes.readInteger()!
-                remaining -= 2
-                
-                guard remaining >= Int(originLen) else {
-                    // Malformed frame.
-                    throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
-                }
-                let origin = bytes.readString(length: Int(originLen))!
-                remaining -= Int(originLen)
-                
-                origins.append(origin)
-            }
-            
-            payload = .origin(origins)
-            
-        default:
-            // RFC 7540 § 4.1 https://httpwg.org/specs/rfc7540.html#FrameHeader
-            //    "Implementations MUST ignore and discard any frame that has a type that is unknown."
+        } catch _ as IgnoredFrame {
             self.state = .idle
             bytes.moveReaderIndex(forwardBy: header.length)
             return nil
+        } catch _ as NIOHPACKError {
+            // convert into a connection error of type COMPRESSION_ERROR
+            throw NIOHTTP2Errors.ConnectionError(code: .compressionError)
         }
         
         self.state = .idle
-        let frame = HTTP2Frame(streamID: streamID, flags: flags, payload: payload)
-        
-        switch payload {
-        case .headers where !flags.contains(.endHeaders), .pushPromise where !flags.contains(.endHeaders):
-            // don't emit the frame, store it and wait for CONTINUATION frames to arrive
-            self.currentHeaderFrame = frame
-            return nil
-        default:
-            return frame
-        }
+        return HTTP2Frame(streamID: streamID, flags: flags, payload: payload)
     }
     
-    private func parseContinuation(length: Int, streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame? {
-        // CONTINUATION frame : RFC 7540 § 6.10
-        guard var frame = self.currentHeaderFrame else {
-            // A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
-            // CONTINUATION frame without the END_HEADERS flag set. A recipient that
-            // observes violation of this rule MUST respond with a connection error
+    private func parseDataFramePayload(length: Int, streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // DATA frame : RFC 7540 § 6.1
+        guard streamID != .rootStream else {
+            // DATA frames MUST be associated with a stream. If a DATA frame is received whose
+            // stream identifier field is 0x0, the recipient MUST respond with a connection error
             // (Section 5.4.1) of type PROTOCOL_ERROR.
             throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
         }
         
-        let stream = HTTP2StreamData.getStream(for: streamID, allocator: self.allocator)
-        
-        // this just contains a header block fragment and flags
-        let headers: HPACKHeaders
-        if bytes.readableBytes == length {
-            headers = try stream.decoder.decodeHeaders(from: &bytes)
+        let padding: UInt8
+        let dataLen: Int
+        if flags.contains(.padded) {
+            padding = bytes.readInteger()!
+            dataLen = length - 1 - Int(padding)
+            if dataLen <= 0 {
+                // If the length of the padding is the length of the frame payload or greater,
+                // the recipient MUST treat this as a connection error (Section 5.4.1) of type
+                // PROTOCOL_ERROR.
+                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            }
         } else {
-            var slice = bytes.readSlice(length: length)!
-            headers = try stream.decoder.decodeHeaders(from: &slice)
+            padding = 0
+            dataLen = length
         }
         
-        switch frame.payload {
-        case .headers(var currentHeaders, let priority):
-            currentHeaders.addContinuation(headers)
-            frame.payload = .headers(currentHeaders, priority)
-            
-        case .pushPromise(let streamID, var currentHeaders):
-            currentHeaders.addContinuation(headers)
-            frame.payload = .pushPromise(streamID, currentHeaders)
-            
-        default:
-            // A CONTINUATION frame MUST be preceded by a HEADERS, PUSH_PROMISE or
-            // CONTINUATION frame without the END_HEADERS flag set. A recipient that
-            // observes violation of this rule MUST respond with a connection error
+        let buf: ByteBuffer
+        if bytes.readableBytes == dataLen {
+            buf = bytes
+        } else {
+            buf = bytes.readSlice(length: dataLen)!
+        }
+        
+        return .data(.byteBuffer(buf))
+    }
+    
+    private mutating func parseHeadersFramePayload(length: Int, streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // HEADERS frame : RFC 7540 § 6.2
+        guard streamID != .rootStream else {
+            // HEADERS frames MUST be associated with a stream. If a HEADERS frame is received whose
+            // stream identifier field is 0x0, the recipient MUST respond with a connection error
             // (Section 5.4.1) of type PROTOCOL_ERROR.
             throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
         }
         
-        if flags.contains(.endHeaders) {
-            // no continuations following, so emit a full frame
-            frame.flags.formUnion(.endHeaders)
-            self.currentHeaderFrame = nil
-            return frame
+        var bytesToRead = length
+        
+        let padding: UInt8
+        if flags.contains(.padded) {
+            padding = bytes.readInteger()!
+            bytesToRead -= 1
+            if bytesToRead <= Int(padding) {
+                // Padding that exceeds the size remaining for the header block fragment
+                // MUST be treated as a PROTOCOL_ERROR.
+                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            }
         } else {
-            self.currentHeaderFrame = frame
-            return nil
+            padding = 0
         }
+        
+        let priorityData: HTTP2Frame.StreamPriorityData?
+        if flags.contains(.priority) {
+            let raw: UInt32 = bytes.readInteger()!
+            priorityData = HTTP2Frame.StreamPriorityData(exclusive: (raw & 0x8000_0000 != 0),
+                                                         dependency: HTTP2StreamID(knownID: Int32(raw & ~0x8000_0000)),
+                                                         weight: bytes.readInteger()!)
+            bytesToRead -= 5
+        } else {
+            priorityData = nil
+        }
+        
+        // slice out the relevant chunk of data (ignoring padding)
+        let headerByteSize = bytesToRead - Int(padding)
+        var slice = bytes.readSlice(length: headerByteSize)!
+        let headers = try self.headerDecoder.decodeHeaders(from: &slice)
+        
+        return .headers(headers, priorityData)
+    }
+    
+    private func parsePriorityFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // PRIORITY frame : RFC 7540 § 6.3
+        guard streamID != .rootStream else {
+            // The PRIORITY frame always identifies a stream. If a PRIORITY frame is received
+            // with a stream identifier of 0x0, the recipient MUST respond with a connection error
+            // (Section 5.4.1) of type PROTOCOL_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        }
+        guard length == 5 else {
+            // A PRIORITY frame with a length other than 5 octets MUST be treated as a stream
+            // error (Section 5.4.2) of type FRAME_SIZE_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+        }
+        
+        let raw: UInt32 = bytes.readInteger()!
+        let priorityData = HTTP2Frame.StreamPriorityData(exclusive: raw & 0x8000_0000 != 0,
+                                                         dependency: HTTP2StreamID(knownID: Int32(raw & ~0x8000_0000)),
+                                                         weight: bytes.readInteger()!)
+        return .priority(priorityData)
+    }
+    
+    private func parseRstStreamFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // RST_STREAM frame : RFC 7540 § 6.4
+        guard streamID != .rootStream else {
+            // RST_STREAM frames MUST be associated with a stream. If a RST_STREAM frame is
+            // received with a stream identifier of 0x0, the recipient MUST treat this as a
+            // connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        }
+        guard length == 4 else {
+            // A RST_STREAM frame with a length other than 4 octets MUST be treated as a
+            // connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+        }
+        
+        let errcode: UInt32 = bytes.readInteger()!
+        return .rstStream(HTTP2ErrorCode(errcode))
+    }
+    
+    private func parseSettingsFramePayload(length: Int, streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // SETTINGS frame : RFC 7540 § 6.5
+        guard streamID == .rootStream else {
+            // SETTINGS frames always apply to a connection, never a single stream. The stream
+            // identifier for a SETTINGS frame MUST be zero (0x0). If an endpoint receives a
+            // SETTINGS frame whose stream identifier field is anything other than 0x0, the
+            // endpoint MUST respond with a connection error (Section 5.4.1) of type
+            // PROTOCOL_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        }
+        if flags.contains(.ack) {
+            guard length == 0 else {
+                // When [the ACK flag] is set, the payload of the SETTINGS frame MUST be empty.
+                // Receipt of a SETTINGS frame with the ACK flag set and a length field value
+                // other than 0 MUST be treated as a connection error (Section 5.4.1) of type
+                // FRAME_SIZE_ERROR.
+                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+            }
+        } else if length == 0 || length % 6 != 0 {
+            // A SETTINGS frame with a length other than a multiple of 6 octets MUST be treated
+            // as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+        }
+        
+        var settings: [HTTP2Setting] = []
+        settings.reserveCapacity(length / 6)
+        
+        var consumed = 0
+        while consumed < length {
+            // TODO: name here should be HTTP2SettingsParameter(fromNetwork:), but that's currently defined for NGHTTP2's Int32 value
+            let identifier = HTTP2SettingsParameter(fromPayload: bytes.readInteger()!)
+            let value: UInt32 = bytes.readInteger()!
+            
+            settings.append(HTTP2Setting(parameter: identifier, value: Int(value)))
+            consumed += 6
+        }
+        
+        return .settings(settings)
+    }
+    
+    private mutating func parsePushPromiseFramePayload(length: Int, streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // PUSH_PROMISE frame : RFC 7540 § 6.6
+        guard streamID != .rootStream else {
+            // The stream identifier of a PUSH_PROMISE frame indicates the stream it is associated with.
+            // If the stream identifier field specifies the value 0x0, a recipient MUST respond with a
+            // connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        }
+        
+        var bytesToRead = length
+        
+        let padding: UInt8
+        if flags.contains(.padded) {
+            padding = bytes.readInteger()!
+            bytesToRead -= 1
+        } else {
+            padding = 0
+        }
+        
+        let raw: UInt32 = bytes.readInteger()!
+        let promisedStreamID = HTTP2StreamID(knownID: Int32(raw & ~0x8000_0000))
+        bytesToRead -= 4
+        
+        let headerByteLen = bytesToRead - Int(padding)
+        var slice = bytes.readSlice(length: headerByteLen)!
+        let headers = try self.headerDecoder.decodeHeaders(from: &slice)
+        
+        return .pushPromise(promisedStreamID, headers)
+    }
+    
+    private func parsePingFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // PING frame : RFC 7540 § 6.7
+        guard length == 8 else {
+            // Receipt of a PING frame with a length field value other than 8 MUST be treated
+            // as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+        }
+        guard streamID == .rootStream else {
+            // PING frames are not associated with any individual stream. If a PING frame is
+            // received with a stream identifier field value other than 0x0, the recipient MUST
+            // respond with a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        }
+        
+        var tuple: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0)
+        withUnsafeMutableBytes(of: &tuple) { ptr -> Void in
+            bytes.readWithUnsafeReadableBytes { bytesPtr -> Int in
+                ptr.copyBytes(from: bytesPtr[0..<8])
+                return 8
+            }
+        }
+        
+        return .ping(HTTP2PingData(withTuple: tuple))
+    }
+    
+    private func parseGoAwayFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // GOAWAY frame : RFC 7540 § 6.8
+        guard streamID == .rootStream else {
+            // The GOAWAY frame applies to the connection, not a specific stream. An endpoint
+            // MUST treat a GOAWAY frame with a stream identifier other than 0x0 as a connection
+            // error (Section 5.4.1) of type PROTOCOL_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        }
+        
+        guard length >= 8 else {
+            // Must have at least 8 bytes of data (last-stream-id plus error-code).
+            throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+        }
+        
+        let raw: UInt32 = bytes.readInteger()!
+        let errcode: UInt32 = bytes.readInteger()!
+        
+        let debugData: ByteBuffer?
+        let extraLen = length - 8
+        if extraLen > 0 {
+            debugData = bytes.readSlice(length: extraLen)
+        } else {
+            debugData = nil
+        }
+        
+        return .goAway(lastStreamID: HTTP2StreamID(knownID: Int32(raw & ~0x8000_000)),
+                       errorCode: HTTP2ErrorCode(errcode), opaqueData: debugData)
+    }
+    
+    private func parseWindowUpdateFramePayload(length: Int, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // WINDOW_UPDATE frame : RFC 7540 § 6.9
+        guard length == 4 else {
+            // A WINDOW_UPDATE frame with a length other than 4 octets MUST be treated as a
+            // connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
+            throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+        }
+        
+        let raw: UInt32 = bytes.readInteger()!
+        return .windowUpdate(windowSizeIncrement: Int(raw & ~0x8000_0000))
+    }
+    
+    private func parseAltSvcFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // ALTSVC frame : RFC 7838 § 4
+        guard length >= 2 else {
+            // Must be at least two bytes, to contain the length of the optional 'Origin' field.
+            throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
+        }
+        
+        let originLen: UInt16 = bytes.readInteger()!
+        let origin: String?
+        if originLen > 0 {
+            origin = bytes.readString(length: Int(originLen))!
+        } else {
+            origin = nil
+        }
+        
+        let fieldLen = length - 2 - Int(originLen)
+        let value: ByteBuffer?
+        if fieldLen != 0 {
+            value = bytes.readSlice(length: fieldLen)!
+        } else {
+            value = nil
+        }
+        
+        return .alternativeService(origin: origin, field: value)
+    }
+    
+    private func parseOriginFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+        // ORIGIN frame : RFC 8336 § 2
+        guard streamID == .rootStream else {
+            // The ORIGIN frame MUST be sent on stream 0; an ORIGIN frame on any
+            // other stream is invalid and MUST be ignored.
+            throw IgnoredFrame()
+        }
+        
+        var origins: [String] = []
+        var remaining = length
+        while remaining > 0 {
+            guard remaining >= 2 else {
+                // If less than two bytes remain, this is a malformed frame.
+                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            }
+            let originLen: UInt16 = bytes.readInteger()!
+            remaining -= 2
+            
+            guard remaining >= Int(originLen) else {
+                // Malformed frame.
+                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+            }
+            let origin = bytes.readString(length: Int(originLen))!
+            remaining -= Int(originLen)
+            
+            origins.append(origin)
+        }
+        
+        return .origin(origins)
     }
 }
 
-class HTTP2FrameEncoder {
+struct HTTP2FrameEncoder {
     private let allocator: ByteBufferAllocator
+    private var headerEncoder: HPACKEncoder
     
     init(allocator: ByteBufferAllocator) {
         self.allocator = allocator
+        self.headerEncoder = HPACKEncoder(allocator: allocator)
     }
     
     /// Encodes the frame and optionally returns one or more blobs of data
@@ -558,7 +643,7 @@ class HTTP2FrameEncoder {
     ///            order. These may contain data frames' payload bytes, encoded
     ///            header fragments, etc.
     /// - Throws: Errors returned from HPACK encoder.
-    func encode(frame: HTTP2Frame, to buf: inout ByteBuffer) throws -> [IOData] {
+    mutating func encode(frame: HTTP2Frame, to buf: inout ByteBuffer) throws -> IOData? {
         // note our starting point
         let start = buf.writerIndex
         
@@ -580,7 +665,7 @@ class HTTP2FrameEncoder {
         // 8-bit flags -- we don't use padding when encoding in NIO, though
         buf.write(integer: frame.flags.subtracting(.padded).rawValue)
         // 32-bit stream identifier -- ensuring the top bit is empty
-        buf.write(integer: frame.streamID.safeNetworkStreamID ?? 0)
+        buf.write(integer: frame.streamID.networkStreamID!)
         
         func writePayloadSize(_ size: Int) {
             var bytes: (UInt8, UInt8, UInt8)
@@ -592,34 +677,31 @@ class HTTP2FrameEncoder {
             }
         }
         
+        let payloadStart = buf.writerIndex
+        
         // frame payload follows, which depends on the frame type itself
         switch frame.payload {
         case .data(let data):
             writePayloadSize(data.readableBytes)
-            return [data]
+            return data
             
         case .headers(let headers, let priority):
-            var payloadSize = 0
             if let priority = priority {
-                // TODO: throw the proper error here, or determine if we can assume it's valid
                 var dependencyRaw = UInt32(priority.dependency.networkStreamID ?? 0)
                 if priority.exclusive {
                     dependencyRaw |= 0x8000_0000
                 }
                 buf.write(integer: dependencyRaw)
                 buf.write(integer: priority.weight)
-                payloadSize += 5
             }
             
             // HPACK-encoded data. Find the stream and its associated encoder/decoder
-            let stream = HTTP2StreamData.getStream(for: frame.streamID, allocator: self.allocator)
-            try stream.encoder.beginEncoding(allocator: self.allocator)
-            try stream.encoder.append(headers: headers)
-            let encoded = try stream.encoder.endEncoding()
+            try self.headerEncoder.beginEncoding(allocator: self.allocator)
+            try self.headerEncoder.append(headers: headers)
+            let encoded = try self.headerEncoder.endEncoding()
             
-            payloadSize += encoded.readableBytes
-            writePayloadSize(payloadSize)
-            return [.byteBuffer(encoded)]
+            writePayloadSize(buf.writerIndex - payloadStart + encoded.readableBytes)
+            return .byteBuffer(encoded)
             
         case .priority(let priorityData):
             writePayloadSize(5)
@@ -643,16 +725,15 @@ class HTTP2FrameEncoder {
             }
             
         case .pushPromise(let streamID, let headers):
-            let streamVal: UInt32 = UInt32(streamID.networkStreamID ?? 0) & ~0x8000_0000
+            let streamVal: UInt32 = UInt32(streamID.networkStreamID ?? 0)
             buf.write(integer: streamVal)
             
-            let stream = HTTP2StreamData.getStream(for: streamID, allocator: self.allocator)
-            try stream.encoder.beginEncoding(allocator: self.allocator)
-            try stream.encoder.append(headers: headers)
-            let encoded = try stream.encoder.endEncoding()
+            try self.headerEncoder.beginEncoding(allocator: self.allocator)
+            try self.headerEncoder.append(headers: headers)
+            let encoded = try self.headerEncoder.endEncoding()
             
             writePayloadSize(encoded.readableBytes + 4)
-            return [.byteBuffer(encoded)]
+            return .byteBuffer(encoded)
             
         case .ping(let pingData):
             writePayloadSize(8)
@@ -667,7 +748,7 @@ class HTTP2FrameEncoder {
             
             if let data = opaqueData {
                 writePayloadSize(data.readableBytes + 8)
-                return [.byteBuffer(data)]
+                return .byteBuffer(data)
             } else {
                 writePayloadSize(8)
             }
@@ -677,26 +758,23 @@ class HTTP2FrameEncoder {
             buf.write(integer: UInt32(size) & ~0x8000_0000)
             
         case .alternativeService(let origin, let field):
-            let initial = buf.writerIndex
-            
             if let org = origin {
                 buf.moveWriterIndex(forwardBy: 2)
                 let start = buf.writerIndex
                 buf.write(string: org)
-                buf.set(integer: UInt16(buf.writerIndex - start), at: initial)
+                buf.set(integer: UInt16(buf.writerIndex - start), at: payloadStart)
             } else {
                 buf.write(integer: UInt16(0))
             }
             
             if let value = field {
-                writePayloadSize(buf.writerIndex - initial + value.readableBytes)
-                return [.byteBuffer(value)]
+                writePayloadSize(buf.writerIndex - payloadStart + value.readableBytes)
+                return .byteBuffer(value)
             } else {
-                writePayloadSize(buf.writerIndex - initial)
+                writePayloadSize(buf.writerIndex - payloadStart)
             }
             
         case .origin(let origins):
-            let initial = buf.writerIndex
             for origin in origins {
                 let sizeLoc = buf.writerIndex
                 buf.moveWriterIndex(forwardBy: 2)
@@ -706,11 +784,11 @@ class HTTP2FrameEncoder {
                 buf.set(integer: UInt16(buf.writerIndex - start), at: sizeLoc)
             }
             
-            writePayloadSize(buf.writerIndex - initial)
+            writePayloadSize(buf.writerIndex - payloadStart)
         }
         
         // all bytes to write are in the provided buffer now
-        return []
+        return nil
     }
 }
 

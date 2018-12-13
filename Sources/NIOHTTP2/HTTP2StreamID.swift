@@ -54,10 +54,6 @@ public class HTTP2StreamID {
     /// This should not usually be used to manage a specific stream. Instead, it's a sentinel
     /// that can be used to "quiesce" a HTTP/2 connection on a GOAWAY frame.
     public static let maxID: HTTP2StreamID = HTTP2StreamID(knownID: Int32.max)
-    
-    /// A mask that can be used to clear the reserved bit of the network stream ID when
-    /// encoded within an HTTP/2 frame.
-    internal static let reservedBitMask: UInt32 = 0x8000_0000
 
     /// Create an abstract stream ID.
     ///
@@ -69,6 +65,7 @@ public class HTTP2StreamID {
     ///
     /// This is used to initialize the global "stream 0" stream ID.
     internal init(knownID: Int32) {
+        precondition(knownID >= 0)
         self.actualStreamID = knownID
     }
 
@@ -86,20 +83,14 @@ public class HTTP2StreamID {
     /// Resolve the abstract stream ID to a real one.
     internal func resolve(to newID: Int32) {
         precondition(self.actualStreamID == -1)
+        precondition(newID > 0)
         self.actualStreamID = newID
-    }
-    
-    /// Obtains a stream-id value with its most significant bit properly cleared, ready to
-    /// be sent on the wire.
-    internal var safeNetworkStreamID: UInt32? {
-        guard self.actualStreamID >= 0 else { return nil }
-        return UInt32(self.actualStreamID) & ~HTTP2StreamID.reservedBitMask
     }
 }
 
 // MARK:- Equatable conformance for HTTP2StreamID
 extension HTTP2StreamID: Equatable {
-    public static func ==(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+    public static func == (lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
         switch (lhs.networkStreamID, rhs.networkStreamID) {
         case (.none, .none):
             /// old functionality: compare addresses

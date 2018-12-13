@@ -29,7 +29,7 @@ public struct HTTP2Frame {
     public var streamID: HTTP2StreamID
     
     /// Stream priority data, used in PRIORITY frames and optionally in HEADERS frames.
-    public struct StreamPriorityData : Equatable {
+    public struct StreamPriorityData: Equatable {
         public var exclusive: Bool
         public var dependency: HTTP2StreamID
         public var weight: UInt8
