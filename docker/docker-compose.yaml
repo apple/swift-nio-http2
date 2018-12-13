@@ -1,6 +1,6 @@
 # this file is not designed to be run directly
 # instead, use the docker-compose.<os>.<swift> files
-# eg docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.ubuntu-1604.41.yaml run test
+# eg docker-compose -f docker/docker-compose.yaml -f docker/docker-compose.1804.42.yaml run test
 version: "3"
 
 services:
@@ -9,7 +9,7 @@ services:
     image: swift-nio-http2:default
     build:
       context: .
-      dockerfile: Dockerfile.ubuntu
+      dockerfile: Dockerfile
 
   common: &common
     image: swift-nio-http2:default
