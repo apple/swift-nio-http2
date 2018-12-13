@@ -286,7 +286,7 @@ struct HTTP2FrameDecoder {
                 throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
             case 10:
                 payload = try self.parseAltSvcFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
-            case 11:
+            case 12:
                 payload = try self.parseOriginFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
             default:
                 // RFC 7540 § 4.1 https://httpwg.org/specs/rfc7540.html#FrameHeader
@@ -295,7 +295,6 @@ struct HTTP2FrameDecoder {
             }
         } catch _ as IgnoredFrame {
             self.state = .idle
-            bytes.moveReaderIndex(forwardBy: header.length)
             return nil
         } catch _ as NIOHPACKError {
             // convert into a connection error of type COMPRESSION_ERROR
@@ -486,6 +485,10 @@ struct HTTP2FrameDecoder {
         let promisedStreamID = HTTP2StreamID(knownID: Int32(raw & ~0x8000_0000))
         bytesToRead -= 4
         
+        guard promisedStreamID != .rootStream else {
+            throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+        }
+        
         let headerByteLen = bytesToRead - Int(padding)
         var slice = bytes.readSlice(length: headerByteLen)!
         let headers = try self.headerDecoder.decodeHeaders(from: &slice)
@@ -574,6 +577,15 @@ struct HTTP2FrameDecoder {
             origin = nil
         }
         
+        if streamID == .rootStream && originLen == 0 {
+            // MUST have origin on root stream
+            throw IgnoredFrame()
+        }
+        if streamID != .rootStream && originLen != 0 {
+            // MUST NOT have origin on non-root stream
+            throw IgnoredFrame()
+        }
+        
         let fieldLen = length - 2 - Int(originLen)
         let value: ByteBuffer?
         if fieldLen != 0 {
@@ -605,7 +617,7 @@ struct HTTP2FrameDecoder {
             
             guard remaining >= Int(originLen) else {
                 // Malformed frame.
-                throw NIOHTTP2Errors.ConnectionError(code: .protocolError)
+                throw NIOHTTP2Errors.ConnectionError(code: .frameSizeError)
             }
             let origin = bytes.readString(length: Int(originLen))!
             remaining -= Int(originLen)

@@ -28,6 +28,8 @@ extension HTTP2FrameParserTests {
       return [
                 ("testDataFrameDecodingNoPadding", testDataFrameDecodingNoPadding),
                 ("testDataFrameDecodingWithPadding", testDataFrameDecodingWithPadding),
+                ("testSyntheticMultipleDataFrames", testSyntheticMultipleDataFrames),
+                ("testComplexPaddedSyntheticMultiDataFrames", testComplexPaddedSyntheticMultiDataFrames),
                 ("testDataFrameEncoding", testDataFrameEncoding),
                 ("testDataFrameDecodeFailureRootStream", testDataFrameDecodeFailureRootStream),
                 ("testDataFrameDecodeFailureExcessPadding", testDataFrameDecodeFailureExcessPadding),
@@ -67,7 +69,14 @@ extension HTTP2FrameParserTests {
                 ("testWindowUpdateFrameDecoding", testWindowUpdateFrameDecoding),
                 ("testWindowUpdateFrameDecodingFailure", testWindowUpdateFrameDecodingFailure),
                 ("testWindowUpdateFrameEncoding", testWindowUpdateFrameEncoding),
-                ("testContinuationFrameDecoding", testHeadersContinuationFrameDecoding),
+                ("testHeadersContinuationFrameDecoding", testHeadersContinuationFrameDecoding),
+                ("testPushPromiseContinuationFrameDecoding", testPushPromiseContinuationFrameDecoding),
+                ("testAltServiceFrameDecoding", testAltServiceFrameDecoding),
+                ("testAltServiceFrameDecodingFailure", testAltServiceFrameDecodingFailure),
+                ("testAltServiceFrameEncoding", testAltServiceFrameEncoding),
+                ("testOriginFrameDecoding", testOriginFrameDecoding),
+                ("testOriginFrameDecodingFailure", testOriginFrameDecodingFailure),
+                ("testOriginFrameEncoding", testOriginFrameEncoding),
            ]
    }
 }

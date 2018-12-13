@@ -1263,5 +1263,175 @@ class HTTP2FrameParserTests: XCTestCase {
         
         self.assertEqualFrames(frame, expectedFrame)
     }
+    
+    // MARK: - ALTSVC frames
+    
+    func testAltServiceFrameDecoding() throws {
+        let origin = "apple.com"
+        var field = self.allocator.buffer(capacity: 10)
+        field.write(staticString: "h2=\":8000\"")
+        let expectedFrame = HTTP2Frame(payload: .alternativeService(origin: origin, field: field),
+                                       flags: [], streamID: .rootStream)
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x15,           // 3-byte payload length (21 bytes)
+            0x0a,                       // 1-byte frame type (ALTSVC)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+            0x00, 0x09,                 // 2-byte origin size
+        ]
+        var buf = byteBuffer(withBytes: frameBytes)
+        buf.write(string: origin)
+        buf.write(bytes: field.readableBytesView)
+        XCTAssertEqual(buf.readableBytes, 30)
+        
+        try assertReadsFrame(from: &buf, matching: expectedFrame)
+    }
+    
+    func testAltServiceFrameDecodingFailure() {
+        let origin = "apple.com"
+        var field = self.allocator.buffer(capacity: 10)
+        field.write(staticString: "h2=\":8000\"")
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x15,           // 3-byte payload length (21 bytes)
+            0x0a,                       // 1-byte frame type (ALTSVC)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+            0x00, 0x09,                 // 2-byte origin size
+        ]
+        var buf = byteBuffer(withBytes: frameBytes)
+        buf.write(string: origin)
+        buf.write(bytes: field.readableBytesView)
+        XCTAssertEqual(buf.readableBytes, 30)
+        
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator)
+        
+        // cannot have origin on a non-root stream
+        buf.set(integer: UInt8(1), at: 8)
+        XCTAssertNil(try decoder.decode(bytes: &buf))
+        XCTAssertEqual(buf.readableBytes, 0)
+        
+        buf.moveReaderIndex(to: 0)
+        buf.set(integer: UInt8(0), at: 8)
+        
+        // must have origin on non-root stream
+        buf.moveWriterIndex(to: 9)
+        buf.write(integer: UInt16(0))
+        buf.write(bytes: field.readableBytesView)
+        
+        XCTAssertNil(try decoder.decode(bytes: &buf))
+        XCTAssertEqual(buf.readableBytes, 0)
+    }
+    
+    func testAltServiceFrameEncoding() throws {
+        let origin = "apple.com"
+        var field = self.allocator.buffer(capacity: 10)
+        field.write(staticString: "h2=\":8000\"")
+        let frame = HTTP2Frame(payload: .alternativeService(origin: origin, field: field), flags: [], streamID: .rootStream)
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x15,           // 3-byte payload length (21 bytes)
+            0x0a,                       // 1-byte frame type (ALTSVC)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier,
+            0x00, 0x09,                 // 2-byte origin length
+        ]
+        var expectedBufContent = self.byteBuffer(withBytes: frameBytes)
+        expectedBufContent.write(string: origin)
+        
+        var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
+        
+        let extraBuf = try encoder.encode(frame: frame, to: &buf)
+        XCTAssertNotNil(extraBuf, "Should return encoded field as separate buffer")
+        XCTAssertEqual(buf, expectedBufContent)
+        XCTAssertEqual(extraBuf!, .byteBuffer(field))
+    }
+    
+    // MARK: - ORIGIN frame
+    
+    func testOriginFrameDecoding() throws {
+        let origins = ["apple.com", "www.apple.com", "www2.apple.com"]
+        let expectedFrame = HTTP2Frame(payload: .origin(origins), flags: [], streamID: .rootStream)
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x2a,           // 3-byte payload length (42 bytes)
+            0x0c,                       // 1-byte frame type (ORIGIN)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes)
+        for origin in origins {
+            let u = origin.utf8
+            buf.write(integer: UInt16(u.count))
+            buf.write(bytes: u)
+        }
+        XCTAssertEqual(buf.readableBytes, 51)
+        
+        try assertReadsFrame(from: &buf, matching: expectedFrame)
+    }
+    
+    func testOriginFrameDecodingFailure() {
+        let origins = ["apple.com", "www.apple.com", "www2.apple.com"]
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x2a,           // 3-byte payload length (42 bytes)
+            0x0c,                       // 1-byte frame type (ORIGIN)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes)
+        for origin in origins {
+            let u = origin.utf8
+            buf.write(integer: UInt16(u.count))
+            buf.write(bytes: u)
+        }
+        XCTAssertEqual(buf.readableBytes, 51)
+        
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator)
+        
+        // MUST be sent on root stream (else ignored)
+        buf.set(integer: UInt8(1), at: 8)
+        XCTAssertNil(try decoder.decode(bytes: &buf))
+        XCTAssertEqual(buf.readableBytes, 0)
+        
+        buf.moveReaderIndex(to: 0)
+        buf.set(integer: UInt8(0), at: 8)
+        
+        // should throw frame size error if string length exceeds payload size
+        buf.set(integer: UInt8(255), at: 9)     // really big string length!
+        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+            guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
+                XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
+                return
+            }
+        })
+    }
+    
+    func testOriginFrameEncoding() throws {
+        let origins = ["apple.com", "www.apple.com", "www2.apple.com"]
+        let frame = HTTP2Frame(payload: .origin(origins), flags: [], streamID: .rootStream)
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x2a,           // 3-byte payload length (42 bytes)
+            0x0c,                       // 1-byte frame type (ALTSVC)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier,
+        ]
+        var expectedBufContent = self.byteBuffer(withBytes: frameBytes)
+        for origin in origins {
+            let u = origin.utf8
+            expectedBufContent.write(integer: UInt16(u.count))
+            expectedBufContent.write(bytes: u)
+        }
+        
+        var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
+        
+        let extraBuf = try encoder.encode(frame: frame, to: &buf)
+        XCTAssertNil(extraBuf, "Should return no extra buffer")
+        XCTAssertEqual(buf, expectedBufContent)
+    }
 
 }
