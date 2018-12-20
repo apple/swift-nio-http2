@@ -64,7 +64,23 @@ public struct HPACKHeaders {
     public init(httpHeaders: HTTPHeaders) {
         // TODO(jim): Once we make HTTPHeaders' internals visible to us, we can just copy the buffer
         // and map the headers.
-        self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
+        let store = httpHeaders.withUnsafeBufferAndIndices { (buf, headers, contiguous) -> _Storage? in
+            if contiguous {
+                let hpack = headers.map {
+                    HPACKHeader(start: $0.name.start, nameLength: $0.name.length, valueStart: $0.value.start, valueLength: $0.value.length)
+                }
+                return _Storage(buffer: buf, headers: hpack)
+            } else {
+                return nil
+            }
+        }
+        
+        if let store = store {
+            // the compiler complains if I just try to assign to self._storage here...
+            self.init(buffer: store.buffer, headers: store.headers)
+        } else {
+            self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
+        }
     }
     
     /// Construct a `HPACKHeaders` structure.
@@ -365,9 +381,10 @@ struct HPACKHeader {
         self.value = HPACKHeaderIndex(start: start + nameLength, length: valueLength)
     }
     
-    func offset(by offset: Int) -> HPACKHeader {
-        return HPACKHeader(start: self.name.start + offset, nameLength: self.name.length,
-                           valueLength: self.value.length, indexing: self.indexing)
+    init(start: Int, nameLength: Int, valueStart: Int, valueLength: Int, indexing: HPACKIndexing = .indexable) {
+        self.indexing = indexing
+        self.name = HPACKHeaderIndex(start: start, length: nameLength)
+        self.value = HPACKHeaderIndex(start: valueStart, length: valueLength)
     }
 }
 
