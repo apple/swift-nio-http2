@@ -109,7 +109,10 @@ class HTTP2FrameParserTests: XCTestCase {
         let totalFrameSize = bytes.readableBytes
         
         var decoder = HTTP2FrameDecoder(allocator: self.allocator)
-        let frame: HTTP2Frame! = try decoder.decode(bytes: &bytes)
+        decoder.append(bytes: &bytes)
+        XCTAssertEqual(bytes.readableBytes, 0)
+        
+        let frame: HTTP2Frame! = try decoder.nextFrame()
         
         // should return a frame
         XCTAssertNotNil(frame)
@@ -125,14 +128,33 @@ class HTTP2FrameParserTests: XCTestCase {
             var first = bytes.readSlice(length: 9)!
             var second = bytes
             
-            let nilFrame = try decoder.decode(bytes: &first)
-            XCTAssertNil(nilFrame)
-            first.write(buffer: &second)        // append second chunk to anything that was left
-            let realFrame: HTTP2Frame! = try decoder.decode(bytes: &first)
+            decoder.append(bytes: &first)
+            XCTAssertEqual(first.readableBytes, 0)
+            XCTAssertNil(try decoder.nextFrame())
+            
+            decoder.append(bytes: &second)
+            XCTAssertEqual(second.readableBytes, 0)
+            let realFrame: HTTP2Frame! = try decoder.nextFrame()
             XCTAssertNotNil(realFrame)
             
             self.assertEqualFrames(realFrame, expectedFrame, file: file, line: line)
         }
+    }
+    
+    // MARK: - General functionality
+    
+    func testPaddingIsNotAllowedByEncoder() {
+        let bytes = self.byteBuffer(withBytes: [0x00, 0x01, 0x02, 0x03])
+        let frame = HTTP2Frame(payload: .data(.byteBuffer(bytes)), flags: .padded, streamID: HTTP2StreamID(knownID: 1))
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+        var target = self.allocator.buffer(capacity: 48)
+        
+        XCTAssertThrowsError(try encoder.encode(frame: frame, to: &target), "Should throw an Unsupported error", { err in
+            guard let unsupported = err as? NIOHTTP2Errors.Unsupported, unsupported.info.contains("Padding") else {
+                XCTFail("Should have thrown an error due to unsupported PADDING flag")
+                return
+            }
+        })
     }
     
     // MARK: - DATA frames
@@ -158,7 +180,7 @@ class HTTP2FrameParserTests: XCTestCase {
     func testDataFrameDecodingWithPadding() throws {
         let payload = byteBuffer(withStaticString: "Hello, World!")
         let expectedFrame = HTTP2Frame(payload: .data(.byteBuffer(payload)),
-                                       flags: [.endStream, .padded],
+                                       flags: [.endStream],     // NB: we remove the PADDED flag when eliding padding bytes
                                        streamID: HTTP2StreamID(knownID: 1))
         
         // Unpadded frame is 22 bytes. When we add padding, we get +1 byte for pad length, +1 byte of padding, for 24 bytes total
@@ -200,14 +222,16 @@ class HTTP2FrameParserTests: XCTestCase {
         var decoder = HTTP2FrameDecoder(allocator: self.allocator)
         
         var slice = buf.readSlice(length: buf.readableBytes - payloadHalf.readableBytes)!
-        let frame: HTTP2Frame! = try decoder.decode(bytes: &slice)
-        XCTAssertNotNil(frame)
+        decoder.append(bytes: &slice)
         XCTAssertEqual(slice.readableBytes, 0)
+        let frame: HTTP2Frame! = try decoder.nextFrame()
+        XCTAssertNotNil(frame)
         self.assertEqualFrames(frame, expectedFrame1)
         
-        let frame2: HTTP2Frame! = try decoder.decode(bytes: &buf)
+        decoder.append(bytes: &buf)
+        XCTAssertEqual(buf.readableBytes, 0)
+        let frame2: HTTP2Frame! = try decoder.nextFrame()
         XCTAssertNotNil(frame)
-        XCTAssertEqual(slice.readableBytes, 0)
         self.assertEqualFrames(frame2, expectedFrame2)
     }
     
@@ -232,27 +256,29 @@ class HTTP2FrameParserTests: XCTestCase {
                                         flags: [],      // more to come
             streamID: HTTP2StreamID(knownID: 1))
         let expectedFrame2 = HTTP2Frame(payload: .data(.byteBuffer(payloadHalf)),
-                                        flags: [.endStream, .padded],
+                                        flags: [.endStream],    // NB: PADDED flag is removed along with padding bytes
                                         streamID: HTTP2StreamID(knownID: 1))
         
         var decoder = HTTP2FrameDecoder(allocator: self.allocator)
         
         var slice = buf.readSlice(length: 9)!
-        let noFrame: HTTP2Frame! = try decoder.decode(bytes: &slice)
+        decoder.append(bytes: &slice)
+        XCTAssertEqual(slice.readableBytes, 0)
+        let noFrame: HTTP2Frame! = try decoder.nextFrame()
         XCTAssertNil(noFrame)       // no frame produced
-        XCTAssertEqual(slice.readableBytes, 9)    // no bytes consumed
         
         // append the next slice to the remaining bytes
         var next = buf.readSlice(length: payloadHalf.readableBytes + 1)!
-        slice.write(buffer: &next)
-        let frame: HTTP2Frame! = try decoder.decode(bytes: &slice)
+        decoder.append(bytes: &next)
+        XCTAssertEqual(next.readableBytes, 0)
+        let frame: HTTP2Frame! = try decoder.nextFrame()
         XCTAssertNotNil(frame)  // produces a frame
-        XCTAssertEqual(slice.readableBytes, 0)  // consumes all input bytes
         self.assertEqualFrames(frame, expectedFrame1)
         
-        let frame2: HTTP2Frame! = try decoder.decode(bytes: &buf)
+        decoder.append(bytes: &buf)
+        XCTAssertEqual(buf.readableBytes, 0)
+        let frame2: HTTP2Frame! = try decoder.nextFrame()
         XCTAssertNotNil(frame)      // produces frame
-        XCTAssertEqual(slice.readableBytes, 0)  // consumes all input bytes, including padding
         self.assertEqualFrames(frame2, expectedFrame2)
     }
     
@@ -290,7 +316,8 @@ class HTTP2FrameParserTests: XCTestCase {
         var badFrameBuf = byteBuffer(withBytes: frameBytes)
         var decoder = HTTP2FrameDecoder(allocator: self.allocator)
         
-        XCTAssertThrowsError(try decoder.decode(bytes: &badFrameBuf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &badFrameBuf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -310,7 +337,8 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = self.byteBuffer(withBytes: frameBytes)
         var decoder = HTTP2FrameDecoder(allocator: self.allocator)
         
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -414,7 +442,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // should fail if the stream is zero
         buf.set(integer: UInt8(0), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -426,7 +455,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // pad size that exceeds payload size is illegal
         buf.set(integer: UInt8(200), at: 9)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -436,8 +466,6 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testHeadersFrameEncodingNoPriority() throws {
         let streamID = HTTP2StreamID(knownID: 1)
-        let encodedHeaders = self.byteBuffer(withBytes: simpleHeadersEncoded)
-        
         let frame = HTTP2Frame(payload: .headers(self.simpleHeaders, nil), flags: [.endHeaders], streamID: streamID)
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
@@ -447,19 +475,18 @@ class HTTP2FrameParserTests: XCTestCase {
             0x04,                       // 1-byte flags (END_HEADERS)
             0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
         ]
-        let expectedBufContent = byteBuffer(withBytes: frameBytes)
+        var expectedBufContent = byteBuffer(withBytes: frameBytes)
+        expectedBufContent.write(bytes: self.simpleHeadersEncoded)
         var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
         
         let extraBuf = try encoder.encode(frame: frame, to: &buf)
-        XCTAssertNotNil(extraBuf, "Should have returned an extra buf")
-        XCTAssertEqual(extraBuf!, .byteBuffer(encodedHeaders), "Encoded headers did not match expectation.")
+        XCTAssertNil(extraBuf, "Should not return an extra buf")
         XCTAssertEqual(buf, expectedBufContent)
     }
     
     func testHeadersFrameEncodingWithPriority() throws {
         let priorityData = HTTP2Frame.StreamPriorityData(exclusive: true, dependency: HTTP2StreamID(knownID: 1), weight: 139)
         let streamID = HTTP2StreamID(knownID: 3)
-        let encodedHeaders = self.byteBuffer(withBytes: simpleHeadersEncoded)
         
         let frame = HTTP2Frame(payload: .headers(self.simpleHeaders, priorityData), flags: [.endHeaders, .priority], streamID: streamID)
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
@@ -472,12 +499,12 @@ class HTTP2FrameParserTests: XCTestCase {
             0x80, 0x00, 0x00, 0x01,     // 4-byte stream dependency (top bit = exclusive)
             0x8b,                       // 1-byte weight (139)
         ]
-        let expectedBufContent = byteBuffer(withBytes: frameBytes)
+        var expectedBufContent = byteBuffer(withBytes: frameBytes)
+        expectedBufContent.write(bytes: self.simpleHeadersEncoded)
         var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
         
         let extraBuf = try encoder.encode(frame: frame, to: &buf)
-        XCTAssertNotNil(extraBuf, "Should have returned an extra buf")
-        XCTAssertEqual(extraBuf!, .byteBuffer(encodedHeaders), "Encoded headers did not match expectation.")
+        XCTAssertNil(extraBuf, "Should not return an extra buf")
         XCTAssertEqual(buf, expectedBufContent)
     }
     
@@ -515,7 +542,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // cannot be on root stream
         buf.set(integer: UInt8(0), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -527,7 +555,8 @@ class HTTP2FrameParserTests: XCTestCase {
         // must have a size of 5 octets
         buf.set(integer: UInt8(6), at: 2)
         buf.write(integer: UInt8(0))        // append an extra byte so we read it all
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
                 XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
                 return
@@ -588,7 +617,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // cannot be on root stream
         buf.set(integer: UInt8(0), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -600,7 +630,8 @@ class HTTP2FrameParserTests: XCTestCase {
         // must have a size of 4 octets
         buf.set(integer: UInt8(5), at: 2)
         buf.write(integer: UInt8(0))        // append an extra byte so we read it all
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
                 XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
                 return
@@ -702,7 +733,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // MUST be sent on the root stream
         buf.set(integer: UInt8(1), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -714,7 +746,8 @@ class HTTP2FrameParserTests: XCTestCase {
         // size must be a multiple of 6 octets
         buf.set(integer: UInt8(19), at: 2)
         buf.write(integer: UInt8(0))        // append an extra byte so we read it all
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
                 XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
                 return
@@ -777,7 +810,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // MUST be sent on the root stream
         buf.set(integer: UInt8(1), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -789,7 +823,8 @@ class HTTP2FrameParserTests: XCTestCase {
         // size must be 0 for ACKs
         buf.set(integer: UInt8(1), at: 2)
         buf.write(integer: UInt8(0))        // append an extra byte so we read it all
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
                 XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
                 return
@@ -872,7 +907,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // MUST NOT be sent on the root stream
         buf.set(integer: UInt8(0), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -895,14 +931,13 @@ class HTTP2FrameParserTests: XCTestCase {
             0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
             0x00, 0x00, 0x00, 0x03,     // 4-byte promised stream identifier
         ]
-        let expectedBufContent = self.byteBuffer(withBytes: frameBytes)
-        let encodedHeaders = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
+        var expectedBufContent = self.byteBuffer(withBytes: frameBytes)
+        expectedBufContent.write(bytes: self.simpleHeadersEncoded)
         var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
         
         let extraBuf = try encoder.encode(frame: frame, to: &buf)
-        XCTAssertNotNil(extraBuf, "Should return an extra buf")
+        XCTAssertNil(extraBuf, "Should not return an extra buf")
         XCTAssertEqual(buf, expectedBufContent)
-        XCTAssertEqual(extraBuf!, .byteBuffer(encodedHeaders), "Encoded headers did not match expectation.")
     }
     
     // MARK: - PING frames
@@ -959,7 +994,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // MUST NOT be associated with a stream.
         buf.set(integer: UInt8(1), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -970,7 +1006,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // length MUST be 8 octets
         buf.set(integer: UInt8(7), at: 2)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
                 XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
                 return
@@ -1068,7 +1105,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // MUST NOT be associated with a stream.
         buf.set(integer: UInt8(1), at: 8)
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a protocol error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .protocolError else {
                 XCTFail("Should have thrown a connection error of type PROTOCOL_ERROR")
                 return
@@ -1155,7 +1193,8 @@ class HTTP2FrameParserTests: XCTestCase {
         // must have a size of 4 octets
         buf.set(integer: UInt8(5), at: 2)
         buf.write(integer: UInt8(0))        // append an extra byte so we read it all
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
                 XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
                 return
@@ -1205,7 +1244,8 @@ class HTTP2FrameParserTests: XCTestCase {
         var decoder = HTTP2FrameDecoder(allocator: self.allocator)
         
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
-        XCTAssertNil(try decoder.decode(bytes: &buf))
+        decoder.append(bytes: &buf)
+        XCTAssertNil(try decoder.nextFrame())
         
         // should consume all the bytes
         XCTAssertEqual(buf.readableBytes, 0)
@@ -1221,7 +1261,8 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.write(buffer: &headers2)
         
         // This should now yield a HEADERS frame containing the complete set of headers
-        let frame: HTTP2Frame! = try decoder.decode(bytes: &buf)
+        decoder.append(bytes: &buf)
+        let frame: HTTP2Frame! = try decoder.nextFrame()
         XCTAssertNotNil(frame)
         
         self.assertEqualFrames(frame, expectedFrame)
@@ -1249,7 +1290,8 @@ class HTTP2FrameParserTests: XCTestCase {
         var decoder = HTTP2FrameDecoder(allocator: self.allocator)
         
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
-        XCTAssertNil(try decoder.decode(bytes: &buf))
+        decoder.append(bytes: &buf)
+        XCTAssertNil(try decoder.nextFrame())
         
         // should consume all the bytes
         XCTAssertEqual(buf.readableBytes, 0)
@@ -1265,7 +1307,8 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.write(buffer: &headers2)
         
         // This should now yield a HEADERS frame containing the complete set of headers
-        let frame: HTTP2Frame! = try decoder.decode(bytes: &buf)
+        decoder.append(bytes: &buf)
+        let frame: HTTP2Frame! = try decoder.nextFrame()
         XCTAssertNotNil(frame)
         
         self.assertEqualFrames(frame, expectedFrame)
@@ -1316,7 +1359,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // cannot have origin on a non-root stream
         buf.set(integer: UInt8(1), at: 8)
-        XCTAssertNil(try decoder.decode(bytes: &buf))
+        decoder.append(bytes: &buf)
+        XCTAssertNil(try decoder.nextFrame())
         XCTAssertEqual(buf.readableBytes, 0)
         
         buf.moveReaderIndex(to: 0)
@@ -1327,7 +1371,8 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.write(integer: UInt16(0))
         buf.write(bytes: field.readableBytesView)
         
-        XCTAssertNil(try decoder.decode(bytes: &buf))
+        decoder.append(bytes: &buf)
+        XCTAssertNil(try decoder.nextFrame())
         XCTAssertEqual(buf.readableBytes, 0)
     }
     
@@ -1400,7 +1445,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // MUST be sent on root stream (else ignored)
         buf.set(integer: UInt8(1), at: 8)
-        XCTAssertNil(try decoder.decode(bytes: &buf))
+        decoder.append(bytes: &buf)
+        XCTAssertNil(try decoder.nextFrame())
         XCTAssertEqual(buf.readableBytes, 0)
         
         buf.moveReaderIndex(to: 0)
@@ -1408,7 +1454,8 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // should throw frame size error if string length exceeds payload size
         buf.set(integer: UInt8(255), at: 9)     // really big string length!
-        XCTAssertThrowsError(try decoder.decode(bytes: &buf), "Should throw a frame size error", { err in
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
             guard let connErr = err as? NIOHTTP2Errors.ConnectionError, connErr.code == .frameSizeError else {
                 XCTFail("Should have thrown a connection error of type FRAME_SIZE_ERROR")
                 return
@@ -1439,6 +1486,188 @@ class HTTP2FrameParserTests: XCTestCase {
         let extraBuf = try encoder.encode(frame: frame, to: &buf)
         XCTAssertNil(extraBuf, "Should return no extra buffer")
         XCTAssertEqual(buf, expectedBufContent)
+    }
+    
+    // MARK: - Multi-Frame Buffers
+    
+    func testHeaderAndContinuationsInOneBuffer() throws {
+        let expectedFrame = HTTP2Frame(payload: .headers(self.simpleHeaders, nil),
+                                       flags: [.endHeaders],
+                                       streamID: HTTP2StreamID(knownID: 1))
+        
+        // Break into four chunks
+        var allHeaderBytes = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
+        var headers1 = allHeaderBytes.readSlice(length: 4)!
+        var headers2 = allHeaderBytes.readSlice(length: 4)!
+        var headers3 = allHeaderBytes.readSlice(length: 4)!
+        var headers4 = allHeaderBytes       // any remaining bytes
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x04,           // 3-byte payload length (4 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
+        buf.write(buffer: &headers1)
+        
+        var continuationFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x04,           // 3-byte payload length (7 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        buf.write(bytes: continuationFrameBytes)
+        buf.write(buffer: &headers2)
+        
+        buf.write(bytes: continuationFrameBytes)
+        buf.write(buffer: &headers3)
+        
+        continuationFrameBytes[2] = UInt8(headers4.readableBytes)
+        continuationFrameBytes[4] = HTTP2Frame.FrameFlags.endHeaders.rawValue
+        buf.write(bytes: continuationFrameBytes)
+        buf.write(buffer: &headers4)
+        
+        // This should now yield a HEADERS frame containing the complete set of headers
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator)
+        decoder.append(bytes: &buf)
+        let frame: HTTP2Frame! = try decoder.nextFrame()
+        XCTAssertNotNil(frame)
+        
+        self.assertEqualFrames(frame, expectedFrame)
+    }
+    
+    func testPushPromiseAndContinuationsInOneBuffer() throws {
+        let expectedFrame = HTTP2Frame(payload: .pushPromise(HTTP2StreamID(knownID: 3), self.simpleHeaders),
+                                       flags: [.endHeaders],
+                                       streamID: HTTP2StreamID(knownID: 1))
+        
+        // Break into four chunks
+        var allHeaderBytes = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
+        var headers1 = allHeaderBytes.readSlice(length: 4)!
+        var headers2 = allHeaderBytes.readSlice(length: 4)!
+        var headers3 = allHeaderBytes.readSlice(length: 4)!
+        var headers4 = allHeaderBytes       // any remaining bytes
+        
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x08,           // 3-byte payload length (4 bytes)
+            0x05,                       // 1-byte frame type (PUSH_PROMISE)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+            0x00, 0x00, 0x00, 0x03,     // 4-byte promised stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 17 + 9*3)
+        buf.write(buffer: &headers1)
+        
+        var continuationFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x04,           // 3-byte payload length (7 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        buf.write(bytes: continuationFrameBytes)
+        buf.write(buffer: &headers2)
+        
+        buf.write(bytes: continuationFrameBytes)
+        buf.write(buffer: &headers3)
+        
+        continuationFrameBytes[2] = UInt8(headers4.readableBytes)
+        continuationFrameBytes[4] = HTTP2Frame.FrameFlags.endHeaders.rawValue
+        buf.write(bytes: continuationFrameBytes)
+        buf.write(buffer: &headers4)
+        
+        // This should now yield a HEADERS frame containing the complete set of headers
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator)
+        decoder.append(bytes: &buf)
+        let frame: HTTP2Frame! = try decoder.nextFrame()
+        XCTAssertNotNil(frame)
+        
+        self.assertEqualFrames(frame, expectedFrame)
+    }
+    
+    func testMultipleFramesInOneBuffer() throws {
+        // We are going to encode a single buffer containing a bunch of different frames.
+        // We'll pretend to be the result of a server with a bad temper responding to a request.
+        // It will send out a SETTINGS ACK, then HEADERS, CONTINUATION, DATA, and finally
+        // (because it has a bad temper) GOAWAY.
+        let settingsAckBytes: [UInt8] = [
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x04,                       // 1-byte frame type (SETTINGS)
+            0x01,                       // 1-byte flags (ACK)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+        ]
+        let headerFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x0a,           // 3-byte payload length (10 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ] + self.simpleHeadersEncoded[0..<10]
+        let continuationFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x07,           // 3-byte payload length (7 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x04,                       // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ] + self.simpleHeadersEncoded[10...]
+        let dataFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x08,           // 3-byte payload length (8 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x01,                       // 1-byte flags (END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+            // DATA payload
+            0x00, 0x01, 0x02, 0x03,
+            0x04, 0x05, 0x06, 0x07
+        ]
+        let goawayFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x10,           // 3-byte payload length (16 bytes)
+            0x07,                       // 1-byte frame type (GOAWAY)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier,
+            0x00, 0x00, 0x00, 0x01,     // 4-byte last stream identifier,
+            0x00, 0x00, 0x00, 0x00,     // 4-byte error code (NO_ERROR)
+            
+            // opaque data (8 bytes)
+            0x00, 0x01, 0x02, 0x03,
+            0x04, 0x05, 0x06, 0x07,
+        ]
+        
+        var buf = self.allocator.buffer(capacity: 128)
+        buf.write(bytes: settingsAckBytes)
+        buf.write(bytes: headerFrameBytes)
+        buf.write(bytes: continuationFrameBytes)
+        buf.write(bytes: dataFrameBytes)
+        buf.write(bytes: goawayFrameBytes)
+        
+        var dataBuf = self.allocator.buffer(capacity: 8)
+        dataBuf.write(bytes: dataFrameBytes[9...])
+        
+        let streamID = HTTP2StreamID(knownID: 1)
+        let settingsAckFrame = HTTP2Frame(payload: .settings([]), flags: .ack, streamID: .rootStream)
+        let headersFrame = HTTP2Frame(payload: .headers(self.simpleHeaders, nil), flags: .endHeaders, streamID: streamID)
+        let dataFrame = HTTP2Frame(payload: .data(.byteBuffer(dataBuf)), flags: .endStream, streamID: streamID)
+        let goawayFrame = HTTP2Frame(payload: .goAway(lastStreamID: streamID, errorCode: .noError, opaqueData: dataBuf), flags: [], streamID: .rootStream)
+        
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator)
+        decoder.append(bytes: &buf)
+        XCTAssertEqual(buf.readableBytes, 0)
+        
+        let frame1 = try decoder.nextFrame()
+        XCTAssertNotNil(frame1)
+        self.assertEqualFrames(frame1!, settingsAckFrame)
+        
+        let frame2 = try decoder.nextFrame()
+        XCTAssertNotNil(frame2)
+        self.assertEqualFrames(frame2!, headersFrame)
+        
+        let frame3 = try decoder.nextFrame()
+        XCTAssertNotNil(frame3)
+        self.assertEqualFrames(frame3!, dataFrame)
+        
+        let frame4 = try decoder.nextFrame()
+        XCTAssertNotNil(frame4)
+        self.assertEqualFrames(frame4!, goawayFrame)
+        
+        let noFrame = try decoder.nextFrame()
+        XCTAssertNil(noFrame)
     }
 
 }

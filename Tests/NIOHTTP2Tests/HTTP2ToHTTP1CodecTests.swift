@@ -55,7 +55,9 @@ extension HTTPHeaders {
 extension HPACKHeaders {
     static func +(lhs: HPACKHeaders, rhs: HPACKHeaders) -> HPACKHeaders {
         var new = lhs
-        new.addContinuation(rhs)
+        for (name, value, index) in rhs {
+            new.add(name: name, value: value, indexing: index)
+        }
         return new
     }
 }

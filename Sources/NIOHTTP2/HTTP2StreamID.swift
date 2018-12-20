@@ -68,6 +68,13 @@ public class HTTP2StreamID {
         precondition(knownID >= 0)
         self.actualStreamID = knownID
     }
+    
+    /// Create a `HTTP2StreamID` from a 32-bit value received as part of a frame.
+    ///
+    /// This will ignore the most significant bit of the provided value.
+    internal init(networkID: UInt32) {
+        self.actualStreamID = Int32(networkID & ~0x8000_0000)
+    }
 
     /// The stream ID used on the network, if there is one.
     ///

@@ -75,6 +75,14 @@ public enum NIOHTTP2Errors {
             self.code = code
         }
     }
+    
+    public struct Unsupported: NIOHTTP2Error {
+        public var info: String
+        
+        internal init(info: String) {
+            self.info = info
+        }
+    }
 }
 
 

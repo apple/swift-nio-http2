@@ -151,6 +151,44 @@ public struct HPACKEncoder {
         return self.buffer
     }
     
+    /// A one-shot encoder that writes to a provided buffer.
+    public mutating func encode(headers: HPACKHeaders, to buffer: inout ByteBuffer) throws {
+        if case .encoding = self.state {
+            throw NIOHPACKErrors.EncoderAlreadyActive()
+        }
+        
+        self.buffer = buffer
+        switch self.state {
+        case .idle:
+            self.state = .encoding
+        case .resized(nil):
+            // one resize
+            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding
+        case let .resized(smallestSize?):
+            // two resizes, one smaller than the other
+            self.buffer.write(encodedInteger: UInt(smallestSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding
+        default:
+            break
+        }
+        
+        let err: Error?
+        do {
+            try self.append(headers: headers)
+            err = nil
+        } catch {
+            err = error
+        }
+        
+        // ensure we clean up
+        buffer = try self.endEncoding()
+        if let err = err {
+            throw err
+        }
+    }
+    
     /// Appends() headers in the default fashion: indexed if possible, literal+indexable if not.
     ///
     /// - Parameter headers: A sequence of key/value pairs representing HTTP headers.

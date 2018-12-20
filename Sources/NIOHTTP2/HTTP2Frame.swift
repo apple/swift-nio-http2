@@ -29,7 +29,7 @@ public struct HTTP2Frame {
     public var streamID: HTTP2StreamID
     
     /// Stream priority data, used in PRIORITY frames and optionally in HEADERS frames.
-    public struct StreamPriorityData: Equatable {
+    public struct StreamPriorityData: Equatable, Hashable {
         public var exclusive: Bool
         public var dependency: HTTP2StreamID
         public var weight: UInt8
@@ -155,7 +155,7 @@ public struct HTTP2Frame {
     }
     
     /// The flags supported by the frame types understood by this protocol.
-    public struct FrameFlags: OptionSet {
+    public struct FrameFlags: OptionSet, CustomStringConvertible {
         public typealias RawValue = UInt8
         
         public private(set) var rawValue: UInt8
@@ -184,6 +184,17 @@ public struct HTTP2Frame {
         
         // useful for test cases
         internal static var allFlags: FrameFlags = [.endStream, .endHeaders, .padded, .priority]
+        
+        public var description: String {
+            var strings: [String] = []
+            for i in 0..<8 {
+                let f: UInt8 = 1 << i
+                if (self.rawValue & f) != 0 {
+                    strings.append(String(f, radix: 16, uppercase: true))
+                }
+            }
+            return "[\(strings.joined(separator: ", "))]"
+        }
     }
 }
 

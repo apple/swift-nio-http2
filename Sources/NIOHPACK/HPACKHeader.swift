@@ -112,19 +112,6 @@ public struct HPACKHeaders {
         }
     }
     
-    /// Append a list of headers from a CONTINUATION block.
-    ///
-    /// - Parameter headers: The parsed contents of a header block fragment.
-    public mutating func addContinuation(_ headers: HPACKHeaders) {
-        // Determine delta for all offsets.
-        let delta = self._storage.buffer.readableBytes
-        self._storage.buffer.write(bytes: headers._storage.buffer.readableBytesView)
-        self._storage.headers.reserveCapacity(self._storage.headers.count + headers._storage.headers.count)
-        for hdr in headers._storage.headers {
-            self._storage.headers.append(hdr.offset(by: delta))
-        }
-    }
-    
     /// Add a header name/value pair to the block.
     ///
     /// This method is strictly additive: if there are other values for the given header name
