@@ -26,6 +26,7 @@ extension HTTP2FrameParserTests {
 
    static var allTests : [(String, (HTTP2FrameParserTests) -> () throws -> Void)] {
       return [
+                ("testPaddingIsNotAllowedByEncoder", testPaddingIsNotAllowedByEncoder),
                 ("testDataFrameDecodingNoPadding", testDataFrameDecodingNoPadding),
                 ("testDataFrameDecodingWithPadding", testDataFrameDecodingWithPadding),
                 ("testSyntheticMultipleDataFrames", testSyntheticMultipleDataFrames),
@@ -77,6 +78,9 @@ extension HTTP2FrameParserTests {
                 ("testOriginFrameDecoding", testOriginFrameDecoding),
                 ("testOriginFrameDecodingFailure", testOriginFrameDecodingFailure),
                 ("testOriginFrameEncoding", testOriginFrameEncoding),
+                ("testHeaderAndContinuationsInOneBuffer", testHeaderAndContinuationsInOneBuffer),
+                ("testPushPromiseAndContinuationsInOneBuffer", testPushPromiseAndContinuationsInOneBuffer),
+                ("testMultipleFramesInOneBuffer", testMultipleFramesInOneBuffer),
            ]
    }
 }
