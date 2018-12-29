@@ -169,6 +169,26 @@ final class ClosedEventVsFrameOrderingHandler: ChannelInboundHandler {
     }
 }
 
+/// A simple channel handler that adds the HTTP2Parser handler dynamically
+/// after a read event has been triggered.
+class HTTP2ParserProxyHandler: ChannelInboundHandler {
+    typealias InboundIn = ByteBuffer
+
+    private let maxCachedClosedStreams: Int
+
+    init(maxCachedClosedStreams: Int) {
+        self.maxCachedClosedStreams = maxCachedClosedStreams
+    }
+
+    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        XCTAssertNoThrow(try ctx.pipeline.add(
+            handler: HTTP2Parser(mode: .server, maxCachedClosedStreams: maxCachedClosedStreams
+        )).wait())
+        ctx.fireChannelRead(data)
+        _ = ctx.pipeline.remove(ctx: ctx)
+    }
+}
+
 class SimpleClientServerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
@@ -190,9 +210,42 @@ class SimpleClientServerTests: XCTestCase {
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 
+    /// Establish a basic HTTP/2 connection where the HTTP2Parser handler is added after the channel has been activated.
+    func basicHTTP2DynamicPipelineConnection(maxCachedClosedStreams: Int = 1024) throws {
+        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client, maxCachedClosedStreams: maxCachedClosedStreams)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2ParserProxyHandler(maxCachedClosedStreams: maxCachedClosedStreams)).wait())
+        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
+    }
+
     func testBasicRequestResponse() throws {
         // Begin by getting the connection up.
         try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server.
+        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.write(staticString: "A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID()
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
+        reqBodyFrame.flags.insert(.endStream)
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Let's send a quick response back.
+        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
+        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+        respFrame.flags.insert(.endStream)
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testBasicRequestResponseWithDynamicPipeline() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2DynamicPipelineConnection()
 
         // We're now going to try to send a request from the client to the server.
         let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
