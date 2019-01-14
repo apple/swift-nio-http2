@@ -53,13 +53,13 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
                 promise?.fail(error: error)
                 ctx.fireErrorCaught(error)
             }
-        case .headers(let headers):
+        case .headers(let headers, let priorityData):
             // Headers are special. If we have a data frame buffered, we buffer behind it to avoid frames
             // being reordered. However, if we don't have a data frame buffered we pass the headers frame on
             // immediately, as there is no risk of violating ordering guarantees.
             let bufferResult = self.streamDataBuffers[frame.streamID].modify { (state: inout StreamFlowControlState) -> Bool in
                 if state.dataBuffer.haveBufferedDataFrame {
-                    state.dataBuffer.bufferWrite((.headers(headers), frame.flags, promise))
+                    state.dataBuffer.bufferWrite((.headers(headers, priorityData), frame.flags, promise))
                     return true
                 } else {
                     return false

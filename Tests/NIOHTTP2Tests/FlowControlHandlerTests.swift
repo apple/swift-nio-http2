@@ -17,6 +17,7 @@ import NIO
 import NIOHTTP1
 import CNIONghttp2
 @testable import NIOHTTP2
+import NIOHPACK
 
 
 
@@ -195,7 +196,7 @@ class FlowControlHandlerTests: XCTestCase {
 
         // We also send a WindowUpdate frame, a RST_STREAM frame, and a PRIORITY frame.
         let windowUpdateFrame = HTTP2Frame(streamID: streamOne, payload: .windowUpdate(windowSizeIncrement: 500))
-        let priorityFrame = HTTP2Frame(streamID: streamOne, payload: .priority)
+        let priorityFrame = HTTP2Frame(streamID: streamOne, payload: .priority(.init(exclusive: false, dependency: .init(knownID: 0), weight: 50)))
         let rstStreamFrame = HTTP2Frame(streamID: streamOne, payload: .rstStream(.protocolError))
 
         // All of these frames are written.
@@ -275,7 +276,7 @@ class FlowControlHandlerTests: XCTestCase {
         let streamOne = HTTP2StreamID(knownID: 1)
 
         // Start by sending a headers frame through, even before createStream is fired. This should pass unmolested.
-        let headers = HTTP2Frame(streamID: streamOne, flags: .endHeaders, payload: .headers(HTTPHeaders([("name", "value")])))
+        let headers = HTTP2Frame(streamID: streamOne, flags: .endHeaders, payload: .headers(HPACKHeaders([("name", "value")]), nil))
         self.channel.write(headers, promise: nil)
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
@@ -289,7 +290,7 @@ class FlowControlHandlerTests: XCTestCase {
         receivedFrames[0].assertHeadersFrameMatches(this: headers)
 
         // Now send a large DATA frame that is going to be buffered, followed by a HEADERS frame.
-        let endHeaders = HTTP2Frame(streamID: streamOne, flags: [.endHeaders, .endStream], payload: .headers(HTTPHeaders([("name", "value")])))
+        let endHeaders = HTTP2Frame(streamID: streamOne, flags: [.endHeaders, .endStream], payload: .headers(HPACKHeaders([("name", "value")]), nil))
         var writtenData = self.channel.writeDataFrame(streamOne, byteBufferSize: 50)
         self.channel.write(endHeaders, promise: nil)
         self.channel.flush()
@@ -325,7 +326,7 @@ class FlowControlHandlerTests: XCTestCase {
         let headersPromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
 
         var writtenData = self.channel.writeDataFrame(streamOne, byteBufferSize: 50, promise: dataPromise)
-        self.channel.write(HTTP2Frame(streamID: streamOne, payload: .headers(HTTPHeaders([("key", "value")]))), promise: headersPromise)
+        self.channel.write(HTTP2Frame(streamID: streamOne, payload: .headers(HPACKHeaders([("key", "value")]), nil)), promise: headersPromise)
         self.channel.flush()
 
         var receivedFrames = self.receivedFrames()
