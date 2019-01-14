@@ -61,10 +61,26 @@ public struct HPACKHeaders {
     }
     
     /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
-    init(_ httpHeaders: HTTPHeaders) {
+    public init(httpHeaders: HTTPHeaders) {
         // TODO(jim): Once we make HTTPHeaders' internals visible to us, we can just copy the buffer
         // and map the headers.
-        self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
+        let store = httpHeaders.withUnsafeBufferAndIndices { (buf, headers, contiguous) -> _Storage? in
+            if contiguous {
+                let hpack = headers.map {
+                    HPACKHeader(start: $0.name.start, nameLength: $0.name.length, valueStart: $0.value.start, valueLength: $0.value.length)
+                }
+                return _Storage(buffer: buf, headers: hpack)
+            } else {
+                return nil
+            }
+        }
+        
+        if let store = store {
+            // the compiler complains if I just try to assign to self._storage here...
+            self.init(buffer: store.buffer, headers: store.headers)
+        } else {
+            self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
+        }
     }
     
     /// Construct a `HPACKHeaders` structure.
@@ -74,7 +90,7 @@ public struct HPACKHeaders {
     ///
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
-    init(_ headers: [(String, String)] = []) {
+    public init(_ headers: [(String, String)] = []) {
         // Note: this initializer exists because of https://bugs.swift.org/browse/SR-7415.
         // Otherwise we'd only have the one below with a default argument for `allocator`.
         self.init(headers, allocator: ByteBufferAllocator())
@@ -88,7 +104,7 @@ public struct HPACKHeaders {
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
     ///     - allocator: The allocator to use to allocate the underlying storage.
-    init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
+    public init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
         // Reserve enough space in the array to hold all indices.
         var array: [HPACKHeader] = []
         array.reserveCapacity(headers.count)
@@ -121,7 +137,7 @@ public struct HPACKHeaders {
     /// - Parameter name: The header field name. For maximum compatibility this should be an
     ///     ASCII string. For HTTP/2 lowercase header names are strongly encouraged.
     /// - Parameter value: The header field value to add for the given name.
-    private mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
+    public mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         precondition(!name.utf8.contains(where: { !$0.isASCII }), "name must be ASCII")
         if !isKnownUniquelyReferenced(&self._storage) {
             self._storage = self._storage.copy()
@@ -363,6 +379,12 @@ struct HPACKHeader {
         self.indexing = indexing
         self.name = HPACKHeaderIndex(start: start, length: nameLength)
         self.value = HPACKHeaderIndex(start: start + nameLength, length: valueLength)
+    }
+    
+    init(start: Int, nameLength: Int, valueStart: Int, valueLength: Int, indexing: HPACKIndexing = .indexable) {
+        self.indexing = indexing
+        self.name = HPACKHeaderIndex(start: start, length: nameLength)
+        self.value = HPACKHeaderIndex(start: valueStart, length: valueLength)
     }
 }
 

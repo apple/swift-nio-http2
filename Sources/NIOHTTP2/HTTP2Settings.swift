@@ -34,6 +34,11 @@ public struct HTTP2SettingsParameter {
     internal init(fromNetwork value: Int32) {
         self.networkRepresentation = UInt16(value)
     }
+    
+    /// Initialize a `HTTP2SettingsParameter` from a network `UInt16`.
+    internal init(fromPayload value: UInt16) {
+        self.networkRepresentation = value
+    }
 
     /// A helper to initialize the static parameters.
     private init(_ value: UInt16) {
