@@ -27,6 +27,10 @@ protocol SendingPushPromiseState {
 
 extension SendingPushPromiseState {
     mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+        return self._sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+    }
+
+    fileprivate mutating func _sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
         // While receivePushPromise has a two step process involving creating the child stream first, here we do it the other
         // way around. This is because we don't want to bother creating a child stream if the headers aren't valid, and because
         // we don't have to emit a frame to report the error (we just return it to the user), we don't have to have a stream

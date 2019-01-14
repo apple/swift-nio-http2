@@ -227,6 +227,8 @@ extension HTTP2Frame {
     }
 
     /// Asserts that a given frame is a DATA frame matching this one.
+    ///
+    /// This function always converts the DATA frame to a bytebuffer, for use with round-trip testing.
     func assertDataFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
         let expectedPayload: ByteBuffer
         switch frame.payload {
@@ -250,6 +252,21 @@ extension HTTP2Frame {
     func assertDataFrame(endStream: Bool, streamID: Int32, payload: ByteBuffer, file: StaticString = #file, line: UInt = #line) {
         guard case .data(.byteBuffer(let actualPayload)) = self.payload else {
             XCTFail("Expected DATA frame with ByteBuffer, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(self.flags.contains(.endStream), endStream,
+                       "Unexpected endStream: expected \(endStream), got \(self.flags.contains(.endStream))", file: file, line: line)
+        XCTAssertEqual(self.streamID.networkStreamID!, streamID,
+                       "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
+        XCTAssertEqual(actualPayload, payload,
+                       "Unexpected body: expected \(payload), got \(actualPayload)", file: file, line: line)
+
+    }
+
+    func assertDataFrame(endStream: Bool, streamID: Int32, payload: FileRegion, file: StaticString = #file, line: UInt = #line) {
+        guard case .data(.fileRegion(let actualPayload)) = self.payload else {
+            XCTFail("Expected DATA frame with FileRegion, got \(self.payload) instead", file: file, line: line)
             return
         }
 
@@ -335,6 +352,22 @@ extension HTTP2Frame {
 
         XCTAssertEqual(self.streamID.networkStreamID!, streamID, "Non matching stream IDs: expected \(streamID), got \(self.streamID.networkStreamID!)!", file: file, line: line)
         XCTAssertEqual(actualErrorCode, errorCode, "Non-matching error-code: expected \(errorCode), got \(actualErrorCode)", file: file, line: line)
+    }
+
+    func assertPriorityFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .priority = frame.payload else {
+            preconditionFailure("Priority frames can never match non-Priority frames.")
+        }
+        self.assertPriorityFrame(file: file, line: line)
+    }
+
+    func assertPriorityFrame(file: StaticString = #file, line: UInt = #line) {
+        guard case .priority = self.payload else {
+            XCTFail("Expected PRIORITY frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        // Update this when we have more code for priority frames.
     }
 }
 

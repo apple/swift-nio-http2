@@ -324,7 +324,7 @@ private extension CircularBuffer {
 }
 
 
-private extension Dictionary {
+internal extension Dictionary {
     /// Calls a function once with each value of the dictionary, allowing the function
     /// to mutate the value in-place in the dictionary.
     ///

@@ -26,6 +26,11 @@ public struct StreamClosedEvent {
     /// The reason for the stream closure. `nil` if the stream was closed without
     /// error. Otherwise, the error code indicating why the stream was closed.
     public let reason: HTTP2ErrorCode?
+
+    public init(streamID: HTTP2StreamID, reason: HTTP2ErrorCode?) {
+        self.streamID = streamID
+        self.reason = reason
+    }
 }
 
 extension StreamClosedEvent: Equatable {
@@ -33,3 +38,37 @@ extension StreamClosedEvent: Equatable {
         return lhs.streamID == rhs.streamID && lhs.reason == rhs.reason
     }
 }
+
+
+/// A `NIOHTTP2WindowUpdatedEvent` is fired whenever a flow control window is changed.
+/// This includes changes on the connection flow control window, which is signalled by
+/// this event having `streamID` set to `.rootStream`.
+public struct NIOHTTP2WindowUpdatedEvent {
+    /// The stream ID of the window that has been changed. May be .rootStream, in which
+    /// case the connection window has changed.
+    public let streamID: HTTP2StreamID
+
+    public let newWindowSize: Int32
+
+    public init(streamID: HTTP2StreamID, newWindowSize: Int32) {
+        self.streamID = streamID
+        self.newWindowSize = newWindowSize
+    }
+}
+
+extension NIOHTTP2WindowUpdatedEvent: Equatable { }
+
+
+/// A `NIOHTTP2StreamCreatedEvent` is fired whenever a HTTP/2 stream is created
+public struct NIOHTTP2StreamCreatedEvent {
+    public let streamID: HTTP2StreamID
+
+    public let initialWindowSize: Int32
+
+    public init(streamID: HTTP2StreamID, initialWindowSize: Int32) {
+        self.streamID = streamID
+        self.initialWindowSize = initialWindowSize
+    }
+}
+
+extension NIOHTTP2StreamCreatedEvent: Equatable { }
