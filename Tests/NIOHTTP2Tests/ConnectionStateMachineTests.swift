@@ -15,7 +15,7 @@
 import XCTest
 
 import NIO
-import NIOHTTP1
+import NIOHPACK
 @testable import NIOHTTP2
 
 func assertSucceeds(_ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
@@ -38,7 +38,7 @@ func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> Stat
 
 func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
     switch body() {
-    case .streamError(underlyingError: _, type: type):
+    case .streamError(streamID: _, underlyingError: _, type: type):
         return
     case let result:
         XCTFail("Expected stream error type \(type), got \(result)", file: file, line: line)
@@ -59,15 +59,15 @@ class ConnectionStateMachineTests: XCTestCase {
     var client: HTTP2ConnectionStateMachine!
 
     static let requestHeaders = {
-        return HTTPHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+        return HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
     }()
 
     static let responseHeaders = {
-        return HTTPHeaders([(":status", "200"), ("server", "NIO")])
+        return HPACKHeaders([(":status", "200"), ("server", "NIO")])
     }()
 
     static let trailers = {
-        return HTTPHeaders([("x-trailers", "yes")])
+        return HPACKHeaders([("x-trailers", "yes")])
     }()
 
     override func setUp() {

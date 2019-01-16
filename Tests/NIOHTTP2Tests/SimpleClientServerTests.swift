@@ -14,7 +14,6 @@
 
 import XCTest
 import NIO
-import NIOHTTP1
 import NIOHPACK
 import CNIONghttp2
 @testable import NIOHTTP2
@@ -206,8 +205,8 @@ class SimpleClientServerTests: XCTestCase {
 
     /// Establish a basic HTTP/2 connection.
     func basicHTTP2Connection(maxCachedClosedStreams: Int = 1024) throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client, maxCachedClosedStreams: maxCachedClosedStreams)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server, maxCachedClosedStreams: maxCachedClosedStreams)).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 
@@ -249,20 +248,20 @@ class SimpleClientServerTests: XCTestCase {
         try self.basicHTTP2DynamicPipelineConnection()
 
         // We're now going to try to send a request from the client to the server.
-        let headers = HTTPHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
         var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
         requestBody.write(staticString: "A simple HTTP/2 request.")
 
         let clientStreamID = HTTP2StreamID()
-        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers))
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers, nil))
         var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
         reqBodyFrame.flags.insert(.endStream)
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
         // Let's send a quick response back.
-        let responseHeaders = HTTPHeaders([(":status", "200"), ("content-length", "0")])
-        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders))
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
+        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders, nil))
         respFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
