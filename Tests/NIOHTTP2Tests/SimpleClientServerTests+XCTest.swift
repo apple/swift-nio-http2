@@ -27,6 +27,7 @@ extension SimpleClientServerTests {
    static var allTests : [(String, (SimpleClientServerTests) -> () throws -> Void)] {
       return [
                 ("testBasicRequestResponse", testBasicRequestResponse),
+                ("testBasicRequestResponseWithDynamicPipeline", testBasicRequestResponseWithDynamicPipeline),
                 ("testManyRequestsAtOnce", testManyRequestsAtOnce),
                 ("testNothingButGoaway", testNothingButGoaway),
                 ("testGoAwayWithStreamsUpQuiescing", testGoAwayWithStreamsUpQuiescing),

@@ -177,15 +177,17 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     }
 
     public func channelActive(ctx: ChannelHandlerContext) {
-        self.session = NGHTTP2Session(mode: self.mode,
-                                      allocator: ctx.channel.allocator,
-                                      maxCachedStreamIDs: self.maxCachedClosedStreams,
-                                      frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
-                                      sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) },
-                                      userEventFunction: { ctx.fireUserInboundEventTriggered($0) })
-
-        self.flushPreamble(ctx: ctx)
+        self.initializeSession(ctx: ctx)
         ctx.fireChannelActive()
+    }
+
+    public func handlerAdded(ctx: ChannelHandlerContext) {
+        // Check if the channel is already active when this handler is being added,
+        // in case the handler was added dynamically into the pipeline. If so,
+        // call channelActive to set up the handler.
+        if ctx.channel.isActive {
+            self.initializeSession(ctx: ctx)
+        }
     }
 
     public func handlerRemoved(ctx: ChannelHandlerContext) {
@@ -226,6 +228,19 @@ public final class HTTP2Parser: ChannelInboundHandler, ChannelOutboundHandler {
     public func flush(ctx: ChannelHandlerContext) {
         self.reentrancyManager.markFlushPoint()
         self.reentrancyManager.process(ctx: ctx, self.process)
+    }
+  
+    private func initializeSession(ctx: ChannelHandlerContext) {
+      if self.session == nil {
+          self.session = NGHTTP2Session(mode: self.mode,
+                                        allocator: ctx.channel.allocator,
+                                        maxCachedStreamIDs: self.maxCachedClosedStreams,
+                                        frameReceivedHandler: { ctx.fireChannelRead(self.wrapInboundOut($0)) },
+                                        sendFunction: { ctx.write(self.wrapOutboundOut($0), promise: $1) },
+                                        userEventFunction: { ctx.fireUserInboundEventTriggered($0) })
+      
+          self.flushPreamble(ctx: ctx)
+      }
     }
 
     private func flushPreamble(ctx: ChannelHandlerContext) {

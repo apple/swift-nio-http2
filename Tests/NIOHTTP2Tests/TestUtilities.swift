@@ -80,8 +80,13 @@ extension XCTestCase {
     func assertDoHandshake(client: EmbeddedChannel, server: EmbeddedChannel,
                            clientSettings: [HTTP2Setting] = nioDefaultSettings, serverSettings: [HTTP2Setting] = nioDefaultSettings,
                            file: StaticString = #file, line: UInt = #line) throws {
-        client.pipeline.fireChannelActive()
-        server.pipeline.fireChannelActive()
+        // This connects are not semantically right, but are required in order to activate the
+        // channels.
+        //! FIXME: Replace with registerAlreadyConfigured0 once EmbeddedChannel propagates this
+        //         call to its channelcore.
+        let socket = try SocketAddress(unixDomainSocketPath: "/fake")
+        _ = try client.connect(to: socket).wait()
+        _ = try server.connect(to: socket).wait()
 
         // First the channels need to interact.
         self.interactInMemory(client, server, file: file, line: line)
