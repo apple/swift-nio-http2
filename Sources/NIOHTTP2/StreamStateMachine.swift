@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import NIOHTTP1
+import NIOHPACK
 
 /// A HTTP/2 protocol implementation is fundamentally built on top of two interlocking finite
 /// state machines. The full description of this is in ConnectionStateMachine.swift.
@@ -258,7 +258,7 @@ extension HTTP2StreamStateMachine {
     /// it meets the requirements of RFC 7540 for containing a well-formed header block, and additionally
     /// checks whether the value of the end stream bit is acceptable. If all checks pass, transitions the
     /// state to the appropriate next entry.
-    mutating func sendHeaders(headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         // We can send headers in the following states:
         //
         // - idle, when we are a client, in which case we are sending our request headers
@@ -305,11 +305,11 @@ extension HTTP2StreamStateMachine {
         case .idle(.server, _, _), .closed:
             return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         case .reservedRemote, .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive:
-            return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         }
     }
 
-    mutating func receiveHeaders(headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         // We can receive headers in the following states:
         //
         // - idle, when we are a server, in which case we are receiving request headers
@@ -356,7 +356,7 @@ extension HTTP2StreamStateMachine {
         case .idle(.client, _, _), .closed:
             return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         case .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive:
-            return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         }
     }
 
@@ -387,10 +387,10 @@ extension HTTP2StreamStateMachine {
             // Sending a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenRemoteLocalIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedLocalPeerActive, .halfClosedRemoteLocalIdle, .closed:
-                return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed)
+                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return .streamError(underlyingError: error, type: .flowControlError)
+            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
@@ -423,16 +423,16 @@ extension HTTP2StreamStateMachine {
             // Receiving a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenLocalPeerIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedRemoteLocalActive, .halfClosedRemoteLocalIdle, .closed:
-                return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed)
+                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return .streamError(underlyingError: error, type: .flowControlError)
+            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
     }
 
-    mutating func sendPushPromise(headers: HTTPHeaders) -> StateMachineResult {
+    mutating func sendPushPromise(headers: HPACKHeaders) -> StateMachineResult {
         // We can send PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a server. In this case we assert that the stream was initiated by the client.
@@ -451,11 +451,11 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .client, localWindow: _, remoteWindow: _),
              .halfClosedRemoteLocalActive(localRole: .client, initiatedBy: _, localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localWindow: _):
-            return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         }
     }
 
-    mutating func receivePushPromise(headers: HTTPHeaders) -> StateMachineResult {
+    mutating func receivePushPromise(headers: HPACKHeaders) -> StateMachineResult {
         // We can receive PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a client. In this case we assert that the stream was initiated by us.
@@ -474,7 +474,7 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .server, localWindow: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .server, initiatedBy: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteWindow: _):
-            return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         }
     }
 
@@ -515,12 +515,12 @@ extension HTTP2StreamStateMachine {
                 self.state = .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
 
             case .idle, .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive, .closed:
-                return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-            return .streamError(underlyingError: error, type: .flowControlError)
+            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
         } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-            return .streamError(underlyingError: error, type: .protocolError)
+            return .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
@@ -571,12 +571,12 @@ extension HTTP2StreamStateMachine {
                 break
 
             case .idle, .reservedRemote, .closed:
-                return .streamError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-            return .streamError(underlyingError: error, type: .flowControlError)
+            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
         } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-            return .streamError(underlyingError: error, type: .protocolError)
+            return .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
@@ -701,7 +701,7 @@ extension HTTP2StreamStateMachine {
 extension HTTP2StreamStateMachine {
     /// Validate that the request headers meet the requirements of RFC 7540. If they do,
     /// transitions to the target state.
-    private mutating func processRequestHeaders(_ headers: HTTPHeaders, targetState target: State) -> StateMachineResult {
+    private mutating func processRequestHeaders(_ headers: HPACKHeaders, targetState target: State) -> StateMachineResult {
         // TODO(cory): Implement
         self.state = target
         return .succeed
@@ -710,7 +710,7 @@ extension HTTP2StreamStateMachine {
     /// Validate that the response headers meet the requirements of RFC 7540. Also characterises
     /// them to check whether the headers are informational or final, and if the headers are
     /// valid and correspond to a final response, transitions to the appropriate target state.
-    private mutating func processResponseHeaders(_ headers: HTTPHeaders, targetStateIfFinal finalState: State) -> StateMachineResult {
+    private mutating func processResponseHeaders(_ headers: HPACKHeaders, targetStateIfFinal finalState: State) -> StateMachineResult {
         // TODO(cory): Implement
         self.state = finalState
         return .succeed
@@ -718,7 +718,7 @@ extension HTTP2StreamStateMachine {
 
     /// Validates that the trailers meet the requirements of RFC 7540. If they do, transitions to the
     /// target final state.
-    private mutating func processTrailers(_ headers: HTTPHeaders, isEndStreamSet endStream: Bool, targetState target: State) -> StateMachineResult {
+    private mutating func processTrailers(_ headers: HPACKHeaders, isEndStreamSet endStream: Bool, targetState target: State) -> StateMachineResult {
         // TODO(cory): Implement
         self.state = target
         return .succeed

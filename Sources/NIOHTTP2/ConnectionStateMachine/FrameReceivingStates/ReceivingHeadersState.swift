@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import NIOHTTP1
+import NIOHPACK
 
 /// A protocol that provides implementation for receiving HEADERS frames, for those states that
 /// can validly accept headers.
@@ -29,7 +29,7 @@ protocol ReceivingHeadersState {
 
 extension ReceivingHeadersState {
     /// Called when we receive a HEADERS frame in this state.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         if self.role == .server && streamID.mayBeInitiatedBy(.client) {
             // Clients may initiate streams with HEADERS frames, so we allow this stream to not exist.
             let defaultValue = HTTP2StreamStateMachine(streamID: streamID,
@@ -60,7 +60,7 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
     /// If we've quiesced this connection, the remote peer is no longer allowed to create new streams.
     /// We ignore any frame that appears to be creating a new stream, and then prevent this from creating
     /// new streams.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         if streamID.mayBeInitiatedBy(.client) && streamID > self.lastRemoteStreamID {
             return .ignoreFrame
         }

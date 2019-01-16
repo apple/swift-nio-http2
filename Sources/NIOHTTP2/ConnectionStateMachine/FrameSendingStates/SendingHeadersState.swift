@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import NIOHTTP1
+import NIOHPACK
 
 
 /// A protocol that provides implementation for sending HEADERS frames, for those states that
@@ -30,7 +30,7 @@ protocol SendingHeadersState {
 
 extension SendingHeadersState {
     /// Called when we send a HEADERS frame in this state.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         if self.role == .client && streamID.mayBeInitiatedBy(.client) {
             // Clients may initiate streams with HEADERS frames, so we allow this stream to not exist.
             let defaultValue = HTTP2StreamStateMachine(streamID: streamID,
@@ -58,7 +58,7 @@ extension SendingHeadersState {
 extension SendingHeadersState where Self: RemotelyQuiescingState {
     /// If we've been remotely quiesced, we're forbidden from creating new streams. So we can only possibly
     /// be modifying an existing one.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
             $0.sendHeaders(headers: headers, isEndStreamSet: endStream)
         }

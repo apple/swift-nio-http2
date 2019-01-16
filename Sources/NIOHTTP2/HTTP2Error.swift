@@ -146,29 +146,22 @@ public enum NIOHTTP2Errors {
     public struct PushInViolationOfSetting: NIOHTTP2Error {
         public init() { }
     }
-    
-    public struct StreamError: NIOHTTP2Error {
-        public var code: HTTP2ErrorCode
-        
-        public init(code: HTTP2ErrorCode) {
-            self.code = code
-        }
-    }
-    
-    public struct ConnectionError: NIOHTTP2Error {
-        public var code: HTTP2ErrorCode
-        
-        public init(code: HTTP2ErrorCode) {
-            self.code = code
-        }
-    }
-    
+
+    /// An attempt was made to use a currently unsupported feature.
     public struct Unsupported: NIOHTTP2Error {
         public var info: String
         
-        internal init(info: String) {
+        public init(info: String) {
             self.info = info
         }
+    }
+
+    public struct UnableToSerializeFrame: NIOHTTP2Error {
+        public init() { }
+    }
+
+    public struct UnableToParseFrame: NIOHTTP2Error {
+        public init() { }
     }
 }
 
@@ -177,6 +170,8 @@ public enum NIOHTTP2Errors {
 /// not leak.
 internal enum InternalError: Error {
     case attemptedToCreateStream
+
+    case codecError(code: HTTP2ErrorCode)
 }
 
 

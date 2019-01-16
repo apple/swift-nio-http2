@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import NIOHTTP1
+import NIOHPACK
 
 /// A protocol that provides implementation for sending PUSH_PROMISE frames, for those states that
 /// can validly send pushed streams.
@@ -26,11 +26,11 @@ protocol SendingPushPromiseState {
 }
 
 extension SendingPushPromiseState {
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         return self._sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
     }
 
-    fileprivate mutating func _sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    fileprivate mutating func _sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         // While receivePushPromise has a two step process involving creating the child stream first, here we do it the other
         // way around. This is because we don't want to bother creating a child stream if the headers aren't valid, and because
         // we don't have to emit a frame to report the error (we just return it to the user), we don't have to have a stream
@@ -65,7 +65,7 @@ extension SendingPushPromiseState {
 }
 
 extension SendingPushPromiseState where Self: RemotelyQuiescingState {
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         // This call should never be used, but we do want to ensure that conforming types cannot enter the above method.
         // The state machine should return early in all cases where we might end up calling this function.
         preconditionFailure("Must not be called")

@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import NIO
-import NIOHTTP1
+import NIOHPACK
 
 /// A state machine that governs the connection-level state of a HTTP/2 connection.
 ///
@@ -506,7 +506,7 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a HEADERS frame has been received from the remote peer.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         switch self.state {
         case .prefaceReceived(var state):
             let result = state.receiveHeaders(streamID: streamID, headers: headers, isEndStreamSet: endStream)
@@ -552,7 +552,7 @@ extension HTTP2ConnectionStateMachine {
     }
 
     // Called when a HEADERS frame has been sent by the local user.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HTTPHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
         switch self.state {
         case .prefaceSent(var state):
             let result = state.sendHeaders(streamID: streamID, headers: headers, isEndStreamSet: endStream)
@@ -816,7 +816,7 @@ extension HTTP2ConnectionStateMachine {
     ///
     /// If this method returns a stream error, the stream error should be assumed to apply to both the original
     /// and child stream.
-    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         // In states that support a push promise we have two steps. Firstly, we want to create the child stream; then we want to
         // pass the PUSH_PROMISE frame through the stream state machine for the parent stream.
         //
@@ -865,7 +865,7 @@ extension HTTP2ConnectionStateMachine {
         }
     }
 
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         switch self.state {
         case .prefaceSent(var state):
             let result = state.sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)

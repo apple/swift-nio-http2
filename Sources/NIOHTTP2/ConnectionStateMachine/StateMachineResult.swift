@@ -31,7 +31,7 @@
 enum StateMachineResult {
     /// An error that transitions the stream into a fatal error state. This should cause emission of
     /// RST_STREAM frames.
-    case streamError(underlyingError: Error, type: HTTP2ErrorCode)
+    case streamError(streamID: HTTP2StreamID, underlyingError: Error, type: HTTP2ErrorCode)
 
     /// An error that transitions the entire connection into a fatal error state. This should cause
     /// emission of GOAWAY frames.

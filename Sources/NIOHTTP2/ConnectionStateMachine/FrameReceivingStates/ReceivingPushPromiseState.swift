@@ -11,7 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import NIOHTTP1
+import NIOHPACK
 
 /// A protocol that provides implementation for receiving PUSH_PROMISE frames, for those states that
 /// can validly accept pushed streams.
@@ -28,11 +28,11 @@ protocol ReceivingPushPromiseState {
 }
 
 extension ReceivingPushPromiseState {
-    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         return self._receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
     }
 
-    fileprivate mutating func _receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    fileprivate mutating func _receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         // In states that support a push promise we have two steps. Firstly, we want to create the child stream; then we want to
         // pass the PUSH_PROMISE frame through the stream state machine for the parent stream.
         //
@@ -67,7 +67,7 @@ extension ReceivingPushPromiseState {
 }
 
 extension ReceivingPushPromiseState where Self: LocallyQuiescingState {
-    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HTTPHeaders) -> StateMachineResult {
+    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
         // This check is duplicated here, because the protocol error of violating this setting is more important than ignoring the frame.
         guard self.peerMayPush else {
             return .connectionError(underlyingError: NIOHTTP2Errors.PushInViolationOfSetting(), type: .protocolError)
