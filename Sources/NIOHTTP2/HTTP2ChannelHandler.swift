@@ -59,7 +59,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     private var writeBuffer: ByteBuffer!
 
     /// The mode this handler is operating in.
-    private let role: ParserMode
+    private let mode: ParserMode
 
     /// The initial local settings of this connection. Sent as part of the preamble.
     private let initialSettings: HTTP2Settings
@@ -73,14 +73,14 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         case server
     }
 
-    init(role: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings) {
-        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(role))
-        self.role = role
+    init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings) {
+        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode))
+        self.mode = mode
         self.initialSettings = initialSettings
     }
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
-        self.frameDecoder = HTTP2FrameDecoder(allocator: ctx.channel.allocator, expectClientMagic: self.role == .server)
+        self.frameDecoder = HTTP2FrameDecoder(allocator: ctx.channel.allocator, expectClientMagic: self.mode == .server)
         self.frameEncoder = HTTP2FrameEncoder(allocator: ctx.channel.allocator)
         self.writeBuffer = ctx.channel.allocator.buffer(capacity: 128)
 
@@ -218,12 +218,13 @@ extension NIOHTTP2Handler {
             return
         }
 
-        if case .client = self.role {
+        if case .client = self.mode {
             self.writeBuffer.write(staticString: NIOHTTP2Handler.clientMagic)
         }
 
         let initialSettingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.initialSettings))
         self.encodeAndWriteFrame(ctx: ctx, frame: initialSettingsFrame, promise: nil)
+        ctx.flush()
     }
 
     private func processOutboundFrame(ctx: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
