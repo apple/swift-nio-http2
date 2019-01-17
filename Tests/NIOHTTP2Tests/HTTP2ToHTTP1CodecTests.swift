@@ -89,7 +89,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testBasicRequestServerSide() throws {
-        let streamID = HTTP2StreamID()
+        let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
 
         // A basic request.
@@ -113,7 +113,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testRequestWithOnlyHeadServerSide() throws {
-        let streamID = HTTP2StreamID()
+        let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
 
         // A basic request.
@@ -132,7 +132,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testRequestWithTrailers() throws {
-        let streamID = HTTP2StreamID()
+        let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
 
         // A basic request.
@@ -157,7 +157,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testSendingSimpleResponse() throws {
-        let streamID = HTTP2StreamID(knownID: 1)
+        let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -188,7 +188,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWithoutTrailers() throws {
-        let streamID = HTTP2StreamID(knownID: 1)
+        let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -212,7 +212,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWith100Blocks() throws {
-        let streamID = HTTP2StreamID(knownID: 1)
+        let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -247,7 +247,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testPassingPromisesThroughWritesOnServer() throws {
-        let streamID = HTTP2StreamID(knownID: 1)
+        let streamID = HTTP2StreamID(1)
         let promiseRecorder = PromiseRecorder()
 
         let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.newPromise() }
@@ -277,7 +277,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testBasicResponseClientSide() throws {
-        let streamID = HTTP2StreamID()
+        let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
 
         // A basic response.
@@ -300,7 +300,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWithOnlyHeadClientSide() throws {
-        let streamID = HTTP2StreamID()
+        let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
 
         // A basic response.
@@ -318,7 +318,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWithTrailers() throws {
-        let streamID = HTTP2StreamID()
+        let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
 
         // A basic response.
@@ -342,7 +342,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testSendingSimpleRequest() throws {
-        let streamID = HTTP2StreamID(knownID: 1)
+        let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -374,7 +374,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testRequestWithoutTrailers() throws {
-        let streamID = HTTP2StreamID(knownID: 1)
+        let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .http)).wait())
@@ -399,7 +399,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWith100BlocksClientSide() throws {
-        let streamID = HTTP2StreamID()
+        let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
 
         // Start with a few 100 blocks.
@@ -429,7 +429,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     func testPassingPromisesThroughWritesOnClient() throws {
-        let streamID = HTTP2StreamID(knownID: 1)
+        let streamID = HTTP2StreamID(1)
         let promiseRecorder = PromiseRecorder()
 
         let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.newPromise() }

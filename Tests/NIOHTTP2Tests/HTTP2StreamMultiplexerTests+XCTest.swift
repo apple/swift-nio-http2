@@ -51,6 +51,7 @@ extension HTTP2StreamMultiplexerTests {
                 ("testHandlersAreRemovedOnClosure", testHandlersAreRemovedOnClosure),
                 ("testHandlersAreRemovedOnClosureWithError", testHandlersAreRemovedOnClosureWithError),
                 ("testCreatingOutboundChannel", testCreatingOutboundChannel),
+                ("testCreatingOutboundChannelClient", testCreatingOutboundChannelClient),
                 ("testWritesOnCreatedChannelAreDelayed", testWritesOnCreatedChannelAreDelayed),
                 ("testWritesAreCancelledOnFailingInitializer", testWritesAreCancelledOnFailingInitializer),
                 ("testFailingInitializerDoesNotWrite", testFailingInitializerDoesNotWrite),

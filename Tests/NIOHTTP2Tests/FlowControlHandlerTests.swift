@@ -73,7 +73,7 @@ class FlowControlHandlerTests: XCTestCase {
     }
 
     func testJustLettingDataThrough() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         self.channel.createStream(streamOne, initialWindowSize: 15)
 
         let firstWritePromise = self.makeWritePromise()
@@ -90,13 +90,13 @@ class FlowControlHandlerTests: XCTestCase {
         XCTAssertTrue(firstWriteComplete)
         let receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: writtenBuffer)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: writtenBuffer)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
 
     func testSimpleFramesKeepBoundaries() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         self.channel.createStream(streamOne, initialWindowSize: 15)
 
         let firstWrittenBuffer = self.channel.writeDataFrame(streamOne, byteBufferSize: 5)
@@ -107,15 +107,15 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.flush()
         let receivedFrames = self.receivedFrames()
         XCTAssertEqual(3, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: firstWrittenBuffer)
-        receivedFrames[1].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: secondWrittenBuffer)
-        receivedFrames[2].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: thirdWrittenBuffer)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: firstWrittenBuffer)
+        receivedFrames[1].assertDataFrame(endStream: false, streamID: streamOne, payload: secondWrittenBuffer)
+        receivedFrames[2].assertDataFrame(endStream: false, streamID: streamOne, payload: thirdWrittenBuffer)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
 
     func testOverlargeFramesAreSplitByteBuffer() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         self.channel.createStream(streamOne, initialWindowSize: 15)
 
         var firstWrittenBuffer = self.channel.writeDataFrame(streamOne, byteBufferSize: 50)
@@ -124,7 +124,7 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.flush()
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: firstWrittenBuffer.readSlice(length: 15)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: firstWrittenBuffer.readSlice(length: 15)!)
 
         // Update the window. Nothing is written immediately.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 20)
@@ -134,7 +134,7 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: firstWrittenBuffer.readSlice(length: 20)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: firstWrittenBuffer.readSlice(length: 20)!)
 
         // And again, we get the rest.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 20)
@@ -143,13 +143,13 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: firstWrittenBuffer.readSlice(length: 15)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: firstWrittenBuffer.readSlice(length: 15)!)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
 
     func testOverlargeFramesAreSplitFileRegion() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         self.channel.createStream(streamOne, initialWindowSize: 15)
 
         let firstWrittenRegion = self.channel.writeDataFrame(streamOne, fileRegionSize: 50)
@@ -158,7 +158,7 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.flush()
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 0, endIndex: 15))
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 0, endIndex: 15))
 
         // Update the window. Nothing is written immediately.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 20)
@@ -168,7 +168,7 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 15, endIndex: 35))
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 15, endIndex: 35))
 
         // And again, we get the rest.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 20)
@@ -177,13 +177,13 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 35, endIndex: 50))
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 35, endIndex: 50))
 
         XCTAssertNoThrow(try self.channel.finish())
     }
 
     func testIgnoresNonDataFramesForStream() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         self.channel.createStream(streamOne, initialWindowSize: 15)
 
         // Let's start by consuming the window.
@@ -196,7 +196,7 @@ class FlowControlHandlerTests: XCTestCase {
 
         // We also send a WindowUpdate frame, a RST_STREAM frame, and a PRIORITY frame.
         let windowUpdateFrame = HTTP2Frame(streamID: streamOne, payload: .windowUpdate(windowSizeIncrement: 500))
-        let priorityFrame = HTTP2Frame(streamID: streamOne, payload: .priority(.init(exclusive: false, dependency: .init(knownID: 0), weight: 50)))
+        let priorityFrame = HTTP2Frame(streamID: streamOne, payload: .priority(.init(exclusive: false, dependency: 0, weight: 50)))
         let rstStreamFrame = HTTP2Frame(streamID: streamOne, payload: .rstStream(.protocolError))
 
         // All of these frames are written.
@@ -218,9 +218,9 @@ class FlowControlHandlerTests: XCTestCase {
         // But the DATA frame is not.
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(3, receivedFrames.count)
-        receivedFrames[0].assertWindowUpdateFrame(streamID: streamOne.networkStreamID!, windowIncrement: 500)
+        receivedFrames[0].assertWindowUpdateFrame(streamID: streamOne, windowIncrement: 500)
         receivedFrames[1].assertPriorityFrame()
-        receivedFrames[2].assertRstStreamFrame(streamID: streamOne.networkStreamID!, errorCode: .protocolError)
+        receivedFrames[2].assertRstStreamFrame(streamID: streamOne, errorCode: .protocolError)
 
         // Even when we flush.
         self.channel.flush()
@@ -231,11 +231,11 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(1, receivedFrames.count)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: bufferedFrame)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: bufferedFrame)
     }
 
     func testProperlyDelaysENDSTREAMFlag() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         self.channel.createStream(streamOne, initialWindowSize: 15)
 
         // We send a large DATA frame here.
@@ -254,26 +254,26 @@ class FlowControlHandlerTests: XCTestCase {
         self.channel.flush()
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: payload.readSlice(length: 15)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: payload.readSlice(length: 15)!)
 
         // Open the window, we get the second frame.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 34)
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: payload.readSlice(length: 34)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: payload.readSlice(length: 34)!)
 
         // If we open again, we get the final frame, with endStream set.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 200)
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
-        receivedFrames[0].assertDataFrame(endStream: true, streamID: streamOne.networkStreamID!, payload: payload.readSlice(length: 1)!)
+        receivedFrames[0].assertDataFrame(endStream: true, streamID: streamOne, payload: payload.readSlice(length: 1)!)
     }
 
     func testInterlacingWithHeaders() {
         // The purpose of this test is to validate that headers frames after the first DATA frame are appropriately queued.
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         // Start by sending a headers frame through, even before createStream is fired. This should pass unmolested.
         let headers = HTTP2Frame(streamID: streamOne, flags: .endHeaders, payload: .headers(HPACKHeaders([("name", "value")]), nil))
@@ -298,26 +298,26 @@ class FlowControlHandlerTests: XCTestCase {
         // So far we've written only a data frame.
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: writtenData.readSlice(length: 15)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: writtenData.readSlice(length: 15)!)
 
         // Open the window enough to let another data frame through.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 34)
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: writtenData.readSlice(length: 34)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: writtenData.readSlice(length: 34)!)
 
         // Now open it again. This pushes the data frame through, AND the trailers follow.
         self.channel.updateStreamWindowSize(streamOne, newWindowSize: 1)
         self.channel.pipeline.fireChannelReadComplete()
         receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 2)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: writtenData.readSlice(length: 1)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: writtenData.readSlice(length: 1)!)
         receivedFrames[1].assertHeadersFrameMatches(this: endHeaders)
     }
 
     func testBufferedDataAndHeadersAreCancelledOnStreamClosure() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         self.channel.createStream(streamOne, initialWindowSize: 15)
 
         // Send a DATA frame that's too big, and a HEADERS frame. We will expect
@@ -331,7 +331,7 @@ class FlowControlHandlerTests: XCTestCase {
 
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
-        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne.networkStreamID!, payload: writtenData.readSlice(length: 15)!)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: writtenData.readSlice(length: 15)!)
 
         // Ok, drop the stream.
         self.channel.closeStream(streamOne, reason: .protocolError)
@@ -355,7 +355,7 @@ class FlowControlHandlerTests: XCTestCase {
     }
 
     func testWritesForUnknownStreamsFail() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         let dataPromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
 
         self.channel.writeDataFrame(streamOne, byteBufferSize: 50, promise: dataPromise)

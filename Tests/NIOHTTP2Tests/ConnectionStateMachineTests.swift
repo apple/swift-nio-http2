@@ -151,7 +151,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testSimpleRequestResponseFlow() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -171,7 +171,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testOpeningConnectionWhileServerPreambleMissing() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         // Here the client sends its SETTINGS frame, and then immediately sends its HEADERS.
         assertSucceeds(self.client.sendSettings(HTTP2Settings()))
@@ -204,7 +204,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testServerSendsItsPreambleFirst() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         // Here the server sends its SETTINGS frame and the client receives it before its even sent its own.
         assertSucceeds(self.server.sendSettings(HTTP2Settings()))
@@ -234,7 +234,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testMoreComplexStreamLifecycle() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -270,7 +270,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testServerCannotInitiateStreamsWithHeaders() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -279,10 +279,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testSimpleServerPush() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamThree = HTTP2StreamID(3)
+        let streamFour = HTTP2StreamID(4)
 
         self.exchangePreamble()
 
@@ -329,7 +329,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testSimpleStreamResetFlow() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -353,10 +353,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testHeadersOnClosedStreamAfterServerGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
 
@@ -374,10 +374,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testDataOnClosedStreamAfterServerGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
 
@@ -395,10 +395,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testWindowUpdateOnClosedStreamAfterServerGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
 
@@ -416,10 +416,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testRstStreamOnClosedStreamAfterServerGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
 
@@ -437,11 +437,11 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testPushesAfterServerGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
+        let streamTwo = HTTP2StreamID(2)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
 
@@ -461,10 +461,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testClientMayNotInitiateNewStreamAfterServerGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive], lastStreamID: streamThree, expectedToClose: [streamFive])
 
@@ -476,10 +476,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testHeadersOnClosedStreamAfterClientGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamFour = HTTP2StreamID(knownID: 4)
-        let streamSix = HTTP2StreamID(knownID: 6)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamFour = HTTP2StreamID(4)
+        let streamSix = HTTP2StreamID(6)
 
         self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
 
@@ -497,10 +497,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testDataOnClosedStreamAfterClientGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamFour = HTTP2StreamID(knownID: 4)
-        let streamSix = HTTP2StreamID(knownID: 6)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamFour = HTTP2StreamID(4)
+        let streamSix = HTTP2StreamID(6)
 
         self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
 
@@ -518,10 +518,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testWindowUpdateOnClosedStreamAfterClientGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamFour = HTTP2StreamID(knownID: 4)
-        let streamSix = HTTP2StreamID(knownID: 6)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamFour = HTTP2StreamID(4)
+        let streamSix = HTTP2StreamID(6)
 
         self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
 
@@ -539,10 +539,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testRstStreamOnClosedStreamAfterClientGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamFour = HTTP2StreamID(knownID: 4)
-        let streamSix = HTTP2StreamID(knownID: 6)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamFour = HTTP2StreamID(4)
+        let streamSix = HTTP2StreamID(6)
 
         self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
 
@@ -560,11 +560,11 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testServerMayNotInitiateNewStreamAfterClientGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamFour = HTTP2StreamID(knownID: 4)
-        let streamSix = HTTP2StreamID(knownID: 6)
-        let streamEight = HTTP2StreamID(knownID: 8)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamFour = HTTP2StreamID(4)
+        let streamSix = HTTP2StreamID(6)
+        let streamEight = HTTP2StreamID(8)
 
         self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
 
@@ -576,7 +576,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testSendingFramesBeforePrefaceIsIllegal() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
@@ -590,7 +590,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testSendingFramesBeforePrefaceAfterReceivedPrefaceIsIllegal() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
         assertSucceeds(self.client.receiveSettings([], flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // We only need one of the state machines here.
@@ -605,8 +605,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testSendingFramesBeforePrefaceAfterReceivedPrefaceAndGoawayIsIllegal() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
         assertSucceeds(self.server.receiveSettings([], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
@@ -623,8 +623,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testReceivingFramesBeforePrefaceIsIllegal() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
@@ -638,8 +638,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testReceivingFramesBeforePrefaceAfterSentPrefaceIsIllegal() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
         assertSucceeds(self.client.sendSettings([]))
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
@@ -655,8 +655,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testReceivingFramesBeforePrefaceAfterSentPrefaceAndGoawayIsIllegal() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
         assertSucceeds(self.client.sendSettings([]))
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
@@ -673,10 +673,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testRatchetingGoaway() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: [])
 
@@ -693,10 +693,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testRatchetingGoawayForBothPeers() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: [])
 
@@ -717,9 +717,9 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testInvalidGoawayFrames() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamThree = HTTP2StreamID(knownID: 3)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamThree = HTTP2StreamID(3)
 
         self.exchangePreamble()
 
@@ -747,7 +747,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testCanSendRequestsWithoutReceivingPreface() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         // Client sends preface.
         assertSucceeds(self.client.sendSettings(HTTP2Settings()))
@@ -790,7 +790,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testCanQuiesceAndSendRequestsWithoutReceivingPreface() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         // Client sends preface.
         assertSucceeds(self.client.sendSettings(HTTP2Settings()))
@@ -820,10 +820,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testFullyQuiescedConnection() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamThree = HTTP2StreamID(3)
+        let streamFour = HTTP2StreamID(4)
 
         self.exchangePreamble()
 
@@ -893,7 +893,7 @@ class ConnectionStateMachineTests: XCTestCase {
     func testImplicitConnectionCompletion() {
         // Connections can become totally idle by way of the server quiescing the client, and then having no outstanding streams.
         // This test validates that we spot it and consider the connection closed at this stage.
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -924,8 +924,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testClosedStreamsForbidAllActivity() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         self.exchangePreamble()
 
@@ -959,8 +959,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testPushesAfterSendingPrefaceAreInvalid() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         // Server sends its preface.
         assertSucceeds(self.server.sendSettings(HTTP2Settings()))
@@ -974,8 +974,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testClientsMayNotPush() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         // Client sends its preface.
         assertSucceeds(self.client.sendSettings([]))
@@ -1008,7 +1008,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testMaySendSettingsInAllStates() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         // During setup, we can send settings.
         assertSucceeds(self.client.sendSettings([]))
@@ -1062,7 +1062,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testValidatingFlowControlOnFullyActiveConnections() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -1129,7 +1129,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testTrailersWithoutData() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -1147,7 +1147,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testServerResponseEndsBeforeRequestFinishes() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -1162,8 +1162,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testPushedResponsesMayHaveBodies() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         self.exchangePreamble()
 
@@ -1184,7 +1184,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testDataFramesWithoutEndStream() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -1208,7 +1208,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testSendingCompleteRequestBeforeResponse() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -1226,8 +1226,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testWindowUpdateValidity() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         self.exchangePreamble()
 
@@ -1301,7 +1301,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testWindowIncrementsOfSizeZeroArentOk() {
-        let streamOne = HTTP2StreamID(knownID: 1)
+        let streamOne = HTTP2StreamID(1)
 
         self.exchangePreamble()
 
@@ -1320,8 +1320,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testCannotSendDataFrames() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         self.exchangePreamble()
 
@@ -1377,12 +1377,12 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testChangingInitialWindowSizeLotsOfStreams() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFour = HTTP2StreamID(knownID: 4)
-        let streamFive = HTTP2StreamID(knownID: 5)
-        let streamSeven = HTTP2StreamID(knownID: 7)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamThree = HTTP2StreamID(3)
+        let streamFour = HTTP2StreamID(4)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
 
         self.exchangePreamble()
 
@@ -1454,8 +1454,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testTooManyHeadersArentOk() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         self.exchangePreamble()
 
@@ -1502,7 +1502,7 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testClientsMustCreateStreamsWithOddStreamIDs() {
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamTwo = HTTP2StreamID(2)
 
         self.exchangePreamble()
 
@@ -1511,10 +1511,10 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testClientsServersMayNotCreateStreamsBackwards() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
-        let streamThree = HTTP2StreamID(knownID: 3)
-        let streamFour = HTTP2StreamID(knownID: 4)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        let streamThree = HTTP2StreamID(3)
+        let streamFour = HTTP2StreamID(4)
 
         self.exchangePreamble()
 
@@ -1560,8 +1560,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Firstly, the client will create 50 streams. This should work just fine.
-        let clientStreamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID(knownID: $0) }
-        let serverStreamIDs = stride(from: 2, to: 11, by: 2).map { HTTP2StreamID(knownID: $0) }
+        let clientStreamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID($0) }
+        let serverStreamIDs = stride(from: 2, to: 11, by: 2).map { HTTP2StreamID($0) }
 
         for streamID in clientStreamIDs {
             assertSucceeds(self.client.sendHeaders(streamID: streamID, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
@@ -1577,8 +1577,8 @@ class ConnectionStateMachineTests: XCTestCase {
         }
 
         // Neither the client nor the server can create new streams
-        let stream101 = HTTP2StreamID(knownID: 101)
-        let stream12 = HTTP2StreamID(knownID: 12)
+        let stream101 = HTTP2StreamID(101)
+        let stream12 = HTTP2StreamID(12)
 
         var tempClient = self.client!
         var tempServer = self.server!
@@ -1617,8 +1617,8 @@ class ConnectionStateMachineTests: XCTestCase {
     }
 
     func testDisablingPushPreventsPush() {
-        let streamOne = HTTP2StreamID(knownID: 1)
-        let streamTwo = HTTP2StreamID(knownID: 2)
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
 
         // Client is going to set SETTINGS_ENABLE_PUSH to false.
         assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 0)]))

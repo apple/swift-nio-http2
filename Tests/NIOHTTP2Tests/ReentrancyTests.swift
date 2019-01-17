@@ -84,8 +84,8 @@ final class ReentrancyTests: XCTestCase {
 
     /// Establish a basic HTTP/2 connection.
     func basicHTTP2Connection() throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 

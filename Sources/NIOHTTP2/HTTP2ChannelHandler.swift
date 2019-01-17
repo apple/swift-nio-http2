@@ -78,7 +78,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         case server
     }
 
-    init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings) {
+    public init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings) {
         self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode))
         self.mode = mode
         self.initialSettings = initialSettings
