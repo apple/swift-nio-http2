@@ -114,7 +114,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
 
         f.whenFailure { (error: Error) in
-            if self.streamID.networkStreamID != nil {
+            if self.state != .idle {
                 self.closedWhileOpen()
             } else {
                 self.errorEncountered(error: error)

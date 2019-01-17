@@ -1273,15 +1273,12 @@ extension HTTP2StreamID {
     /// RFC 7540 limits odd stream IDs to being initiated by clients, and even stream IDs to
     /// being initiated by servers. This method confirms this.
     func mayBeInitiatedBy(_ role: HTTP2ConnectionStateMachine.ConnectionRole) -> Bool {
-        // TODO(cory): We force unwrap in here because we want to be working in a brave new world
-        // where we never have these weird unspecified stream IDs. We'll come back and fix this
-        // later.
         switch role {
         case .client:
-            return self.networkStreamID! % 2 == 1
+            return self.networkStreamID % 2 == 1
         case .server:
             // Noone may initiate the root stream.
-            return self.networkStreamID! % 2 == 0 && self != .rootStream
+            return self.networkStreamID % 2 == 0 && self != .rootStream
         }
     }
 }

@@ -886,7 +886,7 @@ struct HTTP2FrameEncoder {
         // 8-bit flags -- we don't use padding when encoding in NIO, though
         buf.write(integer: frame.flags.subtracting(.padded).rawValue)
         // 32-bit stream identifier -- ensuring the top bit is empty
-        buf.write(integer: frame.streamID.networkStreamID!)
+        buf.write(integer: Int32(frame.streamID))
         
         let payloadStart = buf.writerIndex
         
@@ -898,7 +898,7 @@ struct HTTP2FrameEncoder {
             
         case .headers(let headers, let priority):
             if let priority = priority {
-                var dependencyRaw = UInt32(priority.dependency.networkStreamID ?? 0)
+                var dependencyRaw = UInt32(priority.dependency)
                 if priority.exclusive {
                     dependencyRaw |= 0x8000_0000
                 }
@@ -912,7 +912,7 @@ struct HTTP2FrameEncoder {
         case .priority(let priorityData):
             buf.writePayloadSize(5, at: start)
             
-            var raw = UInt32(priorityData.dependency.networkStreamID ?? 0)
+            var raw = UInt32(priorityData.dependency)
             if priorityData.exclusive {
                 raw |= 0x8000_0000
             }
@@ -931,7 +931,7 @@ struct HTTP2FrameEncoder {
             }
             
         case .pushPromise(let streamID, let headers):
-            let streamVal: UInt32 = UInt32(streamID.networkStreamID ?? 0)
+            let streamVal: UInt32 = UInt32(streamID)
             buf.write(integer: streamVal)
             
             try self.headerEncoder.encode(headers: headers, to: &buf)
@@ -945,7 +945,7 @@ struct HTTP2FrameEncoder {
             }
             
         case .goAway(let lastStreamID, let errorCode, let opaqueData):
-            let streamVal: UInt32 = UInt32(lastStreamID.networkStreamID ?? 0) & ~0x8000_0000
+            let streamVal: UInt32 = UInt32(lastStreamID) & ~0x8000_0000
             buf.write(integer: streamVal)
             buf.write(integer: UInt32(errorCode.networkCode))
             

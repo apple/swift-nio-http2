@@ -15,140 +15,115 @@
 /// A single HTTP/2 stream ID.
 ///
 /// Every stream in HTTP/2 has a unique 31-bit stream ID. This stream ID monotonically
-/// increases over the lifetime of the connection. In most situations, a NIO HTTP/2
-/// channel pipeline will know the concrete stream IDs for all frames that traverse
-/// the pipeline, but in some cases the concrete stream ID may not be known. This
-/// primarily occurs when sending the initial frames of a stream on the client side,
-/// where NIO attempts to allocate the stream ID as late as possible to ensure the
-/// stream is successfully created and reduce error rates.
+/// increases over the lifetime of the connection. While the stream ID is a 31-bit
+/// integer on the wire, it does not meaningfully *behave* like a 31-bit integer: it is
+/// not reasonable to perform mathematics on it, for example.
 ///
-/// This structure allows a NIO channel pipeline to operate on the abstract notion
-/// of a stream ID, rather than relying on the specific 31-bit integers. It deals
-/// with the situation where a new stream is being created and the concrete stream
-/// ID is not yet known, and ensures that even when that stream ID does become known
-/// the notion of "equality" is preserved.
-///
-/// Note that it is not possible to create a "free" `HTTP2StreamID` from an integer.
-/// This is an intentional limitation. In general users should copy `HTTPStreamID`s
-/// around or store them for later use. An abstract `HTTP2StreamID` can be created
-/// whenever a new stream is to be created (e.g. for sending requests or push
-/// promises, or for more complex priority tree manipulation).
-///
-/// Note that while `HTTP2StreamID`s are value types, they are not thread-safe: it is
-/// not safe to share them across threads. This limitation is reasonable, as stream
-/// IDs are not meaningful outside of their connection.
-// TODO(cory): We can remove this thread-safety limitation by embedding an atomic
-// here, but NIO doesn't let us do it.
-public class HTTP2StreamID {
-    /// The actual stream ID. Set to a negative number in cases where we don't know the
-    /// stream ID yet.
-    fileprivate var actualStreamID: Int32 = -1
+/// For this reason, SwiftNIO encapsulates the idea of this type into the HTTP2StreamID
+/// structure.
+public struct HTTP2StreamID {
+    /// The stream ID as a 32 bit integer that will be sent on the network. This will
+    /// always be positive.
+    internal var networkStreamID: Int32
 
     /// The root stream on a HTTP/2 connection, stream 0.
     ///
     /// This can safely be used across all connections to identify stream 0.
-    public static let rootStream: HTTP2StreamID = HTTP2StreamID(knownID: 0)
+    public static let rootStream: HTTP2StreamID = 0
 
     /// The largest possible stream ID on a HTTP/2 connection.
     ///
     /// This should not usually be used to manage a specific stream. Instead, it's a sentinel
     /// that can be used to "quiesce" a HTTP/2 connection on a GOAWAY frame.
-    public static let maxID: HTTP2StreamID = HTTP2StreamID(knownID: Int32.max)
+    public static let maxID: HTTP2StreamID = HTTP2StreamID(Int32.max)
 
-    /// Create an abstract stream ID.
-    ///
-    /// An abstract stream ID represents a handle to a stream ID that may or may not yet
-    /// have been reified on the network.
-    public init() { }
+    /// Create a `HTTP2StreamID` for a specific integer value.
+    public init(_ integerID: Int) {
+        precondition(integerID >= 0 && integerID <= Int32.max, "\(integerID) is not a valid HTTP/2 stream ID value")
+        self.networkStreamID = Int32(integerID)
+    }
 
-    /// Create a `HTTP2StreamID` for a known network ID.
-    ///
-    /// This is used to initialize the global "stream 0" stream ID.
-    internal init(knownID: Int32) {
-        precondition(knownID >= 0)
-        self.actualStreamID = knownID
+    /// Create a `HTTP2StreamID` for a specific integer value.
+    public init(_ integerID: Int32) {
+        precondition(integerID >= 0, "\(integerID) is not a valid HTTP/2 stream ID value")
+        self.networkStreamID = integerID
     }
     
     /// Create a `HTTP2StreamID` from a 32-bit value received as part of a frame.
     ///
     /// This will ignore the most significant bit of the provided value.
     internal init(networkID: UInt32) {
-        self.actualStreamID = Int32(networkID & ~0x8000_0000)
-    }
-
-    /// The stream ID used on the network, if there is one.
-    ///
-    /// If the stream has not yet reached the network, this will return `nil`. It is only
-    /// necessary to perform this lookup for debugging purposes, or if it is important to
-    /// create store the actual stream ID somewhere.
-    ///
-    /// Note that while this returns an Int32, the value must always be greater than zero.
-    public var networkStreamID: Int32? {
-        return (self.actualStreamID >= 0) ? self.actualStreamID : nil
-    }
-
-    /// Resolve the abstract stream ID to a real one.
-    internal func resolve(to newID: Int32) {
-        precondition(self.actualStreamID == -1)
-        precondition(newID > 0)
-        self.actualStreamID = newID
+        self.networkStreamID = Int32(networkID & ~0x8000_0000)
     }
 }
 
 // MARK:- Equatable conformance for HTTP2StreamID
-extension HTTP2StreamID: Equatable {
-    public static func == (lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        switch (lhs.networkStreamID, rhs.networkStreamID) {
-        case (.none, .none):
-            /// old functionality: compare addresses
-            return lhs === rhs
-        case (.none, .some), (.some, .none):
-            return false
-        case (.some(let l), .some(let r)):
-            return l == r
-        }
-    }
-}
+extension HTTP2StreamID: Equatable { }
 
 
 // MARK:- Hashable conformance for HTTP2StreamID
-extension HTTP2StreamID: Hashable {
-    public var hashValue: Int {
-        return ObjectIdentifier(self).hashValue
-    }
-}
+extension HTTP2StreamID: Hashable { }
 
 
 // MARK:- Comparable conformance for HTTP2StreamID
-//
-// TODO(cory): Rewrite this when we can abandon this insane representation.
 extension HTTP2StreamID: Comparable {
     public static func <(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        switch (lhs.networkStreamID, rhs.networkStreamID) {
-        case (.none, .none):
-            // Worst-case, neither has reached the network yet. In this case we aim to get a stable sort
-            // by ordering the object identifier.
-            return ObjectIdentifier(lhs) < ObjectIdentifier(rhs)
-        case (.none, .some):
-            // The lhs has not seen the network yet, so it's larger than any hypothetical rhs.
-            return false
-        case (.some, .none):
-            // The rhs has not seen the network yet, so it's larger than any hypothetical rhs.
-            return true
-        case (.some(let l), .some(let r)):
-            return l < r
-        }
+        return lhs.networkStreamID < rhs.networkStreamID
+    }
+
+    public static func >(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        return lhs.networkStreamID > rhs.networkStreamID
+    }
+
+    public static func <=(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        return lhs.networkStreamID <= rhs.networkStreamID
+    }
+
+    public static func >=(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        return lhs.networkStreamID >= rhs.networkStreamID
     }
 }
 
 
-extension HTTP2StreamID: CustomDebugStringConvertible {
-    public var debugDescription: String {
-        var streamIDDescription: String = "unknown"
+// MARK:- CustomStringConvertible conformance for HTTP2StreamID
+extension HTTP2StreamID: CustomStringConvertible {
+    public var description: String {
+        return "HTTP2StreamID(\(String(describing: self.networkStreamID)))"
+    }
+}
 
-        if let networkStreamID = self.networkStreamID {
-            streamIDDescription = String(networkStreamID)
-        }
-        return "HTTP2StreamID(\(streamIDDescription))"
+
+// MARK:- ExpressibleByIntegerLiteral conformance for HTTP2StreamID
+extension HTTP2StreamID: ExpressibleByIntegerLiteral {
+    public typealias IntegerLiteralType = Int32
+
+    public init(integerLiteral value: IntegerLiteralType) {
+        precondition(value >= 0 && value <= Int32.max, "\(value) is not a valid HTTP/2 stream ID value")
+        self.networkStreamID = value
+    }
+}
+
+
+// MARK:- Helper initializers for integer conversion.
+public extension Int {
+    /// Create an Int holding the integer value of this streamID.
+    init(_ http2StreamID: HTTP2StreamID) {
+        self = Int(http2StreamID.networkStreamID)
+    }
+}
+
+
+public extension Int32 {
+    /// Create an Int32 holding the integer value of this streamID.
+    init(_ http2StreamID: HTTP2StreamID) {
+        self = http2StreamID.networkStreamID
+    }
+}
+
+
+internal extension UInt32 {
+    /// Create a UInt32 holding the integer value of this streamID.
+    init(_ http2StreamID: HTTP2StreamID) {
+        self = UInt32(http2StreamID.networkStreamID)
     }
 }

@@ -50,9 +50,9 @@ struct HTTP2HeadersStateMachine {
     private var previousHeader: HeaderType?
 
     /// The mode of this connection: client or server.
-    private let mode: HTTP2Parser.ParserMode
+    private let mode: NIOHTTP2Handler.ParserMode
 
-    init(mode: HTTP2Parser.ParserMode) {
+    init(mode: NIOHTTP2Handler.ParserMode) {
         self.mode = mode
     }
 
@@ -116,7 +116,7 @@ final class HTTP2Stream {
     /// in the future we may want to do so.
     private var outboundHeaderStateMachine: HTTP2HeadersStateMachine
 
-    init(mode: HTTP2Parser.ParserMode, streamID: HTTP2StreamID) {
+    init(mode: NIOHTTP2Handler.ParserMode, streamID: HTTP2StreamID) {
         self.outboundHeaderStateMachine = HTTP2HeadersStateMachine(mode: mode)
         self.streamID = streamID
         self.dataProvider = HTTP2DataProvider()

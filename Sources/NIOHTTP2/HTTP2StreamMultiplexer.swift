@@ -30,14 +30,13 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
     private var streams: [HTTP2StreamID: HTTP2StreamChannel] = [:]
     private let inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?
-    private var channel: Channel?
+    private let channel: Channel
+    private var nextOutboundStreamID: HTTP2StreamID
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
-        self.channel = ctx.channel
-    }
-
-    public func handlerRemoved(ctx: ChannelHandlerContext) {
-        self.channel = nil
+        // We now need to check that we're on the same event loop as the one we were originally given.
+        // If we weren't, this is a hard failure, as there is a thread-safety issue here.
+        self.channel.eventLoop.preconditionInEventLoop()
     }
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
@@ -53,8 +52,8 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         if let channel = streams[streamID] {
             channel.receiveInboundFrame(frame)
         } else if case .headers = frame.payload {
-            let channel = HTTP2StreamChannel(allocator: self.channel!.allocator,
-                                             parent: self.channel!,
+            let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
+                                             parent: self.channel,
                                              streamID: streamID)
             channel.configure(initializer: self.inboundStreamStateInitializer)
             self.streams[streamID] = channel
@@ -105,13 +104,23 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     /// Create a new `HTTP2StreamMultiplexer`.
     ///
     /// - parameters:
+    ///     - mode: The mode of the HTTP/2 connection being used: server or client.
+    ///     - channel: The Channel to which this `HTTP2StreamMultiplexer` belongs.
     ///     - inboundStreamStateInitializer: A block that will be invoked to configure each new child stream
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
     ///         `createStreamChannel`.
-    public init(inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
+    public init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
         self.inboundStreamStateInitializer = inboundStreamStateInitializer
+        self.channel = channel
+
+        switch mode {
+        case .client:
+            self.nextOutboundStreamID = 1
+        case .server:
+            self.nextOutboundStreamID = 2
+        }
     }
 }
 
@@ -127,15 +136,11 @@ extension HTTP2StreamMultiplexer {
     ///     - streamStateInitializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
-        guard let ourChannel = self.channel else {
-            promise?.fail(error: ChannelError.ioOnClosedChannel)
-            return
-        }
-
-        ourChannel.eventLoop.execute {
-            let streamID = HTTP2StreamID()
-            let channel = HTTP2StreamChannel(allocator: ourChannel.allocator,
-                                             parent: ourChannel,
+        self.channel.eventLoop.execute {
+            let streamID = self.nextOutboundStreamID
+            self.nextOutboundStreamID = HTTP2StreamID(Int32(streamID) + 2)
+            let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
+                                             parent: self.channel,
                                              streamID: streamID)
             let activationFuture = channel.configure(initializer: streamStateInitializer)
             self.streams[streamID] = channel
