@@ -54,9 +54,24 @@ func assertIgnored(_ body: @autoclosure () -> StateMachineResult, file: StaticSt
     }
 }
 
+func assertSucceeds(_ body: @autoclosure () -> (StateMachineResult, PostSettingsOperation), file: StaticString = #file, line: UInt = #line) {
+    return assertSucceeds(body().0, file: file, line: line)
+}
+
+func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResult, PostSettingsOperation), file: StaticString = #file, line: UInt = #line) {
+    return assertConnectionError(type: type, body().0, file: file, line: line)
+}
+
+
 class ConnectionStateMachineTests: XCTestCase {
     var server: HTTP2ConnectionStateMachine!
     var client: HTTP2ConnectionStateMachine!
+
+    var serverEncoder: HTTP2FrameEncoder!
+    var serverDecoder: HTTP2FrameDecoder!
+
+    var clientEncoder: HTTP2FrameEncoder!
+    var clientDecoder: HTTP2FrameDecoder!
 
     static let requestHeaders = {
         return HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
@@ -73,17 +88,22 @@ class ConnectionStateMachineTests: XCTestCase {
     override func setUp() {
         self.server = .init(role: .server)
         self.client = .init(role: .client)
+
+        self.serverEncoder = HTTP2FrameEncoder(allocator: ByteBufferAllocator())
+        self.serverDecoder = HTTP2FrameDecoder(allocator: ByteBufferAllocator(), expectClientMagic: true)
+        self.clientEncoder = HTTP2FrameEncoder(allocator: ByteBufferAllocator())
+        self.clientDecoder = HTTP2FrameDecoder(allocator: ByteBufferAllocator(), expectClientMagic: false)
     }
 
     private func exchangePreamble() {
         assertSucceeds(self.client.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         assertSucceeds(self.server.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
     }
 
     private func setupServerGoaway(streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID], file: StaticString = #file, line: UInt = #line) {
@@ -158,7 +178,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
         // Server receives
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
         // Server sends its preamble, then ACKs, then sends its response.
@@ -166,12 +186,12 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
 
         // Client receives.
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
 
         // Client ACKs
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Cleanup
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
@@ -188,15 +208,15 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Here the server sends its SETTINGS frame and the client receives it before its even sent its own.
         assertSucceeds(self.server.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // Now the client sends back with an ACK and then sends HEADERS
         assertSucceeds(self.client.sendSettings(HTTP2Settings()))
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
         // Now the server receives, sends its ACK back, as well as its response.
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
 
@@ -571,7 +591,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
     func testSendingFramesBeforePrefaceAfterReceivedPrefaceIsIllegal() {
         let streamOne = HTTP2StreamID(knownID: 1)
-        assertSucceeds(self.client.receiveSettings([], flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings([], flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
@@ -587,7 +607,7 @@ class ConnectionStateMachineTests: XCTestCase {
     func testSendingFramesBeforePrefaceAfterReceivedPrefaceAndGoawayIsIllegal() {
         let streamOne = HTTP2StreamID(knownID: 1)
         let streamTwo = HTTP2StreamID(knownID: 2)
-        assertSucceeds(self.server.receiveSettings([], flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings([], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
 
@@ -731,7 +751,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Client sends preface.
         assertSucceeds(self.client.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Client opens a stream
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
@@ -755,9 +775,9 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Server can bring the connection up by sending its own preface back.
         assertSucceeds(self.server.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Both sides quiesce, which will end the connection.
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
@@ -774,7 +794,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Client sends preface.
         assertSucceeds(self.client.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Client quiesces, then opens a stream.
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
@@ -931,7 +951,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.sendPriority())
         assertConnectionError(type: .protocolError, self.server.receivePriority())
         assertConnectionError(type: .protocolError, self.client.sendSettings([]))
-        assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .init()))
+        assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Duplicate goaway is cool though.
         assertIgnored(self.client.sendGoaway(lastStreamID: .rootStream).0)
@@ -944,7 +964,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Server sends its preface.
         assertSucceeds(self.server.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // Pushing in this state fails.
         var temporaryServer = self.server!
@@ -959,7 +979,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Client sends its preface.
         assertSucceeds(self.client.sendSettings([]))
-        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // The client may not push here.
         var temporaryServer = self.server!
@@ -977,9 +997,9 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // What if the client became active?
         assertSucceeds(self.server.sendSettings([]))
-        assertSucceeds(self.server.receiveSettings([], flags: .ack))
-        assertSucceeds(self.client.receiveSettings([], flags: .init()))
-        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+        assertSucceeds(self.server.receiveSettings([], flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings([], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         temporaryServer = self.server!
         temporaryClient = self.client!
@@ -992,9 +1012,9 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // During setup, we can send settings.
         assertSucceeds(self.client.sendSettings([]))
-        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.client.sendSettings([]))
-        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // If we quiesce during setup we can still send settings.
         var temporaryServer = self.server!
@@ -1002,31 +1022,31 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(temporaryClient.sendGoaway(lastStreamID: .rootStream).0)
         assertSucceeds(temporaryServer.receiveGoaway(lastStreamID: .rootStream).0)
         assertSucceeds(temporaryClient.sendSettings([]))
-        assertSucceeds(temporaryServer.receiveSettings([], flags: .init()))
+        assertSucceeds(temporaryServer.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(temporaryServer.sendSettings([]))
-        assertSucceeds(temporaryClient.receiveSettings([], flags: .init()))
+        assertSucceeds(temporaryClient.receiveSettings([], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // We can also activate.
         assertSucceeds(self.server.sendSettings([]))
-        assertSucceeds(self.server.receiveSettings([], flags: .ack))
-        assertSucceeds(self.client.receiveSettings([], flags: .init()))
-        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+        assertSucceeds(self.server.receiveSettings([], flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings([], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // When active we can send settings.
         temporaryServer = self.server!
         temporaryClient = self.client!
         assertSucceeds(temporaryClient.sendSettings([]))
-        assertSucceeds(temporaryServer.receiveSettings([], flags: .init()))
+        assertSucceeds(temporaryServer.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(temporaryServer.sendSettings([]))
-        assertSucceeds(temporaryClient.receiveSettings([], flags: .init()))
+        assertSucceeds(temporaryClient.receiveSettings([], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // When quiesced by one peer we can send settings.
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
         assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
         assertSucceeds(self.client.sendSettings([]))
-        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.sendSettings([]))
-        assertSucceeds(self.client.receiveSettings([], flags: .init()))
+        assertSucceeds(self.client.receiveSettings([], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // Bring up a stream just to keep the system from shutting down.
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
@@ -1036,9 +1056,9 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
         assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
         assertSucceeds(self.client.sendSettings([]))
-        assertSucceeds(self.server.receiveSettings([], flags: .init()))
+        assertSucceeds(self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.sendSettings([]))
-        assertSucceeds(self.client.receiveSettings([], flags: .init()))
+        assertSucceeds(self.client.receiveSettings([], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
     }
 
     func testValidatingFlowControlOnFullyActiveConnections() {
@@ -1083,7 +1103,7 @@ class ConnectionStateMachineTests: XCTestCase {
         // The server can increase the flow control window by sending a SETTINGS frame with the appropriate new setting.
         // This adds 1000 to the window size.
         assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)]))
-        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init()))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // In this state, the client may send new data, but if the server doesn't receive the ACK first it holds the client to the new value.
         temporaryServer = self.server!
@@ -1092,7 +1112,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertStreamError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
 
         // Once the server receives the ACK, it's fine.
-        assertSucceeds(self.server.receiveSettings([], flags: .ack))
+        assertSucceeds(self.server.receiveSettings([], flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
         assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
 
@@ -1393,12 +1413,12 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We're going to update the initial window size, adding 1000 to it. This should update for every stream. We do this both ways.
         assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)]))
-        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init()))
-        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)]))
-        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init()))
-        assertSucceeds(self.server.receiveSettings([], flags: .ack))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .initialWindowSize, value: 66535)], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.server.receiveSettings([], flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // We're also adding 10000 to the connection window to get it out of the way.
         assertSucceeds(self.client.sendWindowUpdate(streamID: .rootStream, windowIncrement: 10000))
@@ -1478,7 +1498,7 @@ class ConnectionStateMachineTests: XCTestCase {
         self.exchangePreamble()
 
         // We don't keep track of un-acked settings on the receive side and don't provide a "sendSettingsAck" function.
-        assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .ack))
+        assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
     }
 
     func testClientsMustCreateStreamsWithOddStreamIDs() {
@@ -1524,20 +1544,20 @@ class ConnectionStateMachineTests: XCTestCase {
         self.exchangePreamble()
 
         assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .init(extensionSetting: 88), value: 65536)]))
-        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .init(extensionSetting: 88), value: 65536)], flags: .init()))
-        assertSucceeds(self.client.receiveSettings([], flags: .ack))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .init(extensionSetting: 88), value: 65536)], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings([], flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
     }
 
     func testMaxConcurrentStreamsEnforcement() {
         // Client is going to set SETTINGS_MAX_CONCURRENT_STREAMS to 5, server will set it to 50.
         assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]))
-        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)], flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 50)]))
-        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 50)], flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 50)], flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Firstly, the client will create 50 streams. This should work just fine.
         let clientStreamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID(knownID: $0) }
@@ -1572,8 +1592,8 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We can drop the value of SETTINGS_MAX_CONCURRENT_STREAMS without error.
         assertSucceeds(self.server.sendSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 2)]))
-        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 2)], flags: .init(rawValue: 0)))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.client.receiveSettings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 2)], flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // The server can now cleanly close all but two of the existing streams.
         for streamID in clientStreamIDs.dropLast(2) {
@@ -1602,13 +1622,13 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Client is going to set SETTINGS_ENABLE_PUSH to false.
         assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 0)]))
-        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 0)], flags: .init(rawValue: 0)))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 0)], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         assertSucceeds(self.server.sendSettings([]))
-        assertSucceeds(self.client.receiveSettings([], flags: .init(rawValue: 0)))
+        assertSucceeds(self.client.receiveSettings([], flags: .init(rawValue: 0), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
-        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Client initiates a stream.
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
@@ -1624,8 +1644,8 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Client can re-enable push.
         assertSucceeds(self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 1)]))
-        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 1)], flags: .init(rawValue: 0)))
-        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack))
+        assertSucceeds(self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 1)], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // Push is now allowed.
         assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -1633,7 +1653,8 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Out-of-bounds push values are forbidden.
         assertConnectionError(type: .protocolError, self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 2)]))
-        assertConnectionError(type: .protocolError, self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 2)], flags: .init(rawValue: 0)))
+        assertConnectionError(type: .protocolError,
+                              self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 2)], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
     }
 }
 

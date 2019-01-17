@@ -38,8 +38,10 @@ public struct HPACKDecoder {
     var dynamicTableLength: Int {
         return headerTable.dynamicTableLength
     }
-    
-    var allowedDynamicTableLength: Int {
+
+    /// The current allowed length of the dynamic portion of the header table. May be
+    /// less than the current protocol-assigned maximum supplied by a SETTINGS frame.
+    public private(set) var allowedDynamicTableLength: Int {
         get { return self.headerTable.dynamicTableAllowedLength }
         set { self.headerTable.dynamicTableAllowedLength = newValue }
     }
@@ -60,13 +62,13 @@ public struct HPACKDecoder {
         }
     }
     
-    /// The maximum size of the dynamic table. This is defined in RFC 7541
+    /// The maximum size of the dynamic table as set by the enclosing protocol. This is defined in RFC 7541
     /// to be the sum of [name-octet-count] + [value-octet-count] + 32 for
     /// each header it contains.
-    public internal(set) var maxDynamicTableLength: Int {
-        get { return headerTable.dynamicTableAllowedLength }
+    public var maxDynamicTableLength: Int {
+        get { return headerTable.maxDynamicTableLength }
         /* private but tests */
-        set { headerTable.dynamicTableAllowedLength = newValue }
+        set { headerTable.maxDynamicTableLength = newValue }
     }
     
     /// Creates a new decoder
@@ -163,7 +165,7 @@ public struct HPACKDecoder {
                 throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
             }
             
-            self.headerTable.dynamicTableAllowedLength = newMaxLength
+            self.allowedDynamicTableLength = newMaxLength
             return nil
             
         default:

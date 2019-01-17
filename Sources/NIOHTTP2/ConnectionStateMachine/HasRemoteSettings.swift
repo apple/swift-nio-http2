@@ -26,7 +26,7 @@ protocol HasRemoteSettings {
 }
 
 extension HasRemoteSettings {
-    mutating func receiveSettingsChange(_ settings: HTTP2Settings) -> StateMachineResult {
+    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostSettingsOperation) {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
         // self. It's a little more complex than normal because HTTP2SettingsState has
         // two CoWable objects, and we don't want to CoW either of them, so we shove a dummy
@@ -47,8 +47,7 @@ extension HasRemoteSettings {
                         self.streamState.maxServerInitiatedStreams = newValue
                     }
                 case .headerTableSize:
-                    // TODO(cory): Implement!
-                    break
+                    frameDecoder.headerDecoder.maxDynamicTableLength = Int(newValue)
                 case .initialWindowSize:
                     // We default the value of SETTINGS_INITIAL_WINDOW_SIZE, so originalValue mustn't be nil.
                     // The max value of SETTINGS_INITIAL_WINDOW_SIZE is Int32.max, so we can safely fit it into that here.
@@ -65,9 +64,9 @@ extension HasRemoteSettings {
                     return
                 }
             }
-            return .succeed
+            return (.succeed, .sendAck)
         } catch let err where err is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-            return .connectionError(underlyingError: err, type: .flowControlError)
+            return (.connectionError(underlyingError: err, type: .flowControlError), .nothing)
         } catch {
             preconditionFailure("Unexpected error thrown: \(error)")
         }

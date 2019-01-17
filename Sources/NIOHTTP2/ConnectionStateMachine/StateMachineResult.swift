@@ -43,3 +43,13 @@ enum StateMachineResult {
     /// The state transition succeeded, the frame may be passed on.
     case succeed
 }
+
+
+/// Operations that may need to be performed after receiving a SETTINGS frame.
+enum PostSettingsOperation {
+    /// A SETTINGS ACK must be sent.
+    case sendAck
+
+    /// No operation is needed.
+    case nothing
+}

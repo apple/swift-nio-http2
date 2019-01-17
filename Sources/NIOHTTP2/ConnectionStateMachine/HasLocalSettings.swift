@@ -26,7 +26,7 @@ protocol HasLocalSettings {
 }
 
 extension HasLocalSettings {
-    mutating func receiveSettingsAck() -> StateMachineResult {
+    mutating func receiveSettingsAck(frameEncoder: inout HTTP2FrameEncoder) -> StateMachineResult {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
         // self. It's a little more complex than normal because HTTP2SettingsState has
         // two CoWable objects, and we don't want to CoW either of them, so we shove a dummy
@@ -47,8 +47,7 @@ extension HasLocalSettings {
                         self.streamState.maxClientInitiatedStreams = newValue
                     }
                 case .headerTableSize:
-                    // TODO(cory): Implement!
-                    break
+                    frameEncoder.headerEncoder.maximumDynamicTableSize = Int(newValue)
                 case .initialWindowSize:
                     // We default the value of SETTINGS_INITIAL_WINDOW_SIZE, so originalValue mustn't be nil.
                     // The max value of SETTINGS_INITIAL_WINDOW_SIZE is Int32.max, so we can safely fit it into that here.

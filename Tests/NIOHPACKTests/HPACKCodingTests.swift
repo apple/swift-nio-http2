@@ -434,7 +434,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
         
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
-        decoder.allowedDynamicTableLength = 22      // not enough to store the value we expect it to eventually store
+        decoder.maxDynamicTableLength = 22      // not enough to store the value we expect it to eventually store
         let decoded: HPACKHeaders
         do {
             decoded = try decoder.decodeHeaders(from: &request1)

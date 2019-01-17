@@ -58,6 +58,11 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// this can never fail to unwrap in a proper program.
     private var writeBuffer: ByteBuffer!
 
+    /// This flag is set to false each time we get a channelReadComplete or flush, and set to true
+    /// each time we write a frame automatically from this handler. If set to true in channelReadComplete,
+    /// we will choose to flush automatically ourselves.
+    private var wroteAutomaticFrame: Bool = false
+
     /// The mode this handler is operating in.
     private let mode: ParserMode
 
@@ -102,9 +107,23 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.frameDecodeLoop(ctx: ctx)
     }
 
+    public func channelReadComplete(ctx: ChannelHandlerContext) {
+        if self.wroteAutomaticFrame {
+            self.wroteAutomaticFrame = false
+            ctx.flush()
+        }
+
+        ctx.fireChannelReadComplete()
+    }
+
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
         self.processOutboundFrame(ctx: ctx, frame: frame, promise: promise)
+    }
+
+    public func flush(ctx: ChannelHandlerContext) {
+        self.wroteAutomaticFrame = false
+        ctx.flush()
     }
 }
 
@@ -168,7 +187,20 @@ extension NIOHTTP2Handler {
         case .rstStream:
             result = self.stateMachine.receiveRstStream(streamID: frame.streamID)
         case .settings(let newSettings):
-            result = self.stateMachine.receiveSettings(newSettings, flags: frame.flags)
+            let (stateMachineResult, postSettingsOperation) = self.stateMachine.receiveSettings(newSettings,
+                                                                                                flags: frame.flags,
+                                                                                                frameEncoder: &self.frameEncoder,
+                                                                                                frameDecoder: &self.frameDecoder)
+            result = stateMachineResult
+            switch postSettingsOperation {
+            case .nothing:
+                break
+            case .sendAck:
+                self.writeBuffer.clear()
+                self.encodeAndWriteFrame(ctx: ctx, frame: HTTP2Frame(streamID: .rootStream, flags: .ack, payload: .settings([])), promise: nil)
+                self.wroteAutomaticFrame = true
+            }
+
         case .windowUpdate(let increment):
             result = self.stateMachine.receiveWindowUpdate(streamID: frame.streamID, windowIncrement: UInt32(increment))
         }
