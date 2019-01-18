@@ -196,6 +196,8 @@ extension HTTP2Frame {
             self.assertSettingsFrameMatches(this: frame, file: file, line: line)
         case .rstStream:
             self.assertRstStreamFrameMatches(this: frame, file: file, line: line)
+        case .priority:
+            self.assertPriorityFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }
@@ -360,19 +362,19 @@ extension HTTP2Frame {
     }
 
     func assertPriorityFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
-        guard case .priority = frame.payload else {
+        guard case .priority(let expectedPriorityData) = frame.payload else {
             preconditionFailure("Priority frames can never match non-Priority frames.")
         }
-        self.assertPriorityFrame(file: file, line: line)
+        self.assertPriorityFrame(streamPriorityData: expectedPriorityData, file: file, line: line)
     }
 
-    func assertPriorityFrame(file: StaticString = #file, line: UInt = #line) {
-        guard case .priority = self.payload else {
+    func assertPriorityFrame(streamPriorityData: HTTP2Frame.StreamPriorityData, file: StaticString = #file, line: UInt = #line) {
+        guard case .priority(let actualPriorityData) = self.payload else {
             XCTFail("Expected PRIORITY frame, got \(self.payload) instead", file: file, line: line)
             return
         }
 
-        // Update this when we have more code for priority frames.
+        XCTAssertEqual(streamPriorityData, actualPriorityData, file: file, line: line)
     }
 }
 

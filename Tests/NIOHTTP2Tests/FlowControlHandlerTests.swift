@@ -219,7 +219,7 @@ class FlowControlHandlerTests: XCTestCase {
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(3, receivedFrames.count)
         receivedFrames[0].assertWindowUpdateFrame(streamID: streamOne, windowIncrement: 500)
-        receivedFrames[1].assertPriorityFrame()
+        receivedFrames[1].assertPriorityFrame(streamPriorityData: .init(exclusive: false, dependency: 0, weight: 50))
         receivedFrames[2].assertRstStreamFrame(streamID: streamOne, errorCode: .protocolError)
 
         // Even when we flush.

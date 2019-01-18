@@ -146,6 +146,9 @@ extension NIOHTTP2Handler {
         } catch InternalError.codecError(let code) {
             self.inboundConnectionErrorTriggered(ctx: ctx, underlyingError: NIOHTTP2Errors.UnableToParseFrame(), reason: code)
             return nil
+        } catch is NIOHTTP2Errors.BadClientMagic {
+            self.inboundConnectionErrorTriggered(ctx: ctx, underlyingError: NIOHTTP2Errors.BadClientMagic(), reason: .protocolError)
+            return nil
         } catch {
             self.inboundConnectionErrorTriggered(ctx: ctx, underlyingError: error, reason: .internalError)
             return nil
@@ -225,10 +228,29 @@ extension NIOHTTP2Handler {
     }
 
     /// A connection error was hit while receiving a frame.
-    private func inboundConnectionErrorTriggered(ctx: ChannelHandlerContext, underlyingError: Error, reason: HTTP2ErrorCode) { }
+    private func inboundConnectionErrorTriggered(ctx: ChannelHandlerContext, underlyingError: Error, reason: HTTP2ErrorCode) {
+        // A connection error brings the entire connection down. We attempt to write a GOAWAY frame, and then report this
+        // error. It's possible that we'll be unable to write the GOAWAY frame, but that also just logs the error.
+        // Because we don't know what data the user handled before we got this, we propose that they may have seen all of it.
+        // The user may choose to fire a more specific error if they wish.
+        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: reason, opaqueData: nil))
+        self.writeBuffer.clear()
+        self.encodeAndWriteFrame(ctx: ctx, frame: goAwayFrame, promise: nil)
+        ctx.flush()
+        ctx.fireErrorCaught(underlyingError)
+    }
 
     /// A stream error was hit while receiving a frame.
-    private func inboundStreamErrorTriggered(ctx: ChannelHandlerContext, streamID: HTTP2StreamID, underlyingError: Error, reason: HTTP2ErrorCode) { }
+    private func inboundStreamErrorTriggered(ctx: ChannelHandlerContext, streamID: HTTP2StreamID, underlyingError: Error, reason: HTTP2ErrorCode) {
+        // A stream error brings down a single stream, causing a RST_STREAM frame. We attempt to write this, and then report
+        // the error. It's possible that we'll be unable to write this, which will likely escalate this error, but that's
+        // the user's issue.
+        let rstStreamFrame = HTTP2Frame(streamID: streamID, payload: .rstStream(reason))
+        self.writeBuffer.clear()
+        self.encodeAndWriteFrame(ctx: ctx, frame: rstStreamFrame, promise: nil)
+        ctx.flush()
+        ctx.fireErrorCaught(underlyingError)
+    }
 }
 
 
