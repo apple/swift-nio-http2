@@ -40,6 +40,7 @@ public struct HTTP2StreamChannelOptions {
 /// The current state of a stream channel.
 private enum StreamChannelState {
     case idle
+    case remoteActive
     case active
     case closing
     case closingFromIdle
@@ -47,7 +48,7 @@ private enum StreamChannelState {
 
     mutating func activate() {
         switch self {
-        case .idle:
+        case .idle, .remoteActive:
             self = .active
         case .active, .closing, .closingFromIdle, .closed:
             preconditionFailure("Became active from state \(self)")
@@ -58,7 +59,7 @@ private enum StreamChannelState {
         switch self {
         case .active, .closing:
             self = .closing
-        case .idle, .closingFromIdle:
+        case .idle, .closingFromIdle, .remoteActive:
             self = .closingFromIdle
         case .closed:
             preconditionFailure("Cannot begin closing while closed")
@@ -67,7 +68,7 @@ private enum StreamChannelState {
 
     mutating func completeClosing() {
         switch self {
-        case .idle, .closing, .closingFromIdle, .active:
+        case .idle, .remoteActive, .closing, .closingFromIdle, .active:
             self = .closed
         case .closed:
             preconditionFailure("Complete closing from \(self)")
@@ -77,7 +78,7 @@ private enum StreamChannelState {
 
 
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    internal init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID) {
+    internal init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID, initiatedRemotely: Bool) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.newPromise()
         self.localAddress = parent.localAddress
@@ -87,7 +88,12 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.streamID = streamID
         // FIXME: that's just wrong
         self.isWritable = true
-        self.state = .idle
+
+        if initiatedRemotely {
+            self.state = .remoteActive
+        } else {
+            self.state = .idle
+        }
 
         // To begin with we initialize autoRead to false, but we are going to fetch it from our parent before we
         // go much further.

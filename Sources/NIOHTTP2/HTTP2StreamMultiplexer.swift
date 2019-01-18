@@ -54,7 +54,8 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         } else if case .headers = frame.payload {
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
-                                             streamID: streamID)
+                                             streamID: streamID,
+                                             initiatedRemotely: true)
             channel.configure(initializer: self.inboundStreamStateInitializer)
             self.streams[streamID] = channel
             channel.closeFuture.whenComplete {
@@ -141,7 +142,8 @@ extension HTTP2StreamMultiplexer {
             self.nextOutboundStreamID = HTTP2StreamID(Int32(streamID) + 2)
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
-                                             streamID: streamID)
+                                             streamID: streamID,
+                                             initiatedRemotely: false)
             let activationFuture = channel.configure(initializer: streamStateInitializer)
             self.streams[streamID] = channel
             channel.closeFuture.whenComplete {
