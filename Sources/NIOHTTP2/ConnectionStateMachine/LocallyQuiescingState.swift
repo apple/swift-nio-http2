@@ -16,6 +16,6 @@
 /// the remote peer may not initiate new streams.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol LocallyQuiescingState: QuiescingState {
+protocol LocallyQuiescingState {
     var lastRemoteStreamID: HTTP2StreamID { get set }
 }

@@ -12,10 +12,4 @@
 //
 //===----------------------------------------------------------------------===//
 
-/// A state where the connection is being quiesced by the remote peer. In this state,
-/// the local peer may not initiate new streams.
-///
-/// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol RemotelyQuiescingState {
-    var lastLocalStreamID: HTTP2StreamID { get set }
-}
+typealias SendAndReceiveGoawayState = SendingGoawayState & ReceivingGoawayState

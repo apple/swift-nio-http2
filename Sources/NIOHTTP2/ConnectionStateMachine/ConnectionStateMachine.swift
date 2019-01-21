@@ -159,7 +159,7 @@ struct HTTP2ConnectionStateMachine {
 
     /// The state required for a connection that is quiescing, but where the local peer has not yet sent its
     /// preface.
-    private struct QuiescingPrefaceReceivedState: ConnectionStateWithRole, RemotelyQuiescingState, MayReceiveFrames, HasRemoteSettings {
+    private struct QuiescingPrefaceReceivedState: ConnectionStateWithRole, RemotelyQuiescingState, MayReceiveFrames, HasRemoteSettings, QuiescingState {
         let role: ConnectionRole
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -193,7 +193,7 @@ struct HTTP2ConnectionStateMachine {
 
     /// The state required for a connection that is quiescing, but where the remote peer has not yet sent its
     /// preface.
-    private struct QuiescingPrefaceSentState: ConnectionStateWithRole, LocallyQuiescingState, MaySendFrames, HasLocalSettings {
+    private struct QuiescingPrefaceSentState: ConnectionStateWithRole, LocallyQuiescingState, MaySendFrames, HasLocalSettings, QuiescingState {
         let role: ConnectionRole
         var localSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -226,7 +226,7 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to the remote peer quiescing the connection.
-    private struct RemotelyQuiescedState: ConnectionStateWithRole, RemotelyQuiescingState, MayReceiveFrames, MaySendFrames, HasLocalSettings, HasRemoteSettings {
+    private struct RemotelyQuiescedState: ConnectionStateWithRole, RemotelyQuiescingState, MayReceiveFrames, MaySendFrames, HasLocalSettings, HasRemoteSettings, QuiescingState {
         let role: ConnectionRole
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
@@ -270,7 +270,7 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to the local user quiescing the connection.
-    private struct LocallyQuiescedState: ConnectionStateWithRole, LocallyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings {
+    private struct LocallyQuiescedState: ConnectionStateWithRole, LocallyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState {
         let role: ConnectionRole
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
@@ -314,7 +314,7 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to both peers sending GOAWAY.
-    private struct BothQuiescingState: ConnectionStateWithRole, LocallyQuiescingState, RemotelyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings {
+    private struct BothQuiescingState: ConnectionStateWithRole, LocallyQuiescingState, RemotelyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState {
         let role: ConnectionRole
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
@@ -358,6 +358,35 @@ struct HTTP2ConnectionStateMachine {
             self.lastRemoteStreamID = state.lastRemoteStreamID
 
             self.lastLocalStreamID = streamID
+        }
+    }
+
+    /// The state required for a connection that has completely quiesced.
+    private struct FullyQuiescedState: ConnectionStateWithRole, LocallyQuiescingState, RemotelyQuiescingState, SendAndReceiveGoawayState {
+        let role: ConnectionRole
+        var streamState: ConnectionStreamState
+        var lastLocalStreamID: HTTP2StreamID
+        var lastRemoteStreamID: HTTP2StreamID
+
+        init<PreviousState: LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(previousState: PreviousState) {
+            self.role = previousState.role
+            self.streamState = previousState.streamState
+            self.lastLocalStreamID = previousState.lastLocalStreamID
+            self.lastRemoteStreamID = previousState.lastRemoteStreamID
+        }
+
+        init<PreviousState: LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(previousState: PreviousState) {
+            self.role = previousState.role
+            self.streamState = previousState.streamState
+            self.lastLocalStreamID = .maxID
+            self.lastRemoteStreamID = previousState.lastRemoteStreamID
+        }
+
+        init<PreviousState: RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(previousState: PreviousState) {
+            self.role = previousState.role
+            self.streamState = previousState.streamState
+            self.lastLocalStreamID = previousState.lastLocalStreamID
+            self.lastRemoteStreamID = .maxID
         }
     }
 
@@ -407,7 +436,7 @@ struct HTTP2ConnectionStateMachine {
 
         /// The connection has completed, either cleanly or with an error. In this state, no further activity may
         /// occur on the connection.
-        case fullyQuiesced
+        case fullyQuiesced(FullyQuiescedState)
     }
 
     /// The possible roles an endpoint may play in a connection.
@@ -540,7 +569,6 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceReceived(var state):
             let result = state.receiveHeaders(streamID: streamID, headers: headers, isEndStreamSet: endStream)
             self.state = .quiescingPrefaceReceived(state)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
@@ -586,7 +614,6 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceSent(var state):
             let result = state.sendHeaders(streamID: streamID, headers: headers, isEndStreamSet: endStream)
             self.state = .quiescingPrefaceSent(state)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
@@ -632,7 +659,6 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceReceived(var state):
             let result = state.receiveData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .quiescingPrefaceReceived(state)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
@@ -678,7 +704,6 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceSent(var state):
             let result = state.sendData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .quiescingPrefaceSent(state)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
@@ -755,7 +780,6 @@ extension HTTP2ConnectionStateMachine {
 
         case .quiescingPrefaceReceived(var state):
             let result = state.receiveRstStream(streamID: streamID)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
@@ -801,7 +825,6 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceSent(var state):
             let result = state.sendRstStream(streamID: streamID)
             self.state = .quiescingPrefaceSent(state)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
@@ -949,7 +972,6 @@ extension HTTP2ConnectionStateMachine {
             let result = state.receiveGoAwayFrame(lastStreamID: lastStreamID)
             let newState = QuiescingPrefaceReceivedState(fromPrefaceReceived: state, lastStreamID: lastStreamID)
             self.state = .quiescingPrefaceReceived(newState)
-            self.closeIfNeeded(newState)
             return result
 
         case .active(var state):
@@ -981,16 +1003,17 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceReceived(var state):
             let result = state.receiveGoAwayFrame(lastStreamID: lastStreamID)
             self.state = .quiescingPrefaceReceived(state)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the preface.
             return (.connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), [])
 
-        case .fullyQuiesced:
-            // We allow duplicate GOAWAY here. The connection is fullyQuiesced anyway, so we just ignore the frame.
-            return (.ignoreFrame, [])
+        case .fullyQuiesced(var state):
+            // We allow duplicate GOAWAY here, so long as it ratchets correctly.
+            let result = state.receiveGoAwayFrame(lastStreamID: lastStreamID)
+            self.state = .fullyQuiesced(state)
+            return result
         }
     }
 
@@ -1005,7 +1028,6 @@ extension HTTP2ConnectionStateMachine {
             let result = state.sendGoAwayFrame(lastStreamID: lastStreamID)
             let newState = QuiescingPrefaceSentState(fromPrefaceSent: state, lastStreamID: lastStreamID)
             self.state = .quiescingPrefaceSent(newState)
-            self.closeIfNeeded(newState)
             return result
 
         case .active(var state):
@@ -1037,16 +1059,17 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceSent(var state):
             let result = state.sendGoAwayFrame(lastStreamID: lastStreamID)
             self.state = .quiescingPrefaceSent(state)
-            self.closeIfNeeded(state)
             return result
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the preface.
             return (.connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), [])
 
-        case .fullyQuiesced:
-            // We allow duplicate GOAWAY here. The connection is fullyQuiesced anyway, so we just ignore the frame.
-            return (.ignoreFrame, [])
+        case .fullyQuiesced(var state):
+            // We allow duplicate GOAWAY here, so long as it ratchets downwards.
+            let result = state.sendGoAwayFrame(lastStreamID: lastStreamID)
+            self.state = .fullyQuiesced(state)
+            return result
         }
     }
 
@@ -1259,9 +1282,29 @@ extension HTTP2ConnectionStateMachine {
     //
     // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
     // connection more work can always be done.
-    private mutating func closeIfNeeded<State: QuiescingState>(_ state: State) {
+    private mutating func closeIfNeeded<State: QuiescingState & LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(_ state: State) {
         if state.quiescedByServer && state.streamState.openStreams == 0 {
-            self.state = .fullyQuiesced
+            self.state = .fullyQuiesced(.init(previousState: state))
+        }
+    }
+
+    // Sets the connection state to fullyQuiesced if necessary.
+    //
+    // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
+    // connection more work can always be done.
+    private mutating func closeIfNeeded<State: QuiescingState & LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(_ state: State) {
+        if state.quiescedByServer && state.streamState.openStreams == 0 {
+            self.state = .fullyQuiesced(.init(previousState: state))
+        }
+    }
+
+    // Sets the connection state to fullyQuiesced if necessary.
+    //
+    // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
+    // connection more work can always be done.
+    private mutating func closeIfNeeded<State: QuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(_ state: State) {
+        if state.quiescedByServer && state.streamState.openStreams == 0 {
+            self.state = .fullyQuiesced(.init(previousState: state))
         }
     }
 }

@@ -79,6 +79,8 @@ extension ConnectionStateMachineTests {
                 ("testUnknownSettingsAreIgnored", testUnknownSettingsAreIgnored),
                 ("testMaxConcurrentStreamsEnforcement", testMaxConcurrentStreamsEnforcement),
                 ("testDisablingPushPreventsPush", testDisablingPushPreventsPush),
+                ("testRatchetingGoawayEvenWhenFullyQueisced", testRatchetingGoawayEvenWhenFullyQueisced),
+                ("testRatchetingGoawayForBothPeersEvenWhenFullyQuiesced", testRatchetingGoawayForBothPeersEvenWhenFullyQuiesced),
            ]
    }
 }

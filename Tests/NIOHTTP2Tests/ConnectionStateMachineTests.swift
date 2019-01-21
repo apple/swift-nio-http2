@@ -954,8 +954,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Duplicate goaway is cool though.
-        assertIgnored(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertIgnored(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
     }
 
     func testPushesAfterSendingPrefaceAreInvalid() {
@@ -1655,6 +1655,100 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 2)]))
         assertConnectionError(type: .protocolError,
                               self.server.receiveSettings([HTTP2Setting(parameter: .enablePush, value: 2)], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+    }
+
+    func testRatchetingGoawayEvenWhenFullyQueisced() {
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
+
+        self.setupServerGoaway(streamsToOpen: [streamSeven], lastStreamID: .maxID, expectedToClose: [])
+
+        // Now the server ratchets down slowly.
+        for (lastStreamID, dropping) in [(streamSeven, nil), (streamFive, streamSeven), (streamThree, nil), (streamOne, nil), (.rootStream, nil)] {
+            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
+            if let dropping = dropping {
+                XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            } else {
+                XCTAssertEqual(resetStreams, [], "Server closed unexpected streams: expected [], got \(resetStreams)")
+            }
+            assertSucceeds(result)
+
+            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
+            if let dropping = dropping {
+                XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            } else {
+                XCTAssertEqual(resetStreams, [], "Client closed unexpected streams: expected [], got \(resetStreams)")
+            }
+            assertSucceeds(result)
+
+            // Duplicate goaways succeed, but change nothing.
+            (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [], "Duplicate server goaway incorrectly closed streams: \(resetStreams)")
+            assertSucceeds(result)
+            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [], "Duplicate client goaway incorrectly closed streams: \(resetStreams)")
+            assertSucceeds(result)
+        }
+    }
+
+    func testRatchetingGoawayForBothPeersEvenWhenFullyQuiesced() {
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+        let streamSeven = HTTP2StreamID(7)
+
+        self.setupServerGoaway(streamsToOpen: [streamSeven], lastStreamID: .maxID, expectedToClose: [])
+
+        // Now the client quiesces the server.
+        assertSucceeds(self.client.sendGoaway(lastStreamID: HTTP2StreamID(Int32.max - 1)).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: HTTP2StreamID(Int32.max - 1)).0)
+
+        // Now the server ratchets down slowly.
+        for (lastStreamID, dropping) in [(streamSeven, nil), (streamFive, streamSeven), (streamThree, nil), (streamOne, nil), (.rootStream, nil)] {
+            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
+            if let dropping = dropping {
+                XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            } else {
+                XCTAssertEqual(resetStreams, [], "Server closed unexpected streams: expected [], got \(resetStreams)")
+            }
+            assertSucceeds(result)
+
+            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
+            if let dropping = dropping {
+                XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
+            } else {
+                XCTAssertEqual(resetStreams, [], "Client closed unexpected streams: expected [], got \(resetStreams)")
+            }
+            assertSucceeds(result)
+
+            // Duplicate goaways succeed, but change nothing.
+            (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [], "Duplicate server goaway incorrectly closed streams: \(resetStreams)")
+            assertSucceeds(result)
+            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
+            XCTAssertEqual(resetStreams, [], "Duplicate client goaway incorrectly closed streams: \(resetStreams)")
+            assertSucceeds(result)
+        }
+
+        // Now the client does a short ratchet too.
+        var (result, resetStreams) = self.client.sendGoaway(lastStreamID: .rootStream)
+        XCTAssertEqual(resetStreams, [])
+        assertSucceeds(result)
+
+        (result, resetStreams) = self.server.receiveGoaway(lastStreamID: .rootStream)
+        XCTAssertEqual(resetStreams, [])
+        assertSucceeds(result)
+
+        // And again, the duplicate goaway is fine.
+        (result, resetStreams) = self.client.sendGoaway(lastStreamID: .rootStream)
+        XCTAssertEqual(resetStreams, [])
+        assertSucceeds(result)
+
+        (result, resetStreams) = self.server.receiveGoaway(lastStreamID: .rootStream)
+        XCTAssertEqual(resetStreams, [])
+        assertSucceeds(result)
     }
 }
 
