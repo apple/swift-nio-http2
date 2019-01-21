@@ -58,6 +58,10 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// this can never fail to unwrap in a proper program.
     private var writeBuffer: ByteBuffer!
 
+    /// A buffer where we write inbound events before we deliver them. This avoids us reordering
+    /// user events and frames when re-entrant operations occur.
+    private var inboundEventBuffer: InboundEventBuffer = InboundEventBuffer()
+
     /// This flag is set to false each time we get a channelReadComplete or flush, and set to true
     /// each time we write a frame automatically from this handler. If set to true in channelReadComplete,
     /// we will choose to flush automatically ourselves.
@@ -102,6 +106,10 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
         var data = self.unwrapInboundIn(data)
         self.frameDecoder.append(bytes: &data)
+
+        // Before we go in here we need to deliver any pending user events. This is because
+        // we may have been called re-entrantly.
+        self.processPendingUserEvents(ctx: ctx)
 
         // We parse eagerly to attempt to give back buffers to the reading channel wherever possible.
         self.frameDecodeLoop(ctx: ctx)
@@ -178,7 +186,10 @@ extension NIOHTTP2Handler {
         case .goAway(let lastStreamID, _, _):
             let rc = self.stateMachine.receiveGoaway(lastStreamID: lastStreamID)
             result = rc.0
-            let droppedFrames = rc.1
+            for droppedStream in rc.1 {
+                self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
+            }
+
         case .headers(let headers, _):
             result = self.stateMachine.receiveHeaders(streamID: frame.streamID, headers: headers, isEndStreamSet: frame.flags.contains(.endStream))
         case .ping:
@@ -208,23 +219,30 @@ extension NIOHTTP2Handler {
             result = self.stateMachine.receiveWindowUpdate(streamID: frame.streamID, windowIncrement: UInt32(increment))
         }
 
+        let returnValue: FrameProcessResult
         switch result {
         case .succeed:
             // Frame is good, we can pass it on.
             ctx.fireChannelRead(self.wrapInboundOut(frame))
-            return .continue
+            returnValue = .continue
         case .ignoreFrame:
             // Frame is good but no action needs to be taken.
-            return .continue
+            returnValue = .continue
         case .connectionError(let underlyingError, let errorCode):
             // We should stop parsing on received connection errors, the connection is going away anyway.
             self.inboundConnectionErrorTriggered(ctx: ctx, underlyingError: underlyingError, reason: errorCode)
-            return .stop
+            returnValue = .stop
         case .streamError(let streamID, let underlyingError, let errorCode):
             // We can continue parsing on stream errors in most cases, the frame is just ignored.
             self.inboundStreamErrorTriggered(ctx: ctx, streamID: streamID, underlyingError: underlyingError, reason: errorCode)
-            return .continue
+            returnValue = .continue
         }
+
+        // Before we return the loop we process any user events that are currently pending.
+        // These will likely only be ones that were generated now.
+        self.processPendingUserEvents(ctx: ctx)
+
+        return returnValue
     }
 
     /// A connection error was hit while receiving a frame.
@@ -250,6 +268,13 @@ extension NIOHTTP2Handler {
         self.encodeAndWriteFrame(ctx: ctx, frame: rstStreamFrame, promise: nil)
         ctx.flush()
         ctx.fireErrorCaught(underlyingError)
+    }
+
+    /// Emit any pending user events.
+    private func processPendingUserEvents(ctx: ChannelHandlerContext) {
+        for event in self.inboundEventBuffer {
+            ctx.fireUserInboundEventTriggered(event)
+        }
     }
 }
 
@@ -294,7 +319,9 @@ extension NIOHTTP2Handler {
         case .goAway(let lastStreamID, _, _):
             let rc = self.stateMachine.sendGoaway(lastStreamID: lastStreamID)
             result = rc.0
-            let droppedFrames = rc.1
+            for droppedStream in rc.1 {
+                self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
+            }
         case .headers(let headers, _):
             result = self.stateMachine.sendHeaders(streamID: frame.streamID, headers: headers, isEndStreamSet: frame.flags.contains(.endStream))
         case .ping:
@@ -321,6 +348,9 @@ extension NIOHTTP2Handler {
             self.writeBuffer.clear()
             self.encodeAndWriteFrame(ctx: ctx, frame: frame, promise: promise)
         }
+
+        // This may have caused user events that need to be fired, so do so.
+        self.processPendingUserEvents(ctx: ctx)
     }
 
     /// Encodes a frame and writes it to the network.
