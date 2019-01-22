@@ -199,12 +199,12 @@ public struct HTTP2Frame {
 
 
 internal extension HTTP2Frame {
-    internal init(streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, payload: HTTP2Frame.FramePayload) {
+    init(streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
         self.flags = flags.intersection(payload.allowedFlags)
         self.payload = payload
     }
-    internal init(streamID: HTTP2StreamID, flags: UInt8, payload: HTTP2Frame.FramePayload) {
+    init(streamID: HTTP2StreamID, flags: UInt8, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
         self.flags = FrameFlags(rawValue: flags).intersection(payload.allowedFlags)
         self.payload = payload
@@ -213,7 +213,7 @@ internal extension HTTP2Frame {
 
 public extension HTTP2Frame {
     /// Constructs a frame header for a given stream ID. All flags are unset.
-    public init(streamID: HTTP2StreamID, payload: HTTP2Frame.FramePayload) {
+    init(streamID: HTTP2StreamID, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
         self.flags = []
         self.payload = payload

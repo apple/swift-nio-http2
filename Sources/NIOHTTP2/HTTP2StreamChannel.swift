@@ -463,7 +463,7 @@ internal extension HTTP2StreamChannel {
     ///
     /// - parameters:
     ///     - frame: The `HTTP2Frame` received from the network.
-    internal func receiveInboundFrame(_ frame: HTTP2Frame) {
+    func receiveInboundFrame(_ frame: HTTP2Frame) {
         guard self.state != .closed else {
             // Do nothing
             return
@@ -493,7 +493,7 @@ internal extension HTTP2StreamChannel {
     ///
     /// - parameters:
     ///     - reason: The reason received from the network, if any.
-    internal func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
+    func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
         if let reason = reason {
             let err = NIOHTTP2Errors.StreamClosed(streamID: self.streamID, errorCode: reason)
             self.errorEncountered(error: err)

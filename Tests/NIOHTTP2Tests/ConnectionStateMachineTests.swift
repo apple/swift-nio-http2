@@ -54,11 +54,11 @@ func assertIgnored(_ body: @autoclosure () -> StateMachineResult, file: StaticSt
     }
 }
 
-func assertSucceeds(_ body: @autoclosure () -> (StateMachineResult, PostSettingsOperation), file: StaticString = #file, line: UInt = #line) {
+func assertSucceeds(_ body: @autoclosure () -> (StateMachineResult, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
     return assertSucceeds(body().0, file: file, line: line)
 }
 
-func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResult, PostSettingsOperation), file: StaticString = #file, line: UInt = #line) {
+func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResult, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
     return assertConnectionError(type: type, body().0, file: file, line: line)
 }
 
@@ -654,7 +654,7 @@ class ConnectionStateMachineTests: XCTestCase {
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.client.receivePing())
+        assertConnectionError(type: .protocolError, self.client.receivePing(flags: []))
         assertConnectionError(type: .protocolError, self.client.receivePriority())
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.client.receiveRstStream(streamID: streamOne))
@@ -671,7 +671,7 @@ class ConnectionStateMachineTests: XCTestCase {
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.client.receivePing())
+        assertConnectionError(type: .protocolError, self.client.receivePing(flags: []))
         assertConnectionError(type: .protocolError, self.client.receivePriority())
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.client.receiveRstStream(streamID: streamOne))
@@ -689,7 +689,7 @@ class ConnectionStateMachineTests: XCTestCase {
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.server.receivePing())
+        assertConnectionError(type: .protocolError, self.server.receivePing(flags: []))
         assertConnectionError(type: .protocolError, self.server.receivePriority())
         assertConnectionError(type: .protocolError, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.server.receiveRstStream(streamID: streamOne))
@@ -792,7 +792,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We can also do all the connectiony things.
         assertSucceeds(self.client.sendPing())
-        assertSucceeds(self.server.receivePing())
+        assertSucceeds(self.server.receivePing(flags: []))
         assertSucceeds(self.client.sendPriority())
         assertSucceeds(self.server.receivePriority())
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
@@ -837,7 +837,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We can also do all the connectiony things.
         assertSucceeds(self.client.sendPing())
-        assertSucceeds(self.server.receivePing())
+        assertSucceeds(self.server.receivePing(flags: []))
         assertSucceeds(self.client.sendPriority())
         assertSucceeds(self.server.receivePriority())
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
@@ -884,8 +884,8 @@ class ConnectionStateMachineTests: XCTestCase {
         // All the connection operations still work.
         assertSucceeds(self.client.sendPing())
         assertSucceeds(self.server.sendPing())
-        assertSucceeds(self.server.receivePing())
-        assertSucceeds(self.client.receivePing())
+        assertSucceeds(self.server.receivePing(flags: []))
+        assertSucceeds(self.client.receivePing(flags: []))
         assertSucceeds(self.client.sendPriority())
         assertSucceeds(self.server.sendPriority())
         assertSucceeds(self.server.receivePriority())
@@ -972,7 +972,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Connectiony things don't work either.
         assertConnectionError(type: .protocolError, self.client.sendPing())
-        assertConnectionError(type: .protocolError, self.server.receivePing())
+        assertConnectionError(type: .protocolError, self.server.receivePing(flags: []))
         assertConnectionError(type: .protocolError, self.client.sendPriority())
         assertConnectionError(type: .protocolError, self.server.receivePriority())
         assertConnectionError(type: .protocolError, self.client.sendSettings([]))

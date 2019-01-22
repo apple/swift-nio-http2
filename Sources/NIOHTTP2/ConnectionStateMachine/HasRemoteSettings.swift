@@ -26,7 +26,7 @@ protocol HasRemoteSettings {
 }
 
 extension HasRemoteSettings {
-    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostSettingsOperation) {
+    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostFrameOperation) {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
         // self. It's a little more complex than normal because HTTP2SettingsState has
         // two CoWable objects, and we don't want to CoW either of them, so we shove a dummy

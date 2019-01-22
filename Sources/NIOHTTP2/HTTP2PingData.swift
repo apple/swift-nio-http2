@@ -139,7 +139,7 @@ extension HTTP2PingData: Equatable {
 }
 
 extension HTTP2PingData: Hashable {
-    public var hashValue: Int {
-        return self.integer.hashValue
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(self.integer)
     }
 }

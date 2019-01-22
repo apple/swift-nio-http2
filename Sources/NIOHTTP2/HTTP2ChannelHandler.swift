@@ -197,7 +197,18 @@ extension NIOHTTP2Handler {
             result = rc.0
             self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
         case .ping:
-            result = self.stateMachine.receivePing()
+            let rc = self.stateMachine.receivePing(flags: frame.flags)
+            result = rc.0
+            switch rc.1 {
+            case .nothing:
+                break
+            case .sendAck:
+                self.writeBuffer.clear()
+                var responseFrame = frame
+                responseFrame.flags.insert(.ack)
+                self.encodeAndWriteFrame(ctx: ctx, frame: responseFrame, promise: nil)
+                self.wroteAutomaticFrame = true
+            }
         case .priority:
             result = self.stateMachine.receivePriority()
         case .pushPromise(let pushedStreamID, let headers):

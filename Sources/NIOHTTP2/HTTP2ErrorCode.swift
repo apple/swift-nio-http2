@@ -139,14 +139,14 @@ extension HTTP2ErrorCode: CustomDebugStringConvertible {
 
 public extension UInt32 {
     /// Create a 32-bit integer corresponding to the given `HTTP2ErrorCode`.
-    public init(http2ErrorCode code: HTTP2ErrorCode) {
+    init(http2ErrorCode code: HTTP2ErrorCode) {
         self = code._networkCode
     }
 }
 
 public extension Int {
     /// Create an integer corresponding to the given `HTTP2ErrorCode`.
-    public init(http2ErrorCode code: HTTP2ErrorCode) {
+    init(http2ErrorCode code: HTTP2ErrorCode) {
         self = code.networkCode
     }
 }
@@ -158,7 +158,7 @@ public extension ByteBuffer {
     /// - parameters:
     ///     - code: The `HTTP2ErrorCode` to serialize.
     /// - returns: The number of bytes written.
-    public mutating func write(http2ErrorCode code: HTTP2ErrorCode) -> Int {
+    mutating func write(http2ErrorCode code: HTTP2ErrorCode) -> Int {
         return self.write(integer: UInt32(http2ErrorCode: code))
     }
 }

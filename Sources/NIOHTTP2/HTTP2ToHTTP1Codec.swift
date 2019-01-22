@@ -405,7 +405,7 @@ private extension HTTPHeaders {
 
 
 fileprivate extension HTTPHeaders {
-    fileprivate init(requestHead: HTTPRequestHead, protocolString: String) {
+    init(requestHead: HTTPRequestHead, protocolString: String) {
         self.init()
 
         // TODO(cory): This is potentially wrong if the URI contains more than just a path.
@@ -426,7 +426,7 @@ fileprivate extension HTTPHeaders {
         headers.forEach { self.add(name: $0.name, value: $0.value) }
     }
 
-    fileprivate init(responseHead: HTTPResponseHead) {
+    init(responseHead: HTTPResponseHead) {
         self.init()
 
         self.add(name: ":status", value: String(responseHead.status.code))

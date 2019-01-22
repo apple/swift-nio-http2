@@ -45,9 +45,9 @@ enum StateMachineResult {
 }
 
 
-/// Operations that may need to be performed after receiving a SETTINGS frame.
-enum PostSettingsOperation {
-    /// A SETTINGS ACK must be sent.
+/// Operations that may need to be performed after receiving a frame.
+enum PostFrameOperation {
+    /// An appropriate ACK must be sent.
     case sendAck
 
     /// No operation is needed.

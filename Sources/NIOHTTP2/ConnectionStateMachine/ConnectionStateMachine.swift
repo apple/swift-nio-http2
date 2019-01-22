@@ -468,7 +468,7 @@ struct HTTP2ConnectionStateMachine {
 // performs a state transition, and can be used to validate that a specific action is acceptable on a connection in this state.
 extension HTTP2ConnectionStateMachine {
     /// Called when a SETTINGS frame has been received from the remote peer
-    mutating func receiveSettings(_ settings: HTTP2Settings, flags: HTTP2Frame.FrameFlags, frameEncoder: inout HTTP2FrameEncoder, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostSettingsOperation) {
+    mutating func receiveSettings(_ settings: HTTP2Settings, flags: HTTP2Frame.FrameFlags, frameEncoder: inout HTTP2FrameEncoder, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostFrameOperation) {
         if flags.contains(.ack) {
             // No action is ever required after receiving a settings ACK
             return (self.receiveSettingsAck(frameEncoder: &frameEncoder), .nothing)
@@ -925,20 +925,20 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a PING frame has been received from the network.
-    mutating func receivePing() -> StateMachineResult {
+    mutating func receivePing(flags: HTTP2Frame.FrameFlags) -> (StateMachineResult, PostFrameOperation) {
         // Pings are pretty straightforward: they're basically always allowed. This is a bit weird, but I can find no text in
         // RFC 7540 that says that receiving PINGs with ACK flags set when no PING ACKs are expected is forbidden. This is
         // very strange, but we allow it.
         switch self.state {
         case .prefaceReceived, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceReceived:
-            return .succeed
+            return (.succeed, flags.contains(.ack) ? .nothing : .sendAck)
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
-            return .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError)
+            return (.connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), .nothing)
 
         case .fullyQuiesced:
-            return .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError)
+            return (.connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), .nothing)
         }
     }
 
@@ -1161,14 +1161,14 @@ extension HTTP2ConnectionStateMachine {
 // Mark:- Private helper methods
 extension HTTP2ConnectionStateMachine {
     /// Called when we have received a SETTINGS frame from the remote peer. Applies the changes immediately.
-    private mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostSettingsOperation) {
+    private mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostFrameOperation) {
         let validationResult = self.validateSettings(settings)
 
         guard case .succeed = validationResult else {
             return (validationResult, .nothing)
         }
 
-        let result: (StateMachineResult, PostSettingsOperation)
+        let result: (StateMachineResult, PostFrameOperation)
 
         switch self.state {
         case .idle(let state):
