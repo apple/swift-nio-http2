@@ -26,11 +26,11 @@ protocol SendingPushPromiseState {
 }
 
 extension SendingPushPromiseState {
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
+    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         return self._sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
     }
 
-    fileprivate mutating func _sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
+    fileprivate mutating func _sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         // While receivePushPromise has a two step process involving creating the child stream first, here we do it the other
         // way around. This is because we don't want to bother creating a child stream if the headers aren't valid, and because
         // we don't have to emit a frame to report the error (we just return it to the user), we don't have to have a stream
@@ -41,19 +41,19 @@ extension SendingPushPromiseState {
 
         // First, however, we need to check we can push at all!
         guard self.mayPush else {
-            return .connectionError(underlyingError: NIOHTTP2Errors.PushInViolationOfSetting(), type: .protocolError)
+            return (.connectionError(underlyingError: NIOHTTP2Errors.PushInViolationOfSetting(), type: .protocolError), .noChange)
         }
 
         do {
             let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: false, parentStateModifier)
-            guard case .succeed = result else {
+            guard case .succeed = result.0 else {
                 return result
             }
 
             try self.streamState.createLocallyPushedStream(streamID: childStreamID, localInitialWindowSize: self.localInitialWindowSize)
             return result
         } catch {
-            return .connectionError(underlyingError: error, type: .protocolError)
+            return (.connectionError(underlyingError: error, type: .protocolError), .noChange)
         }
     }
 
@@ -65,7 +65,7 @@ extension SendingPushPromiseState {
 }
 
 extension SendingPushPromiseState where Self: RemotelyQuiescingState {
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResult {
+    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         // This call should never be used, but we do want to ensure that conforming types cannot enter the above method.
         // The state machine should return early in all cases where we might end up calling this function.
         preconditionFailure("Must not be called")

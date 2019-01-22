@@ -24,11 +24,11 @@ protocol SendingDataState {
 
 extension SendingDataState {
     /// Called to send a DATA frame.
-    mutating func sendData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         do {
             try self.outboundFlowControlWindow.consume(flowControlledBytes: flowControlledBytes)
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return .connectionError(underlyingError: error, type: .flowControlError)
+            return (.connectionError(underlyingError: error, type: .flowControlError), .noChange)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }

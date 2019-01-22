@@ -24,11 +24,11 @@ protocol ReceivingDataState {
 
 extension ReceivingDataState {
     /// Called to receive a DATA frame.
-    mutating func receiveData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         do {
             try self.inboundFlowControlWindow.consume(flowControlledBytes: flowControlledBytes)
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return .connectionError(underlyingError: error, type: .flowControlError)
+            return (.connectionError(underlyingError: error, type: .flowControlError), .noChange)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }

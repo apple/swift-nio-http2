@@ -380,8 +380,8 @@ class FlowControlHandlerTests: XCTestCase {
 
 /// Various helpers for EmbeddedChannel that make tests easier to understand.
 private extension EmbeddedChannel {
-    func createStream(_ streamID: HTTP2StreamID, initialWindowSize: Int32) {
-        self.pipeline.fireUserInboundEventTriggered(NIOHTTP2StreamCreatedEvent(streamID: streamID, initialWindowSize: initialWindowSize))
+    func createStream(_ streamID: HTTP2StreamID, initialWindowSize: UInt32) {
+        self.pipeline.fireUserInboundEventTriggered(NIOHTTP2StreamCreatedEvent(streamID: streamID, localInitialWindowSize: initialWindowSize, remoteInitialWindowSize: initialWindowSize))
     }
 
     func updateStreamWindowSize(_ streamID: HTTP2StreamID, newWindowSize: Int32) {

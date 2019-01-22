@@ -22,7 +22,7 @@ protocol SendingRstStreamState {
 
 extension SendingRstStreamState {
     /// Called to send a RST_STREAM frame.
-    mutating func sendRstStream(streamID: HTTP2StreamID) -> StateMachineResult {
+    mutating func sendRstStream(streamID: HTTP2StreamID) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         return self.streamState.locallyResetStreamState(streamID: streamID) {
             $0.sendRstStream()
         }

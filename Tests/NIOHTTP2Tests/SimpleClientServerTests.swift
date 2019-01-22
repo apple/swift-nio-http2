@@ -776,9 +776,11 @@ class SimpleClientServerTests: XCTestCase {
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
-        // At this stage the stream is still open, neither handler will have seen events.
-        XCTAssertEqual(clientHandler.events.count, 0)
-        XCTAssertEqual(serverHandler.events.count, 0)
+        // At this stage the stream is still open, both handlers should have seen stream creation events.
+        XCTAssertEqual(clientHandler.events.count, 1)
+        XCTAssertEqual(serverHandler.events.count, 1)
+        XCTAssertEqual(clientHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: clientStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
+        XCTAssertEqual(serverHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: serverStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
 
         // Let's send a quick response back.
         let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
@@ -786,10 +788,10 @@ class SimpleClientServerTests: XCTestCase {
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // Now the streams are closed, they should have seen user events.
-        XCTAssertEqual(clientHandler.events.count, 1)
-        XCTAssertEqual(serverHandler.events.count, 1)
-        XCTAssertEqual(clientHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: nil))
-        XCTAssertEqual(serverHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: nil))
+        XCTAssertEqual(clientHandler.events.count, 2)
+        XCTAssertEqual(serverHandler.events.count, 2)
+        XCTAssertEqual(clientHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: nil))
+        XCTAssertEqual(serverHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: nil))
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
@@ -812,19 +814,21 @@ class SimpleClientServerTests: XCTestCase {
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
-        // At this stage the stream is still open, neither handler will have seen events.
-        XCTAssertEqual(clientHandler.events.count, 0)
-        XCTAssertEqual(serverHandler.events.count, 0)
+        // At this stage the stream is still open, both handlers should have seen stream creation events.
+        XCTAssertEqual(clientHandler.events.count, 1)
+        XCTAssertEqual(serverHandler.events.count, 1)
+        XCTAssertEqual(clientHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: clientStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
+        XCTAssertEqual(serverHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: serverStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
 
         // The server will reset the stream.
         let rstStreamFrame = HTTP2Frame(streamID: serverStreamID, payload: .rstStream(.cancel))
         try self.assertFramesRoundTrip(frames: [rstStreamFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // Now the streams are closed, they should have seen user events.
-        XCTAssertEqual(clientHandler.events.count, 1)
-        XCTAssertEqual(serverHandler.events.count, 1)
-        XCTAssertEqual(clientHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: .cancel))
-        XCTAssertEqual(serverHandler.events[0] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: .cancel))
+        XCTAssertEqual(clientHandler.events.count, 2)
+        XCTAssertEqual(serverHandler.events.count, 2)
+        XCTAssertEqual(clientHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: .cancel))
+        XCTAssertEqual(serverHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: .cancel))
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
@@ -847,19 +851,21 @@ class SimpleClientServerTests: XCTestCase {
 
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
-        // At this stage the stream is still open, neither handler will have seen events.
-        XCTAssertEqual(clientHandler.events.count, 0)
-        XCTAssertEqual(serverHandler.events.count, 0)
+        // At this stage the stream is still open, both handlers should have seen stream creation events.
+        XCTAssertEqual(clientHandler.events.count, 1)
+        XCTAssertEqual(serverHandler.events.count, 1)
+        XCTAssertEqual(clientHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: clientStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
+        XCTAssertEqual(serverHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: serverStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
 
         // The server will send a GOAWAY.
         let goawayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
         try self.assertFramesRoundTrip(frames: [goawayFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // Now the streams are closed, they should have seen user events.
-        XCTAssertEqual(clientHandler.events.count, 1)
-        XCTAssertEqual(serverHandler.events.count, 1)
-        XCTAssertEqual((clientHandler.events[0] as? StreamClosedEvent)?.streamID, clientStreamID)
-        XCTAssertEqual((serverHandler.events[0] as? StreamClosedEvent)?.streamID, serverStreamID)
+        XCTAssertEqual(clientHandler.events.count, 2)
+        XCTAssertEqual(serverHandler.events.count, 2)
+        XCTAssertEqual((clientHandler.events[1] as? StreamClosedEvent)?.streamID, clientStreamID)
+        XCTAssertEqual((serverHandler.events[1] as? StreamClosedEvent)?.streamID, serverStreamID)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
@@ -941,7 +947,7 @@ class SimpleClientServerTests: XCTestCase {
             let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
             // Let's send a quick response back.
-            var respFrame = HTTP2Frame(streamID: serverStreamID, flags: [.endHeaders, .endStream], payload: .headers(responseHeaders, nil))
+            let respFrame = HTTP2Frame(streamID: serverStreamID, flags: [.endHeaders, .endStream], payload: .headers(responseHeaders, nil))
             try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
         }
 

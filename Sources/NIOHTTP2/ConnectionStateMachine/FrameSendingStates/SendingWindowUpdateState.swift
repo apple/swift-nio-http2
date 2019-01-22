@@ -23,16 +23,16 @@ protocol SendingWindowUpdateState {
 }
 
 extension SendingWindowUpdateState {
-    mutating func sendWindowUpdate(streamID: HTTP2StreamID, increment: UInt32) -> StateMachineResult {
+    mutating func sendWindowUpdate(streamID: HTTP2StreamID, increment: UInt32) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         if streamID == .rootStream {
             // This is an update for the connection. We police the errors here.
             do {
                 try self.inboundFlowControlWindow.windowUpdate(by: increment)
-                return .succeed
+                return (.succeed, .noChange)
             } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-                return .connectionError(underlyingError: error, type: .flowControlError)
+                return (.connectionError(underlyingError: error, type: .flowControlError), .noChange)
             } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-                return .connectionError(underlyingError: error, type: .protocolError)
+                return (.connectionError(underlyingError: error, type: .protocolError), .noChange)
             } catch {
                 preconditionFailure("Unexpected error: \(error)")
             }

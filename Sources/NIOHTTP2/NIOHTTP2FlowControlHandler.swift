@@ -107,7 +107,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
         case let event as StreamClosedEvent:
             self.streamClosed(event.streamID, errorCode: event.reason ?? .streamClosed)
         case let event as NIOHTTP2StreamCreatedEvent:
-            self.streamCreated(event.streamID, initialWindowSize: event.initialWindowSize)
+            self.streamCreated(event.streamID, initialWindowSize: event.localInitialWindowSize)
         default:
             break
         }
@@ -145,7 +145,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
         }
     }
 
-    private func streamCreated(_ streamID: HTTP2StreamID, initialWindowSize: Int32) {
+    private func streamCreated(_ streamID: HTTP2StreamID, initialWindowSize: UInt32) {
         assert(streamID != .rootStream)
 
         let streamState = StreamFlowControlState(streamID: streamID, initialWindowSize: Int(initialWindowSize))

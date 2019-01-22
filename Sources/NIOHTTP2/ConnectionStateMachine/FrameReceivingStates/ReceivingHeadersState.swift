@@ -29,20 +29,14 @@ protocol ReceivingHeadersState {
 
 extension ReceivingHeadersState {
     /// Called when we receive a HEADERS frame in this state.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         if self.role == .server && streamID.mayBeInitiatedBy(.client) {
-            // Clients may initiate streams with HEADERS frames, so we allow this stream to not exist.
-            let defaultValue = HTTP2StreamStateMachine(streamID: streamID,
-                                                       localRole: .server,
-                                                       localInitialWindowSize: self.localInitialWindowSize,
-                                                       remoteInitialWindowSize: self.remoteInitialWindowSize)
-
             do {
-                return try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID, initialValue: defaultValue) {
+                return try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID, localRole: .server, localInitialWindowSize: self.localInitialWindowSize, remoteInitialWindowSize: self.remoteInitialWindowSize) {
                     $0.receiveHeaders(headers: headers, isEndStreamSet: endStream)
                 }
             } catch {
-                return .connectionError(underlyingError: error, type: .protocolError)
+                return (.connectionError(underlyingError: error, type: .protocolError), .noChange)
             }
         } else {
             // HEADERS cannot create streams for servers, so this must be for a stream we already know about.
@@ -60,9 +54,9 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
     /// If we've quiesced this connection, the remote peer is no longer allowed to create new streams.
     /// We ignore any frame that appears to be creating a new stream, and then prevent this from creating
     /// new streams.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         if streamID.mayBeInitiatedBy(.client) && streamID > self.lastRemoteStreamID {
-            return .ignoreFrame
+            return (.ignoreFrame, .noChange)
         }
 
         // At this stage we've quiesced, so the remote peer is not allowed to create new streams.

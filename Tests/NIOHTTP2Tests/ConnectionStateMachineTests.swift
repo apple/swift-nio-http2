@@ -62,6 +62,31 @@ func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (Sta
     return assertConnectionError(type: type, body().0, file: file, line: line)
 }
 
+func assertSucceeds(_ body: @autoclosure () -> (StateMachineResult, ConnectionStreamState.StreamStateChange), file: StaticString = #file, line: UInt = #line) {
+    return assertSucceeds(body().0, file: file, line: line)
+}
+
+func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResult, ConnectionStreamState.StreamStateChange), file: StaticString = #file, line: UInt = #line) {
+    // Errors must always lead to noChange.
+    let result = body()
+    assertConnectionError(type: type, result.0, file: file, line: line)
+    XCTAssertEqual(result.1, .noChange, file: file, line: line)
+}
+
+func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResult, ConnectionStreamState.StreamStateChange), file: StaticString = #file, line: UInt = #line) {
+    // Errors must always lead to noChange.
+    let result = body()
+    assertStreamError(type: type, result.0, file: file, line: line)
+    XCTAssertEqual(result.1, .noChange, file: file, line: line)
+}
+
+func assertIgnored(_ body: @autoclosure () -> (StateMachineResult, ConnectionStreamState.StreamStateChange), file: StaticString = #file, line: UInt = #line) {
+    // Ignored frames must always lead to noChange.
+    let result = body()
+    assertIgnored(result.0, file: file, line: line)
+    XCTAssertEqual(result.1, .noChange, file: file, line: line)
+}
+
 
 class ConnectionStateMachineTests: XCTestCase {
     var server: HTTP2ConnectionStateMachine!

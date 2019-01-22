@@ -93,17 +93,9 @@ public struct HTTP2ErrorCode {
     public static let http11Required = HTTP2ErrorCode(networkCode: 0x0d)
 }
 
-extension HTTP2ErrorCode: Equatable {
-    public static func ==(lhs: HTTP2ErrorCode, rhs: HTTP2ErrorCode) -> Bool {
-        return lhs._networkCode == rhs._networkCode
-    }
-}
+extension HTTP2ErrorCode: Equatable { }
 
-extension HTTP2ErrorCode: Hashable {
-    public var hashValue: Int {
-        return self._networkCode.hashValue
-    }
-}
+extension HTTP2ErrorCode: Hashable { }
 
 extension HTTP2ErrorCode: CustomDebugStringConvertible {
     public var debugDescription: String {

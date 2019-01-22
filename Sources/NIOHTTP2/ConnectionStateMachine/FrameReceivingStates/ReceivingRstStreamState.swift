@@ -22,7 +22,7 @@ protocol ReceivingRstStreamState {
 
 extension ReceivingRstStreamState {
     /// Called to receive a RST_STREAM frame.
-    mutating func receiveRstStream(streamID: HTTP2StreamID) -> StateMachineResult {
+    mutating func receiveRstStream(streamID: HTTP2StreamID) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
             $0.receiveRstStream()
         }

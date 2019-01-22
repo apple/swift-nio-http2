@@ -33,11 +33,7 @@ public struct StreamClosedEvent {
     }
 }
 
-extension StreamClosedEvent: Equatable {
-    public static func ==(lhs: StreamClosedEvent, rhs: StreamClosedEvent) -> Bool {
-        return lhs.streamID == rhs.streamID && lhs.reason == rhs.reason
-    }
-}
+extension StreamClosedEvent: Equatable { }
 
 
 /// A `NIOHTTP2WindowUpdatedEvent` is fired whenever a flow control window is changed.
@@ -59,15 +55,18 @@ public struct NIOHTTP2WindowUpdatedEvent {
 extension NIOHTTP2WindowUpdatedEvent: Equatable { }
 
 
-/// A `NIOHTTP2StreamCreatedEvent` is fired whenever a HTTP/2 stream is created
+/// A `NIOHTTP2StreamCreatedEvent` is fired whenever a HTTP/2 stream is created.
 public struct NIOHTTP2StreamCreatedEvent {
     public let streamID: HTTP2StreamID
 
-    public let initialWindowSize: Int32
+    public let localInitialWindowSize: UInt32
 
-    public init(streamID: HTTP2StreamID, initialWindowSize: Int32) {
+    public let remoteInitialWidowSize: UInt32
+
+    public init(streamID: HTTP2StreamID, localInitialWindowSize: UInt32, remoteInitialWindowSize: UInt32) {
         self.streamID = streamID
-        self.initialWindowSize = initialWindowSize
+        self.localInitialWindowSize = localInitialWindowSize
+        self.remoteInitialWidowSize = remoteInitialWindowSize
     }
 }
 

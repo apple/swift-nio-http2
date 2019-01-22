@@ -16,6 +16,13 @@ import NIO
 
 /// A representation of the state of the HTTP/2 streams in a single HTTP/2 connection.
 struct ConnectionStreamState {
+    /// An object that represents a stream state change.
+    enum StreamStateChange: Hashable {
+        case opened(localInitialWindowSize: UInt32, remoteInitialWindowSize: UInt32)
+        case closed
+        case noChange
+    }
+
     /// The "safe" default value of SETTINGS_MAX_CONCURRENT_STREAMS.
     static let defaultMaxConcurrentStreams: UInt32 = 100
 
@@ -119,16 +126,27 @@ struct ConnectionStreamState {
     ///
     /// - parameters:
     ///     - streamID: The ID of the stream to modify.
-    ///     - initialValue: The initial value of the stream state machine to use if not present in the map.
+    ///     - localRole: The connection role of the local peer.
+    ///     - localInitialWindowSize: The initial size of the local flow control window for new streams.
+    ///     - remoteInitialWindowSize: The initial size of the remote flow control window for new streams.
     ///     - modifier: A block that will be invoked to modify the stream state, if present.
     /// - throws: Any errors thrown from the creator.
-    /// - returns: The result of the state modification.
+    /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
     @inline(__always)
     mutating func modifyStreamStateCreateIfNeeded(streamID: HTTP2StreamID,
-                                                  initialValue: HTTP2StreamStateMachine,
-                                                  modifier: (inout HTTP2StreamStateMachine) -> StateMachineResult) throws -> StateMachineResult {
-        func creator () throws -> HTTP2StreamStateMachine {
+                                                  localRole: HTTP2StreamStateMachine.StreamRole,
+                                                  localInitialWindowSize: UInt32,
+                                                  remoteInitialWindowSize: UInt32,
+                                                  modifier: (inout HTTP2StreamStateMachine) -> StateMachineResult) throws -> (StateMachineResult, StreamStateChange) {
+        var stateChange = StreamStateChange.noChange
+
+        func creator() throws -> HTTP2StreamStateMachine {
             try self.reserveClientStreamID(streamID)
+            let initialValue = HTTP2StreamStateMachine(streamID: streamID,
+                                                       localRole: localRole,
+                                                       localInitialWindowSize: localInitialWindowSize,
+                                                       remoteInitialWindowSize: remoteInitialWindowSize)
+            stateChange = .opened(localInitialWindowSize: localInitialWindowSize, remoteInitialWindowSize: remoteInitialWindowSize)
             return initialValue
         }
 
@@ -147,9 +165,11 @@ struct ConnectionStreamState {
 
         if didClose {
             self.streamClosed(streamID)
+            precondition(stateChange == .noChange, "Closed just-opened stream")
+            stateChange = .closed
         }
 
-        return result
+        return (result, stateChange)
     }
 
     /// Obtains a stream state machine in order to modify its state.
@@ -161,20 +181,23 @@ struct ConnectionStreamState {
     ///     - streamID: The ID of the stream to modify.
     ///     - ignoreRecentlyReset: Whether a recently reset stream should be ignored. Should be set to `true` when receiving frames.
     ///     - modifier: A block that will be invoked to modify the stream state, if present.
-    /// - returns: The result of the state modification.
+    /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
     @inline(__always)
     mutating func modifyStreamState(streamID: HTTP2StreamID,
                                     ignoreRecentlyReset: Bool,
-                                    _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResult) -> StateMachineResult {
+                                    _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResult) -> (StateMachineResult, StreamStateChange) {
+        var stateChange = StreamStateChange.noChange
+
         guard let (result, didClose) = self.activeStreams[streamID].autoClosingTransform(modifier) else {
-            return self.streamMissing(streamID: streamID, ignoreRecentlyReset: ignoreRecentlyReset)
+            return (self.streamMissing(streamID: streamID, ignoreRecentlyReset: ignoreRecentlyReset), .noChange)
         }
 
         if didClose {
             self.streamClosed(streamID)
+            stateChange = .closed
         }
 
-        return result
+        return (result, stateChange)
     }
 
     /// Obtains a stream state machine in order to modify its state due to a stream reset initiated locally.
@@ -187,20 +210,20 @@ struct ConnectionStreamState {
     /// - parameters:
     ///     - streamID: The ID of the stream to modify.
     ///     - modifier: A block that will be invoked to modify the stream state, if present.
-    /// - returns: The result of the state modification.
+    /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
     @inline(__always)
     mutating func locallyResetStreamState(streamID: HTTP2StreamID,
-                                          _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResult) -> StateMachineResult {
+                                          _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResult) -> (StateMachineResult, StreamStateChange) {
         guard let (result, didClose) = self.activeStreams[streamID].autoClosingTransform(modifier) else {
             // We never ignore recently reset streams here, as this should only ever be used when *sending* frames.
-            return self.streamMissing(streamID: streamID, ignoreRecentlyReset: false)
+            return (self.streamMissing(streamID: streamID, ignoreRecentlyReset: false), .noChange)
         }
 
         precondition(didClose, "Locally resetting stream state did not close it!")
         self.recentlyResetStreams.prependWithoutExpanding(streamID)
         self.streamClosed(streamID)
 
-        return result
+        return (result, .closed)
     }
 
     /// Performs a state-modifying operation on all streams.

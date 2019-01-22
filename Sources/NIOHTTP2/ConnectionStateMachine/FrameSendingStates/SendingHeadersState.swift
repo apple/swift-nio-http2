@@ -30,20 +30,17 @@ protocol SendingHeadersState {
 
 extension SendingHeadersState {
     /// Called when we send a HEADERS frame in this state.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         if self.role == .client && streamID.mayBeInitiatedBy(.client) {
-            // Clients may initiate streams with HEADERS frames, so we allow this stream to not exist.
-            let defaultValue = HTTP2StreamStateMachine(streamID: streamID,
-                                                       localRole: .client,
-                                                       localInitialWindowSize: self.localInitialWindowSize,
-                                                       remoteInitialWindowSize: self.remoteInitialWindowSize)
-
             do {
-                return try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID, initialValue: defaultValue) {
+                return try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID,
+                                                                            localRole: .client,
+                                                                            localInitialWindowSize: self.localInitialWindowSize,
+                                                                            remoteInitialWindowSize: self.remoteInitialWindowSize) {
                     $0.sendHeaders(headers: headers, isEndStreamSet: endStream)
                 }
             } catch {
-                return .connectionError(underlyingError: error, type: .protocolError)
+                return (.connectionError(underlyingError: error, type: .protocolError), .noChange)
             }
         } else {
             // HEADERS cannot create streams for servers, so this must be for a stream we already know about.
@@ -58,7 +55,7 @@ extension SendingHeadersState {
 extension SendingHeadersState where Self: RemotelyQuiescingState {
     /// If we've been remotely quiesced, we're forbidden from creating new streams. So we can only possibly
     /// be modifying an existing one.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
         return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
             $0.sendHeaders(headers: headers, isEndStreamSet: endStream)
         }
