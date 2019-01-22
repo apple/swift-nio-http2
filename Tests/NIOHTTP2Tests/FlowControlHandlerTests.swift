@@ -15,7 +15,6 @@
 import XCTest
 import NIO
 import NIOHTTP1
-import CNIONghttp2
 @testable import NIOHTTP2
 import NIOHPACK
 

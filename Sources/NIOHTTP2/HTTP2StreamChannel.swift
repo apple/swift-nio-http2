@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
-import CNIONghttp2
 
 /// `StreamIDOption` allows users to query the stream ID for a given `HTTP2StreamChannel`.
 ///

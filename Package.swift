@@ -23,14 +23,12 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "1.12.0"),
-        .package(url: "https://github.com/apple/swift-nio-nghttp2-support.git", from: "1.0.0"),
     ],
     targets: [
-        .target(name: "CNIONghttp2"),
         .target(name: "NIOHTTP2Server",
             dependencies: ["NIOHTTP2"]),
         .target(name: "NIOHTTP2",
-            dependencies: ["NIO", "NIOHTTP1", "NIOTLS", "CNIONghttp2", "NIOHPACK"]),
+            dependencies: ["NIO", "NIOHTTP1", "NIOTLS", "NIOHPACK"]),
         .target(name: "NIOHPACK",
             dependencies: ["NIO", "NIOConcurrencyHelpers", "NIOHTTP1"]),
         .testTarget(name: "NIOHTTP2Tests",

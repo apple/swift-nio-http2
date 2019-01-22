@@ -11,7 +11,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import CNIONghttp2
 
 /// A collection of HTTP/2 settings.
 ///
@@ -67,17 +66,9 @@ public struct HTTP2SettingsParameter {
     public static let enableConnectProtocol = HTTP2SettingsParameter(8)
 }
 
-extension HTTP2SettingsParameter: Equatable {
-    public static func ==(lhs: HTTP2SettingsParameter, rhs: HTTP2SettingsParameter) -> Bool {
-        return lhs.networkRepresentation == rhs.networkRepresentation
-    }
-}
+extension HTTP2SettingsParameter: Equatable { }
 
-extension HTTP2SettingsParameter: Hashable {
-    public var hashValue: Int {
-        return self.networkRepresentation.hashValue
-    }
-}
+extension HTTP2SettingsParameter: Hashable { }
 
 /// A single setting for HTTP/2, a combination of a `HTTP2SettingsParameter` and its value.
 public struct HTTP2Setting {
@@ -104,22 +95,10 @@ public struct HTTP2Setting {
         self.parameter = parameter
         self._value = UInt32(value)
     }
-
-    /// Create a new `HTTP2Setting` from nghttp2's raw representation.
-    internal init(fromNghttp2 setting: nghttp2_settings_entry) {
-        self.parameter = HTTP2SettingsParameter(fromNetwork: setting.settings_id)
-        self._value = setting.value
-    }
 }
 
 extension HTTP2Setting: Equatable {
     public static func ==(lhs: HTTP2Setting, rhs: HTTP2Setting) -> Bool {
         return lhs.parameter == rhs.parameter && lhs._value == rhs._value
-    }
-}
-
-internal extension nghttp2_settings_entry {
-    internal init(nioSetting: HTTP2Setting) {
-        self.init(settings_id: Int32(nioSetting.parameter.networkRepresentation), value: nioSetting._value)
     }
 }

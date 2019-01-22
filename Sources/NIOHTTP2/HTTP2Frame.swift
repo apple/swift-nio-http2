@@ -15,7 +15,6 @@
 import NIO
 import NIOHTTP1
 import NIOHPACK
-import CNIONghttp2
 
 /// A representation of a single HTTP/2 frame.
 public struct HTTP2Frame {

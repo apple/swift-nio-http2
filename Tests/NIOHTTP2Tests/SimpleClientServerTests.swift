@@ -15,7 +15,6 @@
 import XCTest
 import NIO
 import NIOHPACK
-import CNIONghttp2
 @testable import NIOHTTP2
 
 /// A channel handler that passes writes through but fires EOF once the first one hits.
@@ -699,15 +698,7 @@ class SimpleClientServerTests: XCTestCase {
         let respFrame = HTTP2Frame(streamID: serverStreamID, flags: .endHeaders, payload: .headers(responseHeaders, nil))
         let respTrailersFrame = HTTP2Frame(streamID: serverStreamID, flags: [.endHeaders, .endStream], payload: .headers(trailers, nil))
 
-        // v1.11.0 onwards don't send a 0-length DATA frame here, but earlier ones do. We send it explicitly to get
-        // the output to match on all platforms.
-        let expectedFrames: [HTTP2Frame]
-        if CNIONghttp2_nghttp2_version_number() < 0x011100 {
-            let emptyDataFrame = HTTP2Frame(streamID: serverStreamID, payload: .data(.byteBuffer(self.serverChannel.allocator.buffer(capacity: 0))))
-            expectedFrames = [respFrame, emptyDataFrame, respTrailersFrame]
-        } else {
-            expectedFrames = [respFrame, respTrailersFrame]
-        }
+        let expectedFrames = [respFrame, respTrailersFrame]
 
         try self.assertFramesRoundTrip(frames: expectedFrames, sender: self.serverChannel, receiver: self.clientChannel)
 

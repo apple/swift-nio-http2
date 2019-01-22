@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
-import CNIONghttp2
 
 /// A channel handler that creates a child channel for each HTTP/2 stream.
 ///

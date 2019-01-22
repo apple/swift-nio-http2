@@ -61,70 +61,32 @@ struct HTTP2HeadersStateMachine {
         let newType: HeaderType
 
         switch (self.mode, self.previousHeader) {
-        case (.client, .none):
-            // The first header block on a client mode stream must be a request block.
+        case (.server, .none):
+            // The first header block received on a server mode stream must be a request block.
             newType = .requestHead
-        case (.server, .none),
-             (.server, .some(.informationalResponseHead)):
-            // The first header block on a server mode stream may be either informational or final,
+        case (.client, .none),
+             (.client, .some(.informationalResponseHead)):
+            // The first header block received on a client mode stream may be either informational or final,
             // depending on the value of the :status pseudo-header. Alternatively, if the previous
             // header block was informational, the same possibilities apply.
             newType = block.isInformationalResponse ? .informationalResponseHead : .finalResponseHead
-        case (.client, .some(.requestHead)),
-             (.server, .some(.finalResponseHead)):
-            // If the client has already sent a request head, or the server has already sent a final response,
+        case (.server, .some(.requestHead)),
+             (.client, .some(.finalResponseHead)):
+            // If the sevrer has already received a request head, or the client has already received a final response,
             // this is a trailer block.
             newType = .trailer
-        case (.client, .some(.informationalResponseHead)),
-             (.client, .some(.finalResponseHead)),
-             (.server, .some(.requestHead)):
+        case (.server, .some(.informationalResponseHead)),
+             (.server, .some(.finalResponseHead)),
+             (.client, .some(.requestHead)):
             // These states should not be reachable!
             preconditionFailure("Invalid internal state!")
-        case (.client, .some(.trailer)),
-             (.server, .some(.trailer)):
+        case (.server, .some(.trailer)),
+             (.client, .some(.trailer)):
             // TODO(cory): This should probably throw, as this can happen in malformed programs without the world ending.
             preconditionFailure("Sending too many header blocks.")
         }
 
         self.previousHeader = newType
         return newType
-    }
-}
-
-/// An object that encapsulates all the state management information for a single HTTP/2 stream.
-///
-/// nghttp2 requires that we maintain a decent amount of internal state on a per-stream basis. At the very least
-/// we need a data provider and a state machine to work out what type of headers we're handling based on context.
-///
-/// For each stream, we store one of these objects as the opaque data that nghttp2 will provide us for stream-specific
-/// operations. This is then used to handle this kind of stream specific processing.
-final class HTTP2Stream {
-    /// The stream ID for this stream.
-    let streamID: HTTP2StreamID
-
-    /// The HTTP/2 data provider for this stream. This is used to manage dispatching both HTTP/2 DATA frames and
-    /// HEADERS frames that are shipped in trailers.
-    let dataProvider: HTTP2DataProvider
-
-    /// Whether this stream is still active on the connection. Streams that are not active on the connection are
-    /// safe to prune.
-    var active: Bool = false
-
-    /// The headers state machine for outbound headers.
-    ///
-    /// Currently we do not maintain one of these for inbound headers because nghttp2 doesn't require it of us, but
-    /// in the future we may want to do so.
-    private var outboundHeaderStateMachine: HTTP2HeadersStateMachine
-
-    init(mode: NIOHTTP2Handler.ParserMode, streamID: HTTP2StreamID) {
-        self.outboundHeaderStateMachine = HTTP2HeadersStateMachine(mode: mode)
-        self.streamID = streamID
-        self.dataProvider = HTTP2DataProvider()
-    }
-
-    /// Called to determine the type of a new outbound header block, so as to manage it appropriately.
-    func newOutboundHeaderBlock(block: HTTPHeaders) -> HTTP2HeadersStateMachine.HeaderType {
-        precondition(self.active)
-        return self.outboundHeaderStateMachine.newHeaders(block: block)
     }
 }
