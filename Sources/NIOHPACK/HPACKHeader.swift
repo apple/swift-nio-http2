@@ -77,6 +77,7 @@ public struct HPACKHeaders {
         
         if let store = store {
             // the compiler complains if I just try to assign to self._storage here...
+            //_storage = store        // compiler sez: "'self' used before 'self.init' call or assignment to 'self'"
             self.init(buffer: store.buffer, headers: store.headers)
         } else {
             self.init(Array(httpHeaders), allocator: ByteBufferAllocator())

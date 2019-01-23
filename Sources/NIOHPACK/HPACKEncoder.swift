@@ -174,18 +174,12 @@ public struct HPACKEncoder {
             break
         }
         
-        let err: Error?
         do {
             try self.append(headers: headers)
-            err = nil
+            buffer = try self.endEncoding()
         } catch {
-            err = error
-        }
-        
-        // ensure we clean up
-        buffer = try self.endEncoding()
-        if let err = err {
-            throw err
+            _ = try? self.endEncoding()
+            throw error
         }
     }
     

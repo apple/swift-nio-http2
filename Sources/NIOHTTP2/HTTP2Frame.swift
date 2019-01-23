@@ -187,9 +187,9 @@ public struct HTTP2Frame {
         public var description: String {
             var strings: [String] = []
             for i in 0..<8 {
-                let f: UInt8 = 1 << i
-                if (self.rawValue & f) != 0 {
-                    strings.append(String(f, radix: 16, uppercase: true))
+                let flagBit: UInt8 = 1 << i
+                if (self.rawValue & flagBit) != 0 {
+                    strings.append(String(flagBit, radix: 16, uppercase: true))
                 }
             }
             return "[\(strings.joined(separator: ", "))]"
