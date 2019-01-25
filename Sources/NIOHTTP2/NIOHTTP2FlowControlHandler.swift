@@ -30,15 +30,19 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
     /// The current size of the connection flow control window. May be negative.
     private var connectionWindowSize: Int
 
+    /// The current value of SETTINGS_MAX_FRAME_SIZE set by the peer.
+    private var maxFrameSize: Int
+
     /// Whether we need to flush on channelReadComplete.
     private var needToFlush = false
 
-    public init(initialConnectionWindowSize: Int = 65535) {
+    public init(initialConnectionWindowSize: Int = 65535, initialMaxFrameSize: Int = 1<<14) {
         /// By and large there won't be that many concurrent streams floating around, so we pre-allocate a decent-ish
         /// size.
         // TODO(cory): HEAP! This should be a heap, sorted off the number of pending bytes!
         self.streamDataBuffers = Dictionary(minimumCapacity: 16)
         self.connectionWindowSize = initialConnectionWindowSize
+        self.maxFrameSize = initialMaxFrameSize
     }
 
     public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
@@ -115,6 +119,20 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
         ctx.fireUserInboundEventTriggered(event)
     }
 
+    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        let frame = self.unwrapInboundIn(data)
+        if case .settings(let newSettings) = frame.payload, !frame.flags.contains(.ack) {
+            // This is a SETTINGS frame for new settings from the remote peer. We
+            // should apply this change. We only care about the value of SETTINGS_MAX_FRAME_SIZE:
+            // settings changes that affect flow control windows are notified to us in other ways.
+            if let newMaxFrameSize = newSettings.reversed().first(where: {$0.parameter == .maxFrameSize})?.value {
+                self.maxFrameSize = newMaxFrameSize
+            }
+        }
+
+        ctx.fireChannelRead(data)
+    }
+
     public func channelReadComplete(ctx: ChannelHandlerContext) {
         let didWrite = self.writeIfPossible(ctx: ctx)
         if didWrite {
@@ -175,7 +193,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
 
         while let nextStreamID = self.nextStreamToSend(), self.connectionWindowSize > 0 {
             let nextWrite = self.streamDataBuffers[nextStreamID].modify { (state: inout StreamFlowControlState) -> DataBuffer.BufferElement in
-                let nextWrite = state.nextWrite(maxSize: self.connectionWindowSize)
+                let nextWrite = state.nextWrite(maxSize: min(self.connectionWindowSize, self.maxFrameSize))
                 if !state.hasPendingData {
                     self.flushableStreams.remove(nextStreamID)
                 }

@@ -196,9 +196,14 @@ class SimpleClientServerTests: XCTestCase {
     }
 
     /// Establish a basic HTTP/2 connection.
-    func basicHTTP2Connection() throws {
+    func basicHTTP2Connection(withFlowControl flowControl: Bool = false) throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
+
+        if flowControl {
+            XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).wait())
+            XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).wait())
+        }
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 
@@ -373,7 +378,7 @@ class SimpleClientServerTests: XCTestCase {
 
     func testLargeDataFramesAreSplit() throws {
         // Big DATA frames get split up.
-        try self.basicHTTP2Connection()
+        try self.basicHTTP2Connection(withFlowControl: true)
 
         // Start by opening the stream.
         let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
@@ -412,7 +417,7 @@ class SimpleClientServerTests: XCTestCase {
 
         // Now send a response from the server and shut things down.
         let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
-        var respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(responseHeaders, nil))
+        var respFrame = HTTP2Frame(streamID: serverStreamID, flags: .endHeaders, payload: .headers(responseHeaders, nil))
         respFrame.flags.insert(.endStream)
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
@@ -422,7 +427,7 @@ class SimpleClientServerTests: XCTestCase {
 
     func testSendingDataFrameWithSmallFile() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection()
+        try self.basicHTTP2Connection(withFlowControl: true)
 
         // We're now going to try to send a request from the client to the server with a file region for the body.
         let bodyContent = "Hello world, this is data from a file!"
@@ -450,7 +455,7 @@ class SimpleClientServerTests: XCTestCase {
 
     func testSendingDataFrameWithLargeFile() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection()
+        try self.basicHTTP2Connection(withFlowControl: true)
 
         // We're going to create a largish temp file: 3 data frames in size.
         var bodyData = self.clientChannel.allocator.buffer(capacity: 1<<14)

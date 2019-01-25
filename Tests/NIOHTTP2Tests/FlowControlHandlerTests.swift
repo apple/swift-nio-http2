@@ -374,6 +374,72 @@ class FlowControlHandlerTests: XCTestCase {
             XCTAssertEqual(err.streamID, streamOne)
         }
     }
+
+    func testOverlargeFramesAreSplitOnMaxFrameSizeByteBuffer() {
+        let streamOne = HTTP2StreamID(1)
+        self.channel.createStream(streamOne, initialWindowSize: 1<<16)
+        self.channel.updateConnectionWindowSize(newWindowSize: 1<<24)
+
+        var firstWrittenBuffer = self.channel.writeDataFrame(streamOne, byteBufferSize: (1 << 16) + 1)
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        let settingsFrame = HTTP2Frame(streamID: .rootStream,
+                                       payload: .settings([HTTP2Setting(parameter: .maxFrameSize, value: 1<<24),
+                                                           HTTP2Setting(parameter: .maxFrameSize, value: 1<<15)]))
+        XCTAssertNoThrow(try self.channel.writeInbound(settingsFrame))
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        self.channel.flush()
+        var receivedFrames = self.receivedFrames()
+        XCTAssertEqual(2, receivedFrames.count)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: firstWrittenBuffer.readSlice(length: 1<<15)!)
+        receivedFrames[1].assertDataFrame(endStream: false, streamID: streamOne, payload: firstWrittenBuffer.readSlice(length: 1<<15)!)
+
+        // Update the window. Nothing is written immediately.
+        self.channel.updateStreamWindowSize(streamOne, newWindowSize: 20)
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        // Fire read complete.
+        self.channel.pipeline.fireChannelReadComplete()
+        receivedFrames = self.receivedFrames()
+        XCTAssertEqual(1, receivedFrames.count)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: firstWrittenBuffer.readSlice(length: 1)!)
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testOverlargeFramesAreSplitOnMaxFrameSizeFileRegion() {
+        let streamOne = HTTP2StreamID(1)
+        self.channel.createStream(streamOne, initialWindowSize: 1<<16)
+        self.channel.updateConnectionWindowSize(newWindowSize: 1<<24)
+
+        let firstWrittenRegion = self.channel.writeDataFrame(streamOne, fileRegionSize: (1 << 16) + 1)
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        let settingsFrame = HTTP2Frame(streamID: .rootStream,
+                                       payload: .settings([HTTP2Setting(parameter: .maxFrameSize, value: 1<<24),
+                                                           HTTP2Setting(parameter: .maxFrameSize, value: 1<<15)]))
+        XCTAssertNoThrow(try self.channel.writeInbound(settingsFrame))
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        self.channel.flush()
+        var receivedFrames = self.receivedFrames()
+        XCTAssertEqual(2, receivedFrames.count)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 0, endIndex: 1<<15))
+        receivedFrames[1].assertDataFrame(endStream: false, streamID: streamOne, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 1<<15, endIndex: 1<<16))
+
+        // Update the window. Nothing is written immediately.
+        self.channel.updateStreamWindowSize(streamOne, newWindowSize: 20)
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        // Fire read complete.
+        self.channel.pipeline.fireChannelReadComplete()
+        receivedFrames = self.receivedFrames()
+        XCTAssertEqual(1, receivedFrames.count)
+        receivedFrames[0].assertDataFrame(endStream: false, streamID: streamOne, payload: FileRegion(fileHandle: firstWrittenRegion.fileHandle, readerIndex: 1<<16, endIndex: (1 << 16) + 1))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }
 
 
@@ -385,6 +451,10 @@ private extension EmbeddedChannel {
 
     func updateStreamWindowSize(_ streamID: HTTP2StreamID, newWindowSize: Int32) {
         self.pipeline.fireUserInboundEventTriggered(NIOHTTP2WindowUpdatedEvent(streamID: streamID, newWindowSize: newWindowSize))
+    }
+
+    func updateConnectionWindowSize(newWindowSize: Int32) {
+        self.pipeline.fireUserInboundEventTriggered(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, newWindowSize: newWindowSize))
     }
 
     func closeStream(_ streamID: HTTP2StreamID, reason: HTTP2ErrorCode?) {

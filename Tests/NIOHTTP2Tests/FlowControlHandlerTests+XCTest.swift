@@ -35,6 +35,8 @@ extension FlowControlHandlerTests {
                 ("testInterlacingWithHeaders", testInterlacingWithHeaders),
                 ("testBufferedDataAndHeadersAreCancelledOnStreamClosure", testBufferedDataAndHeadersAreCancelledOnStreamClosure),
                 ("testWritesForUnknownStreamsFail", testWritesForUnknownStreamsFail),
+                ("testOverlargeFramesAreSplitOnMaxFrameSizeByteBuffer", testOverlargeFramesAreSplitOnMaxFrameSizeByteBuffer),
+                ("testOverlargeFramesAreSplitOnMaxFrameSizeFileRegion", testOverlargeFramesAreSplitOnMaxFrameSizeFileRegion),
            ]
    }
 }

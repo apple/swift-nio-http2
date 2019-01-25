@@ -281,16 +281,35 @@ class HTTP2FrameParserTests: XCTestCase {
         XCTAssertNotNil(frame)      // produces frame
         self.assertEqualFrames(frame2, expectedFrame2)
     }
-    
+
+    func testDataFrameDecodingMultibyteLength() throws {
+        var payload = allocator.buffer(capacity: 16384)
+        payload.write(bytes: repeatElement(0, count: 16384))
+        let expectedFrame = HTTP2Frame(payload: .data(.byteBuffer(payload)),
+                                       flags: [.endStream],
+                                       streamID: HTTP2StreamID(1))
+
+        let frameBytes: [UInt8] = [
+            0x00, 0x40, 0x00,           // 3-byte payload length (16384 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x01,                       // 1-byte flags (END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: payload.readableBytes)
+        buf.write(bytes: payload.readableBytesView)
+
+        try assertReadsFrame(from: &buf, matching: expectedFrame)
+    }
+
     func testDataFrameEncoding() throws {
         let payload = "Hello, World!"
         let streamID = HTTP2StreamID(1)
         var payloadBytes = allocator.buffer(capacity: payload.count)
         payloadBytes.write(string: payload)
-        
+
         let frame = HTTP2Frame(payload: .data(.byteBuffer(payloadBytes)), flags: [.endStream], streamID: streamID)
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
-        
+
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x0d,           // 3-byte payload length (13 bytes)
             0x00,                       // 1-byte frame type (DATA)
@@ -299,7 +318,29 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
         let expectedBufContent = byteBuffer(withBytes: frameBytes)
         var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
-        
+
+        let extraBuf = try encoder.encode(frame: frame, to: &buf)
+        XCTAssertNotNil(extraBuf, "Should have returned an extra buf")
+        XCTAssertEqual(buf, expectedBufContent)
+    }
+
+    func testDataFrameEncodingMultibyteLength() throws {
+        let streamID = HTTP2StreamID(1)
+        var payloadBytes = allocator.buffer(capacity: 16384)
+        payloadBytes.write(bytes: repeatElement(0, count: 16384))
+
+        let frame = HTTP2Frame(payload: .data(.byteBuffer(payloadBytes)), flags: [.endStream], streamID: streamID)
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+
+        let frameBytes: [UInt8] = [
+            0x00, 0x40, 0x00,           // 3-byte payload length (16384 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x01,                       // 1-byte flags (END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        let expectedBufContent = byteBuffer(withBytes: frameBytes)
+        var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
+
         let extraBuf = try encoder.encode(frame: frame, to: &buf)
         XCTAssertNotNil(extraBuf, "Should have returned an extra buf")
         XCTAssertEqual(buf, expectedBufContent)

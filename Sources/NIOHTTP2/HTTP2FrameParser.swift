@@ -1027,7 +1027,7 @@ fileprivate extension ByteBuffer {
         }
         
         let lenBytes: [UInt8] = self.readBytes(length: 3)!
-        let len = Int(lenBytes[0]) >> 16 | Int(lenBytes[1]) >> 8 | Int(lenBytes[2])
+        let len = Int(lenBytes[0]) << 16 | Int(lenBytes[1]) << 8 | Int(lenBytes[2])
         let type: UInt8 = self.readInteger()!
         let flags: UInt8 = self.readInteger()!
         let rawStreamID: UInt32 = self.readInteger()!
