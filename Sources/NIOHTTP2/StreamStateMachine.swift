@@ -712,7 +712,12 @@ extension HTTP2StreamStateMachine {
     /// valid and correspond to a final response, transitions to the appropriate target state.
     private mutating func processResponseHeaders(_ headers: HPACKHeaders, targetStateIfFinal finalState: State) -> StateMachineResult {
         // TODO(cory): Implement
-        self.state = finalState
+
+        // The barest minimum of functionality is to distinguish final and non-final headers, so we do that for now.
+        if !headers.isInformationalResponse {
+            // Non-informational responses cause state transitions.
+            self.state = finalState
+        }
         return .succeed
     }
 
@@ -722,5 +727,16 @@ extension HTTP2StreamStateMachine {
         // TODO(cory): Implement
         self.state = target
         return .succeed
+    }
+}
+
+
+private extension HPACKHeaders {
+    /// Whether this `HPACKHeaders` corresponds to a final response or not.
+    ///
+    /// This property is only valid if called on a response header block. If the :status header
+    /// is not present, this will return "false"
+    var isInformationalResponse: Bool {
+        return self.first { $0.name == ":status" }?.value.first == "1"
     }
 }
