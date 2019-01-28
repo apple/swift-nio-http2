@@ -29,7 +29,7 @@ struct HTTP2FrameDecoder {
     private enum ParseResult {
         case needMoreData
         case `continue`
-        case frame(HTTP2Frame)
+        case frame(HTTP2Frame, flowControlledLength: Int)
     }
 
     private struct IgnoredFrame: Error {}
@@ -97,17 +97,26 @@ struct HTTP2FrameDecoder {
     /// some form of buffer or file. Our breaking this into (say) twenty 1MB DATA
     /// frames will not affect that, and will avoid additional allocations and copies
     /// in the meantime.
+    ///
+    /// This object is also responsible for ensuring we correctly manage flow control
+    /// for DATA frames. It does this by notifying the state machine up front of the
+    /// total flow controlled size of the underlying frame, even if it is synthesising
+    /// partial frames. All subsequent partial frames have a flow controlled length of
+    /// zero. This ensures that the upper layer can correctly enforce flow control
+    /// windows.
     private struct SimulatingDataFramesParserState: BytesAccumulating {
         var header: FrameHeader
         var payload: ByteBuffer
         let expectedPadding: UInt8
         var remainingByteCount: Int
-        
+        private var _flowControlledLength: Int
+
         init(fromIdle state: AccumulatingFrameHeaderParserState, header: FrameHeader, expectedPadding: UInt8, remainingBytes: Int) {
             self.header = header
             self.payload = state.unusedBytes
             self.expectedPadding = expectedPadding
             self.remainingByteCount = remainingBytes
+            self._flowControlledLength = header.length
         }
         
         init(fromAccumulatingPayload state: AccumulatingPayloadParserState, expectedPadding: UInt8, remainingBytes: Int) {
@@ -115,10 +124,20 @@ struct HTTP2FrameDecoder {
             self.payload = state.accumulatedBytes
             self.expectedPadding = expectedPadding
             self.remainingByteCount = remainingBytes
+            self._flowControlledLength = state.header.length
         }
         
         mutating func accumulate(bytes: inout ByteBuffer) {
             self.payload.write(buffer: &bytes)
+        }
+
+        /// Obtains the flow controlled length, and sets it to zero for the rest of this DATA
+        /// frame.
+        mutating func flowControlledLength() -> Int {
+            defer {
+                self._flowControlledLength = 0
+            }
+            return self._flowControlledLength
         }
     }
     
@@ -264,7 +283,7 @@ struct HTTP2FrameDecoder {
     /// - returns: A decoded frame, or `nil` if no frame could be decoded.
     /// - throws: An error if a decoded frame violated the HTTP/2 protocol
     ///           rules.
-    mutating func nextFrame() throws -> HTTP2Frame? {
+    mutating func nextFrame() throws -> (HTTP2Frame, flowControlledLength: Int)? {
         // Start running through our state machine until we run out of bytes or we emit a frame.
         switch (try self.processNextState()) {
         case .needMoreData:
@@ -378,8 +397,10 @@ struct HTTP2FrameDecoder {
             
             // if we got a frame, return it. If not that means we consumed and ignored a frame, so we
             // should go round again.
+            // We cannot emit DATA frames from here, so the flow controlled length is always 0.
             if let frame = result {
-                return .frame(frame)
+                assert(state.header.type != 0, "Emitted invalid data frame")
+                return .frame(frame, flowControlledLength: 0)
             }
             
         case .simulatingDataFrames(var state):
@@ -390,6 +411,7 @@ struct HTTP2FrameDecoder {
             }
             
             if state.remainingByteCount <= Int(state.expectedPadding) {
+                assert(state.flowControlledLength() == 0)
                 // we're just eating pad bytes now, maintaining state and emitting nothing
                 if state.payload.readableBytes >= state.remainingByteCount {
                     // we've got them all, move to idle state with any following bytes
@@ -433,7 +455,7 @@ struct HTTP2FrameDecoder {
             let streamID = HTTP2StreamID(networkID: state.header.rawStreamID)
             let outputFrame = HTTP2Frame(streamID: streamID, flags: flags, payload: .data(.byteBuffer(frameBytes)))
             self.state = nextState
-            return .frame(outputFrame)
+            return .frame(outputFrame, flowControlledLength: state.flowControlledLength())
             
         case .accumulatingContinuationPayload(var state):
             guard state.continuationHeader.length <= state.continuationPayload.readableBytes else {
@@ -461,7 +483,9 @@ struct HTTP2FrameDecoder {
             
             // move to idle, passing in whatever was left after we consumed the CONTINUATION payload
             self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: state.continuationPayload))
-            return .frame(frame!)
+
+            // Emit the frame. This can't be a DATA frame, so there is no flow controlled length here.
+            return .frame(frame!, flowControlledLength: 0)
             
         case .accumulatingHeaderBlockFragments(var state):
             // we have an entire HEADERS/PUSH_PROMISE frame, but one or more CONTINUATION frames
@@ -487,7 +511,7 @@ struct HTTP2FrameDecoder {
         let flags = header.flags
         let streamID = HTTP2StreamID(networkID: header.rawStreamID)
         let frameEndIndex = bytes.readerIndex + header.length
-        
+
         let payload: HTTP2Frame.FramePayload
         do {
             switch header.type {

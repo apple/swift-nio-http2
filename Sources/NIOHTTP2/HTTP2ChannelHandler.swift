@@ -140,15 +140,15 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
 extension NIOHTTP2Handler {
     /// Spins over the frame decoder parsing frames and sending them down the channel pipeline.
     private func frameDecodeLoop(ctx: ChannelHandlerContext) {
-        while let nextFrame = self.decodeFrame(ctx: ctx) {
-            guard case .continue = self.processFrame(nextFrame, ctx: ctx) else {
+        while let (nextFrame, length) = self.decodeFrame(ctx: ctx) {
+            guard case .continue = self.processFrame(nextFrame, flowControlledLength: length, ctx: ctx) else {
                 break
             }
         }
     }
 
     /// Decodes a single frame. Returns `nil` if there is no frame to process, or if an error occurred.
-    private func decodeFrame(ctx: ChannelHandlerContext) -> HTTP2Frame? {
+    private func decodeFrame(ctx: ChannelHandlerContext) -> (HTTP2Frame, flowControlledLength: Int)? {
         do {
             return try self.frameDecoder.nextFrame()
         } catch InternalError.codecError(let code) {
@@ -168,7 +168,7 @@ extension NIOHTTP2Handler {
         case stop
     }
 
-    private func processFrame(_ frame: HTTP2Frame, ctx: ChannelHandlerContext) -> FrameProcessResult {
+    private func processFrame(_ frame: HTTP2Frame, flowControlledLength: Int, ctx: ChannelHandlerContext) -> FrameProcessResult {
         // All frames have one basic processing step: do we send them on, or drop them?
         // Some frames have further processing steps, regarding triggering user events or other operations.
         // Here we centralise this processing.
@@ -178,9 +178,8 @@ extension NIOHTTP2Handler {
         case .alternativeService, .origin:
             // TODO(cory): Implement
             fatalError("Currently some frames are unhandled.")
-        case .data(.byteBuffer(let data)):
-            // TODO(cory): Correctly account for padding data.
-            let rc = self.stateMachine.receiveData(streamID: frame.streamID, flowControlledBytes: data.readableBytes, isEndStreamSet: frame.flags.contains(.endStream))
+        case .data:
+            let rc = self.stateMachine.receiveData(streamID: frame.streamID, flowControlledBytes: flowControlledLength, isEndStreamSet: frame.flags.contains(.endStream))
             result = rc.0
             self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
         case .data(.fileRegion):

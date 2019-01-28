@@ -104,6 +104,7 @@ class HTTP2FrameParserTests: XCTestCase {
     }
     
     private func assertReadsFrame(from bytes: inout ByteBuffer, matching expectedFrame: HTTP2Frame,
+                                  expectedFlowControlledLength: Int = 0,
                                   file: StaticString = #file, line: UInt = #line) throws {
         let initialByteIndex = bytes.readerIndex
         let totalFrameSize = bytes.readableBytes
@@ -112,15 +113,13 @@ class HTTP2FrameParserTests: XCTestCase {
         decoder.append(bytes: &bytes)
         XCTAssertEqual(bytes.readableBytes, 0)
         
-        let frame: HTTP2Frame! = try decoder.nextFrame()
-        
-        // should return a frame
-        XCTAssertNotNil(frame)
+        let (frame, actualLength) = try decoder.nextFrame()!
         
         // should consume all the bytes
         XCTAssertEqual(bytes.readableBytes, 0)
         
         self.assertEqualFrames(frame, expectedFrame, file: file, line: line)
+        XCTAssertEqual(actualLength, expectedFlowControlledLength, "Non-matching flow controlled length", file: file, line: line)
         
         if totalFrameSize > 9 {
             // Now try again with the frame arriving in two separate chunks.
@@ -134,10 +133,12 @@ class HTTP2FrameParserTests: XCTestCase {
             
             decoder.append(bytes: &second)
             XCTAssertEqual(second.readableBytes, 0)
-            let realFrame: HTTP2Frame! = try decoder.nextFrame()
+            let (realFrame, length) = try decoder.nextFrame()!
             XCTAssertNotNil(realFrame)
             
             self.assertEqualFrames(realFrame, expectedFrame, file: file, line: line)
+            XCTAssertEqual(length, expectedFlowControlledLength, "Non-matching flow controlled length in parts",
+                           file: file, line: line)
         }
     }
     
@@ -174,7 +175,7 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: payload.readableBytes)
         buf.write(bytes: payload.readableBytesView)
         
-        try assertReadsFrame(from: &buf, matching: expectedFrame)
+        try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 13)
     }
     
     func testDataFrameDecodingWithPadding() throws {
@@ -195,7 +196,7 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.write(bytes: payload.readableBytesView)
         buf.write(integer: UInt8(0))
         
-        try assertReadsFrame(from: &buf, matching: expectedFrame)
+        try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 15)
     }
     
     func testSyntheticMultipleDataFrames() throws {
@@ -224,13 +225,13 @@ class HTTP2FrameParserTests: XCTestCase {
         var slice = buf.readSlice(length: buf.readableBytes - payloadHalf.readableBytes)!
         decoder.append(bytes: &slice)
         XCTAssertEqual(slice.readableBytes, 0)
-        let frame: HTTP2Frame! = try decoder.nextFrame()
+        let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
         self.assertEqualFrames(frame, expectedFrame1)
         
         decoder.append(bytes: &buf)
         XCTAssertEqual(buf.readableBytes, 0)
-        let frame2: HTTP2Frame! = try decoder.nextFrame()
+        let frame2: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
         self.assertEqualFrames(frame2, expectedFrame2)
     }
@@ -264,20 +265,20 @@ class HTTP2FrameParserTests: XCTestCase {
         var slice = buf.readSlice(length: 9)!
         decoder.append(bytes: &slice)
         XCTAssertEqual(slice.readableBytes, 0)
-        let noFrame: HTTP2Frame! = try decoder.nextFrame()
+        let noFrame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNil(noFrame)       // no frame produced
         
         // append the next slice to the remaining bytes
         var next = buf.readSlice(length: payloadHalf.readableBytes + 1)!
         decoder.append(bytes: &next)
         XCTAssertEqual(next.readableBytes, 0)
-        let frame: HTTP2Frame! = try decoder.nextFrame()
+        let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)  // produces a frame
         self.assertEqualFrames(frame, expectedFrame1)
         
         decoder.append(bytes: &buf)
         XCTAssertEqual(buf.readableBytes, 0)
-        let frame2: HTTP2Frame! = try decoder.nextFrame()
+        let frame2: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)      // produces frame
         self.assertEqualFrames(frame2, expectedFrame2)
     }
@@ -298,7 +299,7 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: payload.readableBytes)
         buf.write(bytes: payload.readableBytesView)
 
-        try assertReadsFrame(from: &buf, matching: expectedFrame)
+        try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 16384)
     }
 
     func testDataFrameEncoding() throws {
@@ -1303,7 +1304,7 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // This should now yield a HEADERS frame containing the complete set of headers
         decoder.append(bytes: &buf)
-        let frame: HTTP2Frame! = try decoder.nextFrame()
+        let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
         
         self.assertEqualFrames(frame, expectedFrame)
@@ -1349,7 +1350,7 @@ class HTTP2FrameParserTests: XCTestCase {
         
         // This should now yield a HEADERS frame containing the complete set of headers
         decoder.append(bytes: &buf)
-        let frame: HTTP2Frame! = try decoder.nextFrame()
+        let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
         
         self.assertEqualFrames(frame, expectedFrame)
@@ -1572,7 +1573,7 @@ class HTTP2FrameParserTests: XCTestCase {
         // This should now yield a HEADERS frame containing the complete set of headers
         var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
         decoder.append(bytes: &buf)
-        let frame: HTTP2Frame! = try decoder.nextFrame()
+        let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
         
         self.assertEqualFrames(frame, expectedFrame)
@@ -1620,7 +1621,7 @@ class HTTP2FrameParserTests: XCTestCase {
         // This should now yield a HEADERS frame containing the complete set of headers
         var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
         decoder.append(bytes: &buf)
-        let frame: HTTP2Frame! = try decoder.nextFrame()
+        let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
         
         self.assertEqualFrames(frame, expectedFrame)
@@ -1691,23 +1692,23 @@ class HTTP2FrameParserTests: XCTestCase {
         decoder.append(bytes: &buf)
         XCTAssertEqual(buf.readableBytes, 0)
         
-        let frame1 = try decoder.nextFrame()
+        let frame1 = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame1)
         self.assertEqualFrames(frame1!, settingsAckFrame)
         
-        let frame2 = try decoder.nextFrame()
+        let frame2 = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame2)
         self.assertEqualFrames(frame2!, headersFrame)
         
-        let frame3 = try decoder.nextFrame()
+        let frame3 = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame3)
         self.assertEqualFrames(frame3!, dataFrame)
         
-        let frame4 = try decoder.nextFrame()
+        let frame4 = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame4)
         self.assertEqualFrames(frame4!, goawayFrame)
         
-        let noFrame = try decoder.nextFrame()
+        let noFrame = try decoder.nextFrame()?.0
         XCTAssertNil(noFrame)
     }
 
