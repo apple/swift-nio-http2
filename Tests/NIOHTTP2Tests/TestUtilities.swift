@@ -198,6 +198,8 @@ extension HTTP2Frame {
             self.assertRstStreamFrameMatches(this: frame, file: file, line: line)
         case .priority:
             self.assertPriorityFrameMatches(this: frame, file: file, line: line)
+        case .pushPromise:
+            self.assertPushPromiseFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }
@@ -375,6 +377,37 @@ extension HTTP2Frame {
         }
 
         XCTAssertEqual(streamPriorityData, actualPriorityData, file: file, line: line)
+    }
+
+    func assertPushPromiseFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .pushPromise(let pushedStreamID, let headers) = frame.payload else {
+            preconditionFailure("PushPromise frames can never match non-PushPromise frames.")
+        }
+        self.assertPushPromiseFrame(streamID: frame.streamID, pushedStreamID: pushedStreamID, headers: headers, file: file, line: line)
+    }
+
+    func assertPushPromiseFrame(streamID: HTTP2StreamID, pushedStreamID: HTTP2StreamID, headers: HPACKHeaders, file: StaticString = #file, line: UInt = #line) {
+        guard case .pushPromise(let actualPushedStreamID, let actualHeaders) = self.payload else {
+            XCTFail("Expected PUSH_PROMISE frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(streamID, self.streamID, "Non matching stream IDs: expected \(streamID), got \(self.streamID)!", file: file, line: line)
+        XCTAssertEqual(pushedStreamID, actualPushedStreamID, "Non matching pushed stream IDs: expected \(pushedStreamID), got \(actualPushedStreamID)", file: file, line: line)
+        XCTAssertEqual(headers, actualHeaders, "Non matching pushed headers: expected \(headers), got \(actualHeaders)", file: file, line: line)
+    }
+}
+
+extension Array where Element == HTTP2Frame {
+    func assertFramesMatch<Candidate: Collection>(_ target: Candidate, file: StaticString = #file, line: UInt = #line) where Candidate.Element == HTTP2Frame {
+        guard self.count == target.count else {
+            XCTFail("Different numbers of frames: expected \(target.count), got \(self.count)", file: file, line: line)
+            return
+        }
+
+        for (expected, actual) in zip(target, self) {
+            expected.assertFrameMatches(this: actual, file: file, line: line)
+        }
     }
 }
 

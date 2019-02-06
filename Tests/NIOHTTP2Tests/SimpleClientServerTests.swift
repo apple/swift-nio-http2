@@ -196,7 +196,7 @@ class SimpleClientServerTests: XCTestCase {
     }
 
     /// Establish a basic HTTP/2 connection.
-    func basicHTTP2Connection(withFlowControl flowControl: Bool = false) throws {
+    func basicHTTP2Connection(withFlowControl flowControl: Bool = false, withConcurrentStreamsLimit limitStreams: Bool = false) throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
 
@@ -204,6 +204,12 @@ class SimpleClientServerTests: XCTestCase {
             XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).wait())
             XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).wait())
         }
+
+        if limitStreams {
+            XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 100)).wait())
+            XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .server, initialMaxOutboundStreams: 100)).wait())
+        }
+
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 
@@ -509,7 +515,7 @@ class SimpleClientServerTests: XCTestCase {
 
     func testMoreRequestsThanMaxConcurrentStreamsAtOnce() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection()
+        try self.basicHTTP2Connection(withConcurrentStreamsLimit: true)
 
         let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
 
