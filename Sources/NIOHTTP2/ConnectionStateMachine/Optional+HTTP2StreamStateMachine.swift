@@ -31,19 +31,20 @@ internal extension Optional where Wrapped == HTTP2StreamStateMachine {
     ///         optional, if there is one present.
     /// - returns: The return value of the block and whether the stream was closed, or `nil` if the optional was `nil`.
     @inline(__always)
-    mutating func autoClosingTransform<T>(_ modifier: (inout Wrapped) -> T) -> (result: T, didClose: Bool)? {
+    mutating func autoClosingTransform<T>(_ modifier: (inout Wrapped) -> T) -> (result: T, didClose: HTTP2StreamStateMachine.StreamClosureState)? {
         if self == nil { return nil }
 
         var unwrapped = self!
         let result = modifier(&unwrapped)
+        let closed = unwrapped.closed
 
-        if unwrapped.closed {
-            self = nil
-            return (result, true)
-        } else {
+        if closed == .notClosed {
             self = unwrapped
-            return (result, false)
+        } else {
+            self = nil
         }
+
+        return (result, closed)
     }
 
 
@@ -57,7 +58,7 @@ internal extension Optional where Wrapped == HTTP2StreamStateMachine {
     // time. So for this reason we make it clear to the compiler that this method *must* be inlined at the call-site.
     // Sorry about doing this!
     @inline(__always)
-    mutating func transformOrCreateAutoClose<T>(_ creator: () throws -> Wrapped, _ transformer: (inout Wrapped) -> T) rethrows -> (result: T, didClose: Bool)? {
+    mutating func transformOrCreateAutoClose<T>(_ creator: () throws -> Wrapped, _ transformer: (inout Wrapped) -> T) rethrows -> (result: T, didClose: HTTP2StreamStateMachine.StreamClosureState)? {
         var unwrapped: Wrapped
         if self == nil {
             unwrapped = try creator()
@@ -66,12 +67,13 @@ internal extension Optional where Wrapped == HTTP2StreamStateMachine {
         }
 
         let result = transformer(&unwrapped)
-        if unwrapped.closed {
-            self = nil
-            return (result, true)
-        } else {
+        let closed = unwrapped.closed
+        if closed == .notClosed {
             self = unwrapped
-            return (result, false)
+        } else {
+            self = nil
         }
+
+        return (result, closed)
     }
 }

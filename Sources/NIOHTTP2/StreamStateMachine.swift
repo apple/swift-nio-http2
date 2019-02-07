@@ -188,7 +188,7 @@ struct HTTP2StreamStateMachine {
 
         /// Both peers have sent their END_STREAM flags, and the stream is closed. In this stage no further data
         /// may be exchanged.
-        case closed
+        case closed(reason: HTTP2ErrorCode?)
     }
 
 
@@ -201,15 +201,22 @@ struct HTTP2StreamStateMachine {
         case client
     }
 
+    /// Whether the stream has been closed.
+    internal enum StreamClosureState: Hashable {
+        case closed(HTTP2ErrorCode?)
+
+        case notClosed
+    }
+
     /// Whether this stream has been closed.
     ///
     /// This property should be used only for asserting correct state.
-    internal var closed: Bool {
+    internal var closed: StreamClosureState {
         switch self.state {
-        case .closed:
-            return true
+        case .closed(let reason):
+            return .closed(reason)
         default:
-            return false
+            return .notClosed
         }
     }
 
@@ -282,18 +289,18 @@ extension HTTP2StreamStateMachine {
             return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerIdle(remoteWindow: remoteWindow))
 
         case .reservedLocal(let localWindow):
-            let targetState: State = endStream ? .closed : .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localWindow: localWindow)
+            let targetState: State = endStream ? .closed(reason: nil) : .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localWindow: localWindow)
             return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
 
         case .fullyOpen(let localRole, localWindow: _, remoteWindow: let remoteWindow):
             return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: .client, remoteWindow: remoteWindow))
 
         case .halfClosedRemoteLocalIdle(let localWindow):
-            let targetState: State = endStream ? .closed : . halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localWindow: localWindow)
+            let targetState: State = endStream ? .closed(reason: nil) : . halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localWindow: localWindow)
             return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
 
         case .halfClosedRemoteLocalActive:
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed)
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil))
 
         // Sending a HEADERS frame as an idle server, or on a closed stream, is a connection error
         // of type PROTOCOL_ERROR. In any other state, sending a HEADERS frame is a stream error of
@@ -333,18 +340,18 @@ extension HTTP2StreamStateMachine {
             return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalIdle(localWindow: localWindow))
 
         case .reservedRemote(let remoteWindow):
-            let targetState: State = endStream ? .closed : .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteWindow: remoteWindow)
+            let targetState: State = endStream ? .closed(reason: nil) : .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteWindow: remoteWindow)
             return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
 
         case .fullyOpen(let localRole, localWindow: let localWindow, remoteWindow: _):
             return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow))
 
         case .halfClosedLocalPeerIdle(let remoteWindow):
-            let targetState: State = endStream ? .closed : . halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteWindow: remoteWindow)
+            let targetState: State = endStream ? .closed(reason: nil) : . halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteWindow: remoteWindow)
             return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
 
         case .halfClosedLocalPeerActive:
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed)
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil))
 
         // Receiving a HEADERS frame as an idle client, or on a closed stream, is a connection error
         // of type PROTOCOL_ERROR. In any other state, receiving a HEADERS frame is a stream error of
@@ -381,7 +388,7 @@ extension HTTP2StreamStateMachine {
 
             case .halfClosedRemoteLocalActive(let localRole, let initiatedBy, var localWindow):
                 try localWindow.consume(flowControlledBytes: flowControlledBytes)
-                self.state = endStream ? .closed : .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: initiatedBy, localWindow: localWindow)
+                self.state = endStream ? .closed(reason: nil) : .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: initiatedBy, localWindow: localWindow)
                 return .succeed
 
             // Sending a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
@@ -417,7 +424,7 @@ extension HTTP2StreamStateMachine {
 
             case .halfClosedLocalPeerActive(let localRole, let initiatedBy, var remoteWindow):
                 try remoteWindow.consume(flowControlledBytes: flowControlledBytes)
-                self.state = endStream ? .closed : .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
+                self.state = endStream ? .closed(reason: nil) : .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
                 return .succeed
 
             // Receiving a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
@@ -584,18 +591,18 @@ extension HTTP2StreamStateMachine {
         return .succeed
     }
 
-    mutating func sendRstStream() -> StateMachineResult {
+    mutating func sendRstStream(reason: HTTP2ErrorCode) -> StateMachineResult {
         // We can send RST_STREAM frames in almost all states. The only state where it is entirely forbidden
         // by RFC 7540 is idle, which is a transitory state that we tend to leave pretty quickly.
         if case .idle = self.state {
             return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         }
 
-        self.state = .closed
+        self.state = .closed(reason: reason)
         return .succeed
     }
 
-    mutating func receiveRstStream() -> StateMachineResult {
+    mutating func receiveRstStream(reason: HTTP2ErrorCode) -> StateMachineResult {
         // We can receive RST_STREAM frames in any state but idle.
         // TODO(cory): Right now this is identical to sendRstStream. If we end up doing separate handling for this,
         // we'll want the two functions, but if that never changes then we can just have this function call the one
@@ -604,7 +611,7 @@ extension HTTP2StreamStateMachine {
             return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
         }
 
-        self.state = .closed
+        self.state = .closed(reason: reason)
         return .succeed
     }
 

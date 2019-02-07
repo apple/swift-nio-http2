@@ -16,15 +16,16 @@
 /// can validly send such frames.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol SendingRstStreamState {
+protocol SendingRstStreamState: HasFlowControlWindows {
     var streamState: ConnectionStreamState { get set }
 }
 
 extension SendingRstStreamState {
     /// Called to send a RST_STREAM frame.
-    mutating func sendRstStream(streamID: HTTP2StreamID) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
-        return self.streamState.locallyResetStreamState(streamID: streamID) {
-            $0.sendRstStream()
+    mutating func sendRstStream(streamID: HTTP2StreamID, reason: HTTP2ErrorCode) -> StateMachineResultWithEffect {
+        let result = self.streamState.locallyResetStreamState(streamID: streamID) {
+            $0.sendRstStream(reason: reason)
         }
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }

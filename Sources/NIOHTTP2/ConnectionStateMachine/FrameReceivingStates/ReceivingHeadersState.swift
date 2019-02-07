@@ -17,7 +17,7 @@ import NIOHPACK
 /// can validly accept headers.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol ReceivingHeadersState {
+protocol ReceivingHeadersState: HasFlowControlWindows {
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
 
     var streamState: ConnectionStreamState { get set }
@@ -29,21 +29,25 @@ protocol ReceivingHeadersState {
 
 extension ReceivingHeadersState {
     /// Called when we receive a HEADERS frame in this state.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
+    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+        let result: StateMachineResultWithStreamEffect
+
         if self.role == .server && streamID.mayBeInitiatedBy(.client) {
             do {
-                return try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID, localRole: .server, localInitialWindowSize: self.localInitialWindowSize, remoteInitialWindowSize: self.remoteInitialWindowSize) {
+                result = try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID, localRole: .server, localInitialWindowSize: self.localInitialWindowSize, remoteInitialWindowSize: self.remoteInitialWindowSize) {
                     $0.receiveHeaders(headers: headers, isEndStreamSet: endStream)
                 }
             } catch {
-                return (.connectionError(underlyingError: error, type: .protocolError), .noChange)
+                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
             }
         } else {
             // HEADERS cannot create streams for servers, so this must be for a stream we already know about.
-            return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
+            result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
                 $0.receiveHeaders(headers: headers, isEndStreamSet: endStream)
             }
         }
+
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }
 
@@ -54,14 +58,15 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
     /// If we've quiesced this connection, the remote peer is no longer allowed to create new streams.
     /// We ignore any frame that appears to be creating a new stream, and then prevent this from creating
     /// new streams.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
+    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         if streamID.mayBeInitiatedBy(.client) && streamID > self.lastRemoteStreamID {
-            return (.ignoreFrame, .noChange)
+            return StateMachineResultWithEffect(result: .ignoreFrame, effect: nil)
         }
 
         // At this stage we've quiesced, so the remote peer is not allowed to create new streams.
-        return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
+        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
             $0.receiveHeaders(headers: headers, isEndStreamSet: endStream)
         }
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }

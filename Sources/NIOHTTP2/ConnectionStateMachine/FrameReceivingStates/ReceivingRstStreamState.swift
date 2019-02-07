@@ -16,15 +16,16 @@
 /// can validly receive such frames.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol ReceivingRstStreamState {
+protocol ReceivingRstStreamState: HasFlowControlWindows {
     var streamState: ConnectionStreamState { get set }
 }
 
 extension ReceivingRstStreamState {
     /// Called to receive a RST_STREAM frame.
-    mutating func receiveRstStream(streamID: HTTP2StreamID) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
-        return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
-            $0.receiveRstStream()
+    mutating func receiveRstStream(streamID: HTTP2StreamID, reason: HTTP2ErrorCode) -> StateMachineResultWithEffect {
+        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
+            $0.receiveRstStream(reason: reason)
         }
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }

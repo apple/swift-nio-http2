@@ -180,10 +180,8 @@ extension NIOHTTP2Handler {
             fatalError("Currently some frames are unhandled.")
         case .data:
             let rc = self.stateMachine.receiveData(streamID: frame.streamID, flowControlledBytes: flowControlledLength, isEndStreamSet: frame.flags.contains(.endStream))
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
-        case .data(.fileRegion):
-            preconditionFailure("Cannot receive file region data frames")
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .goAway(let lastStreamID, _, _):
             let rc = self.stateMachine.receiveGoaway(lastStreamID: lastStreamID)
             result = rc.0
@@ -193,8 +191,8 @@ extension NIOHTTP2Handler {
 
         case .headers(let headers, _):
             let rc = self.stateMachine.receiveHeaders(streamID: frame.streamID, headers: headers, isEndStreamSet: frame.flags.contains(.endStream))
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .ping:
             let rc = self.stateMachine.receivePing(flags: frame.flags)
             result = rc.0
@@ -212,12 +210,12 @@ extension NIOHTTP2Handler {
             result = self.stateMachine.receivePriority()
         case .pushPromise(let pushedStreamID, let headers):
             let rc = self.stateMachine.receivePushPromise(originalStreamID: frame.streamID, childStreamID: pushedStreamID, headers: headers)
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .rstStream(let reason):
-            let rc = self.stateMachine.receiveRstStream(streamID: frame.streamID)
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1, closureReason: reason)
+            let rc = self.stateMachine.receiveRstStream(streamID: frame.streamID, reason: reason)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .settings(let newSettings):
             let (stateMachineResult, postSettingsOperation) = self.stateMachine.receiveSettings(newSettings,
                                                                                                 flags: frame.flags,
@@ -235,8 +233,8 @@ extension NIOHTTP2Handler {
 
         case .windowUpdate(let increment):
             let rc = self.stateMachine.receiveWindowUpdate(streamID: frame.streamID, windowIncrement: UInt32(increment))
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         }
 
         let returnValue: FrameProcessResult
@@ -336,8 +334,8 @@ extension NIOHTTP2Handler {
         case .data(let data):
             // TODO(cory): Correctly account for padding data.
             let rc = self.stateMachine.sendData(streamID: frame.streamID, flowControlledBytes: data.readableBytes, isEndStreamSet: frame.flags.contains(.endStream))
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .goAway(let lastStreamID, _, _):
             let rc = self.stateMachine.sendGoaway(lastStreamID: lastStreamID)
             result = rc.0
@@ -346,26 +344,26 @@ extension NIOHTTP2Handler {
             }
         case .headers(let headers, _):
             let rc = self.stateMachine.sendHeaders(streamID: frame.streamID, headers: headers, isEndStreamSet: frame.flags.contains(.endStream))
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .ping:
             result = self.stateMachine.sendPing()
         case .priority:
             result = self.stateMachine.sendPriority()
         case .pushPromise(let pushedStreamID, let headers):
             let rc = self.stateMachine.sendPushPromise(originalStreamID: frame.streamID, childStreamID: pushedStreamID, headers: headers)
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .rstStream(let reason):
-            let rc = self.stateMachine.sendRstStream(streamID: frame.streamID)
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1, closureReason: reason)
+            let rc = self.stateMachine.sendRstStream(streamID: frame.streamID, reason: reason)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         case .settings(let newSettings):
             result = self.stateMachine.sendSettings(newSettings)
         case .windowUpdate(let increment):
             let rc = self.stateMachine.sendWindowUpdate(streamID: frame.streamID, windowIncrement: UInt32(increment))
-            result = rc.0
-            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.1)
+            result = rc.result
+            self.processStreamStateChange(streamID: frame.streamID, stateChange: rc.effect)
         }
 
         switch result {
@@ -417,13 +415,19 @@ extension NIOHTTP2Handler {
 
 // MARK:- Helpers
 extension NIOHTTP2Handler {
-    private func processStreamStateChange(streamID: HTTP2StreamID, stateChange: ConnectionStreamState.StreamStateChange, closureReason: HTTP2ErrorCode? = nil) {
+    private func processStreamStateChange(streamID: HTTP2StreamID, stateChange: NIOHTTP2ConnectionStateChange?) {
+        guard let stateChange = stateChange else {
+            return
+        }
+
         switch stateChange {
-        case .closed:
-            self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamID, reason: closureReason))
-        case .opened(let localInitialWindowSize, let remoteInitialWindowSize):
-            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2StreamCreatedEvent(streamID: streamID, localInitialWindowSize: localInitialWindowSize, remoteInitialWindowSize: remoteInitialWindowSize))
-        case .noChange:
+        case .streamClosed(let streamClosedData):
+            self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamID, reason: streamClosedData.reason))
+        case .streamCreated(let streamCreatedData):
+            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2StreamCreatedEvent(streamID: streamID,
+                                                                                localInitialWindowSize: UInt32(streamCreatedData.localStreamWindowSize),
+                                                                                remoteInitialWindowSize: UInt32(streamCreatedData.remoteStreamWindowSize)))
+        case .bulkStreamClosure, .flowControlChange, .settingsChanged:
             break
         }
     }

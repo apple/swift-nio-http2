@@ -53,3 +53,28 @@ enum PostFrameOperation {
     /// No operation is needed.
     case nothing
 }
+
+
+/// An encapsulation of a state machine result along with a possible triggered state change.
+struct StateMachineResultWithEffect {
+    var result: StateMachineResult
+
+    var effect: NIOHTTP2ConnectionStateChange?
+
+    init(result: StateMachineResult, effect: NIOHTTP2ConnectionStateChange?) {
+        self.result = result
+        self.effect = effect
+    }
+
+    init<ConnectionState: HasFlowControlWindows>(_ streamEffect: StateMachineResultWithStreamEffect, connectionState: ConnectionState) {
+        self.result = streamEffect.result
+        self.effect = streamEffect.effect.map { NIOHTTP2ConnectionStateChange($0, connectionState: connectionState) }
+    }
+}
+
+/// An encapsulation of a state machine result along with a state change on a single stream.
+struct StateMachineResultWithStreamEffect {
+    var result: StateMachineResult
+
+    var effect: StreamStateChange?
+}

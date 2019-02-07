@@ -18,7 +18,7 @@ import NIOHPACK
 /// can validly send headers.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol SendingHeadersState {
+protocol SendingHeadersState: HasFlowControlWindows {
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
 
     var streamState: ConnectionStreamState { get set }
@@ -30,24 +30,28 @@ protocol SendingHeadersState {
 
 extension SendingHeadersState {
     /// Called when we send a HEADERS frame in this state.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
+    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+        let result: StateMachineResultWithStreamEffect
+
         if self.role == .client && streamID.mayBeInitiatedBy(.client) {
             do {
-                return try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID,
-                                                                            localRole: .client,
-                                                                            localInitialWindowSize: self.localInitialWindowSize,
-                                                                            remoteInitialWindowSize: self.remoteInitialWindowSize) {
+                result = try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID,
+                                                                              localRole: .client,
+                                                                              localInitialWindowSize: self.localInitialWindowSize,
+                                                                              remoteInitialWindowSize: self.remoteInitialWindowSize) {
                     $0.sendHeaders(headers: headers, isEndStreamSet: endStream)
                 }
             } catch {
-                return (.connectionError(underlyingError: error, type: .protocolError), .noChange)
+                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
             }
         } else {
             // HEADERS cannot create streams for servers, so this must be for a stream we already know about.
-            return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
+            result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
                 $0.sendHeaders(headers: headers, isEndStreamSet: endStream)
             }
         }
+
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }
 
@@ -55,9 +59,10 @@ extension SendingHeadersState {
 extension SendingHeadersState where Self: RemotelyQuiescingState {
     /// If we've been remotely quiesced, we're forbidden from creating new streams. So we can only possibly
     /// be modifying an existing one.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
-        return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
+    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
             $0.sendHeaders(headers: headers, isEndStreamSet: endStream)
         }
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }

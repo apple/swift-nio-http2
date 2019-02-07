@@ -16,7 +16,7 @@
 /// can validly be sending data.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol SendingDataState {
+protocol SendingDataState: HasFlowControlWindows {
     var streamState: ConnectionStreamState { get set }
 
     var outboundFlowControlWindow: HTTP2FlowControlWindow { get set }
@@ -24,17 +24,18 @@ protocol SendingDataState {
 
 extension SendingDataState {
     /// Called to send a DATA frame.
-    mutating func sendData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
+    mutating func sendData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         do {
             try self.outboundFlowControlWindow.consume(flowControlledBytes: flowControlledBytes)
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return (.connectionError(underlyingError: error, type: .flowControlError), .noChange)
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .flowControlError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
 
-        return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
+        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
             $0.sendData(flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
         }
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }

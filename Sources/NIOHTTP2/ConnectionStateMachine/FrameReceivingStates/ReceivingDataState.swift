@@ -16,7 +16,7 @@
 /// can validly receive data.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol ReceivingDataState {
+protocol ReceivingDataState: HasFlowControlWindows {
     var streamState: ConnectionStreamState { get set }
 
     var inboundFlowControlWindow: HTTP2FlowControlWindow { get set }
@@ -24,17 +24,18 @@ protocol ReceivingDataState {
 
 extension ReceivingDataState {
     /// Called to receive a DATA frame.
-    mutating func receiveData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
+    mutating func receiveData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         do {
             try self.inboundFlowControlWindow.consume(flowControlledBytes: flowControlledBytes)
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return (.connectionError(underlyingError: error, type: .flowControlError), .noChange)
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .flowControlError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
 
-        return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
+        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
             $0.receiveData(flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
         }
+        return StateMachineResultWithEffect(result, connectionState: self)
     }
 }

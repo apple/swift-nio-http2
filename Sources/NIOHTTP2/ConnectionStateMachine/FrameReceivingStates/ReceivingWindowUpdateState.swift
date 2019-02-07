@@ -16,31 +16,32 @@
 /// can validly be updated.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol ReceivingWindowUpdateState {
+protocol ReceivingWindowUpdateState: HasFlowControlWindows {
     var streamState: ConnectionStreamState { get set }
 
     var outboundFlowControlWindow: HTTP2FlowControlWindow { get set }
 }
 
 extension ReceivingWindowUpdateState {
-    mutating func receiveWindowUpdate(streamID: HTTP2StreamID, increment: UInt32) -> (StateMachineResult, ConnectionStreamState.StreamStateChange) {
+    mutating func receiveWindowUpdate(streamID: HTTP2StreamID, increment: UInt32) -> StateMachineResultWithEffect {
         if streamID == .rootStream {
             // This is an update for the connection. We police the errors here.
             do {
                 try self.outboundFlowControlWindow.windowUpdate(by: increment)
-                return (.succeed, .noChange)
+                return StateMachineResultWithEffect(result: .succeed, effect: nil)
             } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-                return (.connectionError(underlyingError: error, type: .flowControlError), .noChange)
+                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .flowControlError), effect: nil)
             } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-                return (.connectionError(underlyingError: error, type: .protocolError), .noChange)
+                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
             } catch {
                 preconditionFailure("Unexpected error: \(error)")
             }
         } else {
             // This is an update for a specific stream: it's responsible for policing any errors.
-            return self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
+            let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
                 $0.receiveWindowUpdate(windowIncrement: increment)
             }
+            return StateMachineResultWithEffect(result, connectionState: self)
         }
     }
 }

@@ -51,7 +51,7 @@ struct HTTP2FlowControlWindow {
     ///     -(Int32.max), and setting the window size to -(Int32.max).
     ///
     /// As -(Int32.max) definitionally still fits into Int32, Int32 is the appropriate type to use here.
-    private var windowSize: Int32
+    fileprivate private(set) var windowSize: Int32
 
     init(initialValue: Int) {
         precondition(initialValue >= 0, "Flow control windows may not begin negative")
@@ -178,5 +178,11 @@ extension HTTP2FlowControlWindow: Comparable {
 
     static func >= (lhs: HTTP2FlowControlWindow, rhs: HTTP2FlowControlWindow) -> Bool {
         return lhs.windowSize >= rhs.windowSize
+    }
+}
+
+extension Int {
+    init(_ window: HTTP2FlowControlWindow) {
+        self = Int(window.windowSize)
     }
 }
