@@ -28,7 +28,10 @@ extension ReceivingWindowUpdateState {
             // This is an update for the connection. We police the errors here.
             do {
                 try self.outboundFlowControlWindow.windowUpdate(by: increment)
-                return StateMachineResultWithEffect(result: .succeed, effect: nil)
+                let flowControlSize: NIOHTTP2ConnectionStateChange = .flowControlChange(.init(localConnectionWindowSize: Int(self.outboundFlowControlWindow),
+                                                                                              remoteConnectionWindowSize: Int(self.inboundFlowControlWindow),
+                                                                                              localStreamWindowSize: nil))
+                return StateMachineResultWithEffect(result: .succeed, effect: flowControlSize)
             } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
                 return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .flowControlError), effect: nil)
             } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {

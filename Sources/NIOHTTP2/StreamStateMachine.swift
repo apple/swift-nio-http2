@@ -265,7 +265,7 @@ extension HTTP2StreamStateMachine {
     /// it meets the requirements of RFC 7540 for containing a well-formed header block, and additionally
     /// checks whether the value of the end stream bit is acceptable. If all checks pass, transitions the
     /// state to the appropriate next entry.
-    mutating func sendHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         // We can send headers in the following states:
         //
         // - idle, when we are a client, in which case we are sending our request headers
@@ -276,31 +276,55 @@ extension HTTP2StreamStateMachine {
         // - halfClosedRemoteLocalIdle, in which case we area server  sending either informational or final headers
         //     (see the comment on halfClosedRemoteLocalIdle for more)
         // - halfClosedRemoteLocalActive, in which case we are sending trailers
+        //
+        // In idle or reservedLocal we are opening the stream. In reservedLocal, halfClosedRemoteLocalIdle, or halfClosedremoteLocalActive
+        // we may be closing the stream. The keen-eyed may notice that reservedLocal may both open *and* close a stream. This is a bit awkward
+        // for us, and requires a separate event.
         switch self.state {
         case .idle(.client, localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedLocalPeerIdle(remoteWindow: remoteWindow) : .halfOpenLocalPeerIdle(localWindow: localWindow, remoteWindow: remoteWindow)
-            return self.processRequestHeaders(headers, targetState: targetState)
+            let targetEffect: StreamStateChange = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
+            return self.processRequestHeaders(headers, targetState: targetState, targetEffect: targetEffect)
 
         case .halfOpenRemoteLocalIdle(localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedLocalPeerActive(localRole: .server, initiatedBy: .client, remoteWindow: remoteWindow) : .fullyOpen(localRole: .server, localWindow: localWindow, remoteWindow: remoteWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
+            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: nil)
 
         case .halfOpenLocalPeerIdle(localWindow: _, remoteWindow: let remoteWindow):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerIdle(remoteWindow: remoteWindow))
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerIdle(remoteWindow: remoteWindow), targetEffect: nil)
 
         case .reservedLocal(let localWindow):
-            let targetState: State = endStream ? .closed(reason: nil) : .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localWindow: localWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
+            let targetState: State
+            let targetEffect: StreamStateChange
+
+            if endStream {
+                targetState = .closed(reason: nil)
+                targetEffect = .streamCreatedAndClosed(.init(streamID: self.streamID))
+            } else {
+                targetState = .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localWindow: localWindow)
+                targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+            }
+
+            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
 
         case .fullyOpen(let localRole, localWindow: _, remoteWindow: let remoteWindow):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: .client, remoteWindow: remoteWindow))
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: .client, remoteWindow: remoteWindow), targetEffect: nil)
 
         case .halfClosedRemoteLocalIdle(let localWindow):
-            let targetState: State = endStream ? .closed(reason: nil) : . halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localWindow: localWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
+            let targetState: State
+            let targetEffect: StreamStateChange?
+
+            if endStream {
+                targetState = .closed(reason: nil)
+                targetEffect = .streamClosed(.init(streamID: self.streamID, reason: nil))
+            } else {
+                targetState = .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localWindow: localWindow)
+                targetEffect = nil
+            }
+            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
 
         case .halfClosedRemoteLocalActive:
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil))
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil), targetEffect: .streamClosed(.init(streamID: self.streamID, reason: nil)))
 
         // Sending a HEADERS frame as an idle server, or on a closed stream, is a connection error
         // of type PROTOCOL_ERROR. In any other state, sending a HEADERS frame is a stream error of
@@ -310,13 +334,13 @@ extension HTTP2StreamStateMachine {
         // seems reasonable to me: specifically, if we have a stream to fail, fail it, otherwise treat
         // the error as connection scoped.)
         case .idle(.server, _, _), .closed:
-            return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         case .reservedRemote, .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive:
-            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         }
     }
 
-    mutating func receiveHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         // We can receive headers in the following states:
         //
         // - idle, when we are a server, in which case we are receiving request headers
@@ -327,31 +351,56 @@ extension HTTP2StreamStateMachine {
         // - halfClosedLocalPeerIdle, in which case we are receiving either informational or final headers
         //     (see the comment on halfClosedLocalPeerIdle for more)
         // - halfClosedLocalPeerActive, in which case we are receiving trailers
+        //
+        // In idle or reservedRemote we are opening the stream. In reservedRemote, halfClosedLocalPeerIdle, or halfClosedLocalPeerActive
+        // we may be closing the stream. The keen-eyed may notice that reservedLocal may both open *and* close a stream. This is a bit awkward
+        // for us, and requires a separate event.
         switch self.state {
         case .idle(.server, localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedRemoteLocalIdle(localWindow: localWindow) : .halfOpenRemoteLocalIdle(localWindow: localWindow, remoteWindow: remoteWindow)
-            return self.processRequestHeaders(headers, targetState: targetState)
+            let targetEffect: StreamStateChange = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
+            return self.processRequestHeaders(headers, targetState: targetState, targetEffect: targetEffect)
 
         case .halfOpenLocalPeerIdle(localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedRemoteLocalActive(localRole: .client,initiatedBy: .client, localWindow: localWindow) : .fullyOpen(localRole: .client, localWindow: localWindow, remoteWindow: remoteWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
+            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: nil)
 
         case .halfOpenRemoteLocalIdle(localWindow: let localWindow, remoteWindow: _):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalIdle(localWindow: localWindow))
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalIdle(localWindow: localWindow), targetEffect: nil)
 
         case .reservedRemote(let remoteWindow):
-            let targetState: State = endStream ? .closed(reason: nil) : .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteWindow: remoteWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
+            let targetState: State
+            let targetEffect: StreamStateChange
+
+            if endStream {
+                targetState = .closed(reason: nil)
+                targetEffect = .streamCreatedAndClosed(.init(streamID: self.streamID))
+            } else {
+                targetState = .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteWindow: remoteWindow)
+                targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+            }
+
+            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
 
         case .fullyOpen(let localRole, localWindow: let localWindow, remoteWindow: _):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow))
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow), targetEffect: nil)
 
         case .halfClosedLocalPeerIdle(let remoteWindow):
-            let targetState: State = endStream ? .closed(reason: nil) : . halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteWindow: remoteWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState)
+            let targetState: State
+            let targetEffect: StreamStateChange?
+
+            if endStream {
+                targetState = .closed(reason: nil)
+                targetEffect = .streamClosed(.init(streamID: self.streamID, reason: nil))
+            } else {
+                targetState = .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteWindow: remoteWindow)
+                targetEffect = nil
+            }
+
+            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
 
         case .halfClosedLocalPeerActive:
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil))
+            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil), targetEffect: .streamClosed(.init(streamID: self.streamID, reason: nil)))
 
         // Receiving a HEADERS frame as an idle client, or on a closed stream, is a connection error
         // of type PROTOCOL_ERROR. In any other state, receiving a HEADERS frame is a stream error of
@@ -361,13 +410,13 @@ extension HTTP2StreamStateMachine {
         // seems reasonable to me: specifically, if we have a stream to fail, fail it, otherwise treat
         // the error as connection scoped.)
         case .idle(.client, _, _), .closed:
-            return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         case .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive:
-            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         }
     }
 
-    mutating func sendData(flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func sendData(flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         do {
             // We can send DATA frames in the following states:
             //
@@ -375,35 +424,57 @@ extension HTTP2StreamStateMachine {
             //     has sent its final response headers.
             // - fullyOpen, where we could be either a client or a server using a fully bi-directional stream.
             // - halfClosedRemoteLocalActive, where the remote peer has completed its data, but we have more to send.
+            //
+            // Valid data frames always have a stream effect, because they consume flow control windows.
             switch self.state {
             case .halfOpenLocalPeerIdle(localWindow: var localWindow, remoteWindow: let remoteWindow):
                 try localWindow.consume(flowControlledBytes: flowControlledBytes)
-                self.state = endStream ? .halfClosedLocalPeerIdle(remoteWindow: remoteWindow) : .halfOpenLocalPeerIdle(localWindow: localWindow, remoteWindow: remoteWindow)
-                return .succeed
+
+                let effect: StreamStateChange
+                if endStream {
+                    self.state = .halfClosedLocalPeerIdle(remoteWindow: remoteWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                } else {
+                    self.state = .halfOpenLocalPeerIdle(localWindow: localWindow, remoteWindow: remoteWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
+                }
+
+                return .init(result: .succeed, effect: effect)
 
             case .fullyOpen(let localRole, localWindow: var localWindow, remoteWindow: let remoteWindow):
                 try localWindow.consume(flowControlledBytes: flowControlledBytes)
+
+                let effect: StreamStateChange = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
                 self.state = endStream ? .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: .client, remoteWindow: remoteWindow) : .fullyOpen(localRole: localRole, localWindow: localWindow, remoteWindow: remoteWindow)
-                return .succeed
+                return .init(result: .succeed, effect: effect)
 
             case .halfClosedRemoteLocalActive(let localRole, let initiatedBy, var localWindow):
                 try localWindow.consume(flowControlledBytes: flowControlledBytes)
-                self.state = endStream ? .closed(reason: nil) : .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: initiatedBy, localWindow: localWindow)
-                return .succeed
+
+                let effect: StreamStateChange
+                if endStream {
+                    self.state = .closed(reason: nil)
+                    effect = .streamClosed(.init(streamID: self.streamID, reason: nil))
+                } else {
+                    self.state = .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: initiatedBy, localWindow: localWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                }
+
+                return .init(result: .succeed, effect: effect)
 
             // Sending a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenRemoteLocalIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedLocalPeerActive, .halfClosedRemoteLocalIdle, .closed:
-                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
     }
 
-    mutating func receiveData(flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResult {
+    mutating func receiveData(flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         do {
             // We can receive DATA frames in the following states:
             //
@@ -414,42 +485,71 @@ extension HTTP2StreamStateMachine {
             switch self.state {
             case .halfOpenRemoteLocalIdle(localWindow: let localWindow, remoteWindow: var remoteWindow):
                 try remoteWindow.consume(flowControlledBytes: flowControlledBytes)
-                self.state = endStream ? .halfClosedRemoteLocalIdle(localWindow: localWindow) : .halfOpenRemoteLocalIdle(localWindow: localWindow, remoteWindow: remoteWindow)
-                return .succeed
+
+                let effect: StreamStateChange
+                if endStream {
+                    self.state = .halfClosedRemoteLocalIdle(localWindow: localWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                } else {
+                    self.state = .halfOpenRemoteLocalIdle(localWindow: localWindow, remoteWindow: remoteWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
+                }
+
+                return .init(result: .succeed, effect: effect)
 
             case .fullyOpen(let localRole, localWindow: let localWindow, remoteWindow: var remoteWindow):
                 try remoteWindow.consume(flowControlledBytes: flowControlledBytes)
-                self.state = endStream ? .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow) : .fullyOpen(localRole: localRole, localWindow: localWindow, remoteWindow: remoteWindow)
-                return .succeed
+
+                let effect: StreamStateChange
+                if endStream {
+                    self.state = .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                } else {
+                    self.state = .fullyOpen(localRole: localRole, localWindow: localWindow, remoteWindow: remoteWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
+                }
+
+                return .init(result: .succeed, effect: effect)
 
             case .halfClosedLocalPeerActive(let localRole, let initiatedBy, var remoteWindow):
                 try remoteWindow.consume(flowControlledBytes: flowControlledBytes)
-                self.state = endStream ? .closed(reason: nil) : .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
-                return .succeed
+
+                let effect: StreamStateChange
+                if endStream {
+                    self.state = .closed(reason: nil)
+                    effect = .streamClosed(.init(streamID: self.streamID, reason: nil))
+                } else {
+                    self.state = .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                }
+
+                return .init(result: .succeed, effect: effect)
 
             // Receiving a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenLocalPeerIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedRemoteLocalActive, .halfClosedRemoteLocalIdle, .closed:
-                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
     }
 
-    mutating func sendPushPromise(headers: HPACKHeaders) -> StateMachineResult {
+    mutating func sendPushPromise(headers: HPACKHeaders) -> StateMachineResultWithStreamEffect {
         // We can send PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a server. In this case we assert that the stream was initiated by the client.
         // - halfClosedRemoteLocalActive, when we are a server, and when the stream was initiated by the client.
         //
         // RFC 7540 § 6.6 forbids sending PUSH_PROMISE frames on locally-initiated streams.
+        //
+        // PUSH_PROMISE frames never have stream effects: they cannot create or close streams, or affect flow control state.
         switch self.state {
         case .fullyOpen(localRole: .server, localWindow: _, remoteWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localWindow: _):
-            return self.processRequestHeaders(headers, targetState: self.state)
+            return self.processRequestHeaders(headers, targetState: self.state, targetEffect: nil)
 
         // Sending a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
@@ -458,11 +558,11 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .client, localWindow: _, remoteWindow: _),
              .halfClosedRemoteLocalActive(localRole: .client, initiatedBy: _, localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localWindow: _):
-            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         }
     }
 
-    mutating func receivePushPromise(headers: HPACKHeaders) -> StateMachineResult {
+    mutating func receivePushPromise(headers: HPACKHeaders) -> StateMachineResultWithStreamEffect {
         // We can receive PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a client. In this case we assert that the stream was initiated by us.
@@ -472,7 +572,7 @@ extension HTTP2StreamStateMachine {
         switch self.state {
         case .fullyOpen(localRole: .client, localWindow: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteWindow: _):
-            return self.processRequestHeaders(headers, targetState: self.state)
+            return self.processRequestHeaders(headers, targetState: self.state, targetEffect: nil)
 
         // Receiving a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
@@ -481,11 +581,13 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .server, localWindow: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .server, initiatedBy: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteWindow: _):
-            return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         }
     }
 
-    mutating func sendWindowUpdate(windowIncrement: UInt32) -> StateMachineResult {
+    mutating func sendWindowUpdate(windowIncrement: UInt32) -> StateMachineResultWithStreamEffect {
+        let windowEffect: StreamStateChange
+
         do {
             // RFC 7540 does not limit the states in which WINDOW_UDPATE frames can be sent. For this reason we need to be
             // fairly conservative about applying limits. In essence, we allow sending WINDOW_UPDATE frames in all but the
@@ -500,42 +602,50 @@ extension HTTP2StreamStateMachine {
             case .reservedRemote(remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .reservedRemote(remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfOpenLocalPeerIdle(localWindow: let localWindow, remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfOpenLocalPeerIdle(localWindow: localWindow, remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfOpenRemoteLocalIdle(localWindow: let localWindow, remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfOpenRemoteLocalIdle(localWindow: localWindow, remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
 
             case .fullyOpen(localRole: let localRole, localWindow: let localWindow, remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .fullyOpen(localRole: localRole, localWindow: localWindow, remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfClosedLocalPeerIdle(remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedLocalPeerIdle(remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfClosedLocalPeerActive(localRole: let localRole, initiatedBy: let initiatedBy, remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .idle, .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive, .closed:
-                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
         } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-            return .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
 
-        return .succeed
+        return .init(result: .succeed, effect: windowEffect)
     }
 
-    mutating func receiveWindowUpdate(windowIncrement: UInt32) -> StateMachineResult {
+    mutating func receiveWindowUpdate(windowIncrement: UInt32) -> StateMachineResultWithStreamEffect {
+        let windowEffect: StreamStateChange?
+
         do {
             // RFC 7540 does not limit the states in which WINDOW_UDPATE frames can be received. For this reason we need to be
             // fairly conservative about applying limits. In essence, we allow receiving WINDOW_UPDATE frames in all but the
@@ -552,67 +662,73 @@ extension HTTP2StreamStateMachine {
             case .reservedLocal(localWindow: var localWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .reservedLocal(localWindow: localWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
 
             case .halfOpenLocalPeerIdle(localWindow: var localWindow, remoteWindow: let remoteWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfOpenLocalPeerIdle(localWindow: localWindow, remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfOpenRemoteLocalIdle(localWindow: var localWindow, remoteWindow: let remoteWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfOpenRemoteLocalIdle(localWindow: localWindow, remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
 
             case .fullyOpen(localRole: let localRole, localWindow: var localWindow, remoteWindow: let remoteWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .fullyOpen(localRole: localRole, localWindow: localWindow, remoteWindow: remoteWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfClosedRemoteLocalIdle(localWindow: var localWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedRemoteLocalIdle(localWindow: localWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
 
             case .halfClosedRemoteLocalActive(localRole: let localRole, initiatedBy: let initiatedBy, localWindow: var localWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: initiatedBy, localWindow: localWindow)
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
 
             case .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive:
                 // No-op, see above
-                break
+                windowEffect = nil
 
             case .idle, .reservedRemote, .closed:
-                return .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-            return .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
         } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-            return .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
 
-        return .succeed
+        return .init(result: .succeed, effect: windowEffect)
     }
 
-    mutating func sendRstStream(reason: HTTP2ErrorCode) -> StateMachineResult {
+    mutating func sendRstStream(reason: HTTP2ErrorCode) -> StateMachineResultWithStreamEffect {
         // We can send RST_STREAM frames in almost all states. The only state where it is entirely forbidden
         // by RFC 7540 is idle, which is a transitory state that we tend to leave pretty quickly.
         if case .idle = self.state {
-            return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         }
 
         self.state = .closed(reason: reason)
-        return .succeed
+        return .init(result: .succeed, effect: .streamClosed(.init(streamID: self.streamID, reason: reason)))
     }
 
-    mutating func receiveRstStream(reason: HTTP2ErrorCode) -> StateMachineResult {
+    mutating func receiveRstStream(reason: HTTP2ErrorCode) -> StateMachineResultWithStreamEffect {
         // We can receive RST_STREAM frames in any state but idle.
         // TODO(cory): Right now this is identical to sendRstStream. If we end up doing separate handling for this,
         // we'll want the two functions, but if that never changes then we can just have this function call the one
         // above.
         if case .idle = self.state {
-            return .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         }
 
         self.state = .closed(reason: reason)
-        return .succeed
+        return .init(result: .succeed, effect: .streamClosed(.init(streamID: self.streamID, reason: reason)))
     }
 
     /// The local value of SETTINGS_INITIAL_WINDOW_SIZE has been changed, and the change has been ACKed.
@@ -708,32 +824,34 @@ extension HTTP2StreamStateMachine {
 extension HTTP2StreamStateMachine {
     /// Validate that the request headers meet the requirements of RFC 7540. If they do,
     /// transitions to the target state.
-    private mutating func processRequestHeaders(_ headers: HPACKHeaders, targetState target: State) -> StateMachineResult {
+    private mutating func processRequestHeaders(_ headers: HPACKHeaders, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
         // TODO(cory): Implement
         self.state = target
-        return .succeed
+        return StateMachineResultWithStreamEffect(result: .succeed, effect: effect)
     }
 
     /// Validate that the response headers meet the requirements of RFC 7540. Also characterises
     /// them to check whether the headers are informational or final, and if the headers are
     /// valid and correspond to a final response, transitions to the appropriate target state.
-    private mutating func processResponseHeaders(_ headers: HPACKHeaders, targetStateIfFinal finalState: State) -> StateMachineResult {
+    private mutating func processResponseHeaders(_ headers: HPACKHeaders, targetStateIfFinal finalState: State, targetEffectIfFinal finalEffect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
         // TODO(cory): Implement
 
         // The barest minimum of functionality is to distinguish final and non-final headers, so we do that for now.
         if !headers.isInformationalResponse {
             // Non-informational responses cause state transitions.
             self.state = finalState
+            return StateMachineResultWithStreamEffect(result: .succeed, effect: finalEffect)
+        } else {
+            return StateMachineResultWithStreamEffect(result: .succeed, effect: nil)
         }
-        return .succeed
     }
 
     /// Validates that the trailers meet the requirements of RFC 7540. If they do, transitions to the
     /// target final state.
-    private mutating func processTrailers(_ headers: HPACKHeaders, isEndStreamSet endStream: Bool, targetState target: State) -> StateMachineResult {
+    private mutating func processTrailers(_ headers: HPACKHeaders, isEndStreamSet endStream: Bool, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
         // TODO(cory): Implement
         self.state = target
-        return .succeed
+        return StateMachineResultWithStreamEffect(result: .succeed, effect: effect)
     }
 }
 

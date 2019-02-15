@@ -25,6 +25,10 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
     /// A stream has been closed.
     case streamClosed(StreamClosed)
 
+    /// A stream was created and then immediately closed. This can happen when a stream reserved
+    /// via PUSH_PROMISE has a HEADERS frame with END_STREAM sent on it by the server.
+    case streamCreatedAndClosed(StreamCreatedAndClosed)
+
     /// A frame was sent or received that changes some flow control windows.
     case flowControlChange(FlowControlChange)
 
@@ -65,6 +69,17 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
             self.localConnectionWindowSize = localConnectionWindowSize
             self.remoteConnectionWindowSize = remoteConnectionWindowSize
             self.reason = reason
+        }
+    }
+
+    /// A stream has been created and immediately closed. In this case, the only relevant bit of information
+    /// is the stream ID: flow control windows are not relevant as this frame is not flow controlled and does
+    /// not change window sizes.
+    public struct StreamCreatedAndClosed: Hashable {
+        public var streamID: HTTP2StreamID
+
+        public init(streamID: HTTP2StreamID) {
+            self.streamID = streamID
         }
     }
 
@@ -143,6 +158,8 @@ internal enum StreamStateChange: Hashable {
 
     case windowSizeChange(NIOHTTP2ConnectionStateChange.FlowControlChange.StreamWindowSizeChange)
 
+    case streamCreatedAndClosed(NIOHTTP2ConnectionStateChange.StreamCreatedAndClosed)
+
     struct StreamClosed: Hashable {
         var streamID: HTTP2StreamID
 
@@ -161,6 +178,8 @@ internal extension NIOHTTP2ConnectionStateChange {
                                        reason: streamClosedState.reason))
         case .streamCreated(let streamCreated):
             self = .streamCreated(streamCreated)
+        case .streamCreatedAndClosed(let streamCreatedAndClosed):
+            self = .streamCreatedAndClosed(streamCreatedAndClosed)
         case .windowSizeChange(let streamSizeChange):
             self = .flowControlChange(.init(localConnectionWindowSize: Int(connectionState.outboundFlowControlWindow),
                                             remoteConnectionWindowSize: Int(connectionState.inboundFlowControlWindow),

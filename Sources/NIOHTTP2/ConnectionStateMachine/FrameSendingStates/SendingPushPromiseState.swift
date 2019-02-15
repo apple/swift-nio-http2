@@ -35,7 +35,7 @@ extension SendingPushPromiseState {
         // way around. This is because we don't want to bother creating a child stream if the headers aren't valid, and because
         // we don't have to emit a frame to report the error (we just return it to the user), we don't have to have a stream
         // whose state we can modify.
-        func parentStateModifier(stateMachine: inout HTTP2StreamStateMachine) -> StateMachineResult {
+        func parentStateModifier(stateMachine: inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect {
             return stateMachine.sendPushPromise(headers: headers)
         }
 

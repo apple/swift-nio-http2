@@ -527,7 +527,7 @@ class SimpleClientServerTests: XCTestCase {
         var serverStreamIDs = [HTTP2StreamID]()
         var headersFrames = [HTTP2Frame]()
 
-        for id in stride(from: 1, through: 101, by: 2) {
+        for id in stride(from: 1, through: 201, by: 2) {
             let streamID = HTTP2StreamID(id)
             let reqFrame = HTTP2Frame(streamID: streamID, flags: .endHeaders, payload: .headers(requestHeaders, nil))
 
@@ -556,7 +556,7 @@ class SimpleClientServerTests: XCTestCase {
         self.clientChannel.writeAndFlush(dataFrame, promise: nil)
 
         let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
-        var respFrame = HTTP2Frame(streamID: serverStreamIDs.first!, payload: .headers(responseHeaders, nil))
+        var respFrame = HTTP2Frame(streamID: serverStreamIDs.first!, flags: .endHeaders, payload: .headers(responseHeaders, nil))
         respFrame.flags.insert(.endStream)
         self.serverChannel.writeAndFlush(respFrame, promise: nil)
 

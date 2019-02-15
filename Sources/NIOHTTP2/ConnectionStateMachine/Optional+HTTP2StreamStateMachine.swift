@@ -29,9 +29,9 @@ internal extension Optional where Wrapped == HTTP2StreamStateMachine {
     /// - parameters:
     ///     - modifier: A block that will modify the contained value in the
     ///         optional, if there is one present.
-    /// - returns: The return value of the block and whether the stream was closed, or `nil` if the optional was `nil`.
+    /// - returns: The return value of the block or `nil` if the optional was `nil`.
     @inline(__always)
-    mutating func autoClosingTransform<T>(_ modifier: (inout Wrapped) -> T) -> (result: T, didClose: HTTP2StreamStateMachine.StreamClosureState)? {
+    mutating func autoClosingTransform<T>(_ modifier: (inout Wrapped) -> T) -> T? {
         if self == nil { return nil }
 
         var unwrapped = self!
@@ -44,7 +44,7 @@ internal extension Optional where Wrapped == HTTP2StreamStateMachine {
             self = nil
         }
 
-        return (result, closed)
+        return result
     }
 
 
@@ -58,7 +58,7 @@ internal extension Optional where Wrapped == HTTP2StreamStateMachine {
     // time. So for this reason we make it clear to the compiler that this method *must* be inlined at the call-site.
     // Sorry about doing this!
     @inline(__always)
-    mutating func transformOrCreateAutoClose<T>(_ creator: () throws -> Wrapped, _ transformer: (inout Wrapped) -> T) rethrows -> (result: T, didClose: HTTP2StreamStateMachine.StreamClosureState)? {
+    mutating func transformOrCreateAutoClose<T>(_ creator: () throws -> Wrapped, _ transformer: (inout Wrapped) -> T) rethrows -> T? {
         var unwrapped: Wrapped
         if self == nil {
             unwrapped = try creator()
@@ -74,6 +74,6 @@ internal extension Optional where Wrapped == HTTP2StreamStateMachine {
             self = nil
         }
 
-        return (result, closed)
+        return result
     }
 }

@@ -427,7 +427,7 @@ extension NIOHTTP2Handler {
             self.inboundEventBuffer.pendingUserEvent(NIOHTTP2StreamCreatedEvent(streamID: streamID,
                                                                                 localInitialWindowSize: UInt32(streamCreatedData.localStreamWindowSize),
                                                                                 remoteInitialWindowSize: UInt32(streamCreatedData.remoteStreamWindowSize)))
-        case .bulkStreamClosure, .flowControlChange, .settingsChanged:
+        case .bulkStreamClosure, .flowControlChange, .settingsChanged, .streamCreatedAndClosed:
             break
         }
     }
