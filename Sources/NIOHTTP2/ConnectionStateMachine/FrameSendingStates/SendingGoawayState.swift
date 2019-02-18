@@ -23,32 +23,34 @@ protocol SendingGoawayState {
 }
 
 extension SendingGoawayState {
-    mutating func sendGoAwayFrame(lastStreamID: HTTP2StreamID) -> (result: StateMachineResult, droppedStreams: [HTTP2StreamID]) {
+    mutating func sendGoAwayFrame(lastStreamID: HTTP2StreamID) -> StateMachineResultWithEffect {
         guard lastStreamID.mayBeInitiatedBy(self.peerRole) || lastStreamID == .rootStream else {
             // The user has sent a GOAWAY with an invalid stream ID.
-            return (.connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), [])
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), effect: nil)
         }
 
         let droppedStreams = self.streamState.dropAllStreamsWithIDHigherThan(lastStreamID, droppedLocally: true, initiatedBy: self.peerRole)
-        return (.succeed, droppedStreams)
+        let effect: NIOHTTP2ConnectionStateChange? = droppedStreams.map { .bulkStreamClosure(.init(closedStreams: $0)) }
+        return .init(result: .succeed, effect: effect)
     }
 }
 
 extension SendingGoawayState where Self: LocallyQuiescingState {
-    mutating func sendGoAwayFrame(lastStreamID: HTTP2StreamID) -> (result: StateMachineResult, droppedStreams: [HTTP2StreamID]) {
+    mutating func sendGoAwayFrame(lastStreamID: HTTP2StreamID) -> StateMachineResultWithEffect {
         guard lastStreamID.mayBeInitiatedBy(self.peerRole) || lastStreamID == .rootStream else {
             // The user has sent a GOAWAY with an invalid stream ID.
-            return (.connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), [])
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), effect: nil)
         }
 
         if lastStreamID > self.lastRemoteStreamID {
             // The user has attempted to raise the lastStreamID.
-            return (.connectionError(underlyingError: NIOHTTP2Errors.RaisedGoawayLastStreamID(), type: .protocolError), [])
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.RaisedGoawayLastStreamID(), type: .protocolError), effect: nil)
         }
 
         // Ok, this is a valid request, so we can now process it like .active.
         let droppedStreams = self.streamState.dropAllStreamsWithIDHigherThan(lastStreamID, droppedLocally: true, initiatedBy: self.peerRole)
+        let effect: NIOHTTP2ConnectionStateChange? = droppedStreams.map { .bulkStreamClosure(.init(closedStreams: $0)) }
         self.lastRemoteStreamID = lastStreamID
-        return (.succeed, droppedStreams)
+        return .init(result: .succeed, effect: effect)
     }
 }

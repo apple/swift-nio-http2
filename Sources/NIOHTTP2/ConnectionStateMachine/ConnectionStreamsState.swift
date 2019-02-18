@@ -268,8 +268,11 @@ struct ConnectionStreamState {
     /// - returns: the stream IDs closed by this operation.
     mutating func dropAllStreamsWithIDHigherThan(_ streamID: HTTP2StreamID,
                                                  droppedLocally: Bool,
-                                                 initiatedBy initiator: HTTP2ConnectionStateMachine.ConnectionRole) -> [HTTP2StreamID] {
+                                                 initiatedBy initiator: HTTP2ConnectionStateMachine.ConnectionRole) -> [HTTP2StreamID]? {
         let idsToDrop = self.activeStreams.keys.filter { $0.mayBeInitiatedBy(initiator) && $0 > streamID }
+        guard idsToDrop.count > 0 else {
+            return nil
+        }
 
         for closingStreamID in idsToDrop {
             self.activeStreams.removeValue(forKey: closingStreamID)

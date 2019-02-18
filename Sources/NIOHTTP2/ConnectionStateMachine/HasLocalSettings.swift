@@ -26,7 +26,7 @@ protocol HasLocalSettings {
 }
 
 extension HasLocalSettings {
-    mutating func receiveSettingsAck(frameEncoder: inout HTTP2FrameEncoder) -> StateMachineResult {
+    mutating func receiveSettingsAck(frameEncoder: inout HTTP2FrameEncoder) -> StateMachineResultWithEffect {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
         // self. It's a little more complex than normal because HTTP2SettingsState has
         // two CoWable objects, and we don't want to CoW either of them, so we shove a dummy
@@ -64,9 +64,9 @@ extension HasLocalSettings {
                     return
                 }
             }
-            return .succeed
+            return .init(result: .succeed, effect: nil)
         } catch {
-            return .connectionError(underlyingError: error, type: .protocolError)
+            return .init(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
         }
     }
 }

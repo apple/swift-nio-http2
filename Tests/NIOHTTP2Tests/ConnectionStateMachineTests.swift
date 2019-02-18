@@ -54,11 +54,11 @@ func assertIgnored(_ body: @autoclosure () -> StateMachineResult, file: StaticSt
     }
 }
 
-func assertSucceeds(_ body: @autoclosure () -> (StateMachineResult, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
+func assertSucceeds(_ body: @autoclosure () -> (StateMachineResultWithEffect, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
     return assertSucceeds(body().0, file: file, line: line)
 }
 
-func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResult, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
+func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResultWithEffect, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
     return assertConnectionError(type: type, body().0, file: file, line: line)
 }
 
@@ -85,6 +85,19 @@ func assertIgnored(_ body: @autoclosure () -> StateMachineResultWithEffect, file
     let result = body()
     assertIgnored(result.result, file: file, line: line)
     XCTAssertEqual(result.effect, nil, file: file, line: line)
+}
+
+func assertGoawaySucceeds(_ body: @autoclosure () -> StateMachineResultWithEffect, droppingStreams: [HTTP2StreamID]?, file: StaticString = #file, line: UInt = #line) {
+    let result = body()
+
+    if case .some(.bulkStreamClosure(let closedStreamsEvent)) = result.effect {
+        XCTAssertEqual(closedStreamsEvent.closedStreams.sorted(), droppingStreams?.sorted(),
+                       "GOAWAY closed unexpected streams: expected \(String(describing: droppingStreams)), got \(closedStreamsEvent.closedStreams)", file: file, line: line)
+    } else {
+        XCTAssertNil(droppingStreams, "GOAWAY did not close streams, but expected \(String(describing: droppingStreams))", file: file, line: line)
+    }
+
+    assertSucceeds(result.result, file: file, line: line)
 }
 
 
@@ -131,7 +144,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
     }
 
-    private func setupServerGoaway(streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID], file: StaticString = #file, line: UInt = #line) {
+    private func setupServerGoaway(streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID]?, file: StaticString = #file, line: UInt = #line) {
         self.exchangePreamble()
 
         // Client opens streams.
@@ -141,16 +154,11 @@ class ConnectionStateMachineTests: XCTestCase {
         }
 
         // Server sends a reset.
-        var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
-        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Server closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
-        assertSucceeds(result, file: file, line: line)
-
-        (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
-        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Client closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
-        assertSucceeds(result, file: file, line: line)
+        assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose, file: file, line: line)
+        assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose, file: file, line: line)
     }
 
-    private func setupClientGoaway(clientStreamID: HTTP2StreamID, streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID], file: StaticString = #file, line: UInt = #line) {
+    private func setupClientGoaway(clientStreamID: HTTP2StreamID, streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID]?, file: StaticString = #file, line: UInt = #line) {
         self.exchangePreamble()
 
         // Client opens its stream, server sends response.
@@ -166,13 +174,8 @@ class ConnectionStateMachineTests: XCTestCase {
         }
 
         // Client sends a reset.
-        var (result, resetStreams) = self.client.sendGoaway(lastStreamID: lastStreamID)
-        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Client closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
-        assertSucceeds(result, file: file, line: line)
-
-        (result, resetStreams) = self.server.receiveGoaway(lastStreamID: lastStreamID)
-        XCTAssertEqual(resetStreams.sorted(), expectedToClose.sorted(), "Server closed unexpected streams: expected \(expectedToClose), got \(resetStreams)", file: file, line: line)
-        assertSucceeds(result, file: file, line: line)
+        assertGoawaySucceeds(self.client.sendGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose)
+        assertGoawaySucceeds(self.server.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose)
     }
 
     func testSimpleRequestResponseFlow() {
@@ -186,10 +189,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
 
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
@@ -219,10 +222,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Cleanup
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
@@ -249,10 +252,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
 
         // Cleanup
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
@@ -285,10 +288,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
 
         // Cleanup
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
@@ -344,10 +347,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
 
         // Cleanup
-        assertSucceeds(self.client.sendGoaway(lastStreamID: streamTwo).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: streamTwo).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: streamTwo))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: streamTwo))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
@@ -368,10 +371,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .streamClosed, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
         assertIgnored(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
 
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
@@ -611,7 +614,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.sendPushPromise(originalStreamID: streamOne, childStreamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.client.sendRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 15))
-        assertConnectionError(type: .protocolError, self.client.sendGoaway(lastStreamID: streamOne).0)
+        assertConnectionError(type: .protocolError, self.client.sendGoaway(lastStreamID: streamOne))
     }
 
     func testSendingFramesBeforePrefaceAfterReceivedPrefaceIsIllegal() {
@@ -626,7 +629,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.sendPushPromise(originalStreamID: streamOne, childStreamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.client.sendRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 15))
-        assertConnectionError(type: .protocolError, self.client.sendGoaway(lastStreamID: streamOne).0)
+        assertConnectionError(type: .protocolError, self.client.sendGoaway(lastStreamID: streamOne))
     }
 
     func testSendingFramesBeforePrefaceAfterReceivedPrefaceAndGoawayIsIllegal() {
@@ -634,7 +637,7 @@ class ConnectionStateMachineTests: XCTestCase {
         let streamTwo = HTTP2StreamID(2)
         assertSucceeds(self.server.receiveSettings([], flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
@@ -644,7 +647,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.server.sendRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 15))
-        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamOne).0)
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamOne))
     }
 
     func testReceivingFramesBeforePrefaceIsIllegal() {
@@ -659,7 +662,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.client.receiveRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 15))
-        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamOne))
     }
 
     func testReceivingFramesBeforePrefaceAfterSentPrefaceIsIllegal() {
@@ -676,7 +679,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.client.receiveRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 15))
-        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamOne))
     }
 
     func testReceivingFramesBeforePrefaceAfterSentPrefaceAndGoawayIsIllegal() {
@@ -684,7 +687,7 @@ class ConnectionStateMachineTests: XCTestCase {
         let streamTwo = HTTP2StreamID(2)
         assertSucceeds(self.client.sendSettings([]))
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
@@ -694,7 +697,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.server.receiveRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 15))
-        assertConnectionError(type: .protocolError, self.server.receiveGoaway(lastStreamID: streamOne).0)
+        assertConnectionError(type: .protocolError, self.server.receiveGoaway(lastStreamID: streamOne))
     }
 
     func testRatchetingGoaway() {
@@ -703,17 +706,12 @@ class ConnectionStateMachineTests: XCTestCase {
         let streamFive = HTTP2StreamID(5)
         let streamSeven = HTTP2StreamID(7)
 
-        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: [])
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: nil)
 
         // Now the server ratchets down slowly.
         for (lastStreamID, dropping) in [(streamFive, streamSeven), (streamThree, streamFive), (streamOne, streamThree), (.rootStream, streamOne)] {
-            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            assertSucceeds(result)
-
-            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            assertSucceeds(result)
+            assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: [dropping])
+            assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: [dropping])
         }
     }
 
@@ -723,21 +721,16 @@ class ConnectionStateMachineTests: XCTestCase {
         let streamFive = HTTP2StreamID(5)
         let streamSeven = HTTP2StreamID(7)
 
-        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: [])
+        self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamSeven, expectedToClose: nil)
 
         // Now the client quiesces the server.
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
 
         // Now the server ratchets down slowly.
         for (lastStreamID, dropping) in [(streamFive, streamSeven), (streamThree, streamFive), (streamOne, streamThree), (.rootStream, streamOne)] {
-            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            assertSucceeds(result)
-
-            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            assertSucceeds(result)
+            assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: [dropping])
+            assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: [dropping])
         }
     }
 
@@ -757,18 +750,18 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
 
         // The following operations aren't valid transitions from active.
-        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamTwo).0)
-        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamTwo).0)
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamTwo))
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamTwo))
 
         // Transfer to quiescing.
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         // The following operations are now invalid.
-        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamTwo).0)
-        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamTwo).0)
-        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamThree).0)
-        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamThree).0)
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamTwo))
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamTwo))
+        assertConnectionError(type: .protocolError, self.server.sendGoaway(lastStreamID: streamThree))
+        assertConnectionError(type: .protocolError, self.client.receiveGoaway(lastStreamID: streamThree))
     }
 
     func testCanSendRequestsWithoutReceivingPreface() {
@@ -795,8 +788,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receivePing(flags: []))
         assertSucceeds(self.client.sendPriority())
         assertSucceeds(self.server.receivePriority())
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
 
         // Server can bring the connection up by sending its own preface back.
         assertSucceeds(self.server.sendSettings(HTTP2Settings()))
@@ -805,10 +798,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Both sides quiesce, which will end the connection.
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
@@ -822,8 +815,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveSettings(HTTP2Settings(), flags: .init(rawValue: 0), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Client quiesces, then opens a stream.
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
 
@@ -840,8 +833,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receivePing(flags: []))
         assertSucceeds(self.client.sendPriority())
         assertSucceeds(self.server.receivePriority())
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
     }
 
     func testFullyQuiescedConnection() {
@@ -861,10 +854,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
 
         // Both sides quiesce this.
-        assertSucceeds(self.client.sendGoaway(lastStreamID: streamTwo).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: streamTwo).0)
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: streamTwo))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: streamTwo))
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         // All the streamy operations work on stream one except push promise.
         assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
@@ -927,8 +920,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
         // The server sends goaway.
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
         XCTAssertFalse(self.client.fullyQuiesced)
         XCTAssertFalse(self.server.fullyQuiesced)
 
@@ -955,8 +948,8 @@ class ConnectionStateMachineTests: XCTestCase {
         self.exchangePreamble()
 
         // Close the connection by quiescing from server.
-        assertSucceeds(self.server.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: .rootStream))
 
         // Stream specific things don't work.
         assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
@@ -979,8 +972,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         // Duplicate goaway is cool though.
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
     }
 
     func testPushesAfterSendingPrefaceAreInvalid() {
@@ -1015,8 +1008,8 @@ class ConnectionStateMachineTests: XCTestCase {
         // What if the client now quiesced?
         temporaryServer = self.server!
         temporaryClient = self.client!
-        assertSucceeds(temporaryClient.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(temporaryServer.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(temporaryClient.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(temporaryServer.receiveGoaway(lastStreamID: .rootStream))
         assertConnectionError(type: .protocolError, temporaryClient.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, temporaryServer.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
 
@@ -1044,8 +1037,8 @@ class ConnectionStateMachineTests: XCTestCase {
         // If we quiesce during setup we can still send settings.
         var temporaryServer = self.server!
         var temporaryClient = self.client!
-        assertSucceeds(temporaryClient.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(temporaryServer.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(temporaryClient.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(temporaryServer.receiveGoaway(lastStreamID: .rootStream))
         assertSucceeds(temporaryClient.sendSettings([]))
         assertSucceeds(temporaryServer.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(temporaryServer.sendSettings([]))
@@ -1066,8 +1059,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(temporaryClient.receiveSettings([], flags: .init(), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
 
         // When quiesced by one peer we can send settings.
-        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
         assertSucceeds(self.client.sendSettings([]))
         assertSucceeds(self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.sendSettings([]))
@@ -1078,8 +1071,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
         // Now quiesce the other way. We can still send settings.
-        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne).0)
-        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne).0)
+        assertSucceeds(self.server.sendGoaway(lastStreamID: streamOne))
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
         assertSucceeds(self.client.sendSettings([]))
         assertSucceeds(self.server.receiveSettings([], flags: .init(), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.sendSettings([]))
@@ -1688,33 +1681,16 @@ class ConnectionStateMachineTests: XCTestCase {
         let streamFive = HTTP2StreamID(5)
         let streamSeven = HTTP2StreamID(7)
 
-        self.setupServerGoaway(streamsToOpen: [streamSeven], lastStreamID: .maxID, expectedToClose: [])
+        self.setupServerGoaway(streamsToOpen: [streamSeven], lastStreamID: .maxID, expectedToClose: nil)
 
         // Now the server ratchets down slowly.
         for (lastStreamID, dropping) in [(streamSeven, nil), (streamFive, streamSeven), (streamThree, nil), (streamOne, nil), (.rootStream, nil)] {
-            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
-            if let dropping = dropping {
-                XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            } else {
-                XCTAssertEqual(resetStreams, [], "Server closed unexpected streams: expected [], got \(resetStreams)")
-            }
-            assertSucceeds(result)
-
-            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
-            if let dropping = dropping {
-                XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            } else {
-                XCTAssertEqual(resetStreams, [], "Client closed unexpected streams: expected [], got \(resetStreams)")
-            }
-            assertSucceeds(result)
+            assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: dropping.map { [$0] })
+            assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: dropping.map { [$0] })
 
             // Duplicate goaways succeed, but change nothing.
-            (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [], "Duplicate server goaway incorrectly closed streams: \(resetStreams)")
-            assertSucceeds(result)
-            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [], "Duplicate client goaway incorrectly closed streams: \(resetStreams)")
-            assertSucceeds(result)
+            assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: nil)
+            assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: nil)
         }
     }
 
@@ -1724,56 +1700,29 @@ class ConnectionStateMachineTests: XCTestCase {
         let streamFive = HTTP2StreamID(5)
         let streamSeven = HTTP2StreamID(7)
 
-        self.setupServerGoaway(streamsToOpen: [streamSeven], lastStreamID: .maxID, expectedToClose: [])
+        self.setupServerGoaway(streamsToOpen: [streamSeven], lastStreamID: .maxID, expectedToClose: nil)
 
         // Now the client quiesces the server.
-        assertSucceeds(self.client.sendGoaway(lastStreamID: HTTP2StreamID(Int32.max - 1)).0)
-        assertSucceeds(self.server.receiveGoaway(lastStreamID: HTTP2StreamID(Int32.max - 1)).0)
+        assertSucceeds(self.client.sendGoaway(lastStreamID: HTTP2StreamID(Int32.max - 1)))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: HTTP2StreamID(Int32.max - 1)))
 
         // Now the server ratchets down slowly.
         for (lastStreamID, dropping) in [(streamSeven, nil), (streamFive, streamSeven), (streamThree, nil), (streamOne, nil), (.rootStream, nil)] {
-            var (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
-            if let dropping = dropping {
-                XCTAssertEqual(resetStreams, [dropping], "Server closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            } else {
-                XCTAssertEqual(resetStreams, [], "Server closed unexpected streams: expected [], got \(resetStreams)")
-            }
-            assertSucceeds(result)
-
-            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
-            if let dropping = dropping {
-                XCTAssertEqual(resetStreams, [dropping], "Client closed unexpected streams: expected \([dropping]), got \(resetStreams)")
-            } else {
-                XCTAssertEqual(resetStreams, [], "Client closed unexpected streams: expected [], got \(resetStreams)")
-            }
-            assertSucceeds(result)
+            assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: dropping.map { [$0] })
+            assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: dropping.map { [$0] })
 
             // Duplicate goaways succeed, but change nothing.
-            (result, resetStreams) = self.server.sendGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [], "Duplicate server goaway incorrectly closed streams: \(resetStreams)")
-            assertSucceeds(result)
-            (result, resetStreams) = self.client.receiveGoaway(lastStreamID: lastStreamID)
-            XCTAssertEqual(resetStreams, [], "Duplicate client goaway incorrectly closed streams: \(resetStreams)")
-            assertSucceeds(result)
+            assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: nil)
+            assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: nil)
         }
 
         // Now the client does a short ratchet too.
-        var (result, resetStreams) = self.client.sendGoaway(lastStreamID: .rootStream)
-        XCTAssertEqual(resetStreams, [])
-        assertSucceeds(result)
-
-        (result, resetStreams) = self.server.receiveGoaway(lastStreamID: .rootStream)
-        XCTAssertEqual(resetStreams, [])
-        assertSucceeds(result)
+        assertGoawaySucceeds(self.client.sendGoaway(lastStreamID: .rootStream), droppingStreams: nil)
+        assertGoawaySucceeds(self.server.receiveGoaway(lastStreamID: .rootStream), droppingStreams: nil)
 
         // And again, the duplicate goaway is fine.
-        (result, resetStreams) = self.client.sendGoaway(lastStreamID: .rootStream)
-        XCTAssertEqual(resetStreams, [])
-        assertSucceeds(result)
-
-        (result, resetStreams) = self.server.receiveGoaway(lastStreamID: .rootStream)
-        XCTAssertEqual(resetStreams, [])
-        assertSucceeds(result)
+        assertGoawaySucceeds(self.client.sendGoaway(lastStreamID: .rootStream), droppingStreams: nil)
+        assertGoawaySucceeds(self.server.receiveGoaway(lastStreamID: .rootStream), droppingStreams: nil)
     }
 }
 

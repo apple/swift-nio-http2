@@ -26,7 +26,7 @@ protocol HasRemoteSettings {
 }
 
 extension HasRemoteSettings {
-    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResult, PostFrameOperation) {
+    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
         // self. It's a little more complex than normal because HTTP2SettingsState has
         // two CoWable objects, and we don't want to CoW either of them, so we shove a dummy
@@ -64,9 +64,9 @@ extension HasRemoteSettings {
                     return
                 }
             }
-            return (.succeed, .sendAck)
+            return (.init(result: .succeed, effect: nil), .sendAck)
         } catch let err where err is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-            return (.connectionError(underlyingError: err, type: .flowControlError), .nothing)
+            return (.init(result: .connectionError(underlyingError: err, type: .flowControlError), effect: nil), .nothing)
         } catch {
             preconditionFailure("Unexpected error thrown: \(error)")
         }
