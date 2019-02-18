@@ -70,21 +70,18 @@ func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> Stat
     // Errors must always lead to noChange.
     let result = body()
     assertConnectionError(type: type, result.result, file: file, line: line)
-    XCTAssertEqual(result.effect, nil, file: file, line: line)
 }
 
 func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
     // Errors must always lead to noChange.
     let result = body()
     assertStreamError(type: type, result.result, file: file, line: line)
-    XCTAssertEqual(result.effect, nil, file: file, line: line)
 }
 
 func assertIgnored(_ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
     // Ignored frames must always lead to noChange.
     let result = body()
     assertIgnored(result.result, file: file, line: line)
-    XCTAssertEqual(result.effect, nil, file: file, line: line)
 }
 
 func assertGoawaySucceeds(_ body: @autoclosure () -> StateMachineResultWithEffect, droppingStreams: [HTTP2StreamID]?, file: StaticString = #file, line: UInt = #line) {

@@ -257,8 +257,7 @@ extension NIOHTTP2Handler {
         // Because we don't know what data the user handled before we got this, we propose that they may have seen all of it.
         // The user may choose to fire a more specific error if they wish.
         let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: reason, opaqueData: nil))
-        self.writeBuffer.clear()
-        self.encodeAndWriteFrame(ctx: ctx, frame: goAwayFrame, promise: nil)
+        self.processOutboundFrame(ctx: ctx, frame: goAwayFrame, promise: nil)
         ctx.flush()
         ctx.fireErrorCaught(underlyingError)
     }
@@ -269,8 +268,7 @@ extension NIOHTTP2Handler {
         // the error. It's possible that we'll be unable to write this, which will likely escalate this error, but that's
         // the user's issue.
         let rstStreamFrame = HTTP2Frame(streamID: streamID, payload: .rstStream(reason))
-        self.writeBuffer.clear()
-        self.encodeAndWriteFrame(ctx: ctx, frame: rstStreamFrame, promise: nil)
+        self.processOutboundFrame(ctx: ctx, frame: rstStreamFrame, promise: nil)
         ctx.flush()
         ctx.fireErrorCaught(underlyingError)
     }
@@ -281,6 +279,20 @@ extension NIOHTTP2Handler {
             ctx.fireUserInboundEventTriggered(event)
         }
     }
+
+    /// Temporary handler to emit automatic window management updates.
+    private func emitFlowControlManagement(streamID: HTTP2StreamID, flowControlledLength: Int, isEndStreamSet endStream: Bool, ctx: ChannelHandlerContext) {
+        guard flowControlledLength > 0 else {
+            return
+        }
+
+        var windowUpdateFrame = HTTP2Frame(streamID: .rootStream, payload: .windowUpdate(windowSizeIncrement: flowControlledLength))
+        self.processOutboundFrame(ctx: ctx, frame: windowUpdateFrame, promise: nil)
+        if !endStream {
+            windowUpdateFrame.streamID = streamID
+            self.processOutboundFrame(ctx: ctx, frame: windowUpdateFrame, promise: nil)
+        }
+    }
 }
 
 
@@ -288,26 +300,14 @@ extension NIOHTTP2Handler {
 extension NIOHTTP2Handler {
     /// Issues the preamble when necessary.
     private func writeAndFlushPreamble(ctx: ChannelHandlerContext) {
-        self.writeBuffer.clear()
-
-        // In both cases we need to send a SETTINGS frame, so let's set that up.
-        switch self.stateMachine.sendSettings(self.initialSettings).result {
-        case .succeed:
-            // This is all good.
-            break
-        case .ignoreFrame:
-            preconditionFailure("We can never be asked to ignore an outbound frame")
-        case .connectionError(let underlyingError, _), .streamError(_, let underlyingError, _):
-            self.outboundErrorTriggered(ctx: ctx, promise: nil, underlyingError: underlyingError)
-            return
-        }
-
         if case .client = self.mode {
+            self.writeBuffer.clear()
             self.writeBuffer.write(staticString: NIOHTTP2Handler.clientMagic)
+            ctx.write(self.wrapOutboundOut(.byteBuffer(self.writeBuffer)), promise: nil)
         }
 
         let initialSettingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.initialSettings))
-        self.encodeAndWriteFrame(ctx: ctx, frame: initialSettingsFrame, promise: nil)
+        self.processOutboundFrame(ctx: ctx, frame: initialSettingsFrame, promise: nil)
         ctx.flush()
     }
 

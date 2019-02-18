@@ -36,6 +36,23 @@ extension ReceivingDataState {
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
             $0.receiveData(flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
         }
-        return StateMachineResultWithEffect(result, connectionState: self)
+
+        // We need to be a bit careful here. The backing code may have triggered either an ignoreFrame or streamError. While both of these
+        // need to be honored, in those cases we also need to make sure the user knows that the frame did consume some flow control window!
+        return StateMachineResultWithEffect.withGuaranteedFlowControlEffect(result, connectionState: self)
+    }
+}
+
+
+private extension StateMachineResultWithEffect {
+    static func withGuaranteedFlowControlEffect<ConnectionState: ReceivingDataState>(_ result: StateMachineResultWithStreamEffect, connectionState: ConnectionState) -> StateMachineResultWithEffect {
+        // In most cases, this will update the underlying effect with the new flow control window info.
+        var newResult = StateMachineResultWithEffect(result, connectionState: connectionState)
+        if newResult.effect == nil {
+            // But if we aren't noting it anywhere else, we note it here.
+            newResult.effect = .flowControlChange(.init(localConnectionWindowSize: Int(connectionState.outboundFlowControlWindow), remoteConnectionWindowSize: Int(connectionState.inboundFlowControlWindow), localStreamWindowSize: nil))
+        }
+
+        return newResult
     }
 }
