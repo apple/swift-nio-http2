@@ -46,6 +46,16 @@ final class HTTP1TestServer: ChannelInboundHandler {
 }
 
 
+final class ErrorHandler: ChannelInboundHandler {
+    typealias InboundIn = Never
+    
+    func errorCaught(ctx: ChannelHandlerContext, error: Error) {
+        print("Server received error: \(error)")
+        ctx.close(promise: nil)
+    }
+}
+
+
 // First argument is the program path
 let arguments = CommandLine.arguments
 let arg1 = arguments.dropFirst().first
@@ -90,13 +100,17 @@ let bootstrap = ServerBootstrap(group: group)
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
         return channel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).then {
-            let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: channel) { (channel, streamID) -> EventLoopFuture<Void> in
-                return channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).then { () -> EventLoopFuture<Void> in
-                    channel.pipeline.add(handler: HTTP1TestServer())
+            return channel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).then {
+                let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: channel) { (channel, streamID) -> EventLoopFuture<Void> in
+                    return channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).then { () -> EventLoopFuture<Void> in
+                        channel.pipeline.add(handler: HTTP1TestServer())
+                    }
+                }
+
+                return channel.pipeline.add(handler: multiplexer).then {
+                    return channel.pipeline.add(handler: ErrorHandler())
                 }
             }
-
-            return channel.pipeline.add(handler: multiplexer)
         }
     }
 
