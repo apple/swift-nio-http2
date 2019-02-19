@@ -152,6 +152,9 @@ extension HTTP2StreamMultiplexer {
     /// This method is intended for situations where the NIO application is initiating the stream. For clients,
     /// this is for all request streams. For servers, this is for pushed streams.
     ///
+    /// - note:
+    /// Resources for the stream will be freed after it has been closed.
+    ///
     /// - parameters:
     ///     - promise: An `EventLoopPromise` that will be succeeded with the new activated channel, or
     ///         failed if an error occurs.
