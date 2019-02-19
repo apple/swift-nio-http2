@@ -59,7 +59,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                                              initiatedRemotely: true)
             channel.configure(initializer: self.inboundStreamStateInitializer)
             self.streams[streamID] = channel
-            channel.closeFuture.whenComplete {
+            channel.closeFuture.whenComplete { _ in
                 self.childChannelClosed(streamID: streamID)
             }
             channel.receiveInboundFrame(frame)
@@ -168,12 +168,12 @@ extension HTTP2StreamMultiplexer {
                                              initiatedRemotely: false)
             let activationFuture = channel.configure(initializer: streamStateInitializer)
             self.streams[streamID] = channel
-            channel.closeFuture.whenComplete {
+            channel.closeFuture.whenComplete { _ in
                 self.childChannelClosed(streamID: streamID)
             }
 
             if let promise = promise {
-                activationFuture.map { channel }.cascade(promise: promise)
+                activationFuture.map { channel }.cascade(to: promise)
             }
         }
     }

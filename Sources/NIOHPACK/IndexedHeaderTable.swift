@@ -17,9 +17,9 @@ import NIO
 /// The unified header table used by HTTP/2, encompassing both static and dynamic tables.
 public struct IndexedHeaderTable {
     // private but tests
-    @_versioned
+    @usableFromInline
     let staticTable: HeaderTableStorage
-    @_versioned
+    @usableFromInline
     var dynamicTable: DynamicHeaderTable
     
     /// Creates a new header table, optionally specifying a maximum size for the dynamic
@@ -141,12 +141,7 @@ public struct IndexedHeaderTable {
     /// - Parameters:
     ///   - name: A sequence of contiguous bytes containing the name of the header to insert.
     ///   - value: A sequence of contiguous bytes containing the value of the header to insert.
-    public mutating func add<Name: ContiguousCollection, Value: ContiguousCollection>(headerNameBytes nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
-        try self.dynamicTable.addHeader(nameBytes: nameBytes, valueBytes: valueBytes)
-    }
-    
-    /// An internal variant, where we've already deconstructed the String into its UTF-8 bytes.
-    internal mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
+    public mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
         try self.dynamicTable.addHeader(named: name, value: value)
     }
     

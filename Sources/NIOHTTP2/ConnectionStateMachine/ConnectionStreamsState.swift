@@ -65,7 +65,7 @@ struct ConnectionStreamState {
     init() {
         // While there may be many concurrent streams, usually there will only be a small number.
         self.activeStreams = Dictionary(minimumCapacity: 8)
-        self.recentlyResetStreams = CircularBuffer(initialRingCapacity: self.maxResetStreams)
+        self.recentlyResetStreams = CircularBuffer(initialCapacity: self.maxResetStreams)
     }
 
     /// Create stream state for a remotely pushed stream.

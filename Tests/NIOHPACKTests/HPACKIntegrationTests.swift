@@ -321,7 +321,7 @@ fileprivate func decodeHexData(from string: String) -> ByteBuffer {
     } while string.distance(from: idx, to: string.endIndex) > 1
     
     var buf = ByteBufferAllocator().buffer(capacity: bytes.count)
-    buf.write(bytes: bytes)
+    _ = buf.writeBytes(bytes)
     return buf
 }
 

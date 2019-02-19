@@ -54,7 +54,7 @@ final class OutboundFrameRecorder: ChannelOutboundHandler {
 
         for (frame, promise) in flushedWrites {
             self.flushedWrites.append(frame)
-            promise?.succeed(result: ())
+            promise?.succeed(())
         }
     }
 }

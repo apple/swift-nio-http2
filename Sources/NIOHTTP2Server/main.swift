@@ -29,17 +29,17 @@ final class HTTP1TestServer: ChannelInboundHandler {
             return
         }
 
-        ctx.channel.getOption(option: HTTP2StreamChannelOptions.streamID).then { (streamID) -> EventLoopFuture<Void> in
+        ctx.channel.getOption(option: HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
             var headers = HTTPHeaders()
             headers.add(name: "content-length", value: "5")
             headers.add(name: "x-stream-id", value: String(Int(streamID)))
             ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
 
             var buffer = ctx.channel.allocator.buffer(capacity: 12)
-            buffer.write(staticString: "hello")
+            buffer.writeStaticString("hello")
             ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
             return ctx.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
-        }.whenComplete {
+        }.whenComplete { _ in
             ctx.close(promise: nil)
         }
     }
@@ -99,15 +99,15 @@ let bootstrap = ServerBootstrap(group: group)
 
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
-        return channel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).then {
-            return channel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).then {
+        return channel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).flatMap {
+            return channel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).flatMap {
                 let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: channel) { (channel, streamID) -> EventLoopFuture<Void> in
-                    return channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).then { () -> EventLoopFuture<Void> in
+                    return channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
                         channel.pipeline.add(handler: HTTP1TestServer())
                     }
                 }
 
-                return channel.pipeline.add(handler: multiplexer).then {
+                return channel.pipeline.add(handler: multiplexer).flatMap {
                     return channel.pipeline.add(handler: ErrorHandler())
                 }
             }

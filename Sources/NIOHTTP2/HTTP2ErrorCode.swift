@@ -159,6 +159,6 @@ public extension ByteBuffer {
     ///     - code: The `HTTP2ErrorCode` to serialize.
     /// - returns: The number of bytes written.
     mutating func write(http2ErrorCode code: HTTP2ErrorCode) -> Int {
-        return self.write(integer: UInt32(http2ErrorCode: code))
+        return self.writeInteger(UInt32(http2ErrorCode: code))
     }
 }

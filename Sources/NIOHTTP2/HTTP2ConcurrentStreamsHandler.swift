@@ -105,7 +105,7 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
         do {
             operation = try self.frameBuffer.processOutboundFrame(frame, promise: promise)
         } catch {
-            promise?.fail(error: error)
+            promise?.fail(error)
             return
         }
 
@@ -118,14 +118,14 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
             // We forward *first*, drop *second*.
             ctx.write(data, promise: promise)
             for (_, promise) in writesToDrop {
-                promise?.fail(error: error)
+                promise?.fail(error)
             }
         case .succeedAndDrop(let writesToDrop, let error):
             // We drop *first*, succeed *second*
             for (_, promise) in writesToDrop {
-                promise?.fail(error: error)
+                promise?.fail(error)
             }
-            promise?.succeed(result: ())
+            promise?.succeed(())
         }
     }
 
@@ -165,7 +165,7 @@ struct StreamFrameBuffer {
 
         init(streamID: HTTP2StreamID) {
             self.streamID = streamID
-            self.frames = MarkedCircularBuffer(initialRingCapacity: 16)
+            self.frames = MarkedCircularBuffer(initialCapacity: 16)
             self.currentlyUnblocking = false
         }
     }
@@ -306,7 +306,7 @@ struct StreamFrameBuffer {
                 break
             }
 
-            if self.bufferedFrames[index].frames.hasMark() {
+            if self.bufferedFrames[index].frames.hasMark {
                 return self.bufferedFrames.nextWriteFor(index)
             }
 
@@ -324,7 +324,7 @@ struct StreamFrameBuffer {
         }
 
         // We have room and the stream exists. Does it have flushed frames?
-        guard self.bufferedFrames[index].frames.hasMark() else {
+        guard self.bufferedFrames[index].frames.hasMark else {
             return nil
         }
 
@@ -382,7 +382,7 @@ private struct SortedCircularBuffer {
     private var _base: CircularBuffer<StreamFrameBuffer.FrameBuffer>
 
     init(initialRingCapacity: Int) {
-        self._base = CircularBuffer(initialRingCapacity: initialRingCapacity)
+        self._base = CircularBuffer(initialCapacity: initialRingCapacity)
     }
 
     /// Appends an element to this CircularBuffer. Traps if the element is not larger than the current end of this buffer.
@@ -400,7 +400,7 @@ private struct SortedCircularBuffer {
         // backing array is sorted.
         assert(frame.streamID == self._base[index].streamID)
 
-        var tempBuffer = MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>(initialRingCapacity: 0)
+        var tempBuffer = MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>(initialCapacity: 0)
         swap(&tempBuffer, &self._base[index].frames)
         tempBuffer.append((frame, promise))
         swap(&tempBuffer, &self._base[index].frames)
@@ -417,7 +417,7 @@ private struct SortedCircularBuffer {
         // To make this work without CoW, we need to temporarily swap out either the entire element or the circular buffer within it to ensure that it
         // is held loosely. We choose to swap the circular buffer within it as it avoids even temporarily violating the invariant that the
         // backing array is sorted.
-        var tempBuffer = MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>(initialRingCapacity: 0)
+        var tempBuffer = MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>(initialCapacity: 0)
         swap(&tempBuffer, &self._base[index].frames)
         let write = tempBuffer.removeFirst()
         swap(&tempBuffer, &self._base[index].frames)

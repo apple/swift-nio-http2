@@ -102,7 +102,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         self.channel.assertReceivedServerRequestPart(.head(expectedRequestHead))
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
-        bodyData.write(staticString: "hello, world!")
+        bodyData.writeStaticString("hello, world!")
         var dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(bodyData)))
         dataFrame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
@@ -173,7 +173,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
-        bodyData.write(staticString: "hello, world!")
+        bodyData.writeStaticString("hello, world!")
         self.channel.writeAndFlush(HTTPServerResponsePart.body(.byteBuffer(bodyData)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
         writeRecorder.flushedWrites[1].assertDataFrame(endStream: false, streamID: 1, payload: bodyData)
@@ -250,7 +250,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         let promiseRecorder = PromiseRecorder()
 
-        let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.newPromise() }
+        let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.makePromise() }
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: promiseRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
 
@@ -261,7 +261,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
-        bodyData.write(staticString: "hello, world!")
+        bodyData.writeStaticString("hello, world!")
         self.channel.writeAndFlush(HTTPServerResponsePart.body(.byteBuffer(bodyData)), promise: promises[1])
 
         // Now trailers.
@@ -289,7 +289,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
-        bodyData.write(staticString: "hello, world!")
+        bodyData.writeStaticString("hello, world!")
         var dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(bodyData)))
         dataFrame.flags.insert(.endStream)
         XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
@@ -359,7 +359,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
-        bodyData.write(staticString: "hello, world!")
+        bodyData.writeStaticString("hello, world!")
         self.channel.writeAndFlush(HTTPClientRequestPart.body(.byteBuffer(bodyData)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
         writeRecorder.flushedWrites[1].assertDataFrame(endStream: false, streamID: 1, payload: bodyData)
@@ -432,7 +432,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         let promiseRecorder = PromiseRecorder()
 
-        let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.newPromise() }
+        let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.makePromise() }
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: promiseRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.add(handler: HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
 
@@ -444,7 +444,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
-        bodyData.write(staticString: "hello, world!")
+        bodyData.writeStaticString("hello, world!")
         self.channel.writeAndFlush(HTTPClientRequestPart.body(.byteBuffer(bodyData)), promise: promises[1])
 
         // Now trailers.

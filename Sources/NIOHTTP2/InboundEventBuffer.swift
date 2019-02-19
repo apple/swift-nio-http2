@@ -23,7 +23,7 @@ import NIO
 /// This will be drained both before and after any frame read operation, to ensure that we
 /// have always delivered all pending user events before we deliver a frame.
 class InboundEventBuffer {
-    fileprivate var buffer: CircularBuffer<Any> = CircularBuffer(initialRingCapacity: 8)
+    fileprivate var buffer: CircularBuffer<Any> = CircularBuffer(initialCapacity: 8)
 
     func pendingUserEvent(_ event: Any) {
         self.buffer.append(event)

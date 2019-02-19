@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
+import _NIO1APIShims
 
 /// An `HPACKEncoder` maintains its own dynamic header table and uses that to
 /// encode HTTP headers to an internal byte buffer.
@@ -260,7 +261,7 @@ public struct HPACKEncoder {
             }
         } else {
             // no indexed name or value. Have to add them both, with a zero index.
-            self.buffer.write(integer: UInt8(0x40))
+            _ = self.buffer.writeInteger(UInt8(0x40))
             self.appendEncodedString(name)
             self.appendEncodedString(value)
         }
@@ -278,7 +279,7 @@ public struct HPACKEncoder {
             self.buffer.writeHuffmanEncoded(bytes: utf8)
         } else {
             self.buffer.write(encodedInteger: UInt(utf8.count), prefix: 7, prefixBits: 0)
-            self.buffer.write(bytes: utf8)
+            self.buffer.writeBytes(utf8)
         }
     }
     
@@ -299,7 +300,7 @@ public struct HPACKEncoder {
             // now append the value
             self.appendEncodedString(value)
         } else {
-            self.buffer.write(integer: UInt8(0))    // top 4 bits are zero, and index is zero (no index)
+            self.buffer.writeInteger(UInt8(0))    // top 4 bits are zero, and index is zero (no index)
             self.appendEncodedString(header)
             self.appendEncodedString(value)
         }
@@ -321,7 +322,7 @@ public struct HPACKEncoder {
             // now append the value
             self.appendEncodedString(value)
         } else {
-            self.buffer.write(integer: UInt8(0x10))     // prefix bits + zero index
+            self.buffer.writeInteger(UInt8(0x10))     // prefix bits + zero index
             self.appendEncodedString(header)
             self.appendEncodedString(value)
         }

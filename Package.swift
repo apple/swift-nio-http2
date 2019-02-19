@@ -1,4 +1,4 @@
-// swift-tools-version:4.1
+// swift-tools-version:5.0
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -22,17 +22,17 @@ let package = Package(
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "1.12.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", .branch("master")),
     ],
     targets: [
         .target(name: "NIOHTTP2Server",
             dependencies: ["NIOHTTP2"]),
         .target(name: "NIOHTTP2",
-            dependencies: ["NIO", "NIOHTTP1", "NIOTLS", "NIOHPACK"]),
+            dependencies: ["NIO", "_NIO1APIShims", "NIOHTTP1", "NIOTLS", "NIOHPACK"]),
         .target(name: "NIOHPACK",
-            dependencies: ["NIO", "NIOConcurrencyHelpers", "NIOHTTP1"]),
+            dependencies: ["NIO", "_NIO1APIShims", "NIOConcurrencyHelpers", "NIOHTTP1"]),
         .testTarget(name: "NIOHTTP2Tests",
-            dependencies: ["NIO", "NIOHTTP1", "NIOHTTP2"]),
+            dependencies: ["NIO", "_NIO1APIShims", "NIOHTTP1", "NIOHTTP2"]),
         .testTarget(name: "NIOHPACKTests",
             dependencies: ["NIOHPACK"])
     ]

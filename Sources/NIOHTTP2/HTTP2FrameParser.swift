@@ -45,7 +45,7 @@ struct HTTP2FrameDecoder {
                 bytes.moveReaderIndex(to: bytes.writerIndex)
                 return
             }
-            pendingBytes.write(buffer: &bytes)
+            _ = pendingBytes.writeBuffer(&bytes)
             self.pendingBytes = pendingBytes
         }
     }
@@ -64,7 +64,7 @@ struct HTTP2FrameDecoder {
         }
         
         mutating func accumulate(bytes: inout ByteBuffer) {
-            self.unusedBytes.write(buffer: &bytes)
+            _ = self.unusedBytes.writeBuffer(&bytes)
         }
     }
     
@@ -80,7 +80,7 @@ struct HTTP2FrameDecoder {
         }
         
         mutating func accumulate(bytes: inout ByteBuffer) {
-            self.accumulatedBytes.write(buffer: &bytes)
+            self.accumulatedBytes.writeBuffer(&bytes)
         }
     }
     
@@ -128,7 +128,7 @@ struct HTTP2FrameDecoder {
         }
         
         mutating func accumulate(bytes: inout ByteBuffer) {
-            self.payload.write(buffer: &bytes)
+            self.payload.writeBuffer(&bytes)
         }
 
         /// Obtains the flow controlled length, and sets it to zero for the rest of this DATA
@@ -162,7 +162,7 @@ struct HTTP2FrameDecoder {
         }
         
         mutating func accumulate(bytes: inout ByteBuffer) {
-            self.continuationPayload.write(buffer: &bytes)
+            self.continuationPayload.writeBuffer(&bytes)
         }
     }
 
@@ -192,11 +192,11 @@ struct HTTP2FrameDecoder {
             
             // strip off the continuation payload from the incoming payload
             var slice = self.incomingPayload.readSlice(length: acc.continuationHeader.length)!
-            self.accumulatedPayload.write(buffer: &slice)
+            self.accumulatedPayload.writeBuffer(&slice)
         }
         
         mutating func accumulate(bytes: inout ByteBuffer) {
-            self.incomingPayload.write(buffer: &bytes)
+            self.incomingPayload.writeBuffer(&bytes)
         }
     }
     
@@ -472,7 +472,7 @@ struct HTTP2FrameDecoder {
             // it is, yay! Output a frame
             var payload = state.currentFrameBytes
             var continuationSlice = state.continuationPayload.readSlice(length: state.continuationHeader.length)!
-            payload.write(buffer: &continuationSlice)
+            payload.writeBuffer(&continuationSlice)
             
             // we have something that looks just like a HEADERS or PUSH_PROMISE frame now
             var header = state.initialHeader
@@ -924,11 +924,11 @@ struct HTTP2FrameEncoder {
         buf.moveWriterIndex(forwardBy: 3)
         
         // 8-bit type
-        buf.write(integer: frame.payload.code)
+        buf.writeInteger(frame.payload.code)
         // 8-bit flags -- we don't use padding when encoding in NIO, though
-        buf.write(integer: frame.flags.subtracting(.padded).rawValue)
+        buf.writeInteger(frame.flags.subtracting(.padded).rawValue)
         // 32-bit stream identifier -- ensuring the top bit is empty
-        buf.write(integer: Int32(frame.streamID))
+        buf.writeInteger(Int32(frame.streamID))
         
         let payloadStart = buf.writerIndex
         
@@ -944,8 +944,8 @@ struct HTTP2FrameEncoder {
                 if priority.exclusive {
                     dependencyRaw |= 0x8000_0000
                 }
-                buf.write(integer: dependencyRaw)
-                buf.write(integer: priority.weight)
+                buf.writeInteger(dependencyRaw)
+                buf.writeInteger(priority.weight)
             }
             
             try self.headerEncoder.encode(headers: headers, to: &buf)
@@ -958,23 +958,23 @@ struct HTTP2FrameEncoder {
             if priorityData.exclusive {
                 raw |= 0x8000_0000
             }
-            buf.write(integer: raw)
-            buf.write(integer: priorityData.weight)
+            buf.writeInteger(raw)
+            buf.writeInteger(priorityData.weight)
             
         case .rstStream(let errcode):
             buf.writePayloadSize(4, at: start)
-            buf.write(integer: UInt32(errcode.networkCode))
+            buf.writeInteger(UInt32(errcode.networkCode))
             
         case .settings(let settings):
             buf.writePayloadSize(settings.count * 6, at: start)
             for setting in settings {
-                buf.write(integer: setting.parameter.networkRepresentation)
-                buf.write(integer: setting._value)
+                buf.writeInteger(setting.parameter.networkRepresentation)
+                buf.writeInteger(setting._value)
             }
             
         case .pushPromise(let streamID, let headers):
             let streamVal: UInt32 = UInt32(streamID)
-            buf.write(integer: streamVal)
+            buf.writeInteger(streamVal)
             
             try self.headerEncoder.encode(headers: headers, to: &buf)
             
@@ -983,13 +983,13 @@ struct HTTP2FrameEncoder {
         case .ping(let pingData):
             buf.writePayloadSize(8, at: start)
             withUnsafeBytes(of: pingData.bytes) { ptr -> Void in
-                buf.write(bytes: ptr)
+                _ = buf.writeBytes(ptr)
             }
             
         case .goAway(let lastStreamID, let errorCode, let opaqueData):
             let streamVal: UInt32 = UInt32(lastStreamID) & ~0x8000_0000
-            buf.write(integer: streamVal)
-            buf.write(integer: UInt32(errorCode.networkCode))
+            buf.writeInteger(streamVal)
+            buf.writeInteger(UInt32(errorCode.networkCode))
             
             if let data = opaqueData {
                 buf.writePayloadSize(data.readableBytes + 8, at: start)
@@ -1000,16 +1000,16 @@ struct HTTP2FrameEncoder {
             
         case .windowUpdate(let size):
             buf.writePayloadSize(4, at: start)
-            buf.write(integer: UInt32(size) & ~0x8000_0000)
+            buf.writeInteger(UInt32(size) & ~0x8000_0000)
             
         case .alternativeService(let origin, let field):
             if let org = origin {
                 buf.moveWriterIndex(forwardBy: 2)
                 let start = buf.writerIndex
-                buf.write(string: org)
-                buf.set(integer: UInt16(buf.writerIndex - start), at: payloadStart)
+                buf.writeString(org)
+                buf.setInteger(UInt16(buf.writerIndex - start), at: payloadStart)
             } else {
-                buf.write(integer: UInt16(0))
+                buf.writeInteger(UInt16(0))
             }
             
             if let value = field {
@@ -1025,8 +1025,8 @@ struct HTTP2FrameEncoder {
                 buf.moveWriterIndex(forwardBy: 2)
                 
                 let start = buf.writerIndex
-                buf.write(string: origin)
-                buf.set(integer: UInt16(buf.writerIndex - start), at: sizeLoc)
+                buf.writeString(origin)
+                buf.setInteger(UInt16(buf.writerIndex - start), at: sizeLoc)
             }
             
             buf.writePayloadSize(buf.writerIndex - payloadStart, at: start)
@@ -1066,7 +1066,7 @@ fileprivate extension ByteBuffer {
         bytes.1 = UInt8((size & 0x00_ff_00) >>  8)
         bytes.2 = UInt8( size & 0x00_00_ff)
         withUnsafeBytes(of: bytes) { ptr in
-            _ = self.set(bytes: ptr, at: location)
+            _ = self.setBytes(ptr, at: location)
         }
     }
     

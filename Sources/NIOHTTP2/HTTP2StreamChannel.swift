@@ -25,6 +25,10 @@ public enum StreamIDOption: ChannelOption {
     public typealias OptionType = HTTP2StreamID
 
     case const(Void)
+
+    public static func ==(lhs: StreamIDOption, rhs: StreamIDOption) -> Bool {
+        return true
+    }
 }
 
 /// The various channel options specific to `HTTP2StreamChannel`s.
@@ -79,7 +83,7 @@ private enum StreamChannelState {
 final class HTTP2StreamChannel: Channel, ChannelCore {
     internal init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID, targetWindowSize: Int32, initiatedRemotely: Bool) {
         self.allocator = allocator
-        self.closePromise = parent.eventLoop.newPromise()
+        self.closePromise = parent.eventLoop.makePromise()
         self.localAddress = parent.localAddress
         self.remoteAddress = parent.remoteAddress
         self.parent = parent
@@ -108,9 +112,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        let f = self.parent!.getOption(option: ChannelOptions.autoRead).then { autoRead -> EventLoopFuture<Void> in
+        let f = self.parent!.getOption(option: ChannelOptions.autoRead).flatMap { autoRead -> EventLoopFuture<Void> in
             self.autoRead = autoRead
-            return initializer?(self, self.streamID) ?? self.eventLoop.newSucceededFuture(result: ())
+            return initializer?(self, self.streamID) ?? self.eventLoop.makeSucceededFuture(())
         }.map {
             // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
             // If parent is not active, we expect to receive a channelActive later.
@@ -171,9 +175,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     func setOption<T>(option: T, value: T.OptionType) -> EventLoopFuture<Void> where T: ChannelOption {
         if eventLoop.inEventLoop {
             do {
-                return eventLoop.newSucceededFuture(result: try setOption0(option: option, value: value))
+                return eventLoop.makeSucceededFuture(try setOption0(option: option, value: value))
             } catch {
-                return eventLoop.newFailedFuture(error: error)
+                return eventLoop.makeFailedFuture(error)
             }
         } else {
             return eventLoop.submit { try self.setOption0(option: option, value: value) }
@@ -183,9 +187,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     public func getOption<T>(option: T) -> EventLoopFuture<T.OptionType> where T: ChannelOption {
         if eventLoop.inEventLoop {
             do {
-                return eventLoop.newSucceededFuture(result: try getOption0(option: option))
+                return eventLoop.makeSucceededFuture(try getOption0(option: option))
             } catch {
-                return eventLoop.newFailedFuture(error: error)
+                return eventLoop.makeFailedFuture(error)
             }
         } else {
             return eventLoop.submit { try self.getOption0(option: option) }
@@ -222,7 +226,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         return self.state == .active || self.state == .closing
     }
 
-    public var _unsafe: ChannelCore {
+    public var _channelCore: ChannelCore {
         return self
     }
 
@@ -243,7 +247,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     /// In the future this buffer will be used to manage interactions with read() and even, one day,
     /// with flow control. For now, though, all this does is hold frames until we have set the
     /// channel up.
-    private var pendingReads: CircularBuffer<HTTP2Frame> = CircularBuffer(initialRingCapacity: 8)
+    private var pendingReads: CircularBuffer<HTTP2Frame> = CircularBuffer(initialCapacity: 8)
 
     /// Whether `autoRead` is enabled. By default, all `HTTP2StreamChannel` objects inherit their `autoRead`
     /// state from their parent.
@@ -257,7 +261,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     ///
     /// To correctly respect flushes, we deliberately withold frames from the parent channel until this
     /// stream is flushed, at which time we deliver them all. This buffer holds the pending ones.
-    private var pendingWrites: MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)> = MarkedCircularBuffer(initialRingCapacity: 8)
+    private var pendingWrites: MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)> = MarkedCircularBuffer(initialCapacity: 8)
 
     public func register0(promise: EventLoopPromise<Void>?) {
         fatalError("not implemented \(#function)")
@@ -273,7 +277,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     public func write0(_ data: NIOAny, promise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
-            promise?.fail(error: ChannelError.ioOnClosedChannel)
+            promise?.fail(ChannelError.ioOnClosedChannel)
             return
         }
 
@@ -310,14 +314,14 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // If the stream is already closed, we can fail this early and abort processing. If it's not, we need to emit a
         // RST_STREAM frame.
         guard self.state != .closed else {
-            promise?.fail(error: ChannelError.alreadyClosed)
+            promise?.fail(ChannelError.alreadyClosed)
             return
         }
 
         // Store the pending close promise: it'll be succeeded later.
         if let promise = promise {
             if let pendingPromise = self.pendingClosePromise {
-                pendingPromise.futureResult.cascade(promise: promise)
+                pendingPromise.futureResult.cascade(to: promise)
             } else {
                 self.pendingClosePromise = promise
             }
@@ -364,13 +368,13 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.failPendingWrites(error: ChannelError.eof)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
-            promise.succeed(result: ())
+            promise.succeed(())
         }
         self.pipeline.fireChannelInactive()
 
         self.eventLoop.execute {
             self.removeHandlers(channel: self)
-            self.closePromise.succeed(result: ())
+            self.closePromise.succeed(())
         }
     }
 
@@ -383,14 +387,14 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.failPendingWrites(error: error)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
-            promise.fail(error: error)
+            promise.fail(error)
         }
         self.pipeline.fireErrorCaught(error)
         self.pipeline.fireChannelInactive()
 
         self.eventLoop.execute {
             self.removeHandlers(channel: self)
-            self.closePromise.fail(error: error)
+            self.closePromise.fail(error)
         }
     }
 
@@ -425,10 +429,10 @@ private extension HTTP2StreamChannel {
     /// Drop all pending reads.
     private func dropPendingReads() {
         /// To drop all the reads, as we don't need to report it, we just allocate a new buffer of 0 size.
-        self.pendingReads = CircularBuffer(initialRingCapacity: 0)
+        self.pendingReads = CircularBuffer(initialCapacity: 0)
     }
 
-    /// Deliver all pending reads to the channel.
+    /// DinitialCapacityreads to the channel.
     private func deliverPendingReads() {
         assert(self.isActive)
         while self.pendingReads.count > 0 {
@@ -440,11 +444,11 @@ private extension HTTP2StreamChannel {
     /// Delivers all pending flushed writes to the parent channel.
     private func deliverPendingWrites() {
         // If there are no pending writes, don't bother with the processing.
-        guard self.pendingWrites.hasMark() else {
+        guard self.pendingWrites.hasMark else {
             return
         }
 
-        while self.pendingWrites.hasMark() {
+        while self.pendingWrites.hasMark {
             let write = self.pendingWrites.removeFirst()
             self.receiveOutboundFrame(write.0, promise: write.1)
         }
@@ -455,7 +459,7 @@ private extension HTTP2StreamChannel {
     private func failPendingWrites(error: Error) {
         assert(self.state == .closed)
         while self.pendingWrites.count > 0 {
-            self.pendingWrites.removeFirst().1?.fail(error: error)
+            self.pendingWrites.removeFirst().1?.fail(error)
         }
     }
 }
@@ -485,7 +489,7 @@ internal extension HTTP2StreamChannel {
     private func receiveOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         guard let parent = self.parent, self.state != .closed else {
             let error = ChannelError.alreadyClosed
-            promise?.fail(error: error)
+            promise?.fail(error)
             self.errorEncountered(error: error)
             return
         }

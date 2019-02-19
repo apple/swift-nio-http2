@@ -38,7 +38,7 @@ class DataFrameCatcher: ChannelOutboundHandler {
         case .data(let data):
             ctx.write(self.wrapOutboundOut(data), promise: promise)
         default:
-            promise?.succeed(result: ())
+            promise?.succeed(())
         }
     }
 }
@@ -61,7 +61,7 @@ class FlowControlHandlerTests: XCTestCase {
     }
 
     private func makeWritePromise() -> EventLoopPromise<Void> {
-        return self.channel.eventLoop.newPromise()
+        return self.channel.eventLoop.makePromise()
     }
 
     private func receivedFrames() -> [HTTP2Frame] {
@@ -77,7 +77,7 @@ class FlowControlHandlerTests: XCTestCase {
 
         let firstWritePromise = self.makeWritePromise()
         var firstWriteComplete = false
-        firstWritePromise.futureResult.whenComplete {
+        firstWritePromise.futureResult.whenComplete { _ in
             firstWriteComplete = true
         }
 
@@ -200,15 +200,15 @@ class FlowControlHandlerTests: XCTestCase {
 
         // All of these frames are written.
         var frameWriteCount = 0
-        self.channel.write(windowUpdateFrame).whenComplete {
+        self.channel.write(windowUpdateFrame).whenComplete { _ in
             XCTAssertEqual(frameWriteCount, 0)
             frameWriteCount = 1
         }
-        self.channel.write(priorityFrame).whenComplete {
+        self.channel.write(priorityFrame).whenComplete { _ in
             XCTAssertEqual(frameWriteCount, 1)
             frameWriteCount = 2
         }
-        self.channel.write(rstStreamFrame).whenComplete {
+        self.channel.write(rstStreamFrame).whenComplete { _ in
             XCTAssertEqual(frameWriteCount, 2)
             frameWriteCount = 3
         }
@@ -239,7 +239,7 @@ class FlowControlHandlerTests: XCTestCase {
 
         // We send a large DATA frame here.
         var frameWritten = false
-        let framePromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        let framePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         framePromise.futureResult.map {
             frameWritten = true
         }.whenFailure {
@@ -321,8 +321,8 @@ class FlowControlHandlerTests: XCTestCase {
 
         // Send a DATA frame that's too big, and a HEADERS frame. We will expect
         // these to both fail.
-        let dataPromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
-        let headersPromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        let dataPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
+        let headersPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
 
         var writtenData = self.channel.writeDataFrame(streamOne, byteBufferSize: 50, promise: dataPromise)
         self.channel.write(HTTP2Frame(streamID: streamOne, payload: .headers(HPACKHeaders([("key", "value")]), nil)), promise: headersPromise)
@@ -355,7 +355,7 @@ class FlowControlHandlerTests: XCTestCase {
 
     func testWritesForUnknownStreamsFail() {
         let streamOne = HTTP2StreamID(1)
-        let dataPromise: EventLoopPromise<Void> = self.channel.eventLoop.newPromise()
+        let dataPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
 
         self.channel.writeDataFrame(streamOne, byteBufferSize: 50, promise: dataPromise)
 
@@ -464,7 +464,7 @@ private extension EmbeddedChannel {
     @discardableResult
     func writeDataFrame(_ streamID: HTTP2StreamID, byteBufferSize: Int, flags: HTTP2Frame.FrameFlags = .init(), promise: EventLoopPromise<Void>? = nil) -> ByteBuffer {
         var buffer = self.allocator.buffer(capacity: byteBufferSize)
-        buffer.write(bytes: repeatElement(UInt8(0xff), count: byteBufferSize))
+        buffer.writeBytes(repeatElement(UInt8(0xff), count: byteBufferSize))
         let frame = HTTP2Frame(streamID: streamID, flags: flags, payload: .data(.byteBuffer(buffer)))
 
         self.pipeline.write(NIOAny(frame), promise: promise)

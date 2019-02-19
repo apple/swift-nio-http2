@@ -145,8 +145,8 @@ public struct HPACKHeaders {
         }
         
         let nameStart = self.buffer.writerIndex
-        let nameLength = self._storage.buffer.write(string: name)!
-        let valueLength = self._storage.buffer.write(string: value)!
+        let nameLength = self._storage.buffer.writeString(name)
+        let valueLength = self._storage.buffer.writeString(value)
         
         self._storage.headers.append(HPACKHeader(start: nameStart, nameLength: nameLength,
                                                  valueLength: valueLength, indexing: indexing))
@@ -169,8 +169,8 @@ public struct HPACKHeaders {
         }
         
         let nameStart = self.buffer.writerIndex
-        let nameLength = self._storage.buffer.write(bytes: nameBytes)
-        let valueLength = self._storage.buffer.write(bytes: valueBytes)
+        let nameLength = self._storage.buffer.writeBytes(nameBytes)
+        let valueLength = self._storage.buffer.writeBytes(valueBytes)
         self._storage.headers.append(HPACKHeader(start: nameStart, nameLength: nameLength,
                                                  valueLength: valueLength, indexing: indexing))
     }

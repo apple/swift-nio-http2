@@ -37,25 +37,25 @@ func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
     if value < k {
         // it fits already!
         initialByte |= UInt8(truncatingIfNeeded: value)
-        buffer.write(integer: initialByte)
+        buffer.writeInteger(initialByte)
         return 1
     }
     
     // if it won't fit in this byte altogether, fill in all the remaining bits and move
     // to the next byte.
     initialByte |= UInt8(truncatingIfNeeded: k)
-    buffer.write(integer: initialByte)
+    buffer.writeInteger(initialByte)
     
     // deduct the initial [prefix] bits from the value, then encode it seven bits at a time into
     // the remaining bytes.
     var n = value - UInt(k)
     while n >= 128 {
         let nextByte = (1 << 7) | UInt8(n & 0x7f)
-        buffer.write(integer: nextByte)
+        buffer.writeInteger(nextByte)
         n >>= 7
     }
     
-    buffer.write(integer: UInt8(n))
+    buffer.writeInteger(UInt8(n))
     return buffer.writerIndex - start
 }
 

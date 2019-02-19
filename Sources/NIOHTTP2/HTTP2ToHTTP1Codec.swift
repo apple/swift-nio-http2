@@ -101,7 +101,7 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
                 payload = HTTP2Frame.FramePayload.data(.byteBuffer(ctx.channel.allocator.buffer(capacity: 0)))
             }
 
-            var frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
+            let frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }
@@ -178,7 +178,7 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
                 payload = HTTP2Frame.FramePayload.data(.byteBuffer(ctx.channel.allocator.buffer(capacity: 0)))
             }
 
-            var frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
+            let frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }

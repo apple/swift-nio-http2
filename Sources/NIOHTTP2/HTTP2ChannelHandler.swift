@@ -295,7 +295,7 @@ extension NIOHTTP2Handler {
     private func writeAndFlushPreamble(ctx: ChannelHandlerContext) {
         if case .client = self.mode {
             self.writeBuffer.clear()
-            self.writeBuffer.write(staticString: NIOHTTP2Handler.clientMagic)
+            self.writeBuffer.writeStaticString(NIOHTTP2Handler.clientMagic)
             ctx.write(self.wrapOutboundOut(.byteBuffer(self.writeBuffer)), promise: nil)
         }
 
@@ -375,7 +375,7 @@ extension NIOHTTP2Handler {
 
     /// A stream or connection error was hit while attempting to send a frame.
     private func outboundErrorTriggered(ctx: ChannelHandlerContext, promise: EventLoopPromise<Void>?, underlyingError: Error) {
-        promise?.fail(error: underlyingError)
+        promise?.fail(underlyingError)
         ctx.fireErrorCaught(underlyingError)
     }
 }

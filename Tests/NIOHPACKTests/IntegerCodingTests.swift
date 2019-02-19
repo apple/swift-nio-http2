@@ -32,7 +32,7 @@ class IntegerCodingTests : XCTestCase {
     
     private func decodeInteger(from array: [UInt8], prefix: Int) throws -> UInt {
         scratchBuffer.clear()
-        scratchBuffer.write(bytes: array)
+        scratchBuffer.writeBytes(array)
         let (r, _) = try NIOHPACK.decodeInteger(from: scratchBuffer.readableBytesView, prefix: prefix)
         return r
     }

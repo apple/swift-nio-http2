@@ -20,9 +20,9 @@ class HPACKCodingTests: XCTestCase {
     
     let allocator = ByteBufferAllocator()
 
-    private func buffer<C : ContiguousCollection>(wrapping bytes: C) -> ByteBuffer where C.Element == UInt8 {
+    private func buffer<C: Collection>(wrapping bytes: C) -> ByteBuffer where C.Element == UInt8 {
         var buffer = allocator.buffer(capacity: bytes.count)
-        buffer.write(bytes: bytes)
+        buffer.writeBytes(bytes)
         return buffer
     }
     

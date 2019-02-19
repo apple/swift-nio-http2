@@ -81,8 +81,8 @@ final class ReentrancyTests: XCTestCase {
 
         // Collect the serialized frames.
         var frameBuffer = self.clientChannel.allocator.buffer(capacity: 1024)
-        while case .some(.byteBuffer(var buf)) = self.clientChannel.readOutbound() {
-            frameBuffer.write(buffer: &buf)
+        while case .some(.byteBuffer(var buf)) = self.clientChannel.readOutbound(as: IOData.self) {
+            frameBuffer.writeBuffer(&buf)
         }
 
         // Ok, now we can add in the re-entrancy handler to the server channel. When it first gets a frame it's

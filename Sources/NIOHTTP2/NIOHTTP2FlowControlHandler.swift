@@ -54,7 +54,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
                 // We don't have this stream ID. This is an internal error, but we won't precondition on it as
                 // it can happen due to channel handler misconfiguration or other weirdness. We'll just complain.
                 let error = NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID)
-                promise?.fail(error: error)
+                promise?.fail(error)
                 ctx.fireErrorCaught(error)
             }
         case .headers(let headers, let priorityData):
@@ -272,11 +272,11 @@ private struct DataBuffer {
     }
 
     var hasMark: Bool {
-        return self.bufferedChunks.hasMark()
+        return self.bufferedChunks.hasMark
     }
 
     init() {
-        self.bufferedChunks = MarkedCircularBuffer(initialRingCapacity: 8)
+        self.bufferedChunks = MarkedCircularBuffer(initialCapacity: 8)
         self.flushedBufferedBytes = 0
     }
 
@@ -286,7 +286,7 @@ private struct DataBuffer {
 
     /// Marks the current point in the buffer as the place up to which we have flushed.
     mutating func markFlushPoint() {
-        if let markIndex = self.bufferedChunks.markedElementIndex() {
+        if let markIndex = self.bufferedChunks.markedElementIndex {
             for element in self.bufferedChunks.suffix(from: markIndex) {
                 if case .data(let contents) = element.0 {
                     self.flushedBufferedBytes += UInt(contents.readableBytes)
@@ -333,7 +333,7 @@ private struct DataBuffer {
     mutating func failAllWrites(error: Error) {
         while self.bufferedChunks.count > 0 {
             let (_, _, promise) = self.bufferedChunks.removeFirst()
-            promise?.fail(error: error)
+            promise?.fail(error)
         }
     }
 }

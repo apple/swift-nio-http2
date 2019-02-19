@@ -36,7 +36,7 @@ extension XCTestCase {
         var operated: Bool
 
         func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
-            guard let data = channel.readOutbound() else {
+            guard let data = channel.readOutbound(as: IOData.self) else {
                 return nil
             }
             switch data {
@@ -65,8 +65,8 @@ extension XCTestCase {
     func deliverAllBytes(from sourceChannel: EmbeddedChannel, to targetChannel: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) {
         // Collect the serialized data.
         var frameBuffer = sourceChannel.allocator.buffer(capacity: 1024)
-        while case .some(.byteBuffer(var buf)) = sourceChannel.readOutbound() {
-            frameBuffer.write(buffer: &buf)
+        while case .some(.byteBuffer(var buf)) = sourceChannel.readOutbound(as: IOData.self) {
+            frameBuffer.writeBuffer(&buf)
         }
 
         XCTAssertNoThrow(try targetChannel.writeInbound(frameBuffer), file: file, line: line)

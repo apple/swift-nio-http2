@@ -196,7 +196,7 @@ extension ByteBuffer {
                 throw HuffmanDecodeError.InvalidState()
             }
             if t.flags.contains(.symbol) {
-                output.write(integer: t.sym)
+                output.writeInteger(t.sym)
             }
             
             t = decoderTable[state: t.state, nybble: ch & 0xf]
@@ -204,7 +204,7 @@ extension ByteBuffer {
                 throw HuffmanDecodeError.InvalidState()
             }
             if t.flags.contains(.symbol) {
-                output.write(integer: t.sym)
+                output.writeInteger(t.sym)
             }
             
             state = t.state
