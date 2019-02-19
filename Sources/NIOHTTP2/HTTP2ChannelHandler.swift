@@ -70,6 +70,11 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// The initial local settings of this connection. Sent as part of the preamble.
     private let initialSettings: HTTP2Settings
 
+    // TODO(cory): We should revisit this: ideally we won't drop frames but would still deliver them where
+    // possible, but I'm not doing that right now.
+    /// Whether the channel has closed. If it has, we abort the decode loop, as we don't delay channelInactive.
+    private var channelClosed: Bool = false
+
     /// The mode for this parser to operate in: client or server.
     public enum ParserMode {
         /// Client mode
@@ -98,6 +103,11 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public func channelActive(ctx: ChannelHandlerContext) {
         self.writeAndFlushPreamble(ctx: ctx)
         ctx.fireChannelActive()
+    }
+
+    public func channelInactive(ctx: ChannelHandlerContext) {
+        self.channelClosed = true
+        ctx.fireChannelInactive()
     }
 
     public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
@@ -137,7 +147,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
 extension NIOHTTP2Handler {
     /// Spins over the frame decoder parsing frames and sending them down the channel pipeline.
     private func frameDecodeLoop(ctx: ChannelHandlerContext) {
-        while let (nextFrame, length) = self.decodeFrame(ctx: ctx) {
+        while !self.channelClosed, let (nextFrame, length) = self.decodeFrame(ctx: ctx) {
             guard case .continue = self.processFrame(nextFrame, flowControlledLength: length, ctx: ctx) else {
                 break
             }

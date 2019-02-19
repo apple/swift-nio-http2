@@ -125,10 +125,10 @@ final class ReentrancyTests: XCTestCase {
         // Now we can deliver these bytes.
         self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
 
-        // If this worked, we want to see that the server received SETTINGS then PING. No other order is
-        // ok, no errors should have been hit, and the channel should now be closed.
+        // If this worked, we want to see that the server received SETTINGS. The PING frame should not be produced, as
+        // the channelInactive has been fired. No other order is ok, no errors should have been hit, and the channel
+        // should now be closed.
         try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: settingsFrame)
-        try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: pingFrame)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())

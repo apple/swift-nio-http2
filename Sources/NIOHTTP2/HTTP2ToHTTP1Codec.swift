@@ -85,7 +85,7 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         switch responsePart {
         case .head(let head):
             let h1Headers = HTTPHeaders(requestHead: head, protocolString: self.protocolString)
-            let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(HPACKHeaders(httpHeaders: h1Headers), nil))
+            let frame = HTTP2Frame(streamID: self.streamID, flags: .endHeaders, payload: .headers(HPACKHeaders(httpHeaders: h1Headers), nil))
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):
             let payload = HTTP2Frame.FramePayload.data(body)
@@ -93,14 +93,15 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .end(let trailers):
             let payload: HTTP2Frame.FramePayload
+            var flags: HTTP2Frame.FrameFlags = .endStream
             if let trailers = trailers {
                 payload = .headers(HPACKHeaders(httpHeaders: trailers), nil)
+                flags.insert(.endHeaders)
             } else {
                 payload = HTTP2Frame.FramePayload.data(.byteBuffer(ctx.channel.allocator.buffer(capacity: 0)))
             }
 
-            var frame = HTTP2Frame(streamID: self.streamID, payload: payload)
-            frame.flags.insert(.endStream)
+            var frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }
@@ -161,7 +162,7 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
         switch responsePart {
         case .head(let head):
             let h1 = HTTPHeaders(responseHead: head)
-            let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(HPACKHeaders(httpHeaders: h1), nil))
+            let frame = HTTP2Frame(streamID: self.streamID, flags: .endHeaders, payload: .headers(HPACKHeaders(httpHeaders: h1), nil))
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):
             let payload = HTTP2Frame.FramePayload.data(body)
@@ -169,14 +170,15 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         case .end(let trailers):
             let payload: HTTP2Frame.FramePayload
+            var flags: HTTP2Frame.FrameFlags = .endStream
             if let trailers = trailers {
                 payload = .headers(HPACKHeaders(httpHeaders: trailers), nil)
+                flags.insert(.endHeaders)
             } else {
                 payload = HTTP2Frame.FramePayload.data(.byteBuffer(ctx.channel.allocator.buffer(capacity: 0)))
             }
 
-            var frame = HTTP2Frame(streamID: self.streamID, payload: payload)
-            frame.flags.insert(.endStream)
+            var frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
             ctx.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }
