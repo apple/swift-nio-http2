@@ -31,6 +31,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private let inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?
     private let channel: Channel
     private var nextOutboundStreamID: HTTP2StreamID
+    private let connectionFlowControlManager: InboundWindowManager
 
     public func handlerAdded(ctx: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
@@ -54,6 +55,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
                                              streamID: streamID,
+                                             targetWindowSize: 65535,  // TODO: make configurable
                                              initiatedRemotely: true)
             channel.configure(initializer: self.inboundStreamStateInitializer)
             self.streams[streamID] = channel
@@ -86,19 +88,37 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     }
 
     public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
-        // The only event we care about right now is StreamClosedEvent, and in particular
-        // we only care about it if we still have the stream channel for the stream
-        // in question.
-        guard let evt = event as? StreamClosedEvent, let channel = self.streams[evt.streamID] else {
-            ctx.fireUserInboundEventTriggered(event)
-            return
+        switch event {
+        case let evt as StreamClosedEvent:
+            if let channel = self.streams[evt.streamID] {
+                channel.receiveStreamClosed(evt.reason)
+            }
+        case let evt as NIOHTTP2WindowUpdatedEvent where evt.streamID == .rootStream:
+            // This force-unwrap is safe: we always have a connection window.
+            self.newConnectionWindowSize(newSize: evt.inboundWindowSize!, ctx: ctx)
+        case let evt as NIOHTTP2WindowUpdatedEvent:
+            if let channel = self.streams[evt.streamID], let windowSize = evt.inboundWindowSize {
+                channel.receiveWindowUpdatedEvent(windowSize)
+            }
+        default:
+            break
         }
 
-        channel.receiveStreamClosed(evt.reason)
+        ctx.fireUserInboundEventTriggered(event)
     }
 
     private func childChannelClosed(streamID: HTTP2StreamID) {
         self.streams.removeValue(forKey: streamID)
+    }
+
+    private func newConnectionWindowSize(newSize: Int, ctx: ChannelHandlerContext) {
+        guard let increment = self.connectionFlowControlManager.newWindowSize(newSize) else {
+            return
+        }
+
+        // This is too much flushing, but for now it'll have to do.
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .windowUpdate(windowSizeIncrement: increment))
+        ctx.writeAndFlush(self.wrapOutboundOut(frame), promise: nil)
     }
 
     /// Create a new `HTTP2StreamMultiplexer`.
@@ -106,14 +126,16 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     /// - parameters:
     ///     - mode: The mode of the HTTP/2 connection being used: server or client.
     ///     - channel: The Channel to which this `HTTP2StreamMultiplexer` belongs.
+    ///     - targetWindowSize: The target inbound connection and stream window size. Defaults to 65535 bytes.
     ///     - inboundStreamStateInitializer: A block that will be invoked to configure each new child stream
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
     ///         `createStreamChannel`.
-    public init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
+    public init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, targetWindowSize: Int = 65535, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
         self.inboundStreamStateInitializer = inboundStreamStateInitializer
         self.channel = channel
+        self.connectionFlowControlManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
 
         switch mode {
         case .client:
@@ -142,6 +164,7 @@ extension HTTP2StreamMultiplexer {
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
                                              streamID: streamID,
+                                             targetWindowSize: 65535,  // TODO: make configurable
                                              initiatedRemotely: false)
             let activationFuture = channel.configure(initializer: streamStateInitializer)
             self.streams[streamID] = channel

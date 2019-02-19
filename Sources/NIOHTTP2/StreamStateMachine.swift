@@ -302,7 +302,7 @@ extension HTTP2StreamStateMachine {
                 targetEffect = .streamCreatedAndClosed(.init(streamID: self.streamID))
             } else {
                 targetState = .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localWindow: localWindow)
-                targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
             }
 
             return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
@@ -377,7 +377,7 @@ extension HTTP2StreamStateMachine {
                 targetEffect = .streamCreatedAndClosed(.init(streamID: self.streamID))
             } else {
                 targetState = .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteWindow: remoteWindow)
-                targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
             }
 
             return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
@@ -433,7 +433,7 @@ extension HTTP2StreamStateMachine {
                 let effect: StreamStateChange
                 if endStream {
                     self.state = .halfClosedLocalPeerIdle(remoteWindow: remoteWindow)
-                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
                 } else {
                     self.state = .halfOpenLocalPeerIdle(localWindow: localWindow, remoteWindow: remoteWindow)
                     effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
@@ -457,7 +457,7 @@ extension HTTP2StreamStateMachine {
                     effect = .streamClosed(.init(streamID: self.streamID, reason: nil))
                 } else {
                     self.state = .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: initiatedBy, localWindow: localWindow)
-                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
                 }
 
                 return .init(result: .succeed, effect: effect)
@@ -489,7 +489,7 @@ extension HTTP2StreamStateMachine {
                 let effect: StreamStateChange
                 if endStream {
                     self.state = .halfClosedRemoteLocalIdle(localWindow: localWindow)
-                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
                 } else {
                     self.state = .halfOpenRemoteLocalIdle(localWindow: localWindow, remoteWindow: remoteWindow)
                     effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
@@ -503,7 +503,7 @@ extension HTTP2StreamStateMachine {
                 let effect: StreamStateChange
                 if endStream {
                     self.state = .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow)
-                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
                 } else {
                     self.state = .fullyOpen(localRole: localRole, localWindow: localWindow, remoteWindow: remoteWindow)
                     effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
@@ -520,7 +520,7 @@ extension HTTP2StreamStateMachine {
                     effect = .streamClosed(.init(streamID: self.streamID, reason: nil))
                 } else {
                     self.state = .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
-                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                    effect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
                 }
 
                 return .init(result: .succeed, effect: effect)
@@ -602,7 +602,7 @@ extension HTTP2StreamStateMachine {
             case .reservedRemote(remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .reservedRemote(remoteWindow: remoteWindow)
-                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfOpenLocalPeerIdle(localWindow: let localWindow, remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
@@ -622,12 +622,12 @@ extension HTTP2StreamStateMachine {
             case .halfClosedLocalPeerIdle(remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedLocalPeerIdle(remoteWindow: remoteWindow)
-                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .halfClosedLocalPeerActive(localRole: let localRole, initiatedBy: let initiatedBy, remoteWindow: var remoteWindow):
                 try remoteWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: initiatedBy, remoteWindow: remoteWindow)
-                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: 0, remoteStreamWindowSize: Int(remoteWindow)))
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .idle, .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive, .closed:
                 return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
@@ -662,7 +662,7 @@ extension HTTP2StreamStateMachine {
             case .reservedLocal(localWindow: var localWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .reservedLocal(localWindow: localWindow)
-                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
 
             case .halfOpenLocalPeerIdle(localWindow: var localWindow, remoteWindow: let remoteWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
@@ -682,12 +682,12 @@ extension HTTP2StreamStateMachine {
             case .halfClosedRemoteLocalIdle(localWindow: var localWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedRemoteLocalIdle(localWindow: localWindow)
-                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
 
             case .halfClosedRemoteLocalActive(localRole: let localRole, initiatedBy: let initiatedBy, localWindow: var localWindow):
                 try localWindow.windowUpdate(by: windowIncrement)
                 self.state = .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: initiatedBy, localWindow: localWindow)
-                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: 0))
+                windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
 
             case .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive:
                 // No-op, see above

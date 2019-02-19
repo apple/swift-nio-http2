@@ -77,7 +77,7 @@ private enum StreamChannelState {
 
 
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    internal init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID, initiatedRemotely: Bool) {
+    internal init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID, targetWindowSize: Int32, initiatedRemotely: Bool) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.newPromise()
         self.localAddress = parent.localAddress
@@ -85,6 +85,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.parent = parent
         self.eventLoop = parent.eventLoop
         self.streamID = streamID
+        self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
         // FIXME: that's just wrong
         self.isWritable = true
 
@@ -230,6 +231,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     private let streamID: HTTP2StreamID
 
     private var state: StreamChannelState
+
+    private let windowManager: InboundWindowManager
 
     /// If close0 was called but the stream could not synchronously close (because it's currently
     /// active), the promise is stored here until it can be fulfilled.
@@ -499,6 +502,15 @@ internal extension HTTP2StreamChannel {
             self.errorEncountered(error: err)
         } else {
             self.closedCleanly()
+        }
+    }
+
+    func receiveWindowUpdatedEvent(_ windowSize: Int) {
+        if let increment = self.windowManager.newWindowSize(windowSize) {
+            let frame = HTTP2Frame(streamID: self.streamID, payload: .windowUpdate(windowSizeIncrement: increment))
+            self.receiveOutboundFrame(frame, promise: nil)
+            // This flush should really go away, but we need it for now until we sort out window management.
+            self.parent?.flush()
         }
     }
 }

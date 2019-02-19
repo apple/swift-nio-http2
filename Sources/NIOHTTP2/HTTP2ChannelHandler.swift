@@ -17,9 +17,6 @@ import NIO
 //
 // - We don't account for padding in flow control.
 // - We don't process settings changes that affect HPACK or max frame size.
-// - We don't emit any user events.
-// - We don't do automatic SETTINGS ACKs
-// - We don't do automatic PING ACKs
 
 
 /// NIO's default settings used for initial settings values on HTTP/2 streams, when the user hasn't
@@ -279,20 +276,6 @@ extension NIOHTTP2Handler {
             ctx.fireUserInboundEventTriggered(event)
         }
     }
-
-    /// Temporary handler to emit automatic window management updates.
-    private func emitFlowControlManagement(streamID: HTTP2StreamID, flowControlledLength: Int, isEndStreamSet endStream: Bool, ctx: ChannelHandlerContext) {
-        guard flowControlledLength > 0 else {
-            return
-        }
-
-        var windowUpdateFrame = HTTP2Frame(streamID: .rootStream, payload: .windowUpdate(windowSizeIncrement: flowControlledLength))
-        self.processOutboundFrame(ctx: ctx, frame: windowUpdateFrame, promise: nil)
-        if !endStream {
-            windowUpdateFrame.streamID = streamID
-            self.processOutboundFrame(ctx: ctx, frame: windowUpdateFrame, promise: nil)
-        }
-    }
 }
 
 
@@ -400,13 +383,18 @@ extension NIOHTTP2Handler {
             self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason))
         case .streamCreated(let streamCreatedData):
             self.inboundEventBuffer.pendingUserEvent(NIOHTTP2StreamCreatedEvent(streamID: streamCreatedData.streamID,
-                                                                                localInitialWindowSize: UInt32(streamCreatedData.localStreamWindowSize),
-                                                                                remoteInitialWindowSize: UInt32(streamCreatedData.remoteStreamWindowSize)))
+                                                                                localInitialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init),
+                                                                                remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init)))
         case .bulkStreamClosure(let streamClosureData):
             for droppedStream in streamClosureData.closedStreams {
                 self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
             }
-        case .flowControlChange, .settingsChanged, .streamCreatedAndClosed:
+        case .flowControlChange(let change):
+            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: change.remoteConnectionWindowSize, outboundWindowSize: change.localConnectionWindowSize))
+            if let streamSize = change.localStreamWindowSize {
+                self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: streamSize.streamID, inboundWindowSize: streamSize.remoteStreamWindowSize, outboundWindowSize: streamSize.localStreamWindowSize))
+            }
+        case .settingsChanged, .streamCreatedAndClosed:
             break
         }
     }

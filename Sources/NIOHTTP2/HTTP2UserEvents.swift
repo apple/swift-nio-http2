@@ -44,11 +44,22 @@ public struct NIOHTTP2WindowUpdatedEvent {
     /// case the connection window has changed.
     public let streamID: HTTP2StreamID
 
-    public let newWindowSize: Int32
+    /// The new inbound window size for this stream, if any. May be nil if this stream is half-closed.
+    public let inboundWindowSize: Int?
 
-    public init(streamID: HTTP2StreamID, newWindowSize: Int32) {
+    /// The new outbound window size for this stream, if any. May be nil if this stream is half-closed.
+    public let outboundWindowSize: Int?
+
+    public init(streamID: HTTP2StreamID, inboundWindowSize: Int?, outboundWindowSize: Int?) {
+        // We use Int here instead of Int32. Nonetheless, the value must fit in the Int32 range.
+        precondition(inboundWindowSize == nil || inboundWindowSize! <= Int(HTTP2FlowControlWindow.maxSize))
+        precondition(outboundWindowSize == nil || outboundWindowSize! <= Int(HTTP2FlowControlWindow.maxSize))
+        precondition(inboundWindowSize == nil || inboundWindowSize! >= Int(Int32.min))
+        precondition(outboundWindowSize == nil || outboundWindowSize! >= Int(Int32.min))
+
         self.streamID = streamID
-        self.newWindowSize = newWindowSize
+        self.inboundWindowSize = inboundWindowSize
+        self.outboundWindowSize = outboundWindowSize
     }
 }
 
@@ -59,11 +70,13 @@ extension NIOHTTP2WindowUpdatedEvent: Equatable { }
 public struct NIOHTTP2StreamCreatedEvent {
     public let streamID: HTTP2StreamID
 
-    public let localInitialWindowSize: UInt32
+    /// The initial local stream window size. May be nil if this stream may never have data sent on it.
+    public let localInitialWindowSize: UInt32?
 
-    public let remoteInitialWidowSize: UInt32
+    /// The initial remote stream window size. May be nil if this stream may never have data received on it.
+    public let remoteInitialWidowSize: UInt32?
 
-    public init(streamID: HTTP2StreamID, localInitialWindowSize: UInt32, remoteInitialWindowSize: UInt32) {
+    public init(streamID: HTTP2StreamID, localInitialWindowSize: UInt32?, remoteInitialWindowSize: UInt32?) {
         self.streamID = streamID
         self.localInitialWindowSize = localInitialWindowSize
         self.remoteInitialWidowSize = remoteInitialWindowSize

@@ -200,6 +200,8 @@ extension HTTP2Frame {
             self.assertPriorityFrameMatches(this: frame, file: file, line: line)
         case .pushPromise:
             self.assertPushPromiseFrameMatches(this: frame, file: file, line: line)
+        case .windowUpdate:
+            self.assertWindowUpdateFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }
@@ -334,6 +336,14 @@ extension HTTP2Frame {
         XCTAssertEqual(self.ack, ack, "Non-matching ACK: expected \(ack), got \(self.ack)", file: file, line: line)
         XCTAssertEqual(actualPingData, opaqueData, "Non-matching ping data: expected \(opaqueData), got \(actualPingData)",
                        file: file, line: line)
+    }
+
+    func assertWindowUpdateFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .windowUpdate(let increment) = frame.payload else {
+            XCTFail("WINDOW_UPDATE frames can never match non-WINDOW_UPDATE frames", file: file, line: line)
+            return
+        }
+        self.assertWindowUpdateFrame(streamID: frame.streamID, windowIncrement: increment)
     }
 
     func assertWindowUpdateFrame(streamID: HTTP2StreamID, windowIncrement: Int, file: StaticString = #file, line: UInt = #line) {

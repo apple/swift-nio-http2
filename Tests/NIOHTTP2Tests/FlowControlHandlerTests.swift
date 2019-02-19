@@ -449,12 +449,12 @@ private extension EmbeddedChannel {
         self.pipeline.fireUserInboundEventTriggered(NIOHTTP2StreamCreatedEvent(streamID: streamID, localInitialWindowSize: initialWindowSize, remoteInitialWindowSize: initialWindowSize))
     }
 
-    func updateStreamWindowSize(_ streamID: HTTP2StreamID, newWindowSize: Int32) {
-        self.pipeline.fireUserInboundEventTriggered(NIOHTTP2WindowUpdatedEvent(streamID: streamID, newWindowSize: newWindowSize))
+    func updateStreamWindowSize(_ streamID: HTTP2StreamID, newWindowSize: Int) {
+        self.pipeline.fireUserInboundEventTriggered(NIOHTTP2WindowUpdatedEvent(streamID: streamID, inboundWindowSize: 0, outboundWindowSize: newWindowSize))
     }
 
-    func updateConnectionWindowSize(newWindowSize: Int32) {
-        self.pipeline.fireUserInboundEventTriggered(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, newWindowSize: newWindowSize))
+    func updateConnectionWindowSize(newWindowSize: Int) {
+        self.pipeline.fireUserInboundEventTriggered(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: 0, outboundWindowSize: newWindowSize))
     }
 
     func closeStream(_ streamID: HTTP2StreamID, reason: HTTP2ErrorCode?) {

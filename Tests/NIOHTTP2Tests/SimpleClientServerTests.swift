@@ -181,6 +181,17 @@ class HTTP2ParserProxyHandler: ChannelInboundHandler {
     }
 }
 
+/// A simple channel handler that records inbound frames.
+class FrameRecorderHandler: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame
+
+    var receivedFrames: [HTTP2Frame] = []
+
+    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+        self.receivedFrames.append(self.unwrapInboundIn(data))
+    }
+}
+
 class SimpleClientServerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
@@ -196,7 +207,9 @@ class SimpleClientServerTests: XCTestCase {
     }
 
     /// Establish a basic HTTP/2 connection.
-    func basicHTTP2Connection(withFlowControl flowControl: Bool = false, withConcurrentStreamsLimit limitStreams: Bool = false) throws {
+    func basicHTTP2Connection(withFlowControl flowControl: Bool = false,
+                              withConcurrentStreamsLimit limitStreams: Bool = false,
+                              withMultiplexerCallback multiplexerCallback: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
 
@@ -208,6 +221,15 @@ class SimpleClientServerTests: XCTestCase {
         if limitStreams {
             XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 100)).wait())
             XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .server, initialMaxOutboundStreams: 100)).wait())
+        }
+
+        if let multiplexerCallback = multiplexerCallback {
+            XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2StreamMultiplexer(mode: .client,
+                                                                                                 channel: self.clientChannel,
+                                                                                                 inboundStreamStateInitializer: multiplexerCallback)).wait())
+            XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2StreamMultiplexer(mode: .server,
+                                                                                                 channel: self.serverChannel,
+                                                                                                 inboundStreamStateInitializer: multiplexerCallback)).wait())
         }
 
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
@@ -461,7 +483,11 @@ class SimpleClientServerTests: XCTestCase {
 
     func testSendingDataFrameWithLargeFile() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection(withFlowControl: true)
+        // We add the stream multiplexer because it'll emit WINDOW_UPDATE frames, which we need.
+        let serverHandler = FrameRecorderHandler()
+        try self.basicHTTP2Connection(withFlowControl: true) { channel, streamID in
+            return channel.pipeline.add(handler: serverHandler)
+        }
 
         // We're going to create a largish temp file: 3 data frames in size.
         var bodyData = self.clientChannel.allocator.buffer(capacity: 1<<14)
@@ -476,33 +502,38 @@ class SimpleClientServerTests: XCTestCase {
 
             let region = try FileRegion(fileHandle: handle)
 
+            let clientHandler = FrameRecorderHandler()
+            let childChannelPromise = self.clientChannel.eventLoop.newPromise(of: Channel.self)
+            try (self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler as! HTTP2StreamMultiplexer).createStreamChannel(promise: childChannelPromise) { channel, streamID in
+                return channel.pipeline.add(handler: clientHandler)
+            }
+            (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+            let childChannel = try childChannelPromise.futureResult.wait()
+
             // Start by sending the headers.
             let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
             let clientStreamID = HTTP2StreamID(1)
             let reqFrame = HTTP2Frame(streamID: clientStreamID, flags: .endHeaders, payload: .headers(headers, nil))
-            let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+            childChannel.writeAndFlush(reqFrame, promise: nil)
+            self.interactInMemory(self.clientChannel, self.serverChannel)
 
-            // Ok, we're gonna send the body here. This should create 4 streams.
+            serverHandler.receivedFrames.assertFramesMatch([reqFrame])
+            self.clientChannel.assertNoFramesReceived()
+            self.serverChannel.assertNoFramesReceived()
+
+            // Ok, we're gonna send the body here.
             var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.fileRegion(region)))
             reqBodyFrame.flags.insert(.endStream)
-            self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
+            childChannel.writeAndFlush(reqBodyFrame, promise: nil)
             self.interactInMemory(self.clientChannel, self.serverChannel)
 
             // We now expect 3 frames.
-            for idx in (0..<3) {
-                let frame = try self.serverChannel.assertReceivedFrame()
-                frame.assertDataFrame(endStream: idx == 2, streamID: serverStreamID, payload: bodyData)
-            }
+            let dataFrames = (0..<3).map { idx in HTTP2Frame(streamID: clientStreamID, flags: idx == 2 ? .endStream : [],  payload: .data(.byteBuffer(bodyData))) }
+            serverHandler.receivedFrames.assertFramesMatch([reqFrame] + dataFrames)
 
-            // The client will have seen a pair of window updates.
+            // The client will have seen a pair of window updates: one on the connection, one on the stream.
             try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
-            try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: clientStreamID, windowIncrement: 32768)
-
-            // Let's send a quick response back.
-            let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
-            var respFrame = HTTP2Frame(streamID: serverStreamID, flags: .endHeaders, payload: .headers(responseHeaders, nil))
-            respFrame.flags.insert(.endStream)
-            try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+            clientHandler.receivedFrames.assertFramesMatch([HTTP2Frame(streamID: clientStreamID, payload: .windowUpdate(windowSizeIncrement: 32768))])
 
             // No frames left.
             self.clientChannel.assertNoFramesReceived()
@@ -622,7 +653,10 @@ class SimpleClientServerTests: XCTestCase {
 
     func testAutomaticFlowControl() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection()
+        // We add the stream multiplexer here because it manages automatic flow control.
+        try self.basicHTTP2Connection(withFlowControl: true) { channel, streamID in
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
 
         // Now we're going to send a request, including a very large body: 65536 bytes in size. To avoid spending too much
         // time initializing buffers, we're going to send the same 1kB data frame 64 times.
@@ -630,27 +664,36 @@ class SimpleClientServerTests: XCTestCase {
         var requestBody = self.clientChannel.allocator.buffer(capacity: 1024)
         requestBody.write(bytes: Array(repeating: UInt8(0x04), count: 1024))
 
-        // Quickly open a stream before the main test begins.
-        let clientStreamID = HTTP2StreamID(1)
-        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(headers, nil))
-        let serverStreamId = try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+        // We're going to open a stream and queue up the frames for that stream.
+        let handler = try self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler as! HTTP2StreamMultiplexer
+        var childChannel: Channel? = nil
+        let childHandler = FrameRecorderHandler()
+        handler.createStreamChannel(promise: nil) { channel, streamID in
+            let reqFrame = HTTP2Frame(streamID: streamID, flags: .endHeaders, payload: .headers(headers, nil))
+            channel.write(reqFrame, promise: nil)
 
-        // Now prepare the large body.
-        var reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.byteBuffer(requestBody)))
-        for _ in 0..<63 {
-            self.clientChannel.write(reqBodyFrame, promise: nil)
+            // Now prepare the large body.
+            var reqBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(requestBody)))
+            for _ in 0..<63 {
+                channel.write(reqBodyFrame, promise: nil)
+            }
+            reqBodyFrame.flags.insert(.endStream)
+            channel.writeAndFlush(reqBodyFrame, promise: nil)
+            childChannel = channel
+
+            return channel.pipeline.add(handler: childHandler)
         }
-        reqBodyFrame.flags.insert(.endStream)
-        self.clientChannel.writeAndFlush(reqBodyFrame, promise: nil)
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
 
         // Ok, we now want to send this data to the server.
         self.interactInMemory(self.clientChannel, self.serverChannel)
 
         // We should also see 4 window update frames on the client side: two for the stream, two for the connection.
         try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
-        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: serverStreamId, windowIncrement: 32768)
-        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32767)
-        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: serverStreamId, windowIncrement: 32767)
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
+
+        let expectedChildFrames = [HTTP2Frame(streamID: 1, payload: .windowUpdate(windowSizeIncrement: 32768))]
+        childHandler.receivedFrames.assertFramesMatch(expectedChildFrames)
 
         // No other frames should be emitted, though the server may have many.
         self.clientChannel.assertNoFramesReceived()
@@ -779,8 +822,8 @@ class SimpleClientServerTests: XCTestCase {
         let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
 
         // At this stage the stream is still open, both handlers should have seen stream creation events.
-        XCTAssertEqual(clientHandler.events.count, 1)
-        XCTAssertEqual(serverHandler.events.count, 1)
+        XCTAssertEqual(clientHandler.events.count, 3)
+        XCTAssertEqual(serverHandler.events.count, 3)
         XCTAssertEqual(clientHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: clientStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
         XCTAssertEqual(serverHandler.events[0] as? NIOHTTP2StreamCreatedEvent, NIOHTTP2StreamCreatedEvent(streamID: serverStreamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
 
@@ -790,10 +833,10 @@ class SimpleClientServerTests: XCTestCase {
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // Now the streams are closed, they should have seen user events.
-        XCTAssertEqual(clientHandler.events.count, 2)
-        XCTAssertEqual(serverHandler.events.count, 2)
-        XCTAssertEqual(clientHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: nil))
-        XCTAssertEqual(serverHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: nil))
+        XCTAssertEqual(clientHandler.events.count, 4)
+        XCTAssertEqual(serverHandler.events.count, 4)
+        XCTAssertEqual(clientHandler.events[3] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: nil))
+        XCTAssertEqual(serverHandler.events[3] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: nil))
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())

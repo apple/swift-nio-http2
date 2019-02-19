@@ -106,12 +106,15 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
     public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
         switch event {
         case let event as NIOHTTP2WindowUpdatedEvent:
-            // We don't try to write here, we do it in channelReadComplete or flush.
-            self.updateWindowOfStream(event.streamID, newSize: event.newWindowSize)
+            if let windowSize = event.outboundWindowSize {
+                // We don't try to write here, we do it in channelReadComplete or flush.
+                self.updateWindowOfStream(event.streamID, newSize: Int32(windowSize))
+            }
         case let event as StreamClosedEvent:
             self.streamClosed(event.streamID, errorCode: event.reason ?? .streamClosed)
         case let event as NIOHTTP2StreamCreatedEvent:
-            self.streamCreated(event.streamID, initialWindowSize: event.localInitialWindowSize)
+            // Any stream with a nil flow control window we set to a window size of 0, forbidding sending data.
+            self.streamCreated(event.streamID, initialWindowSize: event.localInitialWindowSize ?? 0)
         default:
             break
         }

@@ -43,11 +43,17 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
     public struct StreamCreated: Hashable {
         public var streamID: HTTP2StreamID
 
-        public var localStreamWindowSize: Int
+        /// The initial local stream window size. This may be nil if there is no local stream window.
+        /// This occurs if the stream has been pushed by the remote peer, in which case we will never be able
+        /// to send on it.
+        public var localStreamWindowSize: Int?
 
-        public var remoteStreamWindowSize: Int
+        /// The initial remote stream window size. This may be nil if there is no remote stream window.
+        /// This occurs if the stream has been pushed by the local peer, in which case tje remote peer will never be able
+        /// to send on it.
+        public var remoteStreamWindowSize: Int?
 
-        public init(streamID: HTTP2StreamID, localStreamWindowSize: Int, remoteStreamWindowSize: Int) {
+        public init(streamID: HTTP2StreamID, localStreamWindowSize: Int?, remoteStreamWindowSize: Int?) {
             self.streamID = streamID
             self.localStreamWindowSize = localStreamWindowSize
             self.remoteStreamWindowSize = remoteStreamWindowSize
@@ -98,14 +104,17 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
 
         public var localStreamWindowSize: StreamWindowSizeChange?
 
+        /// The information about the stream window size. Either the local or remote
+        /// stream window information may be nil, if there is no flow control window
+        /// for that direction (e.g. if the stream is half-closed).
         public struct StreamWindowSizeChange: Hashable {
             public var streamID: HTTP2StreamID
 
-            public var localStreamWindowSize: Int
+            public var localStreamWindowSize: Int?
 
-            public var remoteStreamWindowSize: Int
+            public var remoteStreamWindowSize: Int?
 
-            public init(streamID: HTTP2StreamID, localStreamWindowSize: Int, remoteStreamWindowSize: Int) {
+            public init(streamID: HTTP2StreamID, localStreamWindowSize: Int?, remoteStreamWindowSize: Int?) {
                 self.streamID = streamID
                 self.localStreamWindowSize = localStreamWindowSize
                 self.remoteStreamWindowSize = remoteStreamWindowSize
