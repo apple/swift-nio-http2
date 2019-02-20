@@ -474,7 +474,7 @@ private extension EmbeddedChannel {
     @discardableResult
     func writeDataFrame(_ streamID: HTTP2StreamID, fileRegionSize: Int, flags: HTTP2Frame.FrameFlags = .init(), promise: EventLoopPromise<Void>? = nil) -> FileRegion {
         // We create a deliberately-invalid closed file handle, as we'll never actually use it.
-        let handle = FileHandle(descriptor: -1)
+        let handle = NIOFileHandle(descriptor: -1)
         XCTAssertNoThrow(try handle.takeDescriptorOwnership())
         let region = FileRegion(fileHandle: handle, readerIndex: 0, endIndex: fileRegionSize)
         let frame = HTTP2Frame(streamID: streamID, flags: flags, payload: .data(.fileRegion(region)))

@@ -329,7 +329,7 @@ struct ConnectionStreamState {
 private extension CircularBuffer {
     /// Prepends `element` without expanding the capacity, by dropping the
     /// element at the end if necessary.
-    mutating func prependWithoutExpanding(_ element: E) {
+    mutating func prependWithoutExpanding(_ element: Element) {
         if self.capacity == self.count {
             self.removeLast()
         }

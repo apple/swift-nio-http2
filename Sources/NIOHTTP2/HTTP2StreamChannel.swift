@@ -20,15 +20,10 @@ import NIO
 /// stream ID the channel owns. This channel option allows that query. Please note that this channel option
 /// is *get-only*: that is, it cannot be used with `setOption`. The stream ID for a given `HTTP2StreamChannel`
 /// is immutable.
-public enum StreamIDOption: ChannelOption {
-    public typealias AssociatedValueType = Void
-    public typealias OptionType = HTTP2StreamID
+public struct StreamIDOption: ChannelOption {
+    public typealias Value = HTTP2StreamID
 
-    case const(Void)
-
-    public static func ==(lhs: StreamIDOption, rhs: StreamIDOption) -> Bool {
-        return true
-    }
+    public init() { }
 }
 
 /// The various channel options specific to `HTTP2StreamChannel`s.
@@ -36,7 +31,7 @@ public enum StreamIDOption: ChannelOption {
 /// Please note that some of NIO's regular `ChannelOptions` are valid on `HTTP2StreamChannel`s.
 public struct HTTP2StreamChannelOptions {
     /// - seealso: `StreamIDOption`.
-    public static let streamID: StreamIDOption = .const(())
+    public static let streamID: StreamIDOption = StreamIDOption()
 }
 
 
@@ -112,7 +107,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        let f = self.parent!.getOption(option: ChannelOptions.autoRead).flatMap { autoRead -> EventLoopFuture<Void> in
+        let f = self.parent!.getOption(ChannelOptions.autoRead).flatMap { autoRead -> EventLoopFuture<Void> in
             self.autoRead = autoRead
             return initializer?(self, self.streamID) ?? self.eventLoop.makeSucceededFuture(())
         }.map {
@@ -172,31 +167,31 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         fatalError()
     }
 
-    func setOption<T>(option: T, value: T.OptionType) -> EventLoopFuture<Void> where T: ChannelOption {
+    func setOption<Option: ChannelOption>(_ option: Option, value: Option.Value) -> EventLoopFuture<Void> {
         if eventLoop.inEventLoop {
             do {
-                return eventLoop.makeSucceededFuture(try setOption0(option: option, value: value))
+                return eventLoop.makeSucceededFuture(try setOption0(option, value: value))
             } catch {
                 return eventLoop.makeFailedFuture(error)
             }
         } else {
-            return eventLoop.submit { try self.setOption0(option: option, value: value) }
+            return eventLoop.submit { try self.setOption0(option, value: value) }
         }
     }
 
-    public func getOption<T>(option: T) -> EventLoopFuture<T.OptionType> where T: ChannelOption {
+    public func getOption<Option: ChannelOption>(_ option: Option) -> EventLoopFuture<Option.Value> {
         if eventLoop.inEventLoop {
             do {
-                return eventLoop.makeSucceededFuture(try getOption0(option: option))
+                return eventLoop.makeSucceededFuture(try getOption0(option))
             } catch {
                 return eventLoop.makeFailedFuture(error)
             }
         } else {
-            return eventLoop.submit { try self.getOption0(option: option) }
+            return eventLoop.submit { try self.getOption0(option) }
         }
     }
 
-    private func setOption0<T>(option: T, value: T.OptionType) throws where T: ChannelOption {
+    private func setOption0<Option: ChannelOption>(_ option: Option, value: Option.Value) throws {
         assert(eventLoop.inEventLoop)
 
         switch option {
@@ -207,14 +202,14 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    private func getOption0<T>(option: T) throws -> T.OptionType where T: ChannelOption {
+    private func getOption0<Option: ChannelOption>(_ option: Option) throws -> Option.Value {
         assert(eventLoop.inEventLoop)
 
         switch option {
         case _ as StreamIDOption:
-            return self.streamID as! T.OptionType
+            return self.streamID as! Option.Value
         case _ as AutoReadOption:
-            return self.autoRead as! T.OptionType
+            return self.autoRead as! Option.Value
         default:
             fatalError("option \(option) not supported on HTTP2StreamChannel")
         }

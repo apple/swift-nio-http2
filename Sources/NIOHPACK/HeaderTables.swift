@@ -102,7 +102,7 @@ struct HeaderTableStorage {
     }
     
     subscript(index: Int) -> HeaderTableEntry {
-        return self.headers[index]
+        return self.headers[self.headers.index(self.headers.startIndex, offsetBy: index)]
     }
     
     subscript(name: String) -> [String] {

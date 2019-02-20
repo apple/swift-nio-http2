@@ -326,7 +326,7 @@ private struct DataBuffer {
         // and leave the rest.
         let newElement = contents.slicePrefix(maxSize)
         self.flushedBufferedBytes -= UInt(maxSize)
-        self.bufferedChunks[0].0 = .data(contents)
+        self.bufferedChunks[self.bufferedChunks.startIndex].0 = .data(contents)
         return (.data(newElement), HTTP2Frame.FrameFlags(), nil)
     }
 

@@ -29,7 +29,7 @@ final class HTTP1TestServer: ChannelInboundHandler {
             return
         }
 
-        ctx.channel.getOption(option: HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
+        ctx.channel.getOption(HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
             var headers = HTTPHeaders()
             headers.add(name: "content-length", value: "5")
             headers.add(name: "x-stream-id", value: String(Int(streamID)))

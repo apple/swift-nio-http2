@@ -780,12 +780,12 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             childChannel = channel
 
             // We're going to disable autoRead on this channel.
-            return channel.getOption(option: ChannelOptions.autoRead).map {
+            return channel.getOption(ChannelOptions.autoRead).map {
                 XCTAssertTrue($0)
             }.flatMap {
-                channel.setOption(option: ChannelOptions.autoRead, value: false)
+                channel.setOption(ChannelOptions.autoRead, value: false)
             }.flatMap {
-                channel.getOption(option: ChannelOptions.autoRead)
+                channel.getOption(ChannelOptions.autoRead)
             }.map {
                 XCTAssertFalse($0)
             }.flatMap {
@@ -837,7 +837,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             frameRecorders[streamID] = recorder
 
             // Disable autoRead on the first channel.
-            return channel.setOption(option: ChannelOptions.autoRead, value: streamID != firstStreamID).flatMap {
+            return channel.setOption(ChannelOptions.autoRead, value: streamID != firstStreamID).flatMap {
                 return channel.pipeline.add(handler: recorder)
             }
         }
@@ -878,7 +878,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             childChannel = channel
 
             // We're going to disable autoRead on this channel.
-            return channel.setOption(option: ChannelOptions.autoRead, value: false).flatMap {
+            return channel.setOption(ChannelOptions.autoRead, value: false).flatMap {
                 channel.pipeline.add(handler: frameRecorder)
             }
         }
@@ -927,7 +927,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             childChannel = channel
 
             // We're going to disable autoRead on this channel.
-            return channel.setOption(option: ChannelOptions.autoRead, value: false).flatMap {
+            return channel.setOption(ChannelOptions.autoRead, value: false).flatMap {
                 channel.pipeline.add(handler: frameRecorder)
             }
         }

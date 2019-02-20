@@ -422,9 +422,9 @@ extension Array where Element == HTTP2Frame {
 }
 
 /// Runs the body with a temporary file, optionally containing some file content.
-func withTemporaryFile<T>(content: String? = nil, _ body: (NIO.FileHandle, String) throws -> T) rethrows -> T {
+func withTemporaryFile<T>(content: String? = nil, _ body: (NIOFileHandle, String) throws -> T) rethrows -> T {
     let (fd, path) = openTemporaryFile()
-    let fileHandle = FileHandle(descriptor: fd)
+    let fileHandle = NIOFileHandle(descriptor: fd)
     defer {
         XCTAssertNoThrow(try fileHandle.close())
         XCTAssertEqual(0, unlink(path))
@@ -477,7 +477,7 @@ extension FileRegion {
     }
 }
 
-extension NIO.FileHandle {
+extension NIO.NIOFileHandle {
     func appendBuffer(_ buffer: ByteBuffer) {
         var written = 0
 
