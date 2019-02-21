@@ -57,8 +57,8 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                                              streamID: streamID,
                                              targetWindowSize: 65535,  // TODO: make configurable
                                              initiatedRemotely: true)
-            channel.configure(initializer: self.inboundStreamStateInitializer)
             self.streams[streamID] = channel
+            channel.configure(initializer: self.inboundStreamStateInitializer)
             channel.closeFuture.whenComplete { _ in
                 self.childChannelClosed(streamID: streamID)
             }
@@ -169,8 +169,8 @@ extension HTTP2StreamMultiplexer {
                                              streamID: streamID,
                                              targetWindowSize: 65535,  // TODO: make configurable
                                              initiatedRemotely: false)
-            let activationFuture = channel.configure(initializer: streamStateInitializer)
             self.streams[streamID] = channel
+            let activationFuture = channel.configure(initializer: streamStateInitializer)
             channel.closeFuture.whenComplete { _ in
                 self.childChannelClosed(streamID: streamID)
             }
