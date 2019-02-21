@@ -53,6 +53,14 @@ RUN [ -z $install_nghttp2_from_source ] || tar xzf $HOME/nghttp2.tar.gz --direct
 RUN [ -z $install_nghttp2_from_source ] || ( cd $HOME/.nghttp2 && ./configure && make && make install && cd - )
 RUN [ -z $install_nghttp2_from_source ] || ldconfig
 
+# h2spec
+ARG h2spec_version
+RUN [ -z $h2spec_version ] || mkdir $HOME/.h2spec
+RUN [ -z $h2spec_version ] || wget -q https://github.com/summerwind/h2spec/releases/download/v$h2spec_version/h2spec_linux_amd64.tar.gz -O $HOME/h2spec.tar.gz
+RUN [ -z $h2spec_version ] || tar xzf $HOME/h2spec.tar.gz --directory $HOME/.h2spec
+RUN [ -z $h2spec_version ] || mv $HOME/.h2spec/h2spec /usr/local/bin/h2spec
+
+
 # swift
 ARG swift_version=4.0.3
 ARG swift_flavour=RELEASE

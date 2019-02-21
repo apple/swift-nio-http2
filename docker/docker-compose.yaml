@@ -26,3 +26,8 @@ services:
   test:
     <<: *common
     command: /bin/bash -cl "swift test"
+
+  h2spec:
+    <<: *common
+    command: /bin/bash -cl "./scripts/test_h2spec.sh"
+
