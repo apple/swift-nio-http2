@@ -10,6 +10,11 @@ services:
         swift_version: "5.0"
         swift_flavour: "DEVELOPMENT-SNAPSHOT-2019-02-17-a"
         swift_builds_suffix: "branch"
+        h2spec_version: "2.2.1"
 
   test:
     image: swift-nio-http2:18.04-5.0
+
+  h2spec:
+    image: swift-nio-http2:18.04-5.0
+
