@@ -48,7 +48,7 @@ struct StringRing {
             var newBytes = self._storage
             newBytes.clear()
             newBytes.reserveCapacity(capacity)
-            newBytes.write(bytes: self._storage.viewBytes(at: r, length: w - r))
+            _ = newBytes.writeBytes(self._storage.viewBytes(at: r, length: w - r))
             self._storage = newBytes
             self.moveHead(to: 0)
             self.moveTail(to: w - r)
@@ -58,8 +58,8 @@ struct StringRing {
             var newBytes = self._storage
             newBytes.clear()
             newBytes.reserveCapacity(capacity)
-            newBytes.write(bytes: self._storage.viewBytes(at: r, length: self._storage.capacity - r))
-            newBytes.write(bytes: self._storage.viewBytes(at: 0, length: w))
+            newBytes.writeBytes(self._storage.viewBytes(at: r, length: self._storage.capacity - r))
+            _ = newBytes.writeBytes(self._storage.viewBytes(at: 0, length: w))
             self.moveHead(to: 0)
             self.moveTail(to: self._storage.capacity - r + w)
             self._storage = newBytes
@@ -208,33 +208,6 @@ struct StringRing {
         self._readableBytes = 0
     }
     
-    /// Write `bytes`, a `ContiguousCollection` of `UInt8` into this `StringRing`. Moves the writer index forward by the number of bytes written.
-    /// This method is likely more efficient than the one operating on plain `Collection` as it will use `memcpy` to copy all the bytes in one go.
-    ///
-    /// - parameters:
-    ///     - bytes: A `ContiguousCollection` of `UInt8` to be written.
-    /// - returns: The number of bytes written or `bytes.count`.
-    @discardableResult
-    mutating func write<C: ContiguousCollection>(bytes: C) throws -> Int where C.Element == UInt8 {
-        let totalCount = bytes.count
-        guard totalCount <= self.writableBytes else {
-            throw RingBufferError.BufferOverrun(amount: Int(totalCount - self._storage.capacity))
-        }
-        
-        let firstPart = self._storage.capacity - self._ringTail
-        if firstPart >= bytes.count {
-            _storage.set(bytes: bytes, at: self._ringTail)
-        } else {
-            bytes.withUnsafeBytes { ptr in
-                _storage.set(bytes: ptr[..<(ptr.startIndex + firstPart)], at: self._ringTail)
-                _storage.set(bytes: ptr[(ptr.startIndex + firstPart)...], at: 0)
-            }
-        }
-        
-        self.moveTail(forwardBy: totalCount)
-        return totalCount
-    }
-    
     /// Write `bytes`, a `Collection` of `UInt8` into this `StringRing`. Moves the writer index forward by the number of bytes written.
     ///
     /// - parameters:
@@ -242,8 +215,6 @@ struct StringRing {
     /// - returns: The number of bytes written or `bytes.count`.
     @discardableResult
     mutating func write<C : Collection>(bytes: C) throws -> Int where C.Element == UInt8 {
-        assert(!([Array<C.Element>.self, StaticString.self, ContiguousArray<C.Element>.self, UnsafeRawBufferPointer.self, UnsafeBufferPointer<UInt8>.self].contains(where: { (t: Any.Type) -> Bool in t == type(of: bytes) })),
-               "called the slower set<S: Collection> function even though \(C.self) is a ContiguousCollection")
         guard bytes.count <= self.writableBytes else {
             throw RingBufferError.BufferOverrun(amount: Int(self._storage.capacity) - bytes.underestimatedCount)
         }
@@ -259,10 +230,6 @@ struct StringRing {
         
         // single write, should be straightforward
         self._storage.withVeryUnsafeBytes { ptr in
-            let mutable = UnsafeMutableRawBufferPointer(mutating: ptr)
-            let tailPtr = UnsafeMutableRawBufferPointer(rebasing: mutable[(mutable.startIndex + self._ringTail)...])
-            tailPtr.copyBytes(from: bytes)
-            
             let targetAddr = UnsafeMutableRawPointer(mutating: ptr.baseAddress!.advanced(by: self._ringTail))
             let target = UnsafeMutableRawBufferPointer(start: targetAddr, count: bytes.count)
             target.copyBytes(from: bytes)

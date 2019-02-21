@@ -38,8 +38,10 @@ public struct HPACKDecoder {
     var dynamicTableLength: Int {
         return headerTable.dynamicTableLength
     }
-    
-    var allowedDynamicTableLength: Int {
+
+    /// The current allowed length of the dynamic portion of the header table. May be
+    /// less than the current protocol-assigned maximum supplied by a SETTINGS frame.
+    public private(set) var allowedDynamicTableLength: Int {
         get { return self.headerTable.dynamicTableAllowedLength }
         set { self.headerTable.dynamicTableAllowedLength = newValue }
     }
@@ -60,13 +62,13 @@ public struct HPACKDecoder {
         }
     }
     
-    /// The maximum size of the dynamic table. This is defined in RFC 7541
+    /// The maximum size of the dynamic table as set by the enclosing protocol. This is defined in RFC 7541
     /// to be the sum of [name-octet-count] + [value-octet-count] + 32 for
     /// each header it contains.
-    public internal(set) var maxDynamicTableLength: Int {
-        get { return headerTable.dynamicTableAllowedLength }
+    public var maxDynamicTableLength: Int {
+        get { return headerTable.maxDynamicTableLength }
         /* private but tests */
-        set { headerTable.dynamicTableAllowedLength = newValue }
+        set { headerTable.maxDynamicTableLength = newValue }
     }
     
     /// Creates a new decoder
@@ -163,7 +165,7 @@ public struct HPACKDecoder {
                 throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
             }
             
-            self.headerTable.dynamicTableAllowedLength = newMaxLength
+            self.allowedDynamicTableLength = newMaxLength
             return nil
             
         default:
@@ -175,8 +177,8 @@ public struct HPACKDecoder {
         let (h, v) = try self.headerTable.headerViews(at: hidx)
         
         let start = self.decodeBuffer.writerIndex
-        let nlen = self.decodeBuffer.write(bytes: h)
-        let vlen = self.decodeBuffer.write(bytes: v)
+        let nlen = self.decodeBuffer.writeBytes(h)
+        let vlen = self.decodeBuffer.writeBytes(v)
         
         return HPACKHeader(start: start, nameLength: nlen, valueLength: vlen)
     }
@@ -190,7 +192,7 @@ public struct HPACKDecoder {
         switch headerName {
         case .indexed(let idx):
             let (name, _) = try self.headerTable.headerViews(at: idx)
-            nameLen = self.decodeBuffer.write(bytes: name)
+            nameLen = self.decodeBuffer.writeBytes(name)
         case .literal:
             nameLen = try self.readEncodedString(from: &buffer)
         }
@@ -201,7 +203,7 @@ public struct HPACKDecoder {
             let nameView = self.decodeBuffer.viewBytes(at: nameStart, length: nameLen)
             let valueView = self.decodeBuffer.viewBytes(at: nameStart + nameLen, length: valueLen)
             
-            try headerTable.add(headerNameBytes: nameView, valueBytes: valueView)
+            try headerTable.add(headerNamed: nameView, value: valueView)
         }
         
         return HPACKHeader(start: nameStart, nameLength: nameLen, valueLength: valueLen)
@@ -224,7 +226,7 @@ public struct HPACKDecoder {
         if huffmanEncoded {
             outputLength = try buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: len, into: &self.decodeBuffer)
         } else {
-            outputLength = self.decodeBuffer.write(bytes: buffer.viewBytes(at: buffer.readerIndex, length: len))
+            outputLength = self.decodeBuffer.writeBytes(buffer.viewBytes(at: buffer.readerIndex, length: len))
         }
         
         buffer.moveReaderIndex(forwardBy: len)

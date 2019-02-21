@@ -26,10 +26,61 @@ public struct StreamClosedEvent {
     /// The reason for the stream closure. `nil` if the stream was closed without
     /// error. Otherwise, the error code indicating why the stream was closed.
     public let reason: HTTP2ErrorCode?
-}
 
-extension StreamClosedEvent: Equatable {
-    public static func ==(lhs: StreamClosedEvent, rhs: StreamClosedEvent) -> Bool {
-        return lhs.streamID == rhs.streamID && lhs.reason == rhs.reason
+    public init(streamID: HTTP2StreamID, reason: HTTP2ErrorCode?) {
+        self.streamID = streamID
+        self.reason = reason
     }
 }
+
+extension StreamClosedEvent: Equatable { }
+
+
+/// A `NIOHTTP2WindowUpdatedEvent` is fired whenever a flow control window is changed.
+/// This includes changes on the connection flow control window, which is signalled by
+/// this event having `streamID` set to `.rootStream`.
+public struct NIOHTTP2WindowUpdatedEvent {
+    /// The stream ID of the window that has been changed. May be .rootStream, in which
+    /// case the connection window has changed.
+    public let streamID: HTTP2StreamID
+
+    /// The new inbound window size for this stream, if any. May be nil if this stream is half-closed.
+    public let inboundWindowSize: Int?
+
+    /// The new outbound window size for this stream, if any. May be nil if this stream is half-closed.
+    public let outboundWindowSize: Int?
+
+    public init(streamID: HTTP2StreamID, inboundWindowSize: Int?, outboundWindowSize: Int?) {
+        // We use Int here instead of Int32. Nonetheless, the value must fit in the Int32 range.
+        precondition(inboundWindowSize == nil || inboundWindowSize! <= Int(HTTP2FlowControlWindow.maxSize))
+        precondition(outboundWindowSize == nil || outboundWindowSize! <= Int(HTTP2FlowControlWindow.maxSize))
+        precondition(inboundWindowSize == nil || inboundWindowSize! >= Int(Int32.min))
+        precondition(outboundWindowSize == nil || outboundWindowSize! >= Int(Int32.min))
+
+        self.streamID = streamID
+        self.inboundWindowSize = inboundWindowSize
+        self.outboundWindowSize = outboundWindowSize
+    }
+}
+
+extension NIOHTTP2WindowUpdatedEvent: Equatable { }
+
+
+/// A `NIOHTTP2StreamCreatedEvent` is fired whenever a HTTP/2 stream is created.
+public struct NIOHTTP2StreamCreatedEvent {
+    public let streamID: HTTP2StreamID
+
+    /// The initial local stream window size. May be nil if this stream may never have data sent on it.
+    public let localInitialWindowSize: UInt32?
+
+    /// The initial remote stream window size. May be nil if this stream may never have data received on it.
+    public let remoteInitialWidowSize: UInt32?
+
+    public init(streamID: HTTP2StreamID, localInitialWindowSize: UInt32?, remoteInitialWindowSize: UInt32?) {
+        self.streamID = streamID
+        self.localInitialWindowSize = localInitialWindowSize
+        self.remoteInitialWidowSize = remoteInitialWindowSize
+    }
+}
+
+extension NIOHTTP2StreamCreatedEvent: Equatable { }

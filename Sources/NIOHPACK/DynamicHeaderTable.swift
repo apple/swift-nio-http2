@@ -16,6 +16,7 @@ import NIO
 
 /// Implements the dynamic part of the HPACK header table, as defined in
 /// [RFC 7541 § 2.3](https://httpwg.org/specs/rfc7541.html#dynamic.table).
+@usableFromInline
 struct DynamicHeaderTable {
     public static let defaultSize = 4096
     
@@ -146,28 +147,6 @@ struct DynamicHeaderTable {
             // ping the error up the stack, with more information
             throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
                                                           name: name, value: value)
-        }
-    }
-    
-    /// Appends a header to the table. Note that if this succeeds, the new item's index
-    /// is always zero.
-    ///
-    /// This call may result in an empty table, as per RFC 7541 § 4.4:
-    /// > "It is not an error to attempt to add an entry that is larger than the maximum size;
-    /// > an attempt to add an entry larger than the maximum size causes the table to be
-    /// > emptied of all existing entries and results in an empty table."
-    ///
-    /// - Parameters:
-    ///   - name: A contiguous collection of UTF-8 bytes comprising the name of the header to insert.
-    ///   - value: A contiguous collection of UTF-8 bytes comprising the value of the header to insert.
-    /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader<Name: ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
-        do {
-            try self.storage.add(nameBytes: nameBytes, valueBytes: valueBytes)
-        } catch let error as RingBufferError.BufferOverrun {
-            // convert the error to something more useful/meaningful to client code.
-            throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
-                                                          name: nameBytes, value: valueBytes)
         }
     }
 }

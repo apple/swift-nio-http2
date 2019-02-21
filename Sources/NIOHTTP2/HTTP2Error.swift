@@ -12,8 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-import CNIONghttp2
-
 public protocol NIOHTTP2Error: Equatable, Error { }
 
 /// Errors that NIO raises when handling HTTP/2 connections.
@@ -52,13 +50,118 @@ public enum NIOHTTP2Errors {
         public init() {}
     }
 
-    public struct InternalError: NIOHTTP2Error {
-        internal var nghttp2ErrorCode: nghttp2_error
+    /// A stream state transition was attempted that was not valid.
+    public struct BadStreamStateTransition: NIOHTTP2Error {
+        public init() { }
+    }
 
-        internal init(nghttp2ErrorCode: nghttp2_error) {
-            self.nghttp2ErrorCode = nghttp2ErrorCode
+    /// An attempt was made to change the flow control window size, either via
+    /// SETTINGS or WINDOW_UPDATE, but this change would move the flow control
+    /// window size out of bounds.
+    public struct InvalidFlowControlWindowSize: NIOHTTP2Error {
+        /// The delta being applied to the flow control window.
+        public var delta: Int
+
+        /// The size of the flow control window before the delta was applied.
+        public var currentWindowSize: Int
+
+        public init(delta: Int, currentWindowSize: Int) {
+            self.delta = delta
+            self.currentWindowSize = currentWindowSize
         }
     }
+
+    /// A frame was sent or received that violates HTTP/2 flow control rules.
+    public struct FlowControlViolation: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// A SETTINGS frame was sent or received with an invalid setting.
+    public struct InvalidSetting: NIOHTTP2Error {
+        /// The invalid setting.
+        public var setting: HTTP2Setting
+
+        public init(setting: HTTP2Setting) {
+            self.setting = setting
+        }
+    }
+
+    /// An attempt to perform I/O was made on a connection that is already closed.
+    public struct IOOnClosedConnection: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// A SETTINGS frame was received that is invalid.
+    public struct ReceivedBadSettings: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// A violation of SETTINGS_MAX_CONCURRENT_STREAMS occurred.
+    public struct MaxStreamsViolation: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// An attempt was made to use a stream ID that is too small.
+    public struct StreamIDTooSmall: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// An attempt was made to send a frame without having previously sent a connection preface!
+    public struct MissingPreface: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// An attempt was made to create a stream after a GOAWAY frame has forbidden further
+    /// stream creation.
+    public struct CreatedStreamAfterGoaway: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// A peer has attempted to create a stream with a stream ID it is not permitted to use.
+    public struct InvalidStreamIDForPeer: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// An attempt was made to send a new GOAWAY frame whose lastStreamID is higher than the previous value.
+    public struct RaisedGoawayLastStreamID: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// The size of the window increment is invalid.
+    public struct InvalidWindowIncrementSize: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// An attempt was made to push a stream, even though the settings forbid it.
+    public struct PushInViolationOfSetting: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// An attempt was made to use a currently unsupported feature.
+    public struct Unsupported: NIOHTTP2Error {
+        public var info: String
+        
+        public init(info: String) {
+            self.info = info
+        }
+    }
+
+    public struct UnableToSerializeFrame: NIOHTTP2Error {
+        public init() { }
+    }
+
+    public struct UnableToParseFrame: NIOHTTP2Error {
+        public init() { }
+    }
+}
+
+
+/// This enum covers errors that are thrown internally for messaging reasons. These should
+/// not leak.
+internal enum InternalError: Error {
+    case attemptedToCreateStream
+
+    case codecError(code: HTTP2ErrorCode)
 }
 
 

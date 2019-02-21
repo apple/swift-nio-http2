@@ -23,6 +23,7 @@ import XCTest
 import NIO
 import NIOHTTP1
 import NIOHTTP2
+import NIOHPACK
 
 struct NoFrameReceived: Error { }
 
@@ -35,7 +36,7 @@ extension XCTestCase {
         var operated: Bool
 
         func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
-            guard let data = channel.readOutbound() else {
+            guard let data = channel.readOutbound(as: IOData.self) else {
                 return nil
             }
             switch data {
@@ -64,8 +65,8 @@ extension XCTestCase {
     func deliverAllBytes(from sourceChannel: EmbeddedChannel, to targetChannel: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) {
         // Collect the serialized data.
         var frameBuffer = sourceChannel.allocator.buffer(capacity: 1024)
-        while case .some(.byteBuffer(var buf)) = sourceChannel.readOutbound() {
-            frameBuffer.write(buffer: &buf)
+        while case .some(.byteBuffer(var buf)) = sourceChannel.readOutbound(as: IOData.self) {
+            frameBuffer.writeBuffer(&buf)
         }
 
         XCTAssertNoThrow(try targetChannel.writeInbound(frameBuffer), file: file, line: line)
@@ -79,8 +80,13 @@ extension XCTestCase {
     func assertDoHandshake(client: EmbeddedChannel, server: EmbeddedChannel,
                            clientSettings: [HTTP2Setting] = nioDefaultSettings, serverSettings: [HTTP2Setting] = nioDefaultSettings,
                            file: StaticString = #file, line: UInt = #line) throws {
-        client.pipeline.fireChannelActive()
-        server.pipeline.fireChannelActive()
+        // This connects are not semantically right, but are required in order to activate the
+        // channels.
+        //! FIXME: Replace with registerAlreadyConfigured0 once EmbeddedChannel propagates this
+        //         call to its channelcore.
+        let socket = try SocketAddress(unixDomainSocketPath: "/fake")
+        _ = try client.connect(to: socket).wait()
+        _ = try server.connect(to: socket).wait()
 
         // First the channels need to interact.
         self.interactInMemory(client, server, file: file, line: line)
@@ -190,6 +196,12 @@ extension HTTP2Frame {
             self.assertSettingsFrameMatches(this: frame, file: file, line: line)
         case .rstStream:
             self.assertRstStreamFrameMatches(this: frame, file: file, line: line)
+        case .priority:
+            self.assertPriorityFrameMatches(this: frame, file: file, line: line)
+        case .pushPromise:
+            self.assertPushPromiseFrameMatches(this: frame, file: file, line: line)
+        case .windowUpdate:
+            self.assertWindowUpdateFrameMatches(this: frame, file: file, line: line)
         default:
             XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
         }
@@ -197,32 +209,37 @@ extension HTTP2Frame {
 
     /// Asserts that a given frame is a HEADERS frame matching this one.
     func assertHeadersFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
-        guard case .headers(let payload) = frame.payload else {
+        guard case .headers(let payload, let priority) = frame.payload else {
             preconditionFailure("Headers frames can never match non-headers frames")
         }
         self.assertHeadersFrame(endStream: frame.flags.contains(.endStream),
-                                streamID: frame.streamID.networkStreamID!,
+                                streamID: frame.streamID,
                                 payload: payload,
+                                priority: priority,
                                 file: file,
                                 line: line)
     }
 
     /// Asserts the given frame is a HEADERS frame.
-    func assertHeadersFrame(endStream: Bool, streamID: Int32, payload: HTTPHeaders,
+    func assertHeadersFrame(endStream: Bool, streamID: HTTP2StreamID, payload: HPACKHeaders,
+                            priority: HTTP2Frame.StreamPriorityData? = nil,
                             file: StaticString = #file, line: UInt = #line) {
-        guard case .headers(let actualPayload) = self.payload else {
+        guard case .headers(let actualPayload, let actualPriority) = self.payload else {
             XCTFail("Expected HEADERS frame, got \(self.payload) instead", file: file, line: line)
             return
         }
 
         XCTAssertEqual(self.flags.contains(.endStream), endStream,
                        "Unexpected endStream: expected \(endStream), got \(self.flags.contains(.endStream))", file: file, line: line)
-        XCTAssertEqual(self.streamID.networkStreamID!, streamID,
-                       "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
+        XCTAssertEqual(self.streamID, streamID,
+                       "Unexpected streamID: expected \(streamID), got \(self.streamID)", file: file, line: line)
         XCTAssertEqual(payload, actualPayload, "Non-equal payloads: expected \(payload), got \(actualPayload)", file: file, line: line)
+        XCTAssertEqual(priority, actualPriority, "Non-equal priorities: expected \(String(describing: priority)), got \(String(describing: actualPriority))", file: file, line: line)
     }
 
     /// Asserts that a given frame is a DATA frame matching this one.
+    ///
+    /// This function always converts the DATA frame to a bytebuffer, for use with round-trip testing.
     func assertDataFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
         let expectedPayload: ByteBuffer
         switch frame.payload {
@@ -236,14 +253,14 @@ extension HTTP2Frame {
         }
 
         self.assertDataFrame(endStream: frame.flags.contains(.endStream),
-                             streamID: frame.streamID.networkStreamID!,
+                             streamID: frame.streamID,
                              payload: expectedPayload,
                              file: file,
                              line: line)
     }
 
     /// Assert the given frame is a DATA frame with the appropriate settings.
-    func assertDataFrame(endStream: Bool, streamID: Int32, payload: ByteBuffer, file: StaticString = #file, line: UInt = #line) {
+    func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: ByteBuffer, file: StaticString = #file, line: UInt = #line) {
         guard case .data(.byteBuffer(let actualPayload)) = self.payload else {
             XCTFail("Expected DATA frame with ByteBuffer, got \(self.payload) instead", file: file, line: line)
             return
@@ -251,8 +268,23 @@ extension HTTP2Frame {
 
         XCTAssertEqual(self.flags.contains(.endStream), endStream,
                        "Unexpected endStream: expected \(endStream), got \(self.flags.contains(.endStream))", file: file, line: line)
-        XCTAssertEqual(self.streamID.networkStreamID!, streamID,
-                       "Unexpected streamID: expected \(streamID), got \(self.streamID.networkStreamID!)", file: file, line: line)
+        XCTAssertEqual(self.streamID, streamID,
+                       "Unexpected streamID: expected \(streamID), got \(self.streamID)", file: file, line: line)
+        XCTAssertEqual(actualPayload, payload,
+                       "Unexpected body: expected \(payload), got \(actualPayload)", file: file, line: line)
+
+    }
+
+    func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: FileRegion, file: StaticString = #file, line: UInt = #line) {
+        guard case .data(.fileRegion(let actualPayload)) = self.payload else {
+            XCTFail("Expected DATA frame with FileRegion, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(self.flags.contains(.endStream), endStream,
+                       "Unexpected endStream: expected \(endStream), got \(self.flags.contains(.endStream))", file: file, line: line)
+        XCTAssertEqual(self.streamID, streamID,
+                       "Unexpected streamID: expected \(streamID), got \(self.streamID)", file: file, line: line)
         XCTAssertEqual(actualPayload, payload,
                        "Unexpected body: expected \(payload), got \(actualPayload)", file: file, line: line)
 
@@ -262,14 +294,14 @@ extension HTTP2Frame {
         guard case .goAway(let lastStreamID, let errorCode, let opaqueData) = frame.payload else {
             preconditionFailure("Goaway frames can never match non-Goaway frames.")
         }
-        self.assertGoAwayFrame(lastStreamID: lastStreamID.networkStreamID!,
+        self.assertGoAwayFrame(lastStreamID: lastStreamID,
                                errorCode: UInt32(http2ErrorCode: errorCode),
                                opaqueData: opaqueData.flatMap { $0.getBytes(at: $0.readerIndex, length: $0.readableBytes) },
                                file: file,
                                line: line)
     }
 
-    func assertGoAwayFrame(lastStreamID: Int32, errorCode: UInt32, opaqueData: [UInt8]?, file: StaticString = #file, line: UInt = #line) {
+    func assertGoAwayFrame(lastStreamID: HTTP2StreamID, errorCode: UInt32, opaqueData: [UInt8]?, file: StaticString = #file, line: UInt = #line) {
         guard case .goAway(let actualLastStreamID, let actualErrorCode, let actualOpaqueData) = self.payload else {
             XCTFail("Expected GOAWAY frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -279,7 +311,7 @@ extension HTTP2Frame {
         let byteArrayOpaqueData = actualOpaqueData.flatMap { $0.getBytes(at: $0.readerIndex, length: $0.readableBytes) }
 
         XCTAssertEqual(self.streamID, .rootStream, "Goaway frame must be on the root stream!", file: file, line: line)
-        XCTAssertEqual(lastStreamID, actualLastStreamID.networkStreamID!,
+        XCTAssertEqual(lastStreamID, actualLastStreamID,
                        "Unexpected last stream ID: expected \(lastStreamID), got \(actualLastStreamID)", file: file, line: line)
         XCTAssertEqual(integerErrorCode, errorCode,
                        "Unexpected error code: expected \(errorCode), got \(integerErrorCode)", file: file, line: line)
@@ -306,13 +338,21 @@ extension HTTP2Frame {
                        file: file, line: line)
     }
 
-    func assertWindowUpdateFrame(streamID: Int32, windowIncrement: Int, file: StaticString = #file, line: UInt = #line) {
+    func assertWindowUpdateFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .windowUpdate(let increment) = frame.payload else {
+            XCTFail("WINDOW_UPDATE frames can never match non-WINDOW_UPDATE frames", file: file, line: line)
+            return
+        }
+        self.assertWindowUpdateFrame(streamID: frame.streamID, windowIncrement: increment)
+    }
+
+    func assertWindowUpdateFrame(streamID: HTTP2StreamID, windowIncrement: Int, file: StaticString = #file, line: UInt = #line) {
         guard case .windowUpdate(let actualWindowIncrement) = self.payload else {
             XCTFail("Expected WINDOW_UPDATE frame, got \(self.payload) instead", file: file, line: line)
             return
         }
 
-        XCTAssertEqual(self.streamID.networkStreamID!, streamID, "Unexpected stream ID!", file: file, line: line)
+        XCTAssertEqual(self.streamID, streamID, "Unexpected stream ID!", file: file, line: line)
         XCTAssertEqual(windowIncrement, actualWindowIncrement, "Unexpected window increment!", file: file, line: line)
     }
 
@@ -320,24 +360,71 @@ extension HTTP2Frame {
         guard case .rstStream(let errorCode) = frame.payload else {
             preconditionFailure("RstStream frames can never match non-RstStream frames.")
         }
-        self.assertRstStreamFrame(streamID: frame.streamID.networkStreamID!, errorCode: errorCode, file: file, line: line)
+        self.assertRstStreamFrame(streamID: frame.streamID, errorCode: errorCode, file: file, line: line)
     }
 
-    func assertRstStreamFrame(streamID: Int32, errorCode: HTTP2ErrorCode, file: StaticString = #file, line: UInt = #line) {
+    func assertRstStreamFrame(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: StaticString = #file, line: UInt = #line) {
         guard case .rstStream(let actualErrorCode) = self.payload else {
             XCTFail("Expected RST_STREAM frame, got \(self.payload) instead", file: file, line: line)
             return
         }
 
-        XCTAssertEqual(self.streamID.networkStreamID!, streamID, "Non matching stream IDs: expected \(streamID), got \(self.streamID.networkStreamID!)!", file: file, line: line)
+        XCTAssertEqual(self.streamID, streamID, "Non matching stream IDs: expected \(streamID), got \(self.streamID)!", file: file, line: line)
         XCTAssertEqual(actualErrorCode, errorCode, "Non-matching error-code: expected \(errorCode), got \(actualErrorCode)", file: file, line: line)
+    }
+
+    func assertPriorityFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .priority(let expectedPriorityData) = frame.payload else {
+            preconditionFailure("Priority frames can never match non-Priority frames.")
+        }
+        self.assertPriorityFrame(streamPriorityData: expectedPriorityData, file: file, line: line)
+    }
+
+    func assertPriorityFrame(streamPriorityData: HTTP2Frame.StreamPriorityData, file: StaticString = #file, line: UInt = #line) {
+        guard case .priority(let actualPriorityData) = self.payload else {
+            XCTFail("Expected PRIORITY frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(streamPriorityData, actualPriorityData, file: file, line: line)
+    }
+
+    func assertPushPromiseFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .pushPromise(let pushedStreamID, let headers) = frame.payload else {
+            preconditionFailure("PushPromise frames can never match non-PushPromise frames.")
+        }
+        self.assertPushPromiseFrame(streamID: frame.streamID, pushedStreamID: pushedStreamID, headers: headers, file: file, line: line)
+    }
+
+    func assertPushPromiseFrame(streamID: HTTP2StreamID, pushedStreamID: HTTP2StreamID, headers: HPACKHeaders, file: StaticString = #file, line: UInt = #line) {
+        guard case .pushPromise(let actualPushedStreamID, let actualHeaders) = self.payload else {
+            XCTFail("Expected PUSH_PROMISE frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(streamID, self.streamID, "Non matching stream IDs: expected \(streamID), got \(self.streamID)!", file: file, line: line)
+        XCTAssertEqual(pushedStreamID, actualPushedStreamID, "Non matching pushed stream IDs: expected \(pushedStreamID), got \(actualPushedStreamID)", file: file, line: line)
+        XCTAssertEqual(headers, actualHeaders, "Non matching pushed headers: expected \(headers), got \(actualHeaders)", file: file, line: line)
+    }
+}
+
+extension Array where Element == HTTP2Frame {
+    func assertFramesMatch<Candidate: Collection>(_ target: Candidate, file: StaticString = #file, line: UInt = #line) where Candidate.Element == HTTP2Frame {
+        guard self.count == target.count else {
+            XCTFail("Different numbers of frames: expected \(target.count), got \(self.count)", file: file, line: line)
+            return
+        }
+
+        for (expected, actual) in zip(target, self) {
+            expected.assertFrameMatches(this: actual, file: file, line: line)
+        }
     }
 }
 
 /// Runs the body with a temporary file, optionally containing some file content.
-func withTemporaryFile<T>(content: String? = nil, _ body: (NIO.FileHandle, String) throws -> T) rethrows -> T {
+func withTemporaryFile<T>(content: String? = nil, _ body: (NIOFileHandle, String) throws -> T) rethrows -> T {
     let (fd, path) = openTemporaryFile()
-    let fileHandle = FileHandle(descriptor: fd)
+    let fileHandle = NIOFileHandle(descriptor: fd)
     defer {
         XCTAssertNoThrow(try fileHandle.close())
         XCTAssertEqual(0, unlink(path))
@@ -390,7 +477,7 @@ extension FileRegion {
     }
 }
 
-extension NIO.FileHandle {
+extension NIO.NIOFileHandle {
     func appendBuffer(_ buffer: ByteBuffer) {
         var written = 0
 

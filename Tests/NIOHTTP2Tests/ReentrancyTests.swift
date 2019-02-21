@@ -42,29 +42,6 @@ final class ReenterOnReadHandler: ChannelInboundHandler {
     }
 }
 
-final class NoChannelReadAfterInactive: ChannelInboundHandler {
-    public typealias InboundIn = Any
-
-    private var inactive = false
-
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        XCTAssertFalse(self.inactive)
-        ctx.fireChannelRead(data)
-    }
-
-    func channelInactive(ctx: ChannelHandlerContext) {
-        self.inactive = true
-        ctx.fireChannelInactive()
-    }
-
-    func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
-        if case .some(.inputClosed) = event as? ChannelEvent {
-            self.inactive = true
-        }
-        ctx.fireUserInboundEventTriggered(event)
-    }
-}
-
 // Tests that the HTTP2Parser is safely re-entrant.
 //
 // These tests ensure that we don't ever call into the HTTP/2 session more than once at a time.
@@ -84,8 +61,8 @@ final class ReentrancyTests: XCTestCase {
 
     /// Establish a basic HTTP/2 connection.
     func basicHTTP2Connection() throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2Parser(mode: .client)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2Parser(mode: .server)).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 
@@ -104,8 +81,8 @@ final class ReentrancyTests: XCTestCase {
 
         // Collect the serialized frames.
         var frameBuffer = self.clientChannel.allocator.buffer(capacity: 1024)
-        while case .some(.byteBuffer(var buf)) = self.clientChannel.readOutbound() {
-            frameBuffer.write(buffer: &buf)
+        while case .some(.byteBuffer(var buf)) = self.clientChannel.readOutbound(as: IOData.self) {
+            frameBuffer.writeBuffer(&buf)
         }
 
         // Ok, now we can add in the re-entrancy handler to the server channel. When it first gets a frame it's
@@ -141,19 +118,17 @@ final class ReentrancyTests: XCTestCase {
         self.clientChannel.flush()
 
         // Ok, now we can add in the re-entrancy handler to the server channel. When it first gets a frame it's
-        // going to fire channelInactive. We're also going to add an ordering requirement that channelInactive not
-        // precede any frames.
+        // going to fire channelInactive.
         let reEntrancyHandler = ReenterOnReadHandler { $0.fireChannelInactive() }
         XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: reEntrancyHandler).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NoChannelReadAfterInactive()).wait())
 
         // Now we can deliver these bytes.
         self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
 
-        // If this worked, we want to see that the server received SETTINGS then PING. No other order is
-        // ok, no errors should have been hit, and the channel should now be closed.
+        // If this worked, we want to see that the server received SETTINGS. The PING frame should not be produced, as
+        // the channelInactive has been fired. No other order is ok, no errors should have been hit, and the channel
+        // should now be closed.
         try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: settingsFrame)
-        try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: pingFrame)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
@@ -173,11 +148,9 @@ final class ReentrancyTests: XCTestCase {
         self.clientChannel.flush()
 
         // Ok, now we can add in the re-entrancy handler to the server channel. When it first gets a frame it's
-        // going to fire channelInactive. We're also going to add an ordering requirement that channelInactive not
-        // precede any frames.
+        // going to fire channelInactive.
         let reEntrancyHandler = ReenterOnReadHandler { $0.fireUserInboundEventTriggered(ChannelEvent.inputClosed) }
         XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: reEntrancyHandler).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NoChannelReadAfterInactive()).wait())
 
         // Now we can deliver these bytes.
         self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)

@@ -14,7 +14,7 @@
 
 import NIO
 import NIOHTTP1
-import CNIONghttp2
+import NIOHPACK
 
 /// A representation of a single HTTP/2 frame.
 public struct HTTP2Frame {
@@ -26,6 +26,13 @@ public struct HTTP2Frame {
     
     /// The frame stream ID as a 32-bit integer.
     public var streamID: HTTP2StreamID
+    
+    /// Stream priority data, used in PRIORITY frames and optionally in HEADERS frames.
+    public struct StreamPriorityData: Equatable, Hashable {
+        public var exclusive: Bool
+        public var dependency: HTTP2StreamID
+        public var weight: UInt8
+    }
 
     /// Frame-type-specific payload data.
     public enum FramePayload {
@@ -41,13 +48,13 @@ public struct HTTP2Frame {
         /// frames into a single `FramePayload.headers` instance.
         ///
         /// See [RFC 7540 § 6.2](https://httpwg.org/specs/rfc7540.html#rfc.section.6.2).
-        case headers(HTTPHeaders)
+        case headers(HPACKHeaders, StreamPriorityData?)
         
         /// A PRIORITY frame, used to change priority and dependency ordering among
         /// streams.
         ///
         /// See [RFC 7540 § 6.3](https://httpwg.org/specs/rfc7540.html#rfc.section.6.3).
-        case priority
+        case priority(StreamPriorityData)
         
         /// A RST_STREAM (reset stream) frame, sent when a stream has encountered an error
         /// condition and needs to be terminated as a result.
@@ -74,7 +81,7 @@ public struct HTTP2Frame {
         ///
         /// For more information on server push in HTTP/2, see
         /// [RFC 7540 § 8.2](https://httpwg.org/specs/rfc7540.html#rfc.section.8.2).
-        case pushPromise
+        case pushPromise(HTTP2StreamID, HPACKHeaders)
         
         /// A PING frame, used to measure round-trip time between endpoints.
         ///
@@ -147,7 +154,7 @@ public struct HTTP2Frame {
     }
     
     /// The flags supported by the frame types understood by this protocol.
-    public struct FrameFlags: OptionSet {
+    public struct FrameFlags: OptionSet, CustomStringConvertible {
         public typealias RawValue = UInt8
         
         public private(set) var rawValue: UInt8
@@ -176,17 +183,28 @@ public struct HTTP2Frame {
         
         // useful for test cases
         internal static var allFlags: FrameFlags = [.endStream, .endHeaders, .padded, .priority]
+        
+        public var description: String {
+            var strings: [String] = []
+            for i in 0..<8 {
+                let flagBit: UInt8 = 1 << i
+                if (self.rawValue & flagBit) != 0 {
+                    strings.append(String(flagBit, radix: 16, uppercase: true))
+                }
+            }
+            return "[\(strings.joined(separator: ", "))]"
+        }
     }
 }
 
 
 internal extension HTTP2Frame {
-    internal init(streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, payload: HTTP2Frame.FramePayload) {
+    init(streamID: HTTP2StreamID, flags: HTTP2Frame.FrameFlags, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
         self.flags = flags.intersection(payload.allowedFlags)
         self.payload = payload
     }
-    internal init(streamID: HTTP2StreamID, flags: UInt8, payload: HTTP2Frame.FramePayload) {
+    init(streamID: HTTP2StreamID, flags: UInt8, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
         self.flags = FrameFlags(rawValue: flags).intersection(payload.allowedFlags)
         self.payload = payload
@@ -195,7 +213,7 @@ internal extension HTTP2Frame {
 
 public extension HTTP2Frame {
     /// Constructs a frame header for a given stream ID. All flags are unset.
-    public init(streamID: HTTP2StreamID, payload: HTTP2Frame.FramePayload) {
+    init(streamID: HTTP2StreamID, payload: HTTP2Frame.FramePayload) {
         self.streamID = streamID
         self.flags = []
         self.payload = payload

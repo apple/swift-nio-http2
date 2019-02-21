@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
+import _NIO1APIShims
 
 /// An `HPACKEncoder` maintains its own dynamic header table and uses that to
 /// encode HTTP headers to an internal byte buffer.
@@ -151,6 +152,38 @@ public struct HPACKEncoder {
         return self.buffer
     }
     
+    /// A one-shot encoder that writes to a provided buffer.
+    public mutating func encode(headers: HPACKHeaders, to buffer: inout ByteBuffer) throws {
+        if case .encoding = self.state {
+            throw NIOHPACKErrors.EncoderAlreadyActive()
+        }
+        
+        self.buffer = buffer
+        switch self.state {
+        case .idle:
+            self.state = .encoding
+        case .resized(nil):
+            // one resize
+            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding
+        case let .resized(smallestSize?):
+            // two resizes, one smaller than the other
+            self.buffer.write(encodedInteger: UInt(smallestSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.state = .encoding
+        default:
+            break
+        }
+        
+        do {
+            try self.append(headers: headers)
+            buffer = try self.endEncoding()
+        } catch {
+            _ = try? self.endEncoding()
+            throw error
+        }
+    }
+    
     /// Appends() headers in the default fashion: indexed if possible, literal+indexable if not.
     ///
     /// - Parameter headers: A sequence of key/value pairs representing HTTP headers.
@@ -228,7 +261,7 @@ public struct HPACKEncoder {
             }
         } else {
             // no indexed name or value. Have to add them both, with a zero index.
-            self.buffer.write(integer: UInt8(0x40))
+            _ = self.buffer.writeInteger(UInt8(0x40))
             self.appendEncodedString(name)
             self.appendEncodedString(value)
         }
@@ -246,7 +279,7 @@ public struct HPACKEncoder {
             self.buffer.writeHuffmanEncoded(bytes: utf8)
         } else {
             self.buffer.write(encodedInteger: UInt(utf8.count), prefix: 7, prefixBits: 0)
-            self.buffer.write(bytes: utf8)
+            self.buffer.writeBytes(utf8)
         }
     }
     
@@ -267,7 +300,7 @@ public struct HPACKEncoder {
             // now append the value
             self.appendEncodedString(value)
         } else {
-            self.buffer.write(integer: UInt8(0))    // top 4 bits are zero, and index is zero (no index)
+            self.buffer.writeInteger(UInt8(0))    // top 4 bits are zero, and index is zero (no index)
             self.appendEncodedString(header)
             self.appendEncodedString(value)
         }
@@ -289,7 +322,7 @@ public struct HPACKEncoder {
             // now append the value
             self.appendEncodedString(value)
         } else {
-            self.buffer.write(integer: UInt8(0x10))     // prefix bits + zero index
+            self.buffer.writeInteger(UInt8(0x10))     // prefix bits + zero index
             self.appendEncodedString(header)
             self.appendEncodedString(value)
         }

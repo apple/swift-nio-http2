@@ -27,9 +27,12 @@ import XCTest
    @testable import NIOHTTP2Tests
 
    XCTMain([
-         testCase(BasicTests.allTests),
+         testCase(ConnectionStateMachineTests.allTests),
+         testCase(FlowControlHandlerTests.allTests),
          testCase(HPACKCodingTests.allTests),
          testCase(HPACKIntegrationTests.allTests),
+         testCase(HTTP2ConcurrentStreamsHandlerTests.allTests),
+         testCase(HTTP2FrameParserTests.allTests),
          testCase(HTTP2StreamMultiplexerTests.allTests),
          testCase(HTTP2ToHTTP1CodecTests.allTests),
          testCase(HeaderTableTests.allTests),

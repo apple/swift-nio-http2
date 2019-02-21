@@ -51,6 +51,7 @@ extension HeaderTableEntry : CustomStringConvertible {
 /// Raw bytes storage for the header tables, both static and dynamic. Similar in spirit to
 /// `HPACKHeaders` and `NIOHTTP1.HTTPHeaders`, but uses a ring buffer to hold the bytes to
 /// avoid allocation churn while evicting and replacing entries.
+@usableFromInline
 struct HeaderTableStorage {
     static let defaultMaxSize = 4096
     
@@ -67,7 +68,7 @@ struct HeaderTableStorage {
     init(allocator: ByteBufferAllocator, maxSize: Int = HeaderTableStorage.defaultMaxSize) {
         self.maxSize = maxSize
         self.buffer = StringRing(allocator: allocator, capacity: self.maxSize)
-        self.headers = CircularBuffer(initialRingCapacity: self.maxSize / 64)    // rough guess: 64 bytes per header
+        self.headers = CircularBuffer(initialCapacity: self.maxSize / 64)    // rough guess: 64 bytes per header
     }
     
     init(allocator: ByteBufferAllocator, staticHeaderList: [(String, String)]) {
@@ -78,7 +79,7 @@ struct HeaderTableStorage {
         
         // now allocate & encode all the things
         self.buffer = StringRing(allocator: allocator, capacity: bytesNeeded)
-        self.headers = CircularBuffer(initialRingCapacity: staticHeaderList.count)
+        self.headers = CircularBuffer(initialCapacity: staticHeaderList.count)
         
         var len = 0
         
@@ -101,7 +102,7 @@ struct HeaderTableStorage {
     }
     
     subscript(index: Int) -> HeaderTableEntry {
-        return self.headers[index]
+        return self.headers[self.headers.index(self.headers.startIndex, offsetBy: index)]
     }
     
     subscript(name: String) -> [String] {
@@ -181,18 +182,6 @@ struct HeaderTableStorage {
         }
     }
     
-    mutating func add<Name: ContiguousCollection, Value: ContiguousCollection>(nameBytes: Name, valueBytes: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
-        let (nameStart, nameLen, valueStart, valueLen) = try self.encode(name: nameBytes, value: valueBytes)
-        
-        do {
-            try prependHeaderEntry(nameStart: nameStart, nameLen: nameLen, valueStart: valueStart, valueLen: valueLen)
-        } catch {
-            // remove everything written by the `encode(name:value:)` call above
-            self.buffer.unwrite(byteCount: nameLen + valueLen)
-            throw error
-        }
-    }
-    
     private mutating func ensureSpaceAvailable(_ amount: Int) throws {
         if self.buffer.writableBytes >= amount {
             // all is good in the world
@@ -209,17 +198,6 @@ struct HeaderTableStorage {
     }
     
     private mutating func encode<Name: Collection, Value: Collection>(name: Name, value: Value) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where Name.Element == UInt8, Value.Element == UInt8 {
-        try ensureSpaceAvailable(name.count + value.count)
-        
-        let nstart = self.buffer.ringTail
-        let nlen = try self.buffer.write(bytes: name)
-        let vstart = self.buffer.ringTail
-        let vlen = try self.buffer.write(bytes: value)
-        
-        return (nstart, nlen, vstart, vlen)
-    }
-    
-    private mutating func encode<Name: ContiguousCollection, Value: ContiguousCollection>(name: Name, value: Value) throws -> (nstart: Int, nlen: Int, vstart: Int, vlen: Int) where Name.Element == UInt8, Value.Element == UInt8 {
         try ensureSpaceAvailable(name.count + value.count)
         
         let nstart = self.buffer.ringTail
@@ -290,6 +268,7 @@ struct HeaderTableStorage {
 }
 
 extension HeaderTableStorage : CustomStringConvertible {
+    @usableFromInline
     var description: String {
         var array: [(String, String)] = []
         for header in self.headers {
