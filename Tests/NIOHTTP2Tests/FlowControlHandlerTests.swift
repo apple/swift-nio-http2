@@ -51,8 +51,8 @@ class FlowControlHandlerTests: XCTestCase {
     override func setUp() {
         self.channel = EmbeddedChannel()
         self.frameCatcher = DataFrameCatcher()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: self.frameCatcher).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(self.frameCatcher).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2FlowControlHandler()).wait())
     }
 
     override func tearDown() {
