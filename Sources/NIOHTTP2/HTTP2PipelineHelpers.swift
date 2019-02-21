@@ -73,6 +73,6 @@ public extension ChannelPipeline {
             }
         }
 
-        return self.add(handler: alpnHandler)
+        return self.addHandler(alpnHandler)
     }
 }

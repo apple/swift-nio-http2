@@ -174,10 +174,10 @@ class HTTP2ParserProxyHandler: ChannelInboundHandler, RemovableChannelHandler {
     typealias InboundIn = ByteBuffer
 
     func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        XCTAssertNoThrow(try ctx.pipeline.add(
-            handler: NIOHTTP2Handler(mode: .server)).wait())
+        XCTAssertNoThrow(try ctx.pipeline.addHandler(
+            NIOHTTP2Handler(mode: .server)).wait())
         ctx.fireChannelRead(data)
-        _ = ctx.pipeline.remove(ctx: ctx)
+        _ = ctx.pipeline.removeHandler(ctx: ctx)
     }
 }
 
@@ -210,24 +210,24 @@ class SimpleClientServerTests: XCTestCase {
     func basicHTTP2Connection(withFlowControl flowControl: Bool = false,
                               withConcurrentStreamsLimit limitStreams: Bool = false,
                               withMultiplexerCallback multiplexerCallback: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server)).wait())
 
         if flowControl {
-            XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).wait())
-            XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2FlowControlHandler()).wait())
+            XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2FlowControlHandler()).wait())
+            XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2FlowControlHandler()).wait())
         }
 
         if limitStreams {
-            XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 100)).wait())
-            XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .server, initialMaxOutboundStreams: 100)).wait())
+            XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 100)).wait())
+            XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .server, initialMaxOutboundStreams: 100)).wait())
         }
 
         if let multiplexerCallback = multiplexerCallback {
-            XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: HTTP2StreamMultiplexer(mode: .client,
+            XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .client,
                                                                                                  channel: self.clientChannel,
                                                                                                  inboundStreamStateInitializer: multiplexerCallback)).wait())
-            XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2StreamMultiplexer(mode: .server,
+            XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .server,
                                                                                                  channel: self.serverChannel,
                                                                                                  inboundStreamStateInitializer: multiplexerCallback)).wait())
         }
@@ -237,8 +237,8 @@ class SimpleClientServerTests: XCTestCase {
 
     /// Establish a basic HTTP/2 connection where the HTTP2Parser handler is added after the channel has been activated.
     func basicHTTP2DynamicPipelineConnection() throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: HTTP2ParserProxyHandler()).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(HTTP2ParserProxyHandler()).wait())
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
     }
 
@@ -486,7 +486,7 @@ class SimpleClientServerTests: XCTestCase {
         // We add the stream multiplexer because it'll emit WINDOW_UPDATE frames, which we need.
         let serverHandler = FrameRecorderHandler()
         try self.basicHTTP2Connection(withFlowControl: true) { channel, streamID in
-            return channel.pipeline.add(handler: serverHandler)
+            return channel.pipeline.addHandler(serverHandler)
         }
 
         // We're going to create a largish temp file: 3 data frames in size.
@@ -505,7 +505,7 @@ class SimpleClientServerTests: XCTestCase {
             let clientHandler = FrameRecorderHandler()
             let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
             try (self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler as! HTTP2StreamMultiplexer).createStreamChannel(promise: childChannelPromise) { channel, streamID in
-                return channel.pipeline.add(handler: clientHandler)
+                return channel.pipeline.addHandler(clientHandler)
             }
             (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
             let childChannel = try childChannelPromise.futureResult.wait()
@@ -614,8 +614,8 @@ class SimpleClientServerTests: XCTestCase {
             HTTP2Setting(parameter: .initialWindowSize, value: 100),
             HTTP2Setting(parameter: .enablePush, value: 0)
         ]
-        XCTAssertNoThrow(try self.clientChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .client, initialSettings: initialSettings)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, initialSettings: initialSettings)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server)).wait())
         try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel, clientSettings: initialSettings)
 
         // There should be no frames here.
@@ -679,7 +679,7 @@ class SimpleClientServerTests: XCTestCase {
             reqBodyFrame.flags.insert(.endStream)
             channel.writeAndFlush(reqBodyFrame, promise: nil)
 
-            return channel.pipeline.add(handler: childHandler)
+            return channel.pipeline.addHandler(childHandler)
         }
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
 
@@ -803,8 +803,8 @@ class SimpleClientServerTests: XCTestCase {
         // Now add handlers to record user events.
         let clientHandler = UserEventRecorder()
         let serverHandler = UserEventRecorder()
-        try self.clientChannel.pipeline.add(handler: clientHandler).wait()
-        try self.serverChannel.pipeline.add(handler: serverHandler).wait()
+        try self.clientChannel.pipeline.addHandler(clientHandler).wait()
+        try self.serverChannel.pipeline.addHandler(serverHandler).wait()
 
         // We're now going to try to send a request from the client to the server and send a server response back. This
         // stream will terminate cleanly.
@@ -847,8 +847,8 @@ class SimpleClientServerTests: XCTestCase {
         // Now add handlers to record user events.
         let clientHandler = UserEventRecorder()
         let serverHandler = UserEventRecorder()
-        try self.clientChannel.pipeline.add(handler: clientHandler).wait()
-        try self.serverChannel.pipeline.add(handler: serverHandler).wait()
+        try self.clientChannel.pipeline.addHandler(clientHandler).wait()
+        try self.serverChannel.pipeline.addHandler(serverHandler).wait()
 
         // Initiate a stream from the client. No need to send body data, we don't need it.
         let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
@@ -884,8 +884,8 @@ class SimpleClientServerTests: XCTestCase {
         // Now add handlers to record user events.
         let clientHandler = UserEventRecorder()
         let serverHandler = UserEventRecorder()
-        try self.clientChannel.pipeline.add(handler: clientHandler).wait()
-        try self.serverChannel.pipeline.add(handler: serverHandler).wait()
+        try self.clientChannel.pipeline.addHandler(clientHandler).wait()
+        try self.serverChannel.pipeline.addHandler(serverHandler).wait()
 
         // Initiate a stream from the client. No need to send body data, we don't need it.
         let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
@@ -927,7 +927,7 @@ class SimpleClientServerTests: XCTestCase {
 
         // Add handler to record stream closed event.
         let handler = ClosedEventVsFrameOrderingHandler(targetStreamID: serverStreamID)
-        try self.serverChannel.pipeline.add(handler: handler).wait()
+        try self.serverChannel.pipeline.addHandler(handler).wait()
 
         // The client will reset the stream.
         let rstStreamFrame = HTTP2Frame(streamID: serverStreamID, payload: .rstStream(.cancel))
@@ -954,7 +954,7 @@ class SimpleClientServerTests: XCTestCase {
 
         // Add handler to record stream closed event.
         let handler = ClosedEventVsFrameOrderingHandler(targetStreamID: clientStreamID)
-        try self.clientChannel.pipeline.add(handler: handler).wait()
+        try self.clientChannel.pipeline.addHandler(handler).wait()
 
         // The server will send GOAWAY.
         let goawayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
@@ -1022,8 +1022,8 @@ class SimpleClientServerTests: XCTestCase {
         }
 
         let errorSeenPromise: EventLoopPromise<Error> = self.clientChannel.eventLoop.makePromise()
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: NIOHTTP2Handler(mode: .server)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.add(handler: WaitForErrorHandler(errorSeenPromise: errorSeenPromise)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(WaitForErrorHandler(errorSeenPromise: errorSeenPromise)).wait())
 
         XCTAssertNoThrow(try self.clientChannel?.connect(to: SocketAddress(unixDomainSocketPath: "ignored")).wait())
         XCTAssertNoThrow(try self.serverChannel?.connect(to: SocketAddress(unixDomainSocketPath: "ignored")).wait())

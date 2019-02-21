@@ -93,8 +93,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testBasicFunctionality() {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 2)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 2)).wait())
 
         // Write frames for three streams.
         let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(HPACKHeaders([]), nil)) }
@@ -127,8 +127,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testToleratesNegativeNumbersOfStreams() throws {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 2)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 2)).wait())
 
         // Write frames for three streams and flush them.
         let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(HPACKHeaders([]), nil)) }
@@ -184,8 +184,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testCascadingFrames() throws {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to test a cascade of frames as a result of stream closure. This is not likely to happen in real code,
         // but it's a good test to confirm that we're safe in re-entrant calls. To do this, we set up, let's say, 100
@@ -220,9 +220,9 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testBufferedFramesPassedThroughOnStreamClosed() {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: CloseOnWriteForStreamHandler(streamToFail: 3, reason: nil)).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(CloseOnWriteForStreamHandler(streamToFail: 3, reason: nil)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We'll flush some, but not all of them
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
@@ -253,8 +253,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testResetStreamOnUnbufferingStream() {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We'll flush some, but not all of them
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
@@ -304,8 +304,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testResetStreamOnBufferingStream() {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We won't flush stream 3.
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
@@ -347,8 +347,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testGoingBackwardsInStreamIDIsNotAllowed() {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to create stream 1 and stream 11. Stream 1 will be passed through, stream 11 will have to wait.
         let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
@@ -375,8 +375,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testFramesForNonLocalStreamIDsAreIgnoredClient() {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to create stream 1 and stream 3, which will be buffered.
         let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
@@ -398,8 +398,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
 
     func testFramesForNonLocalStreamIDsAreIgnoredServer() {
         let frameRecorder = OutboundFrameRecorder()
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: frameRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.add(handler: NIOHTTP2ConcurrentStreamsHandler(mode: .server, initialMaxOutboundStreams: 1)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .server, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to create stream 2 and stream 4. First, however, we reserve them. These are not buffered, per RFC 7540 § 5.1.2:
         //
