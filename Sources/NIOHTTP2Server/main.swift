@@ -99,18 +99,12 @@ let bootstrap = ServerBootstrap(group: group)
 
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
-        return channel.pipeline.addHandler(NIOHTTP2Handler(mode: .server)).flatMap {
-            return channel.pipeline.addHandler(NIOHTTP2FlowControlHandler()).flatMap {
-                let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: channel) { (channel, streamID) -> EventLoopFuture<Void> in
-                    return channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
-                        channel.pipeline.addHandler(HTTP1TestServer())
-                    }
-                }
-
-                return channel.pipeline.addHandler(multiplexer).flatMap {
-                    return channel.pipeline.addHandler(ErrorHandler())
-                }
+        return channel.configureHTTP2Pipeline(mode: .server) { (streamChannel, streamID) -> EventLoopFuture<Void> in
+            return streamChannel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
+                streamChannel.pipeline.addHandler(HTTP1TestServer())
             }
+        }.flatMap { (_: HTTP2StreamMultiplexer) in
+            return channel.pipeline.addHandler(ErrorHandler())
         }
     }
 

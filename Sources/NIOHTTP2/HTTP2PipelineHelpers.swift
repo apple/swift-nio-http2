@@ -76,3 +76,41 @@ public extension ChannelPipeline {
         return self.addHandler(alpnHandler)
     }
 }
+
+extension Channel {
+    /// Configures a `ChannelPipeline` to speak HTTP/2.
+    ///
+    /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
+    /// Instead, this simply adds the handlers required to speak HTTP/2 after negotiation has completed, or when agreed by prior knowledge.
+    /// Whenever possible use this function to setup a HTTP/2 server pipeline, as it allows that pipeline to evolve without breaking your code.
+    ///
+    /// - parameters:
+    ///     - mode: The mode this pipeline will operate in, server or client.
+    ///     - initialLocalSettings: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///     - position: The position in the pipeline into which to insert these handlers.
+    ///     - inboundStreamStateInitializer: A closure that will be called whenever the remote peer initiates a new stream. This should almost always
+    ///         be provided, especially on servers.
+    /// - returns: An `EventLoopFuture` containing the `HTTP2StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
+                                       initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
+                                       position: ChannelPipeline.Position = .last,
+                                       inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
+        // We need to determine the initial settings to apply to some of the later handlers in the pipeline, based on the initial settings provided
+        // by the user. We default these when they are mandatory and we have no alternative. In most of these cases the default is in the spec.
+        // RFC 7540 defaults SETTINGS_MAX_CONCURRENT_STREAMS to unbounded, which we read as Int32.max.
+        let initialMaxOutboundStreams = initialLocalSettings.lazy.reversed().first(where: { $0.parameter == .maxConcurrentStreams })?.value ?? Int(Int32.max)
+
+        var handlers = [ChannelHandler]()
+        handlers.reserveCapacity(4)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
+
+        handlers.append(NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings))
+        handlers.append(NIOHTTP2FlowControlHandler())
+        handlers.append(NIOHTTP2ConcurrentStreamsHandler(mode: mode, initialMaxOutboundStreams: initialMaxOutboundStreams))
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, inboundStreamStateInitializer: inboundStreamStateInitializer)
+        handlers.append(multiplexer)
+
+        return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
+    }
+}
