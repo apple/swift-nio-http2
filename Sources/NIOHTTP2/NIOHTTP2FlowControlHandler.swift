@@ -50,20 +50,20 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
         switch frame.payload {
         case .data(let body):
             // We buffer DATA frames.
-            if !self.streamDataBuffers[frame.streamID].apply({ $0.dataBuffer.bufferWrite((.data(body), frame.flags, promise)) }) {
+            if !self.streamDataBuffers[frame.streamID].apply({ $0.dataBuffer.bufferWrite((.data(body), promise)) }) {
                 // We don't have this stream ID. This is an internal error, but we won't precondition on it as
                 // it can happen due to channel handler misconfiguration or other weirdness. We'll just complain.
                 let error = NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID)
                 promise?.fail(error)
                 context.fireErrorCaught(error)
             }
-        case .headers(let headers, let priorityData):
+        case .headers(let headerContent):
             // Headers are special. If we have a data frame buffered, we buffer behind it to avoid frames
             // being reordered. However, if we don't have a data frame buffered we pass the headers frame on
             // immediately, as there is no risk of violating ordering guarantees.
             let bufferResult = self.streamDataBuffers[frame.streamID].modify { (state: inout StreamFlowControlState) -> Bool in
                 if state.dataBuffer.haveBufferedDataFrame {
-                    state.dataBuffer.bufferWrite((.headers(headers, priorityData), frame.flags, promise))
+                    state.dataBuffer.bufferWrite((.headers(headerContent), promise))
                     return true
                 } else {
                     return false
@@ -124,7 +124,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
-        if case .settings(let newSettings) = frame.payload, !frame.flags.contains(.ack) {
+        if case .settings(.settings(let newSettings)) = frame.payload {
             // This is a SETTINGS frame for new settings from the remote peer. We
             // should apply this change. We only care about the value of SETTINGS_MAX_FRAME_SIZE:
             // settings changes that affect flow control windows are notified to us in other ways.
@@ -202,13 +202,13 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
                 }
                 return nextWrite
             }
-            guard let (payload, flags, promise) = nextWrite else {
+            guard let (payload, promise) = nextWrite else {
                 // The stream was not present. This is weird, it shouldn't ever happen, but we tolerate it
                 self.flushableStreams.remove(nextStreamID)
                 continue
             }
 
-            let frame = HTTP2Frame(streamID: nextStreamID, flags: flags, payload: payload)
+            let frame = HTTP2Frame(streamID: nextStreamID, payload: payload)
             context.write(self.wrapOutboundOut(frame), promise: promise)
             didWrite = true
         }
@@ -239,7 +239,7 @@ private struct StreamFlowControlState {
         let nextWrite = self.dataBuffer.nextWrite(maxSize: writeSize)
 
         if case .data(let payload) = nextWrite.0 {
-            self.currentWindowSize -= payload.readableBytes
+            self.currentWindowSize -= payload.data.readableBytes
         }
 
         assert(self.currentWindowSize >= 0)
@@ -253,7 +253,7 @@ private struct StreamFlowControlState {
 
 
 private struct DataBuffer {
-    typealias BufferElement = (HTTP2Frame.FramePayload, HTTP2Frame.FrameFlags, EventLoopPromise<Void>?)
+    typealias BufferElement = (HTTP2Frame.FramePayload, EventLoopPromise<Void>?)
 
     private var bufferedChunks: MarkedCircularBuffer<BufferElement>
 
@@ -289,14 +289,14 @@ private struct DataBuffer {
         if let markIndex = self.bufferedChunks.markedElementIndex {
             for element in self.bufferedChunks.suffix(from: markIndex) {
                 if case .data(let contents) = element.0 {
-                    self.flushedBufferedBytes += UInt(contents.readableBytes)
+                    self.flushedBufferedBytes += UInt(contents.data.readableBytes)
                 }
             }
             self.bufferedChunks.mark()
         } else if self.bufferedChunks.count > 0 {
             for element in self.bufferedChunks {
                 if case .data(let contents) = element.0 {
-                    self.flushedBufferedBytes += UInt(contents.readableBytes)
+                    self.flushedBufferedBytes += UInt(contents.data.readableBytes)
                 }
             }
             self.bufferedChunks.mark()
@@ -315,7 +315,7 @@ private struct DataBuffer {
         }
 
         // Now check if we have enough space to return the next DATA frame wholesale.
-        let firstElementReadableBytes = contents.readableBytes
+        let firstElementReadableBytes = contents.data.readableBytes
         if firstElementReadableBytes <= maxSize {
             // Return the whole element.
             self.flushedBufferedBytes -= UInt(firstElementReadableBytes)
@@ -324,15 +324,15 @@ private struct DataBuffer {
 
         // Here we have too many bytes. So we need to slice out a copy of the data we need
         // and leave the rest.
-        let newElement = contents.slicePrefix(maxSize)
+        let dataSlice = contents.data.slicePrefix(maxSize)
         self.flushedBufferedBytes -= UInt(maxSize)
         self.bufferedChunks[self.bufferedChunks.startIndex].0 = .data(contents)
-        return (.data(newElement), HTTP2Frame.FrameFlags(), nil)
+        return (.data(.init(data: dataSlice)), nil)
     }
 
     mutating func failAllWrites(error: Error) {
         while self.bufferedChunks.count > 0 {
-            let (_, _, promise) = self.bufferedChunks.removeFirst()
+            let (_, promise) = self.bufferedChunks.removeFirst()
             promise?.fail(error)
         }
     }

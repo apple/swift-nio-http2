@@ -94,7 +94,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
-        XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(requestHeaders, nil))))
+        XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders)))))
 
         var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: .POST, uri: "/post")
         expectedRequestHead.headers.add(name: "host", value: "example.org")
@@ -103,8 +103,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
         bodyData.writeStaticString("hello, world!")
-        var dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(bodyData)))
-        dataFrame.flags.insert(.endStream)
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(bodyData), endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
         self.channel.assertReceivedServerRequestPart(.body(bodyData))
         self.channel.assertReceivedServerRequestPart(.end(nil))
@@ -118,8 +117,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/get"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
-        var headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(requestHeaders, nil))
-        headersFrame.flags.insert(.endStream)
+        let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders, endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(headersFrame))
 
         var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: .GET, uri: "/get")
@@ -137,7 +135,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/get"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
-        let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(requestHeaders, nil))
+        let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders)))
         XCTAssertNoThrow(try self.channel.writeInbound(headersFrame))
 
         var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: .GET, uri: "/get")
@@ -147,8 +145,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Ok, we're going to send trailers.
         let trailers = HPACKHeaders([("a trailer", "yes"), ("another trailer", "also yes")])
-        var trailersFrame = HTTP2Frame(streamID: streamID, payload: .headers(trailers, nil))
-        trailersFrame.flags.insert(.endStream)
+        let trailersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: trailers, endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(trailersFrame))
 
         self.channel.assertReceivedServerRequestPart(.end(trailers.asH1Headers()))
@@ -169,7 +166,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, payload: expectedResponseHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, headers: expectedResponseHeaders)
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
@@ -182,7 +179,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let trailers = HPACKHeaders([("a trailer", "yes"), ("another trailer", "still yes")])
         self.channel.writeAndFlush(HTTPServerResponsePart.end(trailers.asH1Headers()), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
-        writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, payload: trailers)
+        writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, headers: trailers)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -200,7 +197,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, payload: expectedResponseHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, headers: expectedResponseHeaders)
 
         // No trailers, just end.
         let emptyBuffer = self.channel.allocator.buffer(capacity: 0)
@@ -228,7 +225,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let expectedInformationalResponseHeaders = HPACKHeaders([(":status", "103")]) + informationalResponseHeaders
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
         for idx in 0..<3 {
-            writeRecorder.flushedWrites[idx].assertHeadersFrame(endStream: false, streamID: 1, payload: expectedInformationalResponseHeaders)
+            writeRecorder.flushedWrites[idx].assertHeadersFrame(endStream: false, streamID: 1, headers: expectedInformationalResponseHeaders)
         }
 
         // Now we finish up with a basic response.
@@ -240,7 +237,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
         let emptyBuffer = self.channel.allocator.buffer(capacity: 0)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 5)
-        writeRecorder.flushedWrites[3].assertHeadersFrame(endStream: false, streamID: 1, payload: expectedResponseHeaders)
+        writeRecorder.flushedWrites[3].assertHeadersFrame(endStream: false, streamID: 1, headers: expectedResponseHeaders)
         writeRecorder.flushedWrites[4].assertDataFrame(endStream: true, streamID: 1, payload: emptyBuffer)
 
         XCTAssertNoThrow(try self.channel.finish())
@@ -282,7 +279,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
-        XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(HPACKHeaders(httpHeaders: responseHeaders), nil))))
+        XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders))))))
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
@@ -290,8 +287,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
         bodyData.writeStaticString("hello, world!")
-        var dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.byteBuffer(bodyData)))
-        dataFrame.flags.insert(.endStream)
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(bodyData), endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
         self.channel.assertReceivedClientResponsePart(.body(bodyData))
         self.channel.assertReceivedClientResponsePart(.end(nil))
@@ -305,8 +301,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
-        var headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(HPACKHeaders(httpHeaders: responseHeaders), nil))
-        headersFrame.flags.insert(.endStream)
+        let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders), endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(headersFrame))
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
@@ -323,7 +318,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
-        let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(HPACKHeaders(httpHeaders: responseHeaders), nil))
+        let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders))))
         XCTAssertNoThrow(try self.channel.writeInbound(headersFrame))
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
@@ -332,8 +327,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Ok, we're going to send trailers.
         let trailers = HTTPHeaders([("a trailer", "yes"), ("another trailer", "also yes")])
-        var trailersFrame = HTTP2Frame(streamID: streamID, payload: .headers(HPACKHeaders(httpHeaders: trailers), nil))
-        trailersFrame.flags.insert(.endStream)
+        let trailersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: trailers), endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(trailersFrame))
 
         self.channel.assertReceivedClientResponsePart(.end(trailers))
@@ -355,7 +349,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, payload: expectedRequestHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, headers: expectedRequestHeaders)
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
@@ -368,7 +362,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let trailers = HPACKHeaders([("a trailer", "yes"), ("another trailer", "still yes")])
         self.channel.writeAndFlush(HTTPClientRequestPart.end(trailers.asH1Headers()), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
-        writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, payload: trailers)
+        writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, headers: trailers)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -387,7 +381,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "http"), (":authority", "example.org"), ("other", "header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, payload: expectedRequestHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false, streamID: 1, headers: expectedRequestHeaders)
 
         // No trailers, just end.
         let emptyBuffer = self.channel.allocator.buffer(capacity: 0)
@@ -405,7 +399,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         // Start with a few 100 blocks.
         let informationalResponseHeaders = HTTPHeaders([(":status", "103"), ("link", "example")])
         for _ in 0..<3 {
-            XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(HPACKHeaders(httpHeaders: informationalResponseHeaders), nil))))
+            XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: informationalResponseHeaders))))))
         }
 
         var expectedInformationalResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .custom(code: 103, reasonPhrase: ""))
@@ -416,8 +410,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now a response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
-        var responseFrame = HTTP2Frame(streamID: streamID, payload: .headers(HPACKHeaders(httpHeaders: responseHeaders), nil))
-        responseFrame.flags.insert(.endStream)
+        let responseFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders), endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(responseFrame))
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)

@@ -185,34 +185,32 @@ extension NIOHTTP2Handler {
         case .alternativeService, .origin:
             // TODO(cory): Implement
             fatalError("Currently some frames are unhandled.")
-        case .data:
-            result = self.stateMachine.receiveData(streamID: frame.streamID, flowControlledBytes: flowControlledLength, isEndStreamSet: frame.flags.contains(.endStream))
+        case .data(let dataBody):
+            result = self.stateMachine.receiveData(streamID: frame.streamID, flowControlledBytes: flowControlledLength, isEndStreamSet: dataBody.endStream)
         case .goAway(let lastStreamID, _, _):
             result = self.stateMachine.receiveGoaway(lastStreamID: lastStreamID)
-        case .headers(let headers, _):
-            result = self.stateMachine.receiveHeaders(streamID: frame.streamID, headers: headers, isEndStreamSet: frame.flags.contains(.endStream))
-        case .ping:
-            let (stateMachineResult, postPingOperation) = self.stateMachine.receivePing(flags: frame.flags)
+        case .headers(let headerBody):
+            result = self.stateMachine.receiveHeaders(streamID: frame.streamID, headers: headerBody.headers, isEndStreamSet: headerBody.endStream)
+        case .ping(let pingData, let ack):
+            let (stateMachineResult, postPingOperation) = self.stateMachine.receivePing(ackFlagSet: ack)
             result = stateMachineResult
             switch postPingOperation {
             case .nothing:
                 break
             case .sendAck:
                 self.writeBuffer.clear()
-                var responseFrame = frame
-                responseFrame.flags.insert(.ack)
+                let responseFrame = HTTP2Frame(streamID: frame.streamID, payload: .ping(pingData, ack: true))
                 self.encodeAndWriteFrame(context: context, frame: responseFrame, promise: nil)
                 self.wroteAutomaticFrame = true
             }
         case .priority:
             result = self.stateMachine.receivePriority()
-        case .pushPromise(let pushedStreamID, let headers):
-            result = self.stateMachine.receivePushPromise(originalStreamID: frame.streamID, childStreamID: pushedStreamID, headers: headers)
+        case .pushPromise(let pushedStreamData):
+            result = self.stateMachine.receivePushPromise(originalStreamID: frame.streamID, childStreamID: pushedStreamData.pushedStreamID, headers: pushedStreamData.headers)
         case .rstStream(let reason):
             result = self.stateMachine.receiveRstStream(streamID: frame.streamID, reason: reason)
         case .settings(let newSettings):
             let (stateMachineResult, postSettingsOperation) = self.stateMachine.receiveSettings(newSettings,
-                                                                                                flags: frame.flags,
                                                                                                 frameEncoder: &self.frameEncoder,
                                                                                                 frameDecoder: &self.frameDecoder)
             result = stateMachineResult
@@ -221,7 +219,7 @@ extension NIOHTTP2Handler {
                 break
             case .sendAck:
                 self.writeBuffer.clear()
-                self.encodeAndWriteFrame(context: context, frame: HTTP2Frame(streamID: .rootStream, flags: .ack, payload: .settings([])), promise: nil)
+                self.encodeAndWriteFrame(context: context, frame: HTTP2Frame(streamID: .rootStream, payload: .settings(.ack)), promise: nil)
                 self.wroteAutomaticFrame = true
             }
 
@@ -299,7 +297,7 @@ extension NIOHTTP2Handler {
             context.write(self.wrapOutboundOut(.byteBuffer(self.writeBuffer)), promise: nil)
         }
 
-        let initialSettingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(self.initialSettings))
+        let initialSettingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(self.initialSettings)))
         self.processOutboundFrame(context: context, frame: initialSettingsFrame, promise: nil)
         context.flush()
     }
@@ -313,21 +311,25 @@ extension NIOHTTP2Handler {
             fatalError("Currently some frames are unhandled.")
         case .data(let data):
             // TODO(cory): Correctly account for padding data.
-            result = self.stateMachine.sendData(streamID: frame.streamID, flowControlledBytes: data.readableBytes, isEndStreamSet: frame.flags.contains(.endStream))
+            result = self.stateMachine.sendData(streamID: frame.streamID, flowControlledBytes: data.data.readableBytes, isEndStreamSet: data.endStream)
         case .goAway(let lastStreamID, _, _):
             result = self.stateMachine.sendGoaway(lastStreamID: lastStreamID)
-        case .headers(let headers, _):
-            result = self.stateMachine.sendHeaders(streamID: frame.streamID, headers: headers, isEndStreamSet: frame.flags.contains(.endStream))
+        case .headers(let headerContent):
+            result = self.stateMachine.sendHeaders(streamID: frame.streamID, headers: headerContent.headers, isEndStreamSet: headerContent.endStream)
         case .ping:
             result = self.stateMachine.sendPing()
         case .priority:
             result = self.stateMachine.sendPriority()
-        case .pushPromise(let pushedStreamID, let headers):
-            result = self.stateMachine.sendPushPromise(originalStreamID: frame.streamID, childStreamID: pushedStreamID, headers: headers)
+        case .pushPromise(let pushedContent):
+            result = self.stateMachine.sendPushPromise(originalStreamID: frame.streamID, childStreamID: pushedContent.pushedStreamID, headers: pushedContent.headers)
         case .rstStream(let reason):
             result = self.stateMachine.sendRstStream(streamID: frame.streamID, reason: reason)
-        case .settings(let newSettings):
+        case .settings(.settings(let newSettings)):
             result = self.stateMachine.sendSettings(newSettings)
+        case .settings(.ack):
+            // We do not allow sending SETTINGS ACK frames.
+            promise?.fail(NIOHTTP2Errors.Unsupported(info: "Users may not send SETTINGS ACK frames"))
+            return
         case .windowUpdate(let increment):
             result = self.stateMachine.sendWindowUpdate(streamID: frame.streamID, windowIncrement: UInt32(increment))
         }

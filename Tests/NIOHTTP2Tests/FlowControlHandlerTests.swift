@@ -36,7 +36,7 @@ class DataFrameCatcher: ChannelOutboundHandler {
 
         switch frame.payload {
         case .data(let data):
-            context.write(self.wrapOutboundOut(data), promise: promise)
+            context.write(self.wrapOutboundOut(data.data), promise: promise)
         default:
             promise?.succeed(())
         }
@@ -246,7 +246,7 @@ class FlowControlHandlerTests: XCTestCase {
             XCTFail("Unexpected write failure: \($0)")
         }
 
-        var payload = self.channel.writeDataFrame(streamOne, byteBufferSize: 50, flags: .endStream)
+        var payload = self.channel.writeDataFrame(streamOne, byteBufferSize: 50, endStream: true)
         XCTAssertFalse(frameWritten)
 
         // Flush out the first frame.
@@ -275,7 +275,7 @@ class FlowControlHandlerTests: XCTestCase {
         let streamOne = HTTP2StreamID(1)
 
         // Start by sending a headers frame through, even before createStream is fired. This should pass unmolested.
-        let headers = HTTP2Frame(streamID: streamOne, flags: .endHeaders, payload: .headers(HPACKHeaders([("name", "value")]), nil))
+        let headers = HTTP2Frame(streamID: streamOne, payload: .headers(.init(headers: HPACKHeaders([("name", "value")]))))
         self.channel.write(headers, promise: nil)
         var receivedFrames = self.receivedFrames()
         XCTAssertEqual(receivedFrames.count, 1)
@@ -289,7 +289,7 @@ class FlowControlHandlerTests: XCTestCase {
         receivedFrames[0].assertHeadersFrameMatches(this: headers)
 
         // Now send a large DATA frame that is going to be buffered, followed by a HEADERS frame.
-        let endHeaders = HTTP2Frame(streamID: streamOne, flags: [.endHeaders, .endStream], payload: .headers(HPACKHeaders([("name", "value")]), nil))
+        let endHeaders = HTTP2Frame(streamID: streamOne, payload: .headers(.init(headers: HPACKHeaders([("name", "value")]), endStream: true)))
         var writtenData = self.channel.writeDataFrame(streamOne, byteBufferSize: 50)
         self.channel.write(endHeaders, promise: nil)
         self.channel.flush()
@@ -325,7 +325,7 @@ class FlowControlHandlerTests: XCTestCase {
         let headersPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
 
         var writtenData = self.channel.writeDataFrame(streamOne, byteBufferSize: 50, promise: dataPromise)
-        self.channel.write(HTTP2Frame(streamID: streamOne, payload: .headers(HPACKHeaders([("key", "value")]), nil)), promise: headersPromise)
+        self.channel.write(HTTP2Frame(streamID: streamOne, payload: .headers(.init(headers: HPACKHeaders([("key", "value")])))), promise: headersPromise)
         self.channel.flush()
 
         var receivedFrames = self.receivedFrames()
@@ -384,8 +384,8 @@ class FlowControlHandlerTests: XCTestCase {
         XCTAssertEqual(0, self.receivedFrames().count)
 
         let settingsFrame = HTTP2Frame(streamID: .rootStream,
-                                       payload: .settings([HTTP2Setting(parameter: .maxFrameSize, value: 1<<24),
-                                                           HTTP2Setting(parameter: .maxFrameSize, value: 1<<15)]))
+                                       payload: .settings(.settings([HTTP2Setting(parameter: .maxFrameSize, value: 1<<24),
+                                                                     HTTP2Setting(parameter: .maxFrameSize, value: 1<<15)])))
         XCTAssertNoThrow(try self.channel.writeInbound(settingsFrame))
         XCTAssertEqual(0, self.receivedFrames().count)
 
@@ -417,8 +417,8 @@ class FlowControlHandlerTests: XCTestCase {
         XCTAssertEqual(0, self.receivedFrames().count)
 
         let settingsFrame = HTTP2Frame(streamID: .rootStream,
-                                       payload: .settings([HTTP2Setting(parameter: .maxFrameSize, value: 1<<24),
-                                                           HTTP2Setting(parameter: .maxFrameSize, value: 1<<15)]))
+                                       payload: .settings(.settings([HTTP2Setting(parameter: .maxFrameSize, value: 1<<24),
+                                                                     HTTP2Setting(parameter: .maxFrameSize, value: 1<<15)])))
         XCTAssertNoThrow(try self.channel.writeInbound(settingsFrame))
         XCTAssertEqual(0, self.receivedFrames().count)
 
@@ -462,22 +462,22 @@ private extension EmbeddedChannel {
     }
 
     @discardableResult
-    func writeDataFrame(_ streamID: HTTP2StreamID, byteBufferSize: Int, flags: HTTP2Frame.FrameFlags = .init(), promise: EventLoopPromise<Void>? = nil) -> ByteBuffer {
+    func writeDataFrame(_ streamID: HTTP2StreamID, byteBufferSize: Int, endStream: Bool = false, promise: EventLoopPromise<Void>? = nil) -> ByteBuffer {
         var buffer = self.allocator.buffer(capacity: byteBufferSize)
         buffer.writeBytes(repeatElement(UInt8(0xff), count: byteBufferSize))
-        let frame = HTTP2Frame(streamID: streamID, flags: flags, payload: .data(.byteBuffer(buffer)))
+        let frame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(buffer), endStream: endStream)))
 
         self.pipeline.write(NIOAny(frame), promise: promise)
         return buffer
     }
 
     @discardableResult
-    func writeDataFrame(_ streamID: HTTP2StreamID, fileRegionSize: Int, flags: HTTP2Frame.FrameFlags = .init(), promise: EventLoopPromise<Void>? = nil) -> FileRegion {
+    func writeDataFrame(_ streamID: HTTP2StreamID, fileRegionSize: Int, endStream: Bool = false, promise: EventLoopPromise<Void>? = nil) -> FileRegion {
         // We create a deliberately-invalid closed file handle, as we'll never actually use it.
         let handle = NIOFileHandle(descriptor: -1)
         XCTAssertNoThrow(try handle.takeDescriptorOwnership())
         let region = FileRegion(fileHandle: handle, readerIndex: 0, endIndex: fileRegionSize)
-        let frame = HTTP2Frame(streamID: streamID, flags: flags, payload: .data(.fileRegion(region)))
+        let frame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .fileRegion(region), endStream: endStream)))
 
         self.pipeline.write(NIOAny(frame), promise: promise)
         return region

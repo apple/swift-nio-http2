@@ -72,7 +72,7 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
-        guard case .settings(let newSettings) = frame.payload, !frame.flags.contains(.ack) else {
+        guard case .settings(.settings(let newSettings)) = frame.payload else {
             // Either this is not a settings frame, or it's a settings ACK. Either way we don't care.
             // TODO(cory): We should handle GOAWAY!
             context.fireChannelRead(data)

@@ -468,11 +468,12 @@ struct HTTP2ConnectionStateMachine {
 // performs a state transition, and can be used to validate that a specific action is acceptable on a connection in this state.
 extension HTTP2ConnectionStateMachine {
     /// Called when a SETTINGS frame has been received from the remote peer
-    mutating func receiveSettings(_ settings: HTTP2Settings, flags: HTTP2Frame.FrameFlags, frameEncoder: inout HTTP2FrameEncoder, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
-        if flags.contains(.ack) {
+    mutating func receiveSettings(_ payload: HTTP2Frame.FramePayload.Settings, frameEncoder: inout HTTP2FrameEncoder, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
+        switch payload {
+        case .ack:
             // No action is ever required after receiving a settings ACK
             return (self.receiveSettingsAck(frameEncoder: &frameEncoder), .nothing)
-        } else {
+        case .settings(let settings):
             return self.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
         }
     }
@@ -925,13 +926,13 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a PING frame has been received from the network.
-    mutating func receivePing(flags: HTTP2Frame.FrameFlags) -> (StateMachineResultWithEffect, PostFrameOperation) {
+    mutating func receivePing(ackFlagSet: Bool) -> (StateMachineResultWithEffect, PostFrameOperation) {
         // Pings are pretty straightforward: they're basically always allowed. This is a bit weird, but I can find no text in
         // RFC 7540 that says that receiving PINGs with ACK flags set when no PING ACKs are expected is forbidden. This is
         // very strange, but we allow it.
         switch self.state {
         case .prefaceReceived, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceReceived:
-            return (.init(result: .succeed, effect: nil), flags.contains(.ack) ? .nothing : .sendAck)
+            return (.init(result: .succeed, effect: nil), ackFlagSet ? .nothing : .sendAck)
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
