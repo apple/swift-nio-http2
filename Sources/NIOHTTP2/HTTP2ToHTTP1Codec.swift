@@ -338,6 +338,8 @@ internal extension String {
             self = "MKACTIVITY"
         case .UNSUBSCRIBE:
             self = "UNSUBSCRIBE"
+        case .SOURCE:
+            self = "SOURCE"
         case .RAW(let v):
             self = v
         }
