@@ -56,19 +56,23 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         let frame = self.unwrapInboundIn(data)
 
         switch frame.payload {
-        case .headers(let headers, _):
-            if case .trailer = self.headerStateMachine.newHeaders(block: headers.asH1Headers()) {
-                context.fireChannelRead(self.wrapInboundOut(.end(headers.asH1Headers())))
+        case .headers(let headerContent):
+            if case .trailer = self.headerStateMachine.newHeaders(block: headerContent.headers.asH1Headers()) {
+                context.fireChannelRead(self.wrapInboundOut(.end(headerContent.headers.asH1Headers())))
             } else {
-                let respHead = HTTPResponseHead(http2HeaderBlock: headers.asH1Headers())
+                let respHead = HTTPResponseHead(http2HeaderBlock: headerContent.headers.asH1Headers())
                 context.fireChannelRead(self.wrapInboundOut(.head(respHead)))
-                if frame.flags.contains(.endStream) {
+                if headerContent.endStream {
                     context.fireChannelRead(self.wrapInboundOut(.end(nil)))
                 }
             }
-        case .data(.byteBuffer(let b)):
+        case .data(let content):
+            guard case .byteBuffer(let b) = content.data else {
+                preconditionFailure("Received DATA frame with non-bytebuffer IOData")
+            }
+
             context.fireChannelRead(self.wrapInboundOut(.body(b)))
-            if frame.flags.contains(.endStream) {
+            if content.endStream {
                 context.fireChannelRead(self.wrapInboundOut(.end(nil)))
             }
         case .alternativeService, .rstStream, .priority, .windowUpdate:
@@ -85,23 +89,22 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         switch responsePart {
         case .head(let head):
             let h1Headers = HTTPHeaders(requestHead: head, protocolString: self.protocolString)
-            let frame = HTTP2Frame(streamID: self.streamID, flags: .endHeaders, payload: .headers(HPACKHeaders(httpHeaders: h1Headers), nil))
+            let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers))
+            let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(headerContent))
             context.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):
-            let payload = HTTP2Frame.FramePayload.data(body)
-            let frame = HTTP2Frame(streamID: self.streamID, payload: payload)
+            let payload = HTTP2Frame.FramePayload.Data(data: body)
+            let frame = HTTP2Frame(streamID: self.streamID, payload: .data(payload))
             context.write(self.wrapOutboundOut(frame), promise: promise)
         case .end(let trailers):
             let payload: HTTP2Frame.FramePayload
-            var flags: HTTP2Frame.FrameFlags = .endStream
             if let trailers = trailers {
-                payload = .headers(HPACKHeaders(httpHeaders: trailers), nil)
-                flags.insert(.endHeaders)
+                payload = .headers(.init(headers: HPACKHeaders(httpHeaders: trailers), endStream: true))
             } else {
-                payload = HTTP2Frame.FramePayload.data(.byteBuffer(context.channel.allocator.buffer(capacity: 0)))
+                payload = .data(.init(data: .byteBuffer(context.channel.allocator.buffer(capacity: 0)), endStream: true))
             }
 
-            let frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
+            let frame = HTTP2Frame(streamID: self.streamID, payload: payload)
             context.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }
@@ -133,19 +136,22 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
         let frame = self.unwrapInboundIn(data)
 
         switch frame.payload {
-        case .headers(let headers, _):
-            if case .trailer = self.headerStateMachine.newHeaders(block: headers.asH1Headers()) {
-                context.fireChannelRead(self.wrapInboundOut(.end(headers.asH1Headers())))
+        case .headers(let headerContent):
+            if case .trailer = self.headerStateMachine.newHeaders(block: headerContent.headers.asH1Headers()) {
+                context.fireChannelRead(self.wrapInboundOut(.end(headerContent.headers.asH1Headers())))
             } else {
-                let reqHead = HTTPRequestHead(http2HeaderBlock: headers.asH1Headers())
+                let reqHead = HTTPRequestHead(http2HeaderBlock: headerContent.headers.asH1Headers())
                 context.fireChannelRead(self.wrapInboundOut(.head(reqHead)))
-                if frame.flags.contains(.endStream) {
+                if headerContent.endStream {
                     context.fireChannelRead(self.wrapInboundOut(.end(nil)))
                 }
             }
-        case .data(.byteBuffer(let b)):
+        case .data(let dataContent):
+            guard case .byteBuffer(let b) = dataContent.data else {
+                preconditionFailure("Received non-byteBuffer IOData from network")
+            }
             context.fireChannelRead(self.wrapInboundOut(.body(b)))
-            if frame.flags.contains(.endStream) {
+            if dataContent.endStream {
                 context.fireChannelRead(self.wrapInboundOut(.end(nil)))
             }
         case .alternativeService, .rstStream, .priority, .windowUpdate:
@@ -162,23 +168,23 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
         switch responsePart {
         case .head(let head):
             let h1 = HTTPHeaders(responseHead: head)
-            let frame = HTTP2Frame(streamID: self.streamID, flags: .endHeaders, payload: .headers(HPACKHeaders(httpHeaders: h1), nil))
+            let payload = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1))
+            let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(payload))
             context.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):
-            let payload = HTTP2Frame.FramePayload.data(body)
-            let frame = HTTP2Frame(streamID: self.streamID, payload: payload)
+            let payload = HTTP2Frame.FramePayload.Data(data: body)
+            let frame = HTTP2Frame(streamID: self.streamID, payload: .data(payload))
             context.write(self.wrapOutboundOut(frame), promise: promise)
         case .end(let trailers):
             let payload: HTTP2Frame.FramePayload
-            var flags: HTTP2Frame.FrameFlags = .endStream
+
             if let trailers = trailers {
-                payload = .headers(HPACKHeaders(httpHeaders: trailers), nil)
-                flags.insert(.endHeaders)
+                payload = .headers(.init(headers: HPACKHeaders(httpHeaders: trailers), endStream: true))
             } else {
-                payload = HTTP2Frame.FramePayload.data(.byteBuffer(context.channel.allocator.buffer(capacity: 0)))
+                payload = .data(.init(data: .byteBuffer(context.channel.allocator.buffer(capacity: 0)), endStream: true))
             }
 
-            let frame = HTTP2Frame(streamID: self.streamID, flags: flags, payload: payload)
+            let frame = HTTP2Frame(streamID: self.streamID, payload: payload)
             context.write(self.wrapOutboundOut(frame), promise: promise)
         }
     }

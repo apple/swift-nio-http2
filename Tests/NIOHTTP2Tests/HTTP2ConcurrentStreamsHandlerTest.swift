@@ -42,9 +42,15 @@ final class OutboundFrameRecorder: ChannelOutboundHandler {
             context.fireUserInboundEventTriggered(NIOHTTP2StreamCreatedEvent(streamID: frame.streamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
         }
 
-        if frame.flags.contains(.endStream) {
+        switch frame.payload {
+        case .data(let d) where d.endStream:
             self.openStreams.remove(frame.streamID)
             context.fireUserInboundEventTriggered(StreamClosedEvent(streamID: frame.streamID, reason: nil))
+        case .headers(let h) where h.endStream:
+            self.openStreams.remove(frame.streamID)
+            context.fireUserInboundEventTriggered(StreamClosedEvent(streamID: frame.streamID, reason: nil))
+        default:
+            break
         }
     }
 
@@ -97,7 +103,7 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 2)).wait())
 
         // Write frames for three streams.
-        let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(HPACKHeaders([]), nil)) }
+        let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(.init(headers: HPACKHeaders([])))) }
         for frame in frames {
             self.channel.write(frame, promise: nil)
         }
@@ -112,8 +118,7 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         frameRecorder.flushedWrites.assertFramesMatch(frames.prefix(2))
 
         // Sending a frame with end stream on it should not produce a write yet, though that frame should be passed through.
-        var endStreamFrame = HTTP2Frame(streamID: 1, payload: .data(.byteBuffer(ByteBufferAllocator().buffer(capacity: 0))))
-        endStreamFrame.flags.insert(.endStream)
+        let endStreamFrame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)), endStream: true)))
         self.channel.write(endStreamFrame, promise: nil)
 
         frameRecorder.pendingWrites.assertFramesMatch([endStreamFrame])
@@ -131,7 +136,7 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 2)).wait())
 
         // Write frames for three streams and flush them.
-        let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(HPACKHeaders([]), nil)) }
+        let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(.init(headers: HPACKHeaders([])))) }
         for frame in frames {
             self.channel.write(frame, promise: nil)
         }
@@ -140,7 +145,7 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         frameRecorder.flushedWrites.assertFramesMatch(frames.prefix(2))
 
         // Now we're going to drop the number of allowed concurrent streams to 1.
-        let settings = HTTP2Frame(streamID: .rootStream, payload: .settings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 3), HTTP2Setting(parameter: .maxConcurrentStreams, value: 1)]))
+        let settings = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings([HTTP2Setting(parameter: .maxConcurrentStreams, value: 3), HTTP2Setting(parameter: .maxConcurrentStreams, value: 1)])))
         try self.channel.writeInbound(settings)
 
         // No change.
@@ -148,16 +153,14 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         frameRecorder.flushedWrites.assertFramesMatch(frames.prefix(2))
 
         // Write a new stream. This should be buffered.
-        var newStreamFrame = HTTP2Frame(streamID: 7, payload: .headers(HPACKHeaders([]), nil))
-        newStreamFrame.flags.insert(.endStream)
+        let newStreamFrame = HTTP2Frame(streamID: 7, payload: .headers(.init(headers: HPACKHeaders([]), endStream: true)))
         self.channel.writeAndFlush(newStreamFrame, promise: nil)
 
         XCTAssertEqual(frameRecorder.pendingWrites.count, 0)
         frameRecorder.flushedWrites.assertFramesMatch(frames.prefix(2))
 
         // Now send an END_STREAM frame. Nothing should happen, though the frame itself should pass through.
-        var endStreamFrame = HTTP2Frame(streamID: 1, payload: .data(.byteBuffer(ByteBufferAllocator().buffer(capacity: 0))))
-        endStreamFrame.flags.insert(.endStream)
+        let endStreamFrame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)), endStream: true)))
         self.channel.write(endStreamFrame, promise: nil)
 
         frameRecorder.pendingWrites.assertFramesMatch([endStreamFrame])
@@ -190,12 +193,10 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         // We're going to test a cascade of frames as a result of stream closure. This is not likely to happen in real code,
         // but it's a good test to confirm that we're safe in re-entrant calls. To do this, we set up, let's say, 100
         // streams where all but the first has an END_STREAM frame in it.
-        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
+        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
 
         let subsequentFrames: [HTTP2Frame] = stride(from: 3, to: 201, by: 2).map { streamID in
-            var frame = HTTP2Frame(streamID: HTTP2StreamID(streamID), payload: .headers(HPACKHeaders([]), nil))
-            frame.flags.insert(.endStream)
-            return frame
+            HTTP2Frame(streamID: HTTP2StreamID(streamID), payload: .headers(.init(headers: HPACKHeaders([]), endStream: true)))
         }
 
         // Write the first frame, and all the subsequent frames, and flush them. This will lead to one flushed frame.
@@ -225,8 +226,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We'll flush some, but not all of them
-        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
-        let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.byteBuffer(self.channel.allocator.buffer(capacity: 0))))
+        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(self.channel.allocator.buffer(capacity: 0)))))
         self.channel.write(firstFrame, promise: nil)
 
         (0..<15).forEach { _ in self.channel.write(subsequentFrame, promise: nil) }
@@ -257,8 +258,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We'll flush some, but not all of them
-        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
-        let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.byteBuffer(self.channel.allocator.buffer(capacity: 0))))
+        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(self.channel.allocator.buffer(capacity: 0)))))
         self.channel.write(firstFrame, promise: nil)
 
         var writeStatus: [Bool?] = Array(repeating: nil, count: 30)
@@ -308,8 +309,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We won't flush stream 3.
-        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
-        let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.byteBuffer(self.channel.allocator.buffer(capacity: 0))))
+        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(self.channel.allocator.buffer(capacity: 0)))))
         self.channel.writeAndFlush(firstFrame, promise: nil)
 
         var writeStatus: [Bool?] = Array(repeating: nil, count: 15)
@@ -351,8 +352,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to create stream 1 and stream 11. Stream 1 will be passed through, stream 11 will have to wait.
-        let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
-        let elevenFrame = HTTP2Frame(streamID: 11, payload: .headers(HPACKHeaders([]), nil))
+        let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let elevenFrame = HTTP2Frame(streamID: 11, payload: .headers(.init(headers: HPACKHeaders([]))))
         self.channel.write(oneFrame, promise: nil)
         self.channel.write(elevenFrame, promise: nil)
         self.channel.flush()
@@ -361,7 +362,7 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         frameRecorder.flushedWrites.assertFramesMatch([oneFrame])
 
         // Now we're going to try to write a frame for stream 5. This will fail.
-        let fiveFrame = HTTP2Frame(streamID: 5, payload: .headers(HPACKHeaders([]), nil))
+        let fiveFrame = HTTP2Frame(streamID: 5, payload: .headers(.init(headers: HPACKHeaders([]))))
 
         do {
             try self.channel.write(fiveFrame).wait()
@@ -379,8 +380,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 1)).wait())
 
         // We're going to create stream 1 and stream 3, which will be buffered.
-        let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(HPACKHeaders([]), nil))
-        let threeFrame = HTTP2Frame(streamID: 3, payload: .headers(HPACKHeaders([]), nil))
+        let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let threeFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders([]))))
         self.channel.write(oneFrame, promise: nil)
         self.channel.write(threeFrame, promise: nil)
         self.channel.flush()
@@ -389,7 +390,7 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         frameRecorder.flushedWrites.assertFramesMatch([oneFrame])
 
         // Now we're going to try to write a frame for stream 4, a server-initiated stream. This will be passed through safely.
-        let fourFrame = HTTP2Frame(streamID: 4, payload: .headers(HPACKHeaders([]), nil))
+        let fourFrame = HTTP2Frame(streamID: 4, payload: .headers(.init(headers: HPACKHeaders([]))))
         self.channel.writeAndFlush(fourFrame, promise: nil)
 
         XCTAssertEqual(frameRecorder.pendingWrites.count, 0)
@@ -404,8 +405,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         // We're going to create stream 2 and stream 4. First, however, we reserve them. These are not buffered, per RFC 7540 § 5.1.2:
         //
         // > Streams in either of the "reserved" states do not count toward the stream limit.
-        let twoFramePromise = HTTP2Frame(streamID: 1, payload: .pushPromise(2, HPACKHeaders([])))
-        let fourFramePromise = HTTP2Frame(streamID: 1, payload: .pushPromise(4, HPACKHeaders([])))
+        let twoFramePromise = HTTP2Frame(streamID: 1, payload: .pushPromise(.init(pushedStreamID: 2, headers: HPACKHeaders([]))))
+        let fourFramePromise = HTTP2Frame(streamID: 1, payload: .pushPromise(.init(pushedStreamID: 4, headers: HPACKHeaders([]))))
         self.channel.write(twoFramePromise, promise: nil)
         self.channel.write(fourFramePromise, promise: nil)
         self.channel.flush()
@@ -414,8 +415,8 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         frameRecorder.flushedWrites.assertFramesMatch([twoFramePromise, fourFramePromise])
 
         // Now we're going to try to initiate these by sending HEADERS frames. This will buffer the second one.
-        let twoFrame = HTTP2Frame(streamID: 2, payload: .headers(HPACKHeaders([]), nil))
-        let fourFrame = HTTP2Frame(streamID: 4, payload: .headers(HPACKHeaders([]), nil))
+        let twoFrame = HTTP2Frame(streamID: 2, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let fourFrame = HTTP2Frame(streamID: 4, payload: .headers(.init(headers: HPACKHeaders([]))))
         self.channel.write(twoFrame, promise: nil)
         self.channel.write(fourFrame, promise: nil)
         self.channel.flush()
@@ -424,7 +425,7 @@ final class HTTP2ConcurrentStreamsHandlerTests: XCTestCase {
         frameRecorder.flushedWrites.assertFramesMatch([twoFramePromise, fourFramePromise, twoFrame])
 
         // Now we're going to try to write a frame for stream 3, a client-initiated stream. This will be passed through safely.
-        let threeFrame = HTTP2Frame(streamID: 3, payload: .headers(HPACKHeaders([]), nil))
+        let threeFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders([]))))
         self.channel.writeAndFlush(threeFrame, promise: nil)
 
         XCTAssertEqual(frameRecorder.pendingWrites.count, 0)
