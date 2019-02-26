@@ -31,14 +31,14 @@ final class ReenterOnReadHandler: ChannelInboundHandler {
         self.reEnterCallback = reEnterCallback
     }
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         guard self.shouldReenter else {
-            ctx.fireChannelRead(data)
+            context.fireChannelRead(data)
             return
         }
         self.shouldReenter = false
-        ctx.fireChannelRead(data)
-        self.reEnterCallback(ctx.pipeline)
+        context.fireChannelRead(data)
+        self.reEnterCallback(context.pipeline)
     }
 }
 

@@ -35,12 +35,12 @@ final class EOFOnWriteHandler: ChannelOutboundHandler {
         self.type = type
     }
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         switch self.type {
         case .halfClose:
-            ctx.fireUserInboundEventTriggered(ChannelEvent.inputClosed)
+            context.fireUserInboundEventTriggered(ChannelEvent.inputClosed)
         case .fullClose:
-            ctx.fireChannelInactive()
+            context.fireChannelInactive()
         case .doNothing:
             break
         }
@@ -63,12 +63,12 @@ final class WriteOnWriteHandler: ChannelOutboundHandler {
         self.writePromise = promise
     }
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         if !self.written {
             self.written = true
-            ctx.channel.write(self.frame, promise: self.writePromise)
+            context.channel.write(self.frame, promise: self.writePromise)
         }
-        ctx.write(data, promise: promise)
+        context.write(data, promise: promise)
     }
 }
 
@@ -80,12 +80,12 @@ final class NoEmptyFlushesHandler: ChannelOutboundHandler {
 
     var writeCount = 0
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         self.writeCount += 1
-        ctx.write(data, promise: promise)
+        context.write(data, promise: promise)
     }
 
-    func flush(ctx: ChannelHandlerContext) {
+    func flush(context: ChannelHandlerContext) {
         XCTAssertGreaterThan(self.writeCount, 0)
         self.writeCount = 0
     }
@@ -96,11 +96,11 @@ final class InstaResetHandler: ChannelInboundHandler {
     typealias InboundIn = HTTP2Frame
     typealias OutboundOut = HTTP2Frame
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
         if case .headers = frame.payload {
             let kaboomFrame = HTTP2Frame(streamID: frame.streamID, payload: .rstStream(.refusedStream))
-            ctx.writeAndFlush(self.wrapOutboundOut(kaboomFrame), promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(kaboomFrame), promise: nil)
         }
     }
 }
@@ -110,11 +110,11 @@ final class InstaGoawayHandler: ChannelInboundHandler {
     typealias InboundIn = HTTP2Frame
     typealias OutboundOut = HTTP2Frame
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
         if case .headers = frame.payload {
             let kaboomFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .inadequateSecurity, opaqueData: nil))
-            ctx.writeAndFlush(self.wrapOutboundOut(kaboomFrame), promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(kaboomFrame), promise: nil)
         }
     }
 }
@@ -125,7 +125,7 @@ final class UserEventRecorder: ChannelInboundHandler {
 
     var events: [Any] = []
 
-    func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         events.append(event)
     }
 }
@@ -143,7 +143,7 @@ final class ClosedEventVsFrameOrderingHandler: ChannelInboundHandler {
         self.targetStreamID = targetStreamID
     }
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
         switch (frame.payload, frame.streamID) {
         case (.rstStream, self.targetStreamID),
@@ -154,10 +154,10 @@ final class ClosedEventVsFrameOrderingHandler: ChannelInboundHandler {
         default:
             break
         }
-        ctx.fireChannelRead(data)
+        context.fireChannelRead(data)
     }
 
-    func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         guard let evt = event as? StreamClosedEvent, evt.streamID == self.targetStreamID else {
             return
         }
@@ -173,11 +173,11 @@ final class ClosedEventVsFrameOrderingHandler: ChannelInboundHandler {
 class HTTP2ParserProxyHandler: ChannelInboundHandler, RemovableChannelHandler {
     typealias InboundIn = ByteBuffer
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
-        XCTAssertNoThrow(try ctx.pipeline.addHandler(
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        XCTAssertNoThrow(try context.pipeline.addHandler(
             NIOHTTP2Handler(mode: .server)).wait())
-        ctx.fireChannelRead(data)
-        _ = ctx.pipeline.removeHandler(ctx: ctx)
+        context.fireChannelRead(data)
+        _ = context.pipeline.removeHandler(context: context)
     }
 }
 
@@ -187,7 +187,7 @@ class FrameRecorderHandler: ChannelInboundHandler {
 
     var receivedFrames: [HTTP2Frame] = []
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         self.receivedFrames.append(self.unwrapInboundIn(data))
     }
 }
@@ -1008,11 +1008,11 @@ class SimpleClientServerTests: XCTestCase {
                 self.errorSeenPromise = errorSeenPromise
             }
 
-            func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+            func channelRead(context: ChannelHandlerContext, data: NIOAny) {
                 XCTFail("shouldnt' have received \(data)")
             }
 
-            func errorCaught(ctx: ChannelHandlerContext, error: Error) {
+            func errorCaught(context: ChannelHandlerContext, error: Error) {
                 if let errorSeenPromise = self.errorSeenPromise {
                     errorSeenPromise.succeed(error)
                 } else {

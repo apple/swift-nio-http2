@@ -24,23 +24,23 @@ final class HTTP1TestServer: ChannelInboundHandler {
     public typealias InboundIn = HTTPServerRequestPart
     public typealias OutboundOut = HTTPServerResponsePart
 
-    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         guard case .end = self.unwrapInboundIn(data) else {
             return
         }
 
-        ctx.channel.getOption(HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
+        context.channel.getOption(HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
             var headers = HTTPHeaders()
             headers.add(name: "content-length", value: "5")
             headers.add(name: "x-stream-id", value: String(Int(streamID)))
-            ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
+            context.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
 
-            var buffer = ctx.channel.allocator.buffer(capacity: 12)
+            var buffer = context.channel.allocator.buffer(capacity: 12)
             buffer.writeStaticString("hello")
-            ctx.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
-            return ctx.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
+            context.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
+            return context.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
         }.whenComplete { _ in
-            ctx.close(promise: nil)
+            context.close(promise: nil)
         }
     }
 }
@@ -49,9 +49,9 @@ final class HTTP1TestServer: ChannelInboundHandler {
 final class ErrorHandler: ChannelInboundHandler {
     typealias InboundIn = Never
     
-    func errorCaught(ctx: ChannelHandlerContext, error: Error) {
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
         print("Server received error: \(error)")
-        ctx.close(promise: nil)
+        context.close(promise: nil)
     }
 }
 

@@ -33,22 +33,22 @@ final class OutboundFrameRecorder: ChannelOutboundHandler {
 
     private var openStreams: Set<HTTP2StreamID> = []
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
         self._pendingWrites.append((frame, promise))
 
         if !self.openStreams.contains(frame.streamID) {
             self.openStreams.insert(frame.streamID)
-            ctx.fireUserInboundEventTriggered(NIOHTTP2StreamCreatedEvent(streamID: frame.streamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
+            context.fireUserInboundEventTriggered(NIOHTTP2StreamCreatedEvent(streamID: frame.streamID, localInitialWindowSize: 65535, remoteInitialWindowSize: 65535))
         }
 
         if frame.flags.contains(.endStream) {
             self.openStreams.remove(frame.streamID)
-            ctx.fireUserInboundEventTriggered(StreamClosedEvent(streamID: frame.streamID, reason: nil))
+            context.fireUserInboundEventTriggered(StreamClosedEvent(streamID: frame.streamID, reason: nil))
         }
     }
 
-    func flush(ctx: ChannelHandlerContext) {
+    func flush(context: ChannelHandlerContext) {
         let flushedWrites = self._pendingWrites
         self._pendingWrites = []
 
@@ -71,12 +71,12 @@ final class CloseOnWriteForStreamHandler: ChannelOutboundHandler {
         self.reason = reason
     }
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
         if frame.streamID == self.streamToFail {
-            ctx.fireUserInboundEventTriggered(StreamClosedEvent(streamID: self.streamToFail, reason: self.reason))
+            context.fireUserInboundEventTriggered(StreamClosedEvent(streamID: self.streamToFail, reason: self.reason))
         }
-        ctx.write(data, promise: promise)
+        context.write(data, promise: promise)
     }
 }
 

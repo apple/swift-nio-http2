@@ -70,9 +70,9 @@ final class PromiseRecorder: ChannelOutboundHandler {
 
     var recordedPromises: [EventLoopPromise<Void>?] = []
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         recordedPromises.append(promise)
-        ctx.write(data, promise: promise)
+        context.write(data, promise: promise)
     }
 }
 

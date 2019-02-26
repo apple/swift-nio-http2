@@ -43,13 +43,13 @@ final class FrameExpecter: ChannelInboundHandler {
         self.expectedFrames = expectedFrames
     }
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         XCTAssertFalse(self.inactive)
         let frame = self.unwrapInboundIn(data)
         self.actualFrames.append(frame)
     }
 
-    func channelInactive(ctx: ChannelHandlerContext) {
+    func channelInactive(context: ChannelHandlerContext) {
         XCTAssertFalse(self.inactive)
         self.inactive = true
 
@@ -72,15 +72,15 @@ final class FrameWriteRecorder: ChannelOutboundHandler {
     var flushedWrites: [HTTP2Frame] = []
     private var unflushedWrites: [HTTP2Frame] = []
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         self.unflushedWrites.append(self.unwrapOutboundIn(data))
-        ctx.write(data, promise: promise)
+        context.write(data, promise: promise)
     }
 
-    func flush(ctx: ChannelHandlerContext) {
+    func flush(context: ChannelHandlerContext) {
         self.flushedWrites.append(contentsOf: self.unflushedWrites)
         self.unflushedWrites = []
-        ctx.flush()
+        context.flush()
     }
 }
 
@@ -91,7 +91,7 @@ final class InboundFrameRecorder: ChannelInboundHandler {
 
     var receivedFrames: [HTTP2Frame] = []
 
-    func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         self.receivedFrames.append(self.unwrapInboundIn(data))
     }
 }
@@ -104,7 +104,7 @@ final class ReadCounter: ChannelOutboundHandler {
 
     var readCount = 0
 
-    func read(ctx: ChannelHandlerContext) {
+    func read(context: ChannelHandlerContext) {
         readCount += 1
     }
 }
@@ -121,7 +121,7 @@ final class HandlerRemovedHandler: ChannelInboundHandler {
         self.removedPromise = removedPromise
     }
 
-    func handlerRemoved(ctx: ChannelHandlerContext) {
+    func handlerRemoved(context: ChannelHandlerContext) {
         self.removedPromise.succeed(())
     }
 }
@@ -137,13 +137,13 @@ final class ActiveHandler: ChannelInboundHandler {
         self.activatedPromise = activatedPromise
     }
 
-    func handlerAdded(ctx: ChannelHandlerContext) {
-        if ctx.channel.isActive {
+    func handlerAdded(context: ChannelHandlerContext) {
+        if context.channel.isActive {
             self.activatedPromise.succeed(())
         }
     }
 
-    func channelActive(ctx: ChannelHandlerContext) {
+    func channelActive(context: ChannelHandlerContext) {
         self.activatedPromise.succeed(())
     }
 }

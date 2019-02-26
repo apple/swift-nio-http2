@@ -52,7 +52,7 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
         self.frameBuffer = StreamFrameBuffer(mode: mode, initialMaxOutboundStreams: initialMaxOutboundStreams)
     }
 
-    public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+    public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case let event as StreamClosedEvent:
             // This event may make some frames writable. If it does, then we may be in write()
@@ -67,38 +67,38 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
             break
         }
 
-        ctx.fireUserInboundEventTriggered(event)
+        context.fireUserInboundEventTriggered(event)
     }
 
-    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
         guard case .settings(let newSettings) = frame.payload, !frame.flags.contains(.ack) else {
             // Either this is not a settings frame, or it's a settings ACK. Either way we don't care.
             // TODO(cory): We should handle GOAWAY!
-            ctx.fireChannelRead(data)
+            context.fireChannelRead(data)
             return
         }
 
         guard let newMaxConcurrentStreams = newSettings.lazy.reversed().first(where: { $0.parameter == .maxConcurrentStreams }).map( { $0.value } ) else {
             // This settings frame didn't change the value of SETTINGS_MAX_CONCURRENT_STREAMS
-            ctx.fireChannelRead(data)
+            context.fireChannelRead(data)
             return
         }
 
         // This is allowed to shrink maxConcurrentStreams.
         self.frameBuffer.maxOutboundStreams = newMaxConcurrentStreams
-        ctx.fireChannelRead(data)
+        context.fireChannelRead(data)
     }
 
-    public func channelReadComplete(ctx: ChannelHandlerContext) {
-        if self.writeIfPossible(ctx: ctx) {
-            ctx.flush()
+    public func channelReadComplete(context: ChannelHandlerContext) {
+        if self.writeIfPossible(context: context) {
+            context.flush()
         }
 
-        ctx.fireChannelReadComplete()
+        context.fireChannelReadComplete()
     }
 
-    public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
 
         let operation: StreamFrameBuffer.OutboundFrameAction
@@ -113,10 +113,10 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
         case .nothing:
             break
         case .forward:
-            ctx.write(data, promise: promise)
+            context.write(data, promise: promise)
         case .forwardAndDrop(let writesToDrop, let error):
             // We forward *first*, drop *second*.
-            ctx.write(data, promise: promise)
+            context.write(data, promise: promise)
             for (_, promise) in writesToDrop {
                 promise?.fail(error)
             }
@@ -129,14 +129,14 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
         }
     }
 
-    public func flush(ctx: ChannelHandlerContext) {
+    public func flush(context: ChannelHandlerContext) {
         self.frameBuffer.flushReceived()
-        self.writeIfPossible(ctx: ctx)
-        ctx.flush()
+        self.writeIfPossible(context: context)
+        context.flush()
     }
 
     @discardableResult
-    private func writeIfPossible(ctx: ChannelHandlerContext) -> Bool {
+    private func writeIfPossible(context: ChannelHandlerContext) -> Bool {
         // We need to spin our writing loop. How does this work?
         //
         // We may be buffering a number of frames for streams that are now ready to be unbuffered.
@@ -147,7 +147,7 @@ public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
         var didWrite = false
 
         while let (frame, promise) = self.frameBuffer.nextFlushedWritableFrame() {
-            ctx.write(self.wrapOutboundOut(frame), promise: promise)
+            context.write(self.wrapOutboundOut(frame), promise: promise)
             didWrite = true
         }
 
