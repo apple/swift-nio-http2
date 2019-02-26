@@ -45,7 +45,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
         self.maxFrameSize = initialMaxFrameSize
     }
 
-    public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
         switch frame.payload {
         case .data(let body):
@@ -55,7 +55,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
                 // it can happen due to channel handler misconfiguration or other weirdness. We'll just complain.
                 let error = NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID)
                 promise?.fail(error)
-                ctx.fireErrorCaught(error)
+                context.fireErrorCaught(error)
             }
         case .headers(let headers, let priorityData):
             // Headers are special. If we have a data frame buffered, we buffer behind it to avoid frames
@@ -76,15 +76,15 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
                 break
             case .some(false), .none:
                 // We don't need to buffer this, pass it on.
-                ctx.write(data, promise: promise)
+                context.write(data, promise: promise)
             }
         default:
             // For all other frame types, we don't care about them, pass them on.
-            ctx.write(data, promise: promise)
+            context.write(data, promise: promise)
         }
     }
 
-    public func flush(ctx: ChannelHandlerContext) {
+    public func flush(context: ChannelHandlerContext) {
         // Two stages of flushing. The first thing is to mark the flush point on all of the streams we have.
         self.streamDataBuffers.mutatingForEachValue {
             let hadData = $0.hasPendingData
@@ -99,11 +99,11 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
         // This loop here is a while because we make outcalls here, and these outcalls
         // may cause re-entrant behaviour. We need to not be holding our structures mutably
         // over the duration of this outcall.
-        self.writeIfPossible(ctx: ctx)
-        ctx.flush()
+        self.writeIfPossible(context: context)
+        context.flush()
     }
 
-    public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+    public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case let event as NIOHTTP2WindowUpdatedEvent:
             if let windowSize = event.outboundWindowSize {
@@ -119,10 +119,10 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
             break
         }
 
-        ctx.fireUserInboundEventTriggered(event)
+        context.fireUserInboundEventTriggered(event)
     }
 
-    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
         if case .settings(let newSettings) = frame.payload, !frame.flags.contains(.ack) {
             // This is a SETTINGS frame for new settings from the remote peer. We
@@ -133,13 +133,13 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
             }
         }
 
-        ctx.fireChannelRead(data)
+        context.fireChannelRead(data)
     }
 
-    public func channelReadComplete(ctx: ChannelHandlerContext) {
-        let didWrite = self.writeIfPossible(ctx: ctx)
+    public func channelReadComplete(context: ChannelHandlerContext) {
+        let didWrite = self.writeIfPossible(context: context)
         if didWrite {
-            ctx.flush()
+            context.flush()
         }
     }
 
@@ -188,7 +188,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
     ///
     /// - returns: Whether this issued a write.
     @discardableResult
-    private func writeIfPossible(ctx: ChannelHandlerContext) -> Bool {
+    private func writeIfPossible(context: ChannelHandlerContext) -> Bool {
         // This loop here is a while because we make outcalls here, and these outcalls
         // may cause re-entrant behaviour. We need to not be holding our structures mutably
         // over the duration of this outcall.
@@ -209,7 +209,7 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
             }
 
             let frame = HTTP2Frame(streamID: nextStreamID, flags: flags, payload: payload)
-            ctx.write(self.wrapOutboundOut(frame), promise: promise)
+            context.write(self.wrapOutboundOut(frame), promise: promise)
             didWrite = true
         }
 

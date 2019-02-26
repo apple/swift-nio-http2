@@ -30,13 +30,13 @@ class DataFrameCatcher: ChannelOutboundHandler {
 
     var writtenFrames: [HTTP2Frame] = []
 
-    func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
         self.writtenFrames.append(frame)
 
         switch frame.payload {
         case .data(let data):
-            ctx.write(self.wrapOutboundOut(data), promise: promise)
+            context.write(self.wrapOutboundOut(data), promise: promise)
         default:
             promise?.succeed(())
         }

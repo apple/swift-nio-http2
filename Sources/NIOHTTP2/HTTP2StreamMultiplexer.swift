@@ -33,19 +33,19 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private var nextOutboundStreamID: HTTP2StreamID
     private let connectionFlowControlManager: InboundWindowManager
 
-    public func handlerAdded(ctx: ChannelHandlerContext) {
+    public func handlerAdded(context: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
         // If we weren't, this is a hard failure, as there is a thread-safety issue here.
         self.channel.eventLoop.preconditionInEventLoop()
     }
 
-    public func channelRead(ctx: ChannelHandlerContext, data: NIOAny) {
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
         let streamID = frame.streamID
 
         guard streamID != .rootStream else {
             // For stream 0 we forward all frames on to the main channel.
-            ctx.fireChannelRead(data)
+            context.fireChannelRead(data)
             return
         }
 
@@ -67,27 +67,27 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             // This frame is for a stream we know nothing about. We can't do much about it, so we
             // are going to fire an error and drop the frame.
             let error = NIOHTTP2Errors.NoSuchStream(streamID: streamID)
-            ctx.fireErrorCaught(error)
+            context.fireErrorCaught(error)
         }
     }
 
-    public func write(ctx: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         /* for now just forward */
-        ctx.write(data, promise: promise)
+        context.write(data, promise: promise)
     }
 
-    public func channelActive(ctx: ChannelHandlerContext) {
+    public func channelActive(context: ChannelHandlerContext) {
         // We just got channelActive. Any previously existing channels may be marked active.
         for channel in self.streams.values {
             // We double-check the channel activity here, because it's possible action taken during
             // the activation of one of the child channels will cause the parent to close!
-            if ctx.channel.isActive {
+            if context.channel.isActive {
                 channel.performActivation()
             }
         }
     }
 
-    public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
+    public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case let evt as StreamClosedEvent:
             if let channel = self.streams[evt.streamID] {
@@ -95,7 +95,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             }
         case let evt as NIOHTTP2WindowUpdatedEvent where evt.streamID == .rootStream:
             // This force-unwrap is safe: we always have a connection window.
-            self.newConnectionWindowSize(newSize: evt.inboundWindowSize!, ctx: ctx)
+            self.newConnectionWindowSize(newSize: evt.inboundWindowSize!, context: context)
         case let evt as NIOHTTP2WindowUpdatedEvent:
             if let channel = self.streams[evt.streamID], let windowSize = evt.inboundWindowSize {
                 channel.receiveWindowUpdatedEvent(windowSize)
@@ -104,21 +104,21 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             break
         }
 
-        ctx.fireUserInboundEventTriggered(event)
+        context.fireUserInboundEventTriggered(event)
     }
 
     private func childChannelClosed(streamID: HTTP2StreamID) {
         self.streams.removeValue(forKey: streamID)
     }
 
-    private func newConnectionWindowSize(newSize: Int, ctx: ChannelHandlerContext) {
+    private func newConnectionWindowSize(newSize: Int, context: ChannelHandlerContext) {
         guard let increment = self.connectionFlowControlManager.newWindowSize(newSize) else {
             return
         }
 
         // This is too much flushing, but for now it'll have to do.
         let frame = HTTP2Frame(streamID: .rootStream, payload: .windowUpdate(windowSizeIncrement: increment))
-        ctx.writeAndFlush(self.wrapOutboundOut(frame), promise: nil)
+        context.writeAndFlush(self.wrapOutboundOut(frame), promise: nil)
     }
 
     /// Create a new `HTTP2StreamMultiplexer`.
