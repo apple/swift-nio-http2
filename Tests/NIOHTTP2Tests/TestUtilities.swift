@@ -36,7 +36,7 @@ extension XCTestCase {
         var operated: Bool
 
         func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
-            guard let data = channel.readOutbound(as: IOData.self) else {
+            guard let data = try? assertNoThrowWithValue(channel.readOutbound(as: IOData.self)) else {
                 return nil
             }
             switch data {
@@ -65,7 +65,7 @@ extension XCTestCase {
     func deliverAllBytes(from sourceChannel: EmbeddedChannel, to targetChannel: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) {
         // Collect the serialized data.
         var frameBuffer = sourceChannel.allocator.buffer(capacity: 1024)
-        while case .some(.byteBuffer(var buf)) = sourceChannel.readOutbound(as: IOData.self) {
+        while case .some(.byteBuffer(var buf)) = try? assertNoThrowWithValue(sourceChannel.readOutbound(as: IOData.self)) {
             frameBuffer.writeBuffer(&buf)
         }
 
@@ -140,7 +140,7 @@ extension EmbeddedChannel {
     /// will call `XCTFail` and then throw: this will ensure that the test will not proceed past
     /// this point if no frame was received.
     func assertReceivedFrame(file: StaticString = #file, line: UInt = #line) throws -> HTTP2Frame {
-        guard let frame: HTTP2Frame = self.readInbound() else {
+        guard let frame: HTTP2Frame = try assertNoThrowWithValue(self.readInbound()) else {
             XCTFail("Did not receive frame", file: file, line: line)
             throw NoFrameReceived()
         }
@@ -150,7 +150,7 @@ extension EmbeddedChannel {
 
     /// Asserts that the connection has not received a HTTP/2 frame at this time.
     func assertNoFramesReceived(file: StaticString = #file, line: UInt = #line) {
-        let content: HTTP2Frame? = self.readInbound()
+        let content: HTTP2Frame? = try? assertNoThrowWithValue(self.readInbound())
         XCTAssertNil(content, "Received unexpected content: \(content!)", file: file, line: line)
     }
 }

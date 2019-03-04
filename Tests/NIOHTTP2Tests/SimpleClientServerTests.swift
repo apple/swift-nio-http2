@@ -382,7 +382,7 @@ class SimpleClientServerTests: XCTestCase {
         // The server can now GOAWAY down to stream 1. We evaluate the bytes here ourselves becuase the client won't see this frame.
         let secondServerGoaway = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: serverStreamID, errorCode: .noError, opaqueData: nil))
         self.serverChannel.writeAndFlush(secondServerGoaway, promise: nil)
-        guard case .some(.byteBuffer(let bytes)) = self.serverChannel.readOutbound(as: IOData.self) else {
+        guard case .some(.byteBuffer(let bytes)) = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: IOData.self)) else {
             XCTFail("No data sent from server")
             return
         }
@@ -1021,14 +1021,14 @@ class SimpleClientServerTests: XCTestCase {
 
         // The client will get two frames: a SETTINGS frame, and a GOAWAY frame. We don't want to decode these, so we
         // just check their bytes match the expected payloads.
-        if var settingsFrame: ByteBuffer = self.clientChannel.readInbound() {
+        if var settingsFrame: ByteBuffer = try assertNoThrowWithValue(self.clientChannel.readInbound()) {
             let settingsBytes: [UInt8] = [0, 0, 12, 4, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 100, 0, 6, 0, 1, 0, 0]
             XCTAssertEqual(settingsFrame.readBytes(length: settingsFrame.readableBytes), settingsBytes)
         } else {
             XCTFail("No settings frame")
         }
 
-        if var goawayFrame: ByteBuffer = self.clientChannel.readInbound() {
+        if var goawayFrame: ByteBuffer = try assertNoThrowWithValue(self.clientChannel.readInbound()) {
             let goawayBytes: [UInt8] = [0, 0, 8, 7, 0, 0, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff, 0, 0, 0, 1]
             XCTAssertEqual(goawayFrame.readBytes(length: goawayFrame.readableBytes), goawayBytes)
         } else {

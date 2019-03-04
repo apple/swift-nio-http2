@@ -81,7 +81,7 @@ final class ReentrancyTests: XCTestCase {
 
         // Collect the serialized frames.
         var frameBuffer = self.clientChannel.allocator.buffer(capacity: 1024)
-        while case .some(.byteBuffer(var buf)) = self.clientChannel.readOutbound(as: IOData.self) {
+        while case .some(.byteBuffer(var buf)) = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: IOData.self)) {
             frameBuffer.writeBuffer(&buf)
         }
 
