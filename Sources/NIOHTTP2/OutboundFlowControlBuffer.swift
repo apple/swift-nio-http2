@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2017-2018 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2017-2019 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -13,12 +13,8 @@
 //===----------------------------------------------------------------------===//
 import NIO
 
-public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
-    public typealias InboundIn = HTTP2Frame
-    public typealias InboundOut = HTTP2Frame
-    public typealias OutboundIn = HTTP2Frame
-    public typealias OutboundOut = HTTP2Frame
-
+/// A structure that manages buffering outbound frames for active streams to ensure that those streams do not violate flow control rules.
+internal struct OutboundFlowControlBuffer {
     /// A buffer of the data sent on the stream that has not yet been passed to the the connection state machine.
     private var streamDataBuffers: [HTTP2StreamID: StreamFlowControlState]
 
@@ -28,15 +24,12 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
     private var flushableStreams: Set<HTTP2StreamID> = Set()
 
     /// The current size of the connection flow control window. May be negative.
-    private var connectionWindowSize: Int
+    internal var connectionWindowSize: Int
 
     /// The current value of SETTINGS_MAX_FRAME_SIZE set by the peer.
-    private var maxFrameSize: Int
+    internal var maxFrameSize: Int
 
-    /// Whether we need to flush on channelReadComplete.
-    private var needToFlush = false
-
-    public init(initialConnectionWindowSize: Int = 65535, initialMaxFrameSize: Int = 1<<14) {
+    internal init(initialConnectionWindowSize: Int = 65535, initialMaxFrameSize: Int = 1<<14) {
         /// By and large there won't be that many concurrent streams floating around, so we pre-allocate a decent-ish
         /// size.
         // TODO(cory): HEAP! This should be a heap, sorted off the number of pending bytes!
@@ -45,18 +38,19 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
         self.maxFrameSize = initialMaxFrameSize
     }
 
-    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        let frame = self.unwrapOutboundIn(data)
+    internal mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) throws -> OutboundFrameAction {
+        // A side note: there is no special handling for RST_STREAM frames here, unlike in the concurrent streams buffer. This is because
+        // RST_STREAM frames will cause stream closure notifications, which will force us to drop our buffers. For this reason we can
+        // simplify our code here, which helps a lot.
         switch frame.payload {
         case .data(let body):
             // We buffer DATA frames.
             if !self.streamDataBuffers[frame.streamID].apply({ $0.dataBuffer.bufferWrite((.data(body), promise)) }) {
                 // We don't have this stream ID. This is an internal error, but we won't precondition on it as
                 // it can happen due to channel handler misconfiguration or other weirdness. We'll just complain.
-                let error = NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID)
-                promise?.fail(error)
-                context.fireErrorCaught(error)
+                throw NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID)
             }
+            return .nothing
         case .headers(let headerContent):
             // Headers are special. If we have a data frame buffered, we buffer behind it to avoid frames
             // being reordered. However, if we don't have a data frame buffered we pass the headers frame on
@@ -73,19 +67,19 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
             switch bufferResult {
             case .some(true):
                 // Buffered, do nothing.
-                break
+                return .nothing
             case .some(false), .none:
                 // We don't need to buffer this, pass it on.
-                context.write(data, promise: promise)
+                return .forward
             }
         default:
             // For all other frame types, we don't care about them, pass them on.
-            context.write(data, promise: promise)
+            return .forward
         }
     }
 
-    public func flush(context: ChannelHandlerContext) {
-        // Two stages of flushing. The first thing is to mark the flush point on all of the streams we have.
+    internal mutating func flushReceived() {
+        // Mark the flush points on all the streams we have.
         self.streamDataBuffers.mutatingForEachValue {
             let hadData = $0.hasPendingData
             $0.dataBuffer.markFlushPoint()
@@ -94,126 +88,71 @@ public class NIOHTTP2FlowControlHandler: ChannelDuplexHandler {
                 self.flushableStreams.insert($0.streamID)
             }
         }
-
-        // Ok, we want to send as much data as we can.
-        // This loop here is a while because we make outcalls here, and these outcalls
-        // may cause re-entrant behaviour. We need to not be holding our structures mutably
-        // over the duration of this outcall.
-        self.writeIfPossible(context: context)
-        context.flush()
-    }
-
-    public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-        switch event {
-        case let event as NIOHTTP2WindowUpdatedEvent:
-            if let windowSize = event.outboundWindowSize {
-                // We don't try to write here, we do it in channelReadComplete or flush.
-                self.updateWindowOfStream(event.streamID, newSize: Int32(windowSize))
-            }
-        case let event as StreamClosedEvent:
-            self.streamClosed(event.streamID, errorCode: event.reason ?? .streamClosed)
-        case let event as NIOHTTP2StreamCreatedEvent:
-            // Any stream with a nil flow control window we set to a window size of 0, forbidding sending data.
-            self.streamCreated(event.streamID, initialWindowSize: event.localInitialWindowSize ?? 0)
-        default:
-            break
-        }
-
-        context.fireUserInboundEventTriggered(event)
-    }
-
-    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let frame = self.unwrapInboundIn(data)
-        if case .settings(.settings(let newSettings)) = frame.payload {
-            // This is a SETTINGS frame for new settings from the remote peer. We
-            // should apply this change. We only care about the value of SETTINGS_MAX_FRAME_SIZE:
-            // settings changes that affect flow control windows are notified to us in other ways.
-            if let newMaxFrameSize = newSettings.reversed().first(where: {$0.parameter == .maxFrameSize})?.value {
-                self.maxFrameSize = newMaxFrameSize
-            }
-        }
-
-        context.fireChannelRead(data)
-    }
-
-    public func channelReadComplete(context: ChannelHandlerContext) {
-        let didWrite = self.writeIfPossible(context: context)
-        if didWrite {
-            context.flush()
-        }
     }
 
     private func nextStreamToSend() -> HTTP2StreamID? {
         return self.flushableStreams.first
     }
 
-    private func updateWindowOfStream(_ streamID: HTTP2StreamID, newSize: Int32) {
-        if streamID == .rootStream {
-            self.connectionWindowSize = Int(newSize)
-        } else {
-            // We don't bother to check for missing stream dictionaries here, as we operate
-            // in a concurrent world where all sorts of weird nonsense can occur.
-            // If we have got the window update for the stream after the stream was closed
-            // or before it was opened, that's ok, do nothing.
-            self.streamDataBuffers[streamID].apply {
-                let hadData = $0.hasPendingData
-                $0.currentWindowSize = Int(newSize)
-                if $0.hasPendingData && !hadData {
-                    assert(!self.flushableStreams.contains($0.streamID))
-                    self.flushableStreams.insert($0.streamID)
-                }
+    internal mutating func updateWindowOfStream(_ streamID: HTTP2StreamID, newSize: Int32) {
+        assert(streamID != .rootStream)
+
+        self.streamDataBuffers[streamID].apply {
+            let hadData = $0.hasPendingData
+            $0.currentWindowSize = Int(newSize)
+            if $0.hasPendingData && !hadData {
+                assert(!self.flushableStreams.contains($0.streamID))
+                self.flushableStreams.insert($0.streamID)
             }
         }
     }
 
-    private func streamCreated(_ streamID: HTTP2StreamID, initialWindowSize: UInt32) {
+    internal mutating func streamCreated(_ streamID: HTTP2StreamID, initialWindowSize: UInt32) {
         assert(streamID != .rootStream)
 
         let streamState = StreamFlowControlState(streamID: streamID, initialWindowSize: Int(initialWindowSize))
         self.streamDataBuffers[streamID] = streamState
     }
 
-    // We received a stream closed event. Drop any stream state we're holding. If we have any
-    // unflushed or buffered DATA frames, we fail their promises.
-    private func streamClosed(_ streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode) {
+    // We received a stream closed event. Drop any stream state we're holding.
+    //
+    // - returns: Any buffered stream state we may have been holding so their promises can be failed.
+    internal mutating func streamClosed(_ streamID: HTTP2StreamID) -> MarkedCircularBuffer<(HTTP2Frame.FramePayload, EventLoopPromise<Void>?)>? {
         self.flushableStreams.remove(streamID)
         guard var streamData = self.streamDataBuffers.removeValue(forKey: streamID) else {
             // Huh, we didn't have any data for this stream. Oh well. That was easy.
-            return
+            return nil
         }
-        streamData.failAllWrites(error: NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: errorCode))
+
+        // To avoid too much work higher up the stack, we only return writes from here if there actually are any.
+        let writes = streamData.dataBuffer.evacuatePendingWrites()
+        if writes.count > 0 {
+            return writes
+        } else {
+            return nil
+        }
     }
 
-    /// Writes whatever data may be written in a loop.
-    ///
-    /// - returns: Whether this issued a write.
-    @discardableResult
-    private func writeIfPossible(context: ChannelHandlerContext) -> Bool {
-        // This loop here is a while because we make outcalls here, and these outcalls
-        // may cause re-entrant behaviour. We need to not be holding our structures mutably
-        // over the duration of this outcall.
-        var didWrite = false
-
-        while let nextStreamID = self.nextStreamToSend(), self.connectionWindowSize > 0 {
-            let nextWrite = self.streamDataBuffers[nextStreamID].modify { (state: inout StreamFlowControlState) -> DataBuffer.BufferElement in
-                let nextWrite = state.nextWrite(maxSize: min(self.connectionWindowSize, self.maxFrameSize))
-                if !state.hasPendingData {
-                    self.flushableStreams.remove(nextStreamID)
-                }
-                return nextWrite
-            }
-            guard let (payload, promise) = nextWrite else {
-                // The stream was not present. This is weird, it shouldn't ever happen, but we tolerate it
-                self.flushableStreams.remove(nextStreamID)
-                continue
-            }
-
-            let frame = HTTP2Frame(streamID: nextStreamID, payload: payload)
-            context.write(self.wrapOutboundOut(frame), promise: promise)
-            didWrite = true
+    internal mutating func nextFlushedWritableFrame() -> (HTTP2Frame, EventLoopPromise<Void>?)? {
+        guard let nextStreamID = self.nextStreamToSend(), self.connectionWindowSize > 0 else {
+            return nil
         }
 
-        return didWrite
+        let nextWrite = self.streamDataBuffers[nextStreamID].modify { (state: inout StreamFlowControlState) -> DataBuffer.BufferElement in
+            let nextWrite = state.nextWrite(maxSize: min(self.connectionWindowSize, self.maxFrameSize))
+            if !state.hasPendingData {
+                self.flushableStreams.remove(nextStreamID)
+            }
+            return nextWrite
+        }
+        guard let (payload, promise) = nextWrite else {
+            // The stream was not present. This is weird, it shouldn't ever happen, but we tolerate it, and recurse.
+            self.flushableStreams.remove(nextStreamID)
+            return self.nextFlushedWritableFrame()
+        }
+
+        let frame = HTTP2Frame(streamID: nextStreamID, payload: payload)
+        return (frame, promise)
     }
 }
 
@@ -244,10 +183,6 @@ private struct StreamFlowControlState {
 
         assert(self.currentWindowSize >= 0)
         return nextWrite
-    }
-
-    mutating func failAllWrites(error: Error) {
-        self.dataBuffer.failAllWrites(error: error)
     }
 }
 
@@ -330,11 +265,11 @@ private struct DataBuffer {
         return (.data(.init(data: dataSlice)), nil)
     }
 
-    mutating func failAllWrites(error: Error) {
-        while self.bufferedChunks.count > 0 {
-            let (_, promise) = self.bufferedChunks.removeFirst()
-            promise?.fail(error)
-        }
+    /// Removes all pending writes, invalidating this structure as it does so.
+    mutating func evacuatePendingWrites() -> MarkedCircularBuffer<BufferElement> {
+        var buffer = MarkedCircularBuffer<BufferElement>(initialCapacity: 0)
+        swap(&buffer, &self.bufferedChunks)
+        return buffer
     }
 }
 

@@ -190,12 +190,12 @@ extension HTTP2Frame {
     }
 
     /// Asserts that this frame matches a give other frame.
-    func assertFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertFrameMatches(this frame: HTTP2Frame, dataFileRegionToByteBuffer: Bool = true, file: StaticString = #file, line: UInt = #line) {
         switch frame.payload {
         case .headers:
             self.assertHeadersFrameMatches(this: frame, file: file, line: line)
         case .data:
-            self.assertDataFrameMatches(this: frame, file: file, line: line)
+            self.assertDataFrameMatches(this: frame, fileRegionToByteBuffer: dataFileRegionToByteBuffer, file: file, line: line)
         case .goAway:
             self.assertGoAwayFrameMatches(this: frame, file: file, line: line)
         case .ping:
@@ -248,26 +248,36 @@ extension HTTP2Frame {
     /// Asserts that a given frame is a DATA frame matching this one.
     ///
     /// This function always converts the DATA frame to a bytebuffer, for use with round-trip testing.
-    func assertDataFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertDataFrameMatches(this frame: HTTP2Frame, fileRegionToByteBuffer: Bool = true, file: StaticString = #file, line: UInt = #line) {
         guard case .data(let payload) = frame.payload else {
             XCTFail("Expected DATA frame, got \(self.payload) instead", file: file, line: line)
             return
         }
 
-        let expectedPayload: ByteBuffer
-        switch payload.data {
-        case .byteBuffer(let bufferPayload):
-            expectedPayload = bufferPayload
-        case .fileRegion(let filePayload):
+        switch (payload.data, fileRegionToByteBuffer) {
+        case (.byteBuffer(let bufferPayload), _):
+            self.assertDataFrame(endStream: payload.endStream,
+                                 streamID: frame.streamID,
+                                 payload: bufferPayload,
+                                 file: file,
+                                 line: line)
+        case (.fileRegion(let filePayload), true):
             // Sorry about creating an allocator from thin air here!
-            expectedPayload = filePayload.asByteBuffer(allocator: ByteBufferAllocator())
+            let expectedPayload = filePayload.asByteBuffer(allocator: ByteBufferAllocator())
+            self.assertDataFrame(endStream: payload.endStream,
+                                 streamID: frame.streamID,
+                                 payload: expectedPayload,
+                                 file: file,
+                                 line: line)
+        case (.fileRegion(let filePayload), false):
+            self.assertDataFrame(endStream: payload.endStream,
+                                 streamID: frame.streamID,
+                                 payload: filePayload,
+                                 file: file,
+                                 line: line)
         }
 
-        self.assertDataFrame(endStream: payload.endStream,
-                             streamID: frame.streamID,
-                             payload: expectedPayload,
-                             file: file,
-                             line: line)
+
     }
 
     /// Assert the given frame is a DATA frame with the appropriate settings.
@@ -430,14 +440,14 @@ extension HTTP2Frame {
 }
 
 extension Array where Element == HTTP2Frame {
-    func assertFramesMatch<Candidate: Collection>(_ target: Candidate, file: StaticString = #file, line: UInt = #line) where Candidate.Element == HTTP2Frame {
+    func assertFramesMatch<Candidate: Collection>(_ target: Candidate, dataFileRegionToByteBuffer: Bool = true, file: StaticString = #file, line: UInt = #line) where Candidate.Element == HTTP2Frame {
         guard self.count == target.count else {
             XCTFail("Different numbers of frames: expected \(target.count), got \(self.count)", file: file, line: line)
             return
         }
 
         for (expected, actual) in zip(target, self) {
-            expected.assertFrameMatches(this: actual, file: file, line: line)
+            expected.assertFrameMatches(this: actual, dataFileRegionToByteBuffer: dataFileRegionToByteBuffer, file: file, line: line)
         }
     }
 }

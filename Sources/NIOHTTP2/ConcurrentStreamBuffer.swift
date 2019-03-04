@@ -14,150 +14,13 @@
 import NIO
 
 
-/// A `ChannelHandler` that buffers new stream creation attempts to avoid violating
+/// An object that buffers new stream creation attempts to avoid violating
 /// the HTTP/2 setting `SETTINGS_MAX_CONCURRENT_STREAMS`.
 ///
 /// HTTP/2 provides tools for bounding the maximum amount of concurrent streams that a
 /// given peer can create. This is used to limit the amount of state that a peer will need
 /// to allocate for a given connection.
-///
-/// In an high-efficiency pipeline it will generally be better to limit the maximum number of
-/// concurrent streams by avoiding creating new outbound streams. However, simpler applications
-/// may prefer to delay stream creation instead, buffering frames until they can be delivered.
-/// This `ChannelHandler` manages this transparently to the user by keeping track of the number
-/// of active outbound streams and delaying any stream creation until safe.
-///
-/// Note that this `ChannelHandler` can and will re-order flushed frames. Having this `ChannelHandler`
-/// in the pipeline means that frames written logically before others may nonetheless have their write
-/// promises satisfied later. If this is a concern for your application, consider using the
-/// `HTTP2StreamMultiplexer` to avoid a single `Channel` having its writes reordered.
-public class NIOHTTP2ConcurrentStreamsHandler: ChannelDuplexHandler {
-    public typealias InboundIn = HTTP2Frame
-    public typealias InboundOut = HTTP2Frame
-    public typealias OutboundIn = HTTP2Frame
-    public typealias OutboundOut = HTTP2Frame
-
-    /// The buffer that will store frames as needed. Provides most of the logic of this
-    /// ChannelHandler.
-    private var frameBuffer: StreamFrameBuffer
-
-    /// The mode of the Channel we're operating in
-    private var mode: NIOHTTP2Handler.ParserMode {
-        get {
-            return self.frameBuffer.mode
-        }
-    }
-
-    public init(mode: NIOHTTP2Handler.ParserMode, initialMaxOutboundStreams: Int) {
-        self.frameBuffer = StreamFrameBuffer(mode: mode, initialMaxOutboundStreams: initialMaxOutboundStreams)
-    }
-
-    public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-        switch event {
-        case let event as StreamClosedEvent:
-            // This event may make some frames writable. If it does, then we may be in write()
-            // (in which case we expect a pending flush), or we may be in flush() (in which case we're
-            // already looping) or we may be in a read cycle (in which case we'll get channelReadComplete
-            // soon). In any case, we will soon be writing frames, so we do not need to do so here.
-            // Instead, just keep track of the change internally.
-            self.frameBuffer.streamClosed(event.streamID)
-        case let event as NIOHTTP2StreamCreatedEvent:
-            self.frameBuffer.streamCreated(event.streamID)
-        default:
-            break
-        }
-
-        context.fireUserInboundEventTriggered(event)
-    }
-
-    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let frame = self.unwrapInboundIn(data)
-        guard case .settings(.settings(let newSettings)) = frame.payload else {
-            // Either this is not a settings frame, or it's a settings ACK. Either way we don't care.
-            // TODO(cory): We should handle GOAWAY!
-            context.fireChannelRead(data)
-            return
-        }
-
-        guard let newMaxConcurrentStreams = newSettings.lazy.reversed().first(where: { $0.parameter == .maxConcurrentStreams }).map( { $0.value } ) else {
-            // This settings frame didn't change the value of SETTINGS_MAX_CONCURRENT_STREAMS
-            context.fireChannelRead(data)
-            return
-        }
-
-        // This is allowed to shrink maxConcurrentStreams.
-        self.frameBuffer.maxOutboundStreams = newMaxConcurrentStreams
-        context.fireChannelRead(data)
-    }
-
-    public func channelReadComplete(context: ChannelHandlerContext) {
-        if self.writeIfPossible(context: context) {
-            context.flush()
-        }
-
-        context.fireChannelReadComplete()
-    }
-
-    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        let frame = self.unwrapOutboundIn(data)
-
-        let operation: StreamFrameBuffer.OutboundFrameAction
-        do {
-            operation = try self.frameBuffer.processOutboundFrame(frame, promise: promise)
-        } catch {
-            promise?.fail(error)
-            return
-        }
-
-        switch operation {
-        case .nothing:
-            break
-        case .forward:
-            context.write(data, promise: promise)
-        case .forwardAndDrop(let writesToDrop, let error):
-            // We forward *first*, drop *second*.
-            context.write(data, promise: promise)
-            for (_, promise) in writesToDrop {
-                promise?.fail(error)
-            }
-        case .succeedAndDrop(let writesToDrop, let error):
-            // We drop *first*, succeed *second*
-            for (_, promise) in writesToDrop {
-                promise?.fail(error)
-            }
-            promise?.succeed(())
-        }
-    }
-
-    public func flush(context: ChannelHandlerContext) {
-        self.frameBuffer.flushReceived()
-        self.writeIfPossible(context: context)
-        context.flush()
-    }
-
-    @discardableResult
-    private func writeIfPossible(context: ChannelHandlerContext) -> Bool {
-        // We need to spin our writing loop. How does this work?
-        //
-        // We may be buffering a number of frames for streams that are now ready to be unbuffered.
-        // These streams will have become ready to be unbuffered due to some combination of flush
-        // calls and stream closures. Here we loop forward over all buffers capable of being somewhat
-        // unbuffered and punt those frames out. The act of punting those frames out may in fact cause
-        // more streams to become able to be flushed, which is just fine: nothing bad should happen.
-        var didWrite = false
-
-        while let (frame, promise) = self.frameBuffer.nextFlushedWritableFrame() {
-            context.write(self.wrapOutboundOut(frame), promise: promise)
-            didWrite = true
-        }
-
-        return didWrite
-    }
-}
-
-
-/// An object that manages buffering stream frames to avoid violating SETTINGS_MAX_CONCURRENT_STREAMS.
-struct StreamFrameBuffer {
+struct ConcurrentStreamBuffer {
     fileprivate struct FrameBuffer {
         var frames: MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>
         var streamID: HTTP2StreamID
@@ -201,11 +64,21 @@ struct StreamFrameBuffer {
     ///
     /// Notes that the current number of outbound streams may have gone down, which is useful information
     /// when flushing writes.
-    mutating func streamClosed(_ streamID: HTTP2StreamID) {
+    mutating func streamClosed(_ streamID: HTTP2StreamID) -> MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>? {
         // We only care about outbound streams.
         if streamID.mayBeInitiatedBy(self.mode) {
             self.currentOutboundStreams -= 1
+
+            // We should check whether we have frames here. We shouldn't, but we might, and we need to return them if we do.
+            if let bufferIndex = self.bufferedFrames.binarySearch(key: { $0.streamID }, needle: streamID) {
+                let buffer = self.bufferedFrames.remove(at: bufferIndex)
+                if buffer.frames.count > 0 {
+                    return buffer.frames
+                }
+            }
         }
+
+        return nil
     }
 
     mutating func streamCreated(_ streamID: HTTP2StreamID) {
@@ -222,25 +95,6 @@ struct StreamFrameBuffer {
 
     mutating func flushReceived() {
         self.bufferedFrames.markFlushPoint()
-    }
-
-    /// The result of receiving a frame that is about to be sent.
-    enum OutboundFrameAction {
-        /// The caller should forward the frame on.
-        case forward
-
-        /// This object has buffered the frame, no action should be taken.
-        case nothing
-
-        /// A number of frames have to be dropped on the floor due to a RST_STREAM frame being emitted, and the RST_STREAM
-        /// frame itself must be forwarded.
-        /// This cannot be done automatically without potentially causing exclusive access violations.
-        case forwardAndDrop(MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed)
-
-        /// A number of frames have to be dropped on the floor due to a RST_STREAM frame being emitted, and the RST_STREAM
-        /// frame itself should be succeeded and not forwarded.
-        /// This cannot be done automatically without potentially causing exclusive access violations.
-        case succeedAndDrop(MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed)
     }
 
     mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) throws -> OutboundFrameAction {
@@ -379,7 +233,7 @@ struct StreamFrameBuffer {
 /// implementation of binarySearch written against the RandomAccessCollection protocol to make it more
 /// portable in the future.
 private struct SortedCircularBuffer {
-    private var _base: CircularBuffer<StreamFrameBuffer.FrameBuffer>
+    private var _base: CircularBuffer<ConcurrentStreamBuffer.FrameBuffer>
 
     init(initialRingCapacity: Int) {
         self._base = CircularBuffer(initialCapacity: initialRingCapacity)
@@ -446,10 +300,10 @@ private struct SortedCircularBuffer {
 }
 
 extension SortedCircularBuffer: RandomAccessCollection {
-    typealias Element = CircularBuffer<StreamFrameBuffer.FrameBuffer>.Element
-    typealias Index = CircularBuffer<StreamFrameBuffer.FrameBuffer>.Index
-    typealias SubSequence = CircularBuffer<StreamFrameBuffer.FrameBuffer>.SubSequence
-    typealias Indices = CircularBuffer<StreamFrameBuffer.FrameBuffer>.Indices
+    typealias Element = CircularBuffer<ConcurrentStreamBuffer.FrameBuffer>.Element
+    typealias Index = CircularBuffer<ConcurrentStreamBuffer.FrameBuffer>.Index
+    typealias SubSequence = CircularBuffer<ConcurrentStreamBuffer.FrameBuffer>.SubSequence
+    typealias Indices = CircularBuffer<ConcurrentStreamBuffer.FrameBuffer>.Indices
 
     var startIndex: Index {
         return self._base.startIndex
