@@ -490,7 +490,9 @@ class NGHTTP2Session {
 
     /// Called when the stream `streamID` is closed.
     fileprivate func onStreamCloseCallback(streamID: Int32, errorCode: UInt32) throws {
-        let streamData = self.streamIDManager.getStreamData(for: streamID)!
+        guard let streamData = self.streamIDManager.getStreamData(for: streamID) else {
+            throw NIOHTTP2Errors.NoSuchStream(streamID: HTTP2StreamID(knownID: streamID))
+        }
 
         // If we have a data provider, pull it out.
         let error = NIOHTTP2Errors.StreamClosed(streamID: streamData.streamID,
@@ -648,7 +650,7 @@ class NGHTTP2Session {
         let length = nghttp2_session_mem_send(self.session, &data)
         // TODO(cory): I think this mishandles DATA frames: they'll say 0, but there may be more frames to
         // send. Must investigate.
-        guard length != 0 else {
+        guard length > 0 else {
             return .noWrite
         }
         var buffer = self.allocator.buffer(capacity: length)
