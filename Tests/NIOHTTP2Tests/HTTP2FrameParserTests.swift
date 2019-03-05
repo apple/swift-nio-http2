@@ -120,15 +120,15 @@ class HTTP2FrameParserTests: XCTestCase {
         var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
         decoder.append(bytes: &bytes)
         XCTAssertEqual(bytes.readableBytes, 0)
-        
+
         let (frame, actualLength) = try decoder.nextFrame()!
-        
+
         // should consume all the bytes
         XCTAssertEqual(bytes.readableBytes, 0)
-        
+
         self.assertEqualFrames(frame, expectedFrame, file: file, line: line)
         XCTAssertEqual(actualLength, expectedFlowControlledLength, "Non-matching flow controlled length", file: file, line: line)
-        
+
         if totalFrameSize > 9 {
             // Now try again with the frame arriving in two separate chunks.
             bytes.moveReaderIndex(to: initialByteIndex)
@@ -138,12 +138,12 @@ class HTTP2FrameParserTests: XCTestCase {
             decoder.append(bytes: &first)
             XCTAssertEqual(first.readableBytes, 0)
             XCTAssertNil(try decoder.nextFrame())
-            
+
             decoder.append(bytes: &second)
             XCTAssertEqual(second.readableBytes, 0)
             let (realFrame, length) = try decoder.nextFrame()!
             XCTAssertNotNil(realFrame)
-            
+
             self.assertEqualFrames(realFrame, expectedFrame, file: file, line: line)
             XCTAssertEqual(length, expectedFlowControlledLength, "Non-matching flow controlled length in parts",
                            file: file, line: line)
@@ -204,6 +204,44 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeInteger(UInt8(0))
         
         try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 15)
+    }
+
+    func testDataFrameDecodingWithPaddingSplitOverBuffers() throws {
+        // Unpadded frame is 22 bytes. When we add padding, we get +1 byte for pad length, +2 byte of padding, for 25 bytes total.
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x10,           // 3-byte payload length (16 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x09,                       // 1-byte flags (PADDED, END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+            0x02,                       // 1-byte padding length (2 bytes)
+        ]
+
+        let expectedPayload = byteBuffer(withStaticString: "Hello, World!")
+        // We remove the PADDED flag when eliding padding bytes.
+        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)),
+                                       streamID: HTTP2StreamID(1))
+
+        var frameBuffer = byteBuffer(withBytes: frameBytes, extraCapacity: expectedPayload.readableBytes)
+        frameBuffer.writeBytes(expectedPayload.readableBytesView)
+
+        var firstPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
+        var secondPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
+
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+
+        decoder.append(bytes: &frameBuffer)
+        XCTAssertEqual(frameBuffer.readableBytes, 0)
+        let (frame, actualLength) = try decoder.nextFrame()!
+        self.assertEqualFrames(frame, expectedFrame)
+        XCTAssertEqual(actualLength, 16)
+
+        decoder.append(bytes: &firstPaddingBuffer)
+        XCTAssertEqual(firstPaddingBuffer.readableBytes, 0)
+        XCTAssertNil(try decoder.nextFrame())
+
+        decoder.append(bytes: &secondPaddingBuffer)
+        XCTAssertEqual(secondPaddingBuffer.readableBytes, 0)
+        XCTAssertNil(try decoder.nextFrame())
     }
     
     func testSyntheticMultipleDataFrames() throws {
@@ -304,6 +342,79 @@ class HTTP2FrameParserTests: XCTestCase {
         try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 16384)
     }
 
+    func testDataFrameDecodingZeroLengthPayload() throws {
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x01,                       // 1-byte flags (END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+
+        let payload = allocator.buffer(capacity: 0)
+        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payload), endStream: true)),
+                                       streamID: HTTP2StreamID(1))
+
+        var buf = byteBuffer(withBytes: frameBytes)
+        try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 0)
+    }
+
+    func testDataFrameDecodingPaddingOnlyPayload() throws {
+        // Unpadded frame is 9 bytes. When we add padding, we get +1 byte for pad length, +1 byte of padding, for 11 bytes total.
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x02,           // 3-byte payload length (2 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x09,                       // 1-byte flags (PADDED, END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+            0x01,                       // 1-byte padding length
+        ]
+
+        let expectedPayload = allocator.buffer(capacity: 0)
+        // We remove the PADDED flag when eliding padding bytes.
+        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)),
+                                       streamID: HTTP2StreamID(1))
+
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 1)
+        buf.writeInteger(UInt8(0))
+
+        try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 2)
+    }
+
+    func testDataFrameDecodingWithOnlyPaddingSplitOverBuffers() throws {
+        // Unpadded frame is 9 bytes. When we add padding, we get +1 byte for pad length, +2 byte of padding, for 12 bytes total.
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x03,           // 3-byte payload length (3 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x09,                       // 1-byte flags (PADDED, END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+            0x02,                       // 1-byte padding length
+        ]
+
+        let expectedPayload = allocator.buffer(capacity: 0)
+        // We remove the PADDED flag when eliding padding bytes.
+        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)),
+                                       streamID: HTTP2StreamID(1))
+
+        var frameBuffer = byteBuffer(withBytes: frameBytes)
+        var firstPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
+        var secondPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
+
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+
+        decoder.append(bytes: &frameBuffer)
+        XCTAssertEqual(frameBuffer.readableBytes, 0)
+        let (frame, actualLength) = try decoder.nextFrame()!
+        self.assertEqualFrames(frame, expectedFrame)
+        XCTAssertEqual(actualLength, 3)
+
+        decoder.append(bytes: &firstPaddingBuffer)
+        XCTAssertEqual(firstPaddingBuffer.readableBytes, 0)
+        XCTAssertNil(try decoder.nextFrame())
+
+        decoder.append(bytes: &secondPaddingBuffer)
+        XCTAssertEqual(secondPaddingBuffer.readableBytes, 0)
+        XCTAssertNil(try decoder.nextFrame())
+    }
+
     func testDataFrameEncoding() throws {
         let payload = "Hello, World!"
         let streamID = HTTP2StreamID(1)
@@ -348,7 +459,7 @@ class HTTP2FrameParserTests: XCTestCase {
         XCTAssertNotNil(extraBuf, "Should have returned an extra buf")
         XCTAssertEqual(buf, expectedBufContent)
     }
-    
+
     func testDataFrameDecodeFailureRootStream() {
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x01,           // 3-byte payload length (1 byte)
