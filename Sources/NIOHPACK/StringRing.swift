@@ -50,6 +50,7 @@ struct StringRing {
             newBytes.reserveCapacity(capacity)
             _ = newBytes.writeBytes(self._storage.viewBytes(at: r, length: w - r))
             self._storage = newBytes
+            self._storage.markAllReadable()
             self.moveHead(to: 0)
             self.moveTail(to: w - r)
             
@@ -63,6 +64,7 @@ struct StringRing {
             self.moveHead(to: 0)
             self.moveTail(to: self._storage.capacity - r + w)
             self._storage = newBytes
+            self._storage.markAllReadable()
         }
     }
     
@@ -156,6 +158,7 @@ struct StringRing {
     
     init(allocator: ByteBufferAllocator, capacity: Int) {
         self._storage = allocator.buffer(capacity: capacity)
+        self._storage.markAllReadable()
     }
     
     /// The number of bytes available to read.
@@ -229,7 +232,7 @@ struct StringRing {
         }
         
         // single write, should be straightforward
-        self._storage.withVeryUnsafeBytes { ptr in
+        self.withVeryUnsafeBytes { ptr in
             let targetAddr = UnsafeMutableRawPointer(mutating: ptr.baseAddress!.advanced(by: self._ringTail))
             let target = UnsafeMutableRawBufferPointer(start: targetAddr, count: bytes.count)
             target.copyBytes(from: bytes)
@@ -311,5 +314,20 @@ extension StringRing {
         
         defer { self.moveHead(forwardBy: length) }
         return self.getString(at: self.ringHead, length: length)
+    }
+}
+
+extension ByteBuffer {
+    /// This marks all bytes readable in a given byte buffer.
+    ///
+    /// This function is very dangerous, as it allows the reading of uninitialized bytes from the
+    /// ByteBuffer. We use it here because we're using a ByteBuffer to provide our ring backing storage,
+    /// but we don't want to initialize the whole thing before use.
+    ///
+    /// As we are maintaining our own reader and writer indices, this operation is safe here. Please don't
+    /// copy this code out and use it to solve some other problem.
+    fileprivate mutating func markAllReadable() {
+        self.moveReaderIndex(to: 0)
+        self.moveWriterIndex(to: self.capacity)
     }
 }
