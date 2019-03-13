@@ -189,8 +189,9 @@ extension ByteBuffer {
         var state: UInt8 = 0
         var acceptable = false
         let start = output.writerIndex
-        
-        for ch in self.viewBytes(at: index, length: length) {
+
+        // We force-unwrap here to crash if we attempt to decode out of bounds.
+        for ch in self.viewBytes(at: index, length: length)! {
             var t = decoderTable[state: state, nybble: ch >> 4]
             if t.flags.contains(.failure) {
                 throw HuffmanDecodeError.InvalidState()
