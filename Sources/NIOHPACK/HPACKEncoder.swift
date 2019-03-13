@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
-import _NIO1APIShims
 
 /// An `HPACKEncoder` maintains its own dynamic header table and uses that to
 /// encode HTTP headers to an internal byte buffer.
