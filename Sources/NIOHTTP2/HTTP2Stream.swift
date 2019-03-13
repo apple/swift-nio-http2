@@ -18,10 +18,10 @@ import NIOHPACK
 private extension HTTPHeaders {
     /// Whether this `HTTPHeaders` corresponds to a final response or not.
     ///
-    /// This property is only valid if called on a response header block. If the :status header
-    /// is not present, this will crash.
-    var isInformationalResponse: Bool {
-        return self.first { $0.name == ":status" }!.value.first == "1"
+    /// This function is only valid if called on a response header block. If the :status header
+    /// is not present, this will throw.
+    func isInformationalResponse() throws -> Bool {
+        return try self.peekPseudoHeader(name: ":status").first! == "1"
     }
 }
 
@@ -57,7 +57,7 @@ struct HTTP2HeadersStateMachine {
     }
 
     /// Called when about to process a HTTP headers block to determine its type.
-    mutating func newHeaders(block: HTTPHeaders) -> HeaderType {
+    mutating func newHeaders(block: HTTPHeaders) throws -> HeaderType {
         let newType: HeaderType
 
         switch (self.mode, self.previousHeader) {
@@ -69,7 +69,7 @@ struct HTTP2HeadersStateMachine {
             // The first header block received on a client mode stream may be either informational or final,
             // depending on the value of the :status pseudo-header. Alternatively, if the previous
             // header block was informational, the same possibilities apply.
-            newType = block.isInformationalResponse ? .informationalResponseHead : .finalResponseHead
+            newType = try block.isInformationalResponse() ? .informationalResponseHead : .finalResponseHead
         case (.server, .some(.requestHead)),
              (.client, .some(.finalResponseHead)):
             // If the sevrer has already received a request head, or the client has already received a final response,
