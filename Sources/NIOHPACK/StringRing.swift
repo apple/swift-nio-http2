@@ -36,10 +36,12 @@ struct StringRing {
         case (0, _):
             // indices don't need to change
             self._storage.reserveCapacity(capacity)
+            self._storage.markAllReadable()
             
         case let (r, w) where r == w:
             // make a new store and zero indices
             self._storage.reserveCapacity(capacity)
+            self._storage.markAllReadable()
             self.moveHead(to: 0)
             self.moveTail(to: 0)
             
@@ -48,7 +50,8 @@ struct StringRing {
             var newBytes = self._storage
             newBytes.clear()
             newBytes.reserveCapacity(capacity)
-            _ = newBytes.writeBytes(self._storage.viewBytes(at: r, length: w - r))
+            // This force-unwrap is safe as the StringRing backing buffer is always entirely readable.
+            _ = newBytes.writeBytes(self._storage.viewBytes(at: r, length: w - r)!)
             self._storage = newBytes
             self._storage.markAllReadable()
             self.moveHead(to: 0)
@@ -59,8 +62,10 @@ struct StringRing {
             var newBytes = self._storage
             newBytes.clear()
             newBytes.reserveCapacity(capacity)
-            newBytes.writeBytes(self._storage.viewBytes(at: r, length: self._storage.capacity - r))
-            _ = newBytes.writeBytes(self._storage.viewBytes(at: 0, length: w))
+            // This force-unwrap is safe as the StringRing backing buffer is always entirely readable.
+            newBytes.writeBytes(self._storage.viewBytes(at: r, length: self._storage.capacity - r)!)
+            // This force-unwrap is safe as the StringRing backing buffer is always entirely readable.
+            _ = newBytes.writeBytes(self._storage.viewBytes(at: 0, length: w)!)
             self.moveHead(to: 0)
             self.moveTail(to: self._storage.capacity - r + w)
             self._storage = newBytes
