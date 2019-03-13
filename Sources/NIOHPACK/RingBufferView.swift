@@ -23,14 +23,15 @@ extension ByteBufferView {
 
 extension StringRing {
     func viewBytes(at index: Int, length: Int) -> ByteBufferView {
+        // We force unwrap in here as the backing buffer of a StringRing is always entirely readable.
         let endIndex = index + length
         if endIndex < self.capacity {
-            return self._storage.viewBytes(at: index, length: length)
+            return self._storage.viewBytes(at: index, length: length)!
         } else {
             // need to allocate a copy to get contiguous access :(
             // we know this will work, because we're constraining the bounds
             var buf = self._storage.getSlice(at: index, length: self._storage.capacity - index)!
-            _ = buf.writeBytes(self._storage.viewBytes(at: 0, length: length - buf.readableBytes))
+            _ = buf.writeBytes(self._storage.viewBytes(at: 0, length: length - buf.readableBytes)!)
             return buf.readableBytesView
         }
     }

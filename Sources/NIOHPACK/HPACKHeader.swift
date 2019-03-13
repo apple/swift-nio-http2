@@ -62,26 +62,7 @@ public struct HPACKHeaders {
     
     /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
     public init(httpHeaders: HTTPHeaders) {
-        // TODO(jim): Once we make HTTPHeaders' internals visible to us, we can just copy the buffer
-        // and map the headers.
-        let store = httpHeaders.withUnsafeBufferAndIndices { (buf, headers, contiguous) -> _Storage? in
-            if contiguous {
-                let hpack = headers.map {
-                    HPACKHeader(start: $0.name.start, nameLength: $0.name.length, valueStart: $0.value.start, valueLength: $0.value.length)
-                }
-                return _Storage(buffer: buf, headers: hpack)
-            } else {
-                return nil
-            }
-        }
-        
-        if let store = store {
-            // the compiler complains if I just try to assign to self._storage here...
-            //_storage = store        // compiler sez: "'self' used before 'self.init' call or assignment to 'self'"
-            self.init(buffer: store.buffer, headers: store.headers)
-        } else {
-            self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
-        }
+        self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
     }
     
     /// Construct a `HPACKHeaders` structure.
@@ -256,7 +237,8 @@ public struct HPACKHeaders {
         return self.headers
     }
     internal func view(of index: HPACKHeaderIndex) -> ByteBufferView {
-        return self.buffer.viewBytes(at: index.start, length: index.length)
+        // We force-unwrap here as failure to pass a correct index is an internal programmer error.
+        return self.buffer.viewBytes(at: index.start, length: index.length)!
     }
 }
 
@@ -394,8 +376,9 @@ private extension ByteBuffer {
         guard view.count == index.length else {
             return false
         }
-        
-        let bufView = self.viewBytes(at: index.start, length: index.length)
+
+        // We force unwrap as Invalid HPACKHeaderIndexes are programmer error.
+        let bufView = self.viewBytes(at: index.start, length: index.length)!
         for (idx, byte) in view.enumerated() {
             let bufIdx = bufView.index(bufView.startIndex, offsetBy: idx)
             guard byte.isASCII && bufView[bufIdx] & 0xdf == byte & 0xdf else {

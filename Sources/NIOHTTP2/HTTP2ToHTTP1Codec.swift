@@ -430,7 +430,7 @@ fileprivate extension HTTPHeaders {
         if authority.count > 0 {
             precondition(authority.count == 1)
             headers.remove(name: "host")
-            self.add(name: ":authority", value: authority[0])
+            self.add(name: ":authority", value: String(authority[0]))
         }
 
         headers.forEach { self.add(name: $0.name, value: $0.value) }

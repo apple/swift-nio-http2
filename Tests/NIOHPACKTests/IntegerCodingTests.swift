@@ -26,7 +26,7 @@ class IntegerCodingTests : XCTestCase {
         var data = [UInt8]()
         scratchBuffer.clear()
         let len = NIOHPACK.encodeInteger(value, to: &scratchBuffer, prefix: prefix)
-        data.append(contentsOf: scratchBuffer.viewBytes(at: 0, length: len))
+        data.append(contentsOf: scratchBuffer.viewBytes(at: 0, length: len)!)
         return data
     }
     

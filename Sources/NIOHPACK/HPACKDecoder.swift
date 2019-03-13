@@ -200,8 +200,9 @@ public struct HPACKDecoder {
         valueLen = try self.readEncodedString(from: &buffer)
         
         if addToIndex {
-            let nameView = self.decodeBuffer.viewBytes(at: nameStart, length: nameLen)
-            let valueView = self.decodeBuffer.viewBytes(at: nameStart + nameLen, length: valueLen)
+            // These views are safe to force-unwrap as we have just written these bytes into the decode buffer.
+            let nameView = self.decodeBuffer.viewBytes(at: nameStart, length: nameLen)!
+            let valueView = self.decodeBuffer.viewBytes(at: nameStart + nameLen, length: valueLen)!
             
             try headerTable.add(headerNamed: nameView, value: valueView)
         }
@@ -226,7 +227,8 @@ public struct HPACKDecoder {
         if huffmanEncoded {
             outputLength = try buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: len, into: &self.decodeBuffer)
         } else {
-            outputLength = self.decodeBuffer.writeBytes(buffer.viewBytes(at: buffer.readerIndex, length: len))
+            // This force-unwrap is safe as we have checked above that len is less than or equal to the buffer readable bytes.
+            outputLength = self.decodeBuffer.writeBytes(buffer.viewBytes(at: buffer.readerIndex, length: len)!)
         }
         
         buffer.moveReaderIndex(forwardBy: len)
