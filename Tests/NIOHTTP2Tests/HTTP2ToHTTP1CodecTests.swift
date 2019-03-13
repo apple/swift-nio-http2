@@ -451,4 +451,193 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    func testReceiveRequestWithoutMethod() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":path", "/post"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":method"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveRequestWithDuplicateMethod() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "GET"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":method"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveRequestWithoutPath() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":path"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveRequestWithDuplicatePath() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":path", "/post"), (":path", "/post"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":path"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveRequestWithoutAuthority() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":method", "GET"), (":scheme", "https"), (":path", "/post"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":authority"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveRequestWithDuplicateAuthority() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), (":authority", "example.org"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":authority"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveRequestWithoutScheme() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":method", "GET"), (":authority", "example.org"), (":path", "/post"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":scheme"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveRequestWithDuplicateScheme() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "GET"), (":scheme", "https"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":scheme"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveResponseWithoutStatus() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+
+        // A basic response.
+        let requestHeaders = HPACKHeaders([("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":status"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveResponseWithDuplicateStatus() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":status", "200"), (":status", "404"), ("other", "header")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":status"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveResponseWithNonNumericalStatus() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+
+        // A basic response.
+        let requestHeaders = HPACKHeaders([(":status", "captivating")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders))))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidStatusValue, NIOHTTP2Errors.InvalidStatusValue("captivating"))
+        }
+
+        // We already know there's an error here.
+        _ = try? self.channel.finish()
+    }
+
+    func testSendRequestWithoutHost() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+
+        // A basic request without Host.
+        let request = HTTPClientRequestPart.head(.init(version: .init(major: 1, minor: 1), method: .GET, uri: "/"))
+        XCTAssertThrowsError(try self.channel.writeOutbound(request)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingHostHeader, NIOHTTP2Errors.MissingHostHeader())
+        }
+
+        // We check the channel for an error as the above only checks the promise.
+        XCTAssertThrowsError(try self.channel.finish()) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingHostHeader, NIOHTTP2Errors.MissingHostHeader())
+        }
+    }
+
+    func testSendRequestWithDuplicateHost() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+
+        // A basic request with too many host headers.
+        var requestHead = HTTPRequestHead(version: .init(major: 1, minor: 1), method: .GET, uri: "/")
+        requestHead.headers.add(name: "Host", value: "fish")
+        requestHead.headers.add(name: "Host", value: "cat")
+        let request = HTTPClientRequestPart.head(requestHead)
+        XCTAssertThrowsError(try self.channel.writeOutbound(request)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicateHostHeader, NIOHTTP2Errors.DuplicateHostHeader())
+        }
+
+        // We check the channel for an error as the above only checks the promise.
+        XCTAssertThrowsError(try self.channel.finish()) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicateHostHeader, NIOHTTP2Errors.DuplicateHostHeader())
+        }
+    }
 }

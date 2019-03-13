@@ -57,14 +57,18 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
 
         switch frame.payload {
         case .headers(let headerContent):
-            if case .trailer = self.headerStateMachine.newHeaders(block: headerContent.headers.asH1Headers()) {
-                context.fireChannelRead(self.wrapInboundOut(.end(headerContent.headers.asH1Headers())))
-            } else {
-                let respHead = HTTPResponseHead(http2HeaderBlock: headerContent.headers.asH1Headers())
-                context.fireChannelRead(self.wrapInboundOut(.head(respHead)))
-                if headerContent.endStream {
-                    context.fireChannelRead(self.wrapInboundOut(.end(nil)))
+            do {
+                if case .trailer = try self.headerStateMachine.newHeaders(block: headerContent.headers.asH1Headers()) {
+                    context.fireChannelRead(self.wrapInboundOut(.end(headerContent.headers.asH1Headers())))
+                } else {
+                    let respHead = try HTTPResponseHead(http2HeaderBlock: headerContent.headers.asH1Headers())
+                    context.fireChannelRead(self.wrapInboundOut(.head(respHead)))
+                    if headerContent.endStream {
+                        context.fireChannelRead(self.wrapInboundOut(.end(nil)))
+                    }
                 }
+            } catch {
+                context.fireErrorCaught(error)
             }
         case .data(let content):
             guard case .byteBuffer(let b) = content.data else {
@@ -88,10 +92,15 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         let responsePart = self.unwrapOutboundIn(data)
         switch responsePart {
         case .head(let head):
-            let h1Headers = HTTPHeaders(requestHead: head, protocolString: self.protocolString)
-            let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers))
-            let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(headerContent))
-            context.write(self.wrapOutboundOut(frame), promise: promise)
+            do {
+                let h1Headers = try HTTPHeaders(requestHead: head, protocolString: self.protocolString)
+                let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers))
+                let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(headerContent))
+                context.write(self.wrapOutboundOut(frame), promise: promise)
+            } catch {
+                promise?.fail(error)
+                context.fireErrorCaught(error)
+            }
         case .body(let body):
             let payload = HTTP2Frame.FramePayload.Data(data: body)
             let frame = HTTP2Frame(streamID: self.streamID, payload: .data(payload))
@@ -137,14 +146,18 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
 
         switch frame.payload {
         case .headers(let headerContent):
-            if case .trailer = self.headerStateMachine.newHeaders(block: headerContent.headers.asH1Headers()) {
-                context.fireChannelRead(self.wrapInboundOut(.end(headerContent.headers.asH1Headers())))
-            } else {
-                let reqHead = HTTPRequestHead(http2HeaderBlock: headerContent.headers.asH1Headers())
-                context.fireChannelRead(self.wrapInboundOut(.head(reqHead)))
-                if headerContent.endStream {
-                    context.fireChannelRead(self.wrapInboundOut(.end(nil)))
+            do {
+                if case .trailer = try self.headerStateMachine.newHeaders(block: headerContent.headers.asH1Headers()) {
+                    context.fireChannelRead(self.wrapInboundOut(.end(headerContent.headers.asH1Headers())))
+                } else {
+                    let reqHead = try HTTPRequestHead(http2HeaderBlock: headerContent.headers.asH1Headers())
+                    context.fireChannelRead(self.wrapInboundOut(.head(reqHead)))
+                    if headerContent.endStream {
+                        context.fireChannelRead(self.wrapInboundOut(.end(nil)))
+                    }
                 }
+            } catch {
+                context.fireErrorCaught(error)
             }
         case .data(let dataContent):
             guard case .byteBuffer(let b) = dataContent.data else {
@@ -154,12 +167,9 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
             if dataContent.endStream {
                 context.fireChannelRead(self.wrapInboundOut(.end(nil)))
             }
-        case .alternativeService, .rstStream, .priority, .windowUpdate:
-            // All these frames may be sent on a stream, but are ignored by the multiplexer and will be
-            // handled elsewhere.
-            return
         default:
-            fatalError("unimplemented frame \(frame)")
+            // Any other frame type is ignored.
+            break
         }
     }
 
@@ -351,23 +361,22 @@ internal extension String {
 // header blocks generated by the HTTP/2 layer.
 internal extension HTTPRequestHead {
     /// Create a `HTTPRequestHead` from the header block produced by nghttp2.
-    init(http2HeaderBlock headers: HTTPHeaders) {
+    init(http2HeaderBlock headers: HTTPHeaders) throws {
         // Take a local copy here.
         var headers = headers
 
         // A request head should have only up to four psuedo-headers. We strip them off.
-        // TODO(cory): Error handling!
-        let method = HTTPMethod(methodString: headers.popPseudoHeader(name: ":method")!)
+        let method = HTTPMethod(methodString: try headers.popPseudoHeader(name: ":method"))
         let version = HTTPVersion(major: 2, minor: 0)
-        let uri = headers.popPseudoHeader(name: ":path")!
+        let uri = try headers.popPseudoHeader(name: ":path")
 
-        // TODO(cory): Right now we're just stripping authority, but it should probably
+        // TODO(cory): Right now we're just stripping scheme, but it should probably
         // be used.
-        headers.remove(name: ":scheme")
+        _ = try headers.popPseudoHeader(name: ":scheme")
 
         // This block works only if the HTTP/2 implementation rejects requests with
         // mismatched :authority and host headers.
-        let authority = headers.popPseudoHeader(name: ":authority")!
+        let authority = try headers.popPseudoHeader(name: ":authority")
         if !headers.contains(name: "host") {
             headers.add(name: "host", value: authority)
         }
@@ -380,42 +389,56 @@ internal extension HTTPRequestHead {
 
 internal extension HTTPResponseHead {
     /// Create a `HTTPResponseHead` from the header block produced by nghttp2.
-    init(http2HeaderBlock headers: HTTPHeaders) {
+    init(http2HeaderBlock headers: HTTPHeaders) throws {
         // Take a local copy here.
         var headers = headers
 
         // A response head should have only one psuedo-header. We strip it off.
-        // TODO(cory): Error handling!
-        let status = HTTPResponseStatus(statusCode: Int(headers.popPseudoHeader(name: ":status")!, radix: 10)!)
+        let statusHeader = try headers.popPseudoHeader(name: ":status")
+        guard let integerStatus = Int(statusHeader, radix: 10) else {
+            throw NIOHTTP2Errors.InvalidStatusValue(statusHeader)
+        }
+        let status = HTTPResponseStatus(statusCode: integerStatus)
         self.init(version: .init(major: 2, minor: 0), status: status, headers: headers)
     }
 }
 
 
-private extension HTTPHeaders {
+extension HTTPHeaders {
     /// Grabs a pseudo-header from a header block and removes it from that block.
     ///
     /// - parameter:
     ///     - name: The header name to remove.
-    /// - returns: The array of values for this pseudo-header, or `nil` if the header
-    ///     is not in the block.
-    mutating func popPseudoHeader(name: String) -> String? {
-        // TODO(cory): This should be upstreamed becuase right now we loop twice instead
-        // of once.
+    /// - returns: The value for this pseudo-header.
+    /// - throws: If there is no such header, or multiple.
+    internal mutating func popPseudoHeader(name: String) throws -> String {
+        let header = try self.peekPseudoHeader(name: name)
+        self.remove(name: name)
+        return header
+    }
+
+    /// Grabs a pseudo-header from a header block. Does not remove it.
+    ///
+    /// - parameter:
+    ///     - name: The header name to find.
+    /// - returns: The value for this pseudo-header.
+    /// - throws: If there is no such header, or multiple.
+    internal func peekPseudoHeader(name: String) throws -> String {
         let value = self[name]
-        if value.count == 1 {
-            self.remove(name: name)
+        switch value.count {
+        case 0:
+            throw NIOHTTP2Errors.MissingPseudoHeader(name)
+        case 1:
             return value.first!
+        default:
+            throw NIOHTTP2Errors.DuplicatePseudoHeader(name)
         }
-        // TODO(cory): Proper error handling here please.
-        precondition(value.count == 0, "ETOOMANYPSEUDOHEADERVALUES")
-        return nil
     }
 }
 
 
 fileprivate extension HTTPHeaders {
-    init(requestHead: HTTPRequestHead, protocolString: String) {
+    init(requestHead: HTTPRequestHead, protocolString: String) throws {
         self.init()
 
         // TODO(cory): This is potentially wrong if the URI contains more than just a path.
@@ -427,10 +450,14 @@ fileprivate extension HTTPHeaders {
         // the rest of the components to do so to avoid needing to maintain too much state here.
         var headers = requestHead.headers
         let authority = headers[canonicalForm: "host"]
-        if authority.count > 0 {
-            precondition(authority.count == 1)
+        switch authority.count {
+        case 0:
+            throw NIOHTTP2Errors.MissingHostHeader()
+        case 1:
             headers.remove(name: "host")
             self.add(name: ":authority", value: String(authority[0]))
+        default:
+            throw NIOHTTP2Errors.DuplicateHostHeader()
         }
 
         headers.forEach { self.add(name: $0.name, value: $0.value) }

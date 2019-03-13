@@ -153,6 +153,43 @@ public enum NIOHTTP2Errors {
     public struct UnableToParseFrame: NIOHTTP2Error {
         public init() { }
     }
+
+    /// A pseudo-header field is missing.
+    public struct MissingPseudoHeader: NIOHTTP2Error {
+        public var name: String
+
+        public init(_ name: String) {
+            self.name = name
+        }
+    }
+
+    /// A pseudo-header field has been duplicated.
+    public struct DuplicatePseudoHeader: NIOHTTP2Error {
+        public var name: String
+
+        public init(_ name: String) {
+            self.name = name
+        }
+    }
+
+    /// An outbound request was about to be sent, but does not contain a Host header.
+    public struct MissingHostHeader: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// An outbound request was about to be sent, but it contains a duplicated Host header.
+    public struct DuplicateHostHeader: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// A :status header was received with an invalid value.
+    public struct InvalidStatusValue: NIOHTTP2Error {
+        var value: String
+
+        public init(_ value: String) {
+            self.value = value
+        }
+    }
 }
 
 

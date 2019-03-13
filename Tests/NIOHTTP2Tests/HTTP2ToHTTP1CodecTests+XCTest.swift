@@ -40,6 +40,19 @@ extension HTTP2ToHTTP1CodecTests {
                 ("testRequestWithoutTrailers", testRequestWithoutTrailers),
                 ("testResponseWith100BlocksClientSide", testResponseWith100BlocksClientSide),
                 ("testPassingPromisesThroughWritesOnClient", testPassingPromisesThroughWritesOnClient),
+                ("testReceiveRequestWithoutMethod", testReceiveRequestWithoutMethod),
+                ("testReceiveRequestWithDuplicateMethod", testReceiveRequestWithDuplicateMethod),
+                ("testReceiveRequestWithoutPath", testReceiveRequestWithoutPath),
+                ("testReceiveRequestWithDuplicatePath", testReceiveRequestWithDuplicatePath),
+                ("testReceiveRequestWithoutAuthority", testReceiveRequestWithoutAuthority),
+                ("testReceiveRequestWithDuplicateAuthority", testReceiveRequestWithDuplicateAuthority),
+                ("testReceiveRequestWithoutScheme", testReceiveRequestWithoutScheme),
+                ("testReceiveRequestWithDuplicateScheme", testReceiveRequestWithDuplicateScheme),
+                ("testReceiveResponseWithoutStatus", testReceiveResponseWithoutStatus),
+                ("testReceiveResponseWithDuplicateStatus", testReceiveResponseWithDuplicateStatus),
+                ("testReceiveResponseWithNonNumericalStatus", testReceiveResponseWithNonNumericalStatus),
+                ("testSendRequestWithoutHost", testSendRequestWithoutHost),
+                ("testSendRequestWithDuplicateHost", testSendRequestWithDuplicateHost),
            ]
    }
 }
