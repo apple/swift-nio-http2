@@ -27,18 +27,19 @@ import XCTest
    @testable import NIOHTTP2Tests
 
    XCTMain([
+         testCase(CompoundOutboundBufferTest.allTests),
+         testCase(ConcurrentStreamBufferTests.allTests),
          testCase(ConfiguringPipelineTests.allTests),
          testCase(ConnectionStateMachineTests.allTests),
-         testCase(FlowControlHandlerTests.allTests),
          testCase(HPACKCodingTests.allTests),
          testCase(HPACKIntegrationTests.allTests),
-         testCase(HTTP2ConcurrentStreamsHandlerTests.allTests),
          testCase(HTTP2FrameParserTests.allTests),
          testCase(HTTP2StreamMultiplexerTests.allTests),
          testCase(HTTP2ToHTTP1CodecTests.allTests),
          testCase(HeaderTableTests.allTests),
          testCase(HuffmanCodingTests.allTests),
          testCase(IntegerCodingTests.allTests),
+         testCase(OutboundFlowControlBufferTests.allTests),
          testCase(ReentrancyTests.allTests),
          testCase(RingBufferTests.allTests),
          testCase(SimpleClientServerTests.allTests),

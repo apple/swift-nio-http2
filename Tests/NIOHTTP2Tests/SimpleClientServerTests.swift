@@ -207,21 +207,9 @@ class SimpleClientServerTests: XCTestCase {
     }
 
     /// Establish a basic HTTP/2 connection.
-    func basicHTTP2Connection(withFlowControl flowControl: Bool = false,
-                              withConcurrentStreamsLimit limitStreams: Bool = false,
-                              withMultiplexerCallback multiplexerCallback: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) throws {
+    func basicHTTP2Connection(withMultiplexerCallback multiplexerCallback: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server)).wait())
-
-        if flowControl {
-            XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2FlowControlHandler()).wait())
-            XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2FlowControlHandler()).wait())
-        }
-
-        if limitStreams {
-            XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .client, initialMaxOutboundStreams: 100)).wait())
-            XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2ConcurrentStreamsHandler(mode: .server, initialMaxOutboundStreams: 100)).wait())
-        }
 
         if let multiplexerCallback = multiplexerCallback {
             XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .client,
@@ -300,7 +288,8 @@ class SimpleClientServerTests: XCTestCase {
 
         // We're going to send three requests before we flush.
         var clientStreamIDs = [HTTP2StreamID]()
-        var sentFrames = [HTTP2Frame]()
+        var headersFrames = [HTTP2Frame]()
+        var bodyFrames = [HTTP2Frame]()
 
         for id in [1, 3, 5] {
             let streamID = HTTP2StreamID(id)
@@ -311,16 +300,21 @@ class SimpleClientServerTests: XCTestCase {
             self.clientChannel.write(reqBodyFrame, promise: nil)
 
             clientStreamIDs.append(streamID)
-            sentFrames.append(reqFrame)
-            sentFrames.append(reqBodyFrame)
+            headersFrames.append(reqFrame)
+            bodyFrames.append(reqBodyFrame)
         }
         self.clientChannel.flush()
         self.interactInMemory(self.clientChannel, self.serverChannel)
 
-        for frame in sentFrames {
+        // We receive the headers frames first, and then the body frames. Additionally, the
+        // body frames come in no particular order, so we need to guard against that.
+        for frame in headersFrames {
             let receivedFrame = try self.serverChannel.assertReceivedFrame()
             receivedFrame.assertFrameMatches(this: frame)
         }
+        var receivedBodyFrames: [HTTP2Frame] = try assertNoThrowWithValue((0..<bodyFrames.count).map { _ in try self.serverChannel.assertReceivedFrame() })
+        receivedBodyFrames.sort(by: { $0.streamID < $1.streamID })
+        receivedBodyFrames.assertFramesMatch(bodyFrames)
 
         // There should be no frames here.
         self.clientChannel.assertNoFramesReceived()
@@ -399,7 +393,7 @@ class SimpleClientServerTests: XCTestCase {
 
     func testLargeDataFramesAreSplit() throws {
         // Big DATA frames get split up.
-        try self.basicHTTP2Connection(withFlowControl: true)
+        try self.basicHTTP2Connection()
 
         // Start by opening the stream.
         let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
@@ -446,7 +440,7 @@ class SimpleClientServerTests: XCTestCase {
 
     func testSendingDataFrameWithSmallFile() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection(withFlowControl: true)
+        try self.basicHTTP2Connection()
 
         // We're now going to try to send a request from the client to the server with a file region for the body.
         let bodyContent = "Hello world, this is data from a file!"
@@ -474,7 +468,7 @@ class SimpleClientServerTests: XCTestCase {
         // Begin by getting the connection up.
         // We add the stream multiplexer because it'll emit WINDOW_UPDATE frames, which we need.
         let serverHandler = FrameRecorderHandler()
-        try self.basicHTTP2Connection(withFlowControl: true) { channel, streamID in
+        try self.basicHTTP2Connection() { channel, streamID in
             return channel.pipeline.addHandler(serverHandler)
         }
 
@@ -534,7 +528,7 @@ class SimpleClientServerTests: XCTestCase {
 
     func testMoreRequestsThanMaxConcurrentStreamsAtOnce() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection(withConcurrentStreamsLimit: true)
+        try self.basicHTTP2Connection()
 
         let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
 
@@ -640,7 +634,7 @@ class SimpleClientServerTests: XCTestCase {
     func testAutomaticFlowControl() throws {
         // Begin by getting the connection up.
         // We add the stream multiplexer here because it manages automatic flow control.
-        try self.basicHTTP2Connection(withFlowControl: true) { channel, streamID in
+        try self.basicHTTP2Connection() { channel, streamID in
             return channel.eventLoop.makeSucceededFuture(())
         }
 

@@ -59,6 +59,10 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// user events and frames when re-entrant operations occur.
     private var inboundEventBuffer: InboundEventBuffer = InboundEventBuffer()
 
+    /// A buffer for outbound frames. In some cases it is necessary to buffer outbound frames before
+    /// sending, if sending them would trigger a protocol violation. Those buffered frames live here.
+    private var outboundBuffer: CompoundOutboundBuffer
+
     /// This flag is set to false each time we get a channelReadComplete or flush, and set to true
     /// each time we write a frame automatically from this handler. If set to true in channelReadComplete,
     /// we will choose to flush automatically ourselves.
@@ -88,6 +92,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode))
         self.mode = mode
         self.initialSettings = initialSettings
+        self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100)
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
@@ -123,22 +128,44 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 
     public func channelReadComplete(context: ChannelHandlerContext) {
-        if self.wroteAutomaticFrame {
-            self.wroteAutomaticFrame = false
-            context.flush()
-        }
-
+        self.unbufferAndFlushAutomaticFrames(context: context)
         context.fireChannelReadComplete()
     }
 
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
-        self.processOutboundFrame(context: context, frame: frame, promise: promise)
+
+        do {
+            switch try self.outboundBuffer.processOutboundFrame(frame, promise: promise) {
+            case .nothing:
+                // Nothing to do, got buffered.
+                break
+            case .forward:
+                self.processOutboundFrame(context: context, frame: frame, promise: promise)
+            case .forwardAndDrop(let framesToDrop, let error):
+                // We need to forward this frame, and then fail these promises.
+                self.processOutboundFrame(context: context, frame: frame, promise: promise)
+                for (_, promise) in framesToDrop {
+                    promise?.fail(error)
+                }
+            case .succeedAndDrop(let framesToDrop, let error):
+                // We need to succeed this frame promise and fail the others. We fail the others first to keep the
+                // promises in order.
+                for (_, promise) in framesToDrop {
+                    promise?.fail(error)
+                }
+                promise?.succeed(())
+            }
+        } catch {
+            promise?.fail(error)
+        }
     }
 
     public func flush(context: ChannelHandlerContext) {
-        self.wroteAutomaticFrame = false
-        context.flush()
+        // We need to always flush here, so we'll pretend we wrote an automatic frame even if we didn't.
+        self.wroteAutomaticFrame = true
+        self.outboundBuffer.flushReceived()
+        self.unbufferAndFlushAutomaticFrames(context: context)
     }
 }
 
@@ -393,21 +420,64 @@ extension NIOHTTP2Handler {
         switch stateChange {
         case .streamClosed(let streamClosedData):
             self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason))
+
+            let failedWrites = self.outboundBuffer.streamClosed(streamClosedData.streamID)
+            let error = NIOHTTP2Errors.StreamClosed(streamID: streamClosedData.streamID, errorCode: streamClosedData.reason ?? .cancel)
+            for promise in failedWrites {
+                promise?.fail(error)
+            }
         case .streamCreated(let streamCreatedData):
+            self.outboundBuffer.streamCreated(streamCreatedData.streamID, initialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init) ?? 0)
             self.inboundEventBuffer.pendingUserEvent(NIOHTTP2StreamCreatedEvent(streamID: streamCreatedData.streamID,
                                                                                 localInitialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init),
                                                                                 remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init)))
         case .bulkStreamClosure(let streamClosureData):
             for droppedStream in streamClosureData.closedStreams {
                 self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
+
+                let failedWrites = self.outboundBuffer.streamClosed(droppedStream)
+                let error = NIOHTTP2Errors.StreamClosed(streamID: droppedStream, errorCode: .cancel)
+                for promise in failedWrites {
+                    promise?.fail(error)
+                }
             }
         case .flowControlChange(let change):
+            self.outboundBuffer.connectionWindowSize = change.localConnectionWindowSize
             self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: change.remoteConnectionWindowSize, outboundWindowSize: change.localConnectionWindowSize))
             if let streamSize = change.localStreamWindowSize {
+                self.outboundBuffer.updateStreamWindow(streamSize.streamID, newSize: streamSize.localStreamWindowSize.map(Int32.init) ?? 0)
                 self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: streamSize.streamID, inboundWindowSize: streamSize.remoteStreamWindowSize, outboundWindowSize: streamSize.localStreamWindowSize))
             }
-        case .settingsChanged, .streamCreatedAndClosed:
+        case .streamCreatedAndClosed(let cAndCData):
+            self.outboundBuffer.streamCreated(cAndCData.streamID, initialWindowSize: 0)
+            let failedWrites = self.outboundBuffer.streamClosed(cAndCData.streamID)
+            let error = NIOHTTP2Errors.StreamClosed(streamID: cAndCData.streamID, errorCode: .cancel)
+            for promise in failedWrites {
+                promise?.fail(error)
+            }
+        case .settingsChanged(let settingsChange):
+            // TODO(cory): update all stream windows, also max concurrent streams.
             break
+        }
+    }
+
+    private func unbufferAndFlushAutomaticFrames(context: ChannelHandlerContext) {
+        // Two jobs: we have to unbuffer any buffered frames that can be written, and also potentially flush.
+        loop: while true {
+            switch self.outboundBuffer.nextFlushedWritableFrame() {
+            case .noFrame:
+                break loop
+            case .error(let promise, let error):
+                promise?.fail(error)
+            case .frame(let frame, let promise):
+                self.processOutboundFrame(context: context, frame: frame, promise: promise)
+                self.wroteAutomaticFrame = true
+            }
+        }
+
+        if self.wroteAutomaticFrame {
+            self.wroteAutomaticFrame = false
+            context.flush()
         }
     }
 }

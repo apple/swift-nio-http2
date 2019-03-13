@@ -96,18 +96,9 @@ extension Channel {
                                        initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
                                        position: ChannelPipeline.Position = .last,
                                        inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
-        // We need to determine the initial settings to apply to some of the later handlers in the pipeline, based on the initial settings provided
-        // by the user. We default these when they are mandatory and we have no alternative. In most of these cases the default is in the spec.
-        // RFC 7540 defaults SETTINGS_MAX_CONCURRENT_STREAMS to unbounded, which we read as Int32.max.
-        let initialMaxOutboundStreams = initialLocalSettings.lazy.reversed().first(where: { $0.parameter == .maxConcurrentStreams })?.value ?? Int(Int32.max)
-
         var handlers = [ChannelHandler]()
-        handlers.reserveCapacity(4)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
-
+        handlers.reserveCapacity(2)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
         handlers.append(NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings))
-        handlers.append(NIOHTTP2FlowControlHandler())
-        handlers.append(NIOHTTP2ConcurrentStreamsHandler(mode: mode, initialMaxOutboundStreams: initialMaxOutboundStreams))
-
         let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, inboundStreamStateInitializer: inboundStreamStateInitializer)
         handlers.append(multiplexer)
 
