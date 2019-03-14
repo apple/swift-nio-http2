@@ -105,4 +105,37 @@ class ConfiguringPipelineTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testPreambleGetsWrittenOnce() throws {
+        // This test checks that the preamble sent by NIOHTTP2Handler is only written once. There are two paths
+        // to sending the preamble, in handlerAdded(context:) (if the channel is active) and in channelActive(context:),
+        // we want to hit both of these.
+        let connectionPromise: EventLoopPromise<Void> = self.serverChannel.eventLoop.makePromise()
+
+        // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
+        let handlerAdded = connectionPromise.futureResult.flatMap {
+            // Use .server to avoid sending client magic.
+            self.serverChannel.configureHTTP2Pipeline(mode: .server)
+        }
+
+        self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
+        XCTAssertNoThrow(try handlerAdded.wait())
+
+        let initialSettingsData: IOData? = try self.serverChannel.readOutbound()
+        XCTAssertNotNil(initialSettingsData)
+
+        guard case .some(.byteBuffer(let initialSettingsBuffer)) = initialSettingsData else {
+            XCTFail("Expected ByteBuffer containing the initial SETTINGS frame")
+            return
+        }
+
+        XCTAssertGreaterThanOrEqual(initialSettingsBuffer.readableBytes, 9)
+        // The 4-th byte contains the frame type (4 for SETTINGS).
+        XCTAssertEqual(initialSettingsBuffer.getInteger(at: initialSettingsBuffer.readerIndex + 3, as: UInt8.self), 4)
+        // Bytes 6-9 contain the stream ID; this should be the root stream, 0.
+        XCTAssertEqual(initialSettingsBuffer.getInteger(at: initialSettingsBuffer.readerIndex + 6, as: UInt32.self), 0)
+
+        // We don't expect anything else at this point.
+        XCTAssertNil(try self.serverChannel.readOutbound(as: IOData.self))
+    }
 }

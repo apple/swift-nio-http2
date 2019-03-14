@@ -28,6 +28,7 @@ extension ConfiguringPipelineTests {
       return [
                 ("testBasicPipelineCommunicates", testBasicPipelineCommunicates),
                 ("testPipelineRespectsPositionRequest", testPipelineRespectsPositionRequest),
+                ("testPreambleGetsWrittenOnce", testPreambleGetsWrittenOnce),
            ]
    }
 }
