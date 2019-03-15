@@ -102,4 +102,9 @@ public enum NIOHPACKErrors {
     
     /// HPACK encoder asked to append a header without first calling `beginEncoding(allocator:)`.
     public struct EncoderNotStarted : NIOHPACKError {}
+
+    /// HPACK decoder asked to decode an indexed header with index zero.
+    public struct ZeroHeaderIndex: NIOHPACKError {
+        public init() { }
+    }
 }
