@@ -231,7 +231,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     private var state: StreamChannelState
 
-    private let windowManager: InboundWindowManager
+    private var windowManager: InboundWindowManager
 
     /// If close0 was called but the stream could not synchronously close (because it's currently
     /// active), the promise is stored here until it can be fulfilled.
@@ -506,6 +506,15 @@ internal extension HTTP2StreamChannel {
 
     func receiveWindowUpdatedEvent(_ windowSize: Int) {
         if let increment = self.windowManager.newWindowSize(windowSize) {
+            let frame = HTTP2Frame(streamID: self.streamID, payload: .windowUpdate(windowSizeIncrement: increment))
+            self.receiveOutboundFrame(frame, promise: nil)
+            // This flush should really go away, but we need it for now until we sort out window management.
+            self.parent?.flush()
+        }
+    }
+
+    func initialWindowSizeChanged(delta: Int) {
+        if let increment = self.windowManager.initialWindowSizeChanged(delta: delta) {
             let frame = HTTP2Frame(streamID: self.streamID, payload: .windowUpdate(windowSizeIncrement: increment))
             self.receiveOutboundFrame(frame, promise: nil)
             // This flush should really go away, but we need it for now until we sort out window management.

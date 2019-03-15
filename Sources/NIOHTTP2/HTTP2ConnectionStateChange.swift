@@ -39,6 +39,9 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
     /// The remote peer's settings have been changed.
     case remoteSettingsChanged(RemoteSettingsChanged)
 
+    /// The local peer's settings have been changed.
+    case localSettingsChanged(LocalSettingsChanged)
+
     /// A stream has been created.
     internal struct StreamCreated: Hashable {
         internal var streamID: HTTP2StreamID
@@ -142,6 +145,14 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
     /// This object keeps track of the change on all stream window sizes via
     /// SETTINGS frame.
     internal struct RemoteSettingsChanged: Hashable {
+        internal var streamWindowSizeChange: Int = 0
+    }
+
+    /// The local peer's settings have changed in a way that is not trivial to decode.
+    ///
+    /// This object keeps track of the change on all stream window sizes via
+    /// SETTINGS frame.
+    internal struct LocalSettingsChanged: Hashable {
         internal var streamWindowSizeChange: Int = 0
     }
 }

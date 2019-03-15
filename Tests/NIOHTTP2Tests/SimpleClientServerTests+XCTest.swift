@@ -50,6 +50,8 @@ extension SimpleClientServerTests {
                 ("testManyConcurrentInactiveStreams", testManyConcurrentInactiveStreams),
                 ("testBadClientMagic", testBadClientMagic),
                 ("testOpeningWindowsViaSettingsInitialWindowSize", testOpeningWindowsViaSettingsInitialWindowSize),
+                ("testSettingsAckNotifiesAboutChangedFlowControl", testSettingsAckNotifiesAboutChangedFlowControl),
+                ("testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges", testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges),
            ]
    }
 }

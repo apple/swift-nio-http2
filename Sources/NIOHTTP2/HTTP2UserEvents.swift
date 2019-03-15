@@ -33,7 +33,7 @@ public struct StreamClosedEvent {
     }
 }
 
-extension StreamClosedEvent: Equatable { }
+extension StreamClosedEvent: Hashable { }
 
 
 /// A `NIOHTTP2WindowUpdatedEvent` is fired whenever a flow control window is changed.
@@ -63,7 +63,7 @@ public struct NIOHTTP2WindowUpdatedEvent {
     }
 }
 
-extension NIOHTTP2WindowUpdatedEvent: Equatable { }
+extension NIOHTTP2WindowUpdatedEvent: Hashable { }
 
 
 /// A `NIOHTTP2StreamCreatedEvent` is fired whenever a HTTP/2 stream is created.
@@ -83,4 +83,19 @@ public struct NIOHTTP2StreamCreatedEvent {
     }
 }
 
-extension NIOHTTP2StreamCreatedEvent: Equatable { }
+extension NIOHTTP2StreamCreatedEvent: Hashable { }
+
+/// A `NIOHTTP2BulkStreamWindowChangeEvent` is fired whenever all of the remote flow control windows for a given stream have been changed.
+///
+/// This occurs when an ACK to a SETTINGS frame is received that changes the value of SETTINGS_INITIAL_WINDOW_SIZE. This is only fired
+/// when the local peer has changed its settings.
+public struct NIOHTTP2BulkStreamWindowChangeEvent {
+    /// The change in the remote stream window sizes.
+    public let delta: Int
+
+    public init(delta: Int) {
+        self.delta = delta
+    }
+}
+
+extension NIOHTTP2BulkStreamWindowChangeEvent: Hashable  { }

@@ -19,6 +19,9 @@
 struct InboundWindowManager {
     private var targetWindowSize: Int32
 
+    // The last window size we were told about. Used when we get changes to SETTINGS_INITIAL_WINDOW_SIZE.
+    private var lastWindowSize: Int?
+
     init(targetSize: Int32) {
         assert(targetSize <= HTTP2FlowControlWindow.maxSize)
         assert(targetSize >= 0)
@@ -26,7 +29,9 @@ struct InboundWindowManager {
         self.targetWindowSize = targetSize
     }
 
-    func newWindowSize(_ newSize: Int) -> Int? {
+    mutating func newWindowSize(_ newSize: Int) -> Int? {
+        self.lastWindowSize = newSize
+
         // All math here happens on 64-bit ints, as it avoids overflow problems.
 
         // The simplest case is where newSize >= targetWindowSize. In that case, we do nothing.
@@ -49,6 +54,17 @@ struct InboundWindowManager {
 
             let increment = min(abs(newSize) + targetWindowSize, Int64(Int32.max))
             return Int(increment)
+        }
+    }
+
+    mutating func initialWindowSizeChanged(delta: Int) -> Int? {
+        self.targetWindowSize += Int32(delta)
+
+        if let lastWindowSize = self.lastWindowSize {
+            // The delta applies to the current window size as well.
+            return self.newWindowSize(lastWindowSize + delta)
+        } else {
+            return nil
         }
     }
 }

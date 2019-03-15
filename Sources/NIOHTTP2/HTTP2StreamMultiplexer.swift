@@ -31,7 +31,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private let inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?
     private let channel: Channel
     private var nextOutboundStreamID: HTTP2StreamID
-    private let connectionFlowControlManager: InboundWindowManager
+    private var connectionFlowControlManager: InboundWindowManager
 
     public func handlerAdded(context: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
@@ -61,7 +61,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
                                              streamID: streamID,
-                                             targetWindowSize: 65535,  // TODO: make configurable
+                                             targetWindowSize: 65535,
                                              initiatedRemotely: true)
             self.streams[streamID] = channel
             channel.configure(initializer: self.inboundStreamStateInitializer)
@@ -105,6 +105,13 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         case let evt as NIOHTTP2WindowUpdatedEvent:
             if let channel = self.streams[evt.streamID], let windowSize = evt.inboundWindowSize {
                 channel.receiveWindowUpdatedEvent(windowSize)
+            }
+        case let evt as NIOHTTP2BulkStreamWindowChangeEvent:
+            // Here we need to pull the channels out so we aren't holding the streams dict mutably. This is because it
+            // will trigger an overlapping access violation if we do.
+            let channels = self.streams.values
+            for channel in channels {
+                channel.initialWindowSizeChanged(delta: evt.delta)
             }
         default:
             break
