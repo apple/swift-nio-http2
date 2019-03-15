@@ -49,6 +49,12 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             return
         }
 
+        if case .priority = frame.payload {
+            // Priority frames are special cases, and are always forwarded to the parent stream.
+            context.fireChannelRead(data)
+            return
+        }
+
         if let channel = streams[streamID] {
             channel.receiveInboundFrame(frame)
         } else if case .headers = frame.payload {
