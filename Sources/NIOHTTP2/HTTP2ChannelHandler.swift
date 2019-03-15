@@ -459,9 +459,11 @@ extension NIOHTTP2Handler {
             for promise in failedWrites {
                 promise?.fail(error)
             }
-        case .settingsChanged(let settingsChange):
-            // TODO(cory): update all stream windows, also max concurrent streams.
-            break
+        case .remoteSettingsChanged(let settingsChange):
+            // TODO(cory): also max concurrent streams.
+            if settingsChange.streamWindowSizeChange != 0 {
+                self.outboundBuffer.initialWindowSizeChanged(settingsChange.streamWindowSizeChange)
+            }
         }
     }
 

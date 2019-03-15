@@ -49,6 +49,7 @@ extension SimpleClientServerTests {
                 ("testStreamCloseEventForGoawayFiresAfterFrame", testStreamCloseEventForGoawayFiresAfterFrame),
                 ("testManyConcurrentInactiveStreams", testManyConcurrentInactiveStreams),
                 ("testBadClientMagic", testBadClientMagic),
+                ("testOpeningWindowsViaSettingsInitialWindowSize", testOpeningWindowsViaSettingsInitialWindowSize),
            ]
    }
 }

@@ -132,6 +132,17 @@ extension XCTestCase {
 
         return receivedFrames
     }
+
+    /// Asserts that sending new settings from `sender` to `receiver` leads to an appropriate settings ACK. Does not assert that no other frames have been
+    /// received.
+    func assertSettingsUpdateWithAck(_ newSettings: HTTP2Settings, sender: EmbeddedChannel, receiver: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) throws {
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(newSettings)))
+        sender.writeAndFlush(frame, promise: nil)
+        self.interactInMemory(sender, receiver, file: file, line: line)
+
+        try receiver.assertReceivedFrame(file: file, line: line).assertFrameMatches(this: frame)
+        try sender.assertReceivedFrame(file: file, line: line).assertFrameMatches(this: HTTP2Frame(streamID: .rootStream, payload: .settings(.ack)))
+    }
 }
 
 extension EmbeddedChannel {

@@ -177,6 +177,10 @@ extension CompoundOutboundBuffer {
         self.flowControlBuffer.updateWindowOfStream(streamID, newSize: newSize)
     }
 
+    mutating func initialWindowSizeChanged(_ delta: Int) {
+        self.flowControlBuffer.initialWindowSizeChanged(delta)
+    }
+
     var maxFrameSize: Int {
         get {
             return self.flowControlBuffer.maxFrameSize

@@ -37,6 +37,8 @@ extension HasRemoteSettings {
             swap(&temporarySettings, &self.remoteSettings)
         }
 
+        var effect = NIOHTTP2ConnectionStateChange.RemoteSettingsChanged()
+
         do {
             try temporarySettings.receiveSettings(settings) { (setting, originalValue, newValue) in
                 switch setting {
@@ -56,6 +58,10 @@ extension HasRemoteSettings {
                     try self.streamState.forAllStreams {
                         try $0.remoteInitialWindowSizeChanged(by: delta)
                     }
+
+                    // We do a += here because the value may change multiple times in one settings block. This way, we correctly
+                    // respect that possibility.
+                    effect.streamWindowSizeChange += Int(delta)
                 case .maxFrameSize:
                     // TODO(cory): Implement!
                     break
@@ -64,7 +70,7 @@ extension HasRemoteSettings {
                     return
                 }
             }
-            return (.init(result: .succeed, effect: nil), .sendAck)
+            return (.init(result: .succeed, effect: .remoteSettingsChanged(effect)), .sendAck)
         } catch let err where err is NIOHTTP2Errors.InvalidFlowControlWindowSize {
             return (.init(result: .connectionError(underlyingError: err, type: .flowControlError), effect: nil), .nothing)
         } catch {
