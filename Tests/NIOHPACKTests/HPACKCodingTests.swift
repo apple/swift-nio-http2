@@ -580,4 +580,13 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(headers["set-cookie"], ["abcdefg,hijklmn,opqrst"])
         XCTAssertEqual(headers[canonicalForm: "set-cookie"], ["abcdefg,hijklmn,opqrst"])
     }
+
+    func testHPACKHeadersWithZeroIndex() throws {
+        var request = buffer(wrapping: [0x80])
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
+
+        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request)) { error in
+            XCTAssertEqual(error as? NIOHPACKErrors.ZeroHeaderIndex, NIOHPACKErrors.ZeroHeaderIndex())
+        }
+    }
 }
