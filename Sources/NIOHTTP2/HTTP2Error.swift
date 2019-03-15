@@ -201,4 +201,6 @@ internal enum InternalError: Error {
     case codecError(code: HTTP2ErrorCode)
 }
 
+extension InternalError: Hashable { }
+
 
