@@ -460,6 +460,16 @@ struct HTTP2ConnectionStateMachine {
             return false
         }
     }
+
+    /// Whether the preamble can be sent.
+    var mustSendPreamble: Bool {
+        switch self.state {
+        case .idle, .prefaceReceived, .quiescingPrefaceReceived:
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 // MARK:- State modifying methods

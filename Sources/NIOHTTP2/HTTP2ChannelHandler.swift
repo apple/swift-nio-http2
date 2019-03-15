@@ -318,6 +318,10 @@ extension NIOHTTP2Handler {
 extension NIOHTTP2Handler {
     /// Issues the preamble when necessary.
     private func writeAndFlushPreamble(context: ChannelHandlerContext) {
+        guard self.stateMachine.mustSendPreamble else {
+            return
+        }
+
         if case .client = self.mode {
             self.writeBuffer.clear()
             self.writeBuffer.writeStaticString(NIOHTTP2Handler.clientMagic)
