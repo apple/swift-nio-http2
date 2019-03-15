@@ -1460,6 +1460,27 @@ class HTTP2FrameParserTests: XCTestCase {
         
         self.assertEqualFrames(frame, expectedFrame)
     }
+
+    func testUnsolicitedContinuationFrame() throws {
+        var headers = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
+
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x0a,           // 3-byte payload length (17 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
+        buf.writeBuffer(&headers)
+
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+
+        // should throw
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame()) { error in
+            XCTAssertEqual(error as? InternalError, .codecError(code: .protocolError))
+        }
+    }
     
     // MARK: - ALTSVC frames
     

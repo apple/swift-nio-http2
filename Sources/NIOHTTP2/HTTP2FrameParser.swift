@@ -390,7 +390,7 @@ struct HTTP2FrameDecoder {
             }
             guard state.header.type != 9 else {
                 // we shouldn't see any CONTINUATION frames in this state
-                throw InternalError.codecError(code: .internalError)
+                throw InternalError.codecError(code: .protocolError)
             }
             guard state.accumulatedBytes.readableBytes >= state.header.length else {
                 return .needMoreData
