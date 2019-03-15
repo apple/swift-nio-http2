@@ -52,6 +52,7 @@ extension SimpleClientServerTests {
                 ("testOpeningWindowsViaSettingsInitialWindowSize", testOpeningWindowsViaSettingsInitialWindowSize),
                 ("testSettingsAckNotifiesAboutChangedFlowControl", testSettingsAckNotifiesAboutChangedFlowControl),
                 ("testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges", testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges),
+                ("testChangingMaxFrameSize", testChangingMaxFrameSize),
            ]
    }
 }

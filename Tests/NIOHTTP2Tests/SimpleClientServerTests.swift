@@ -1170,4 +1170,27 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testChangingMaxFrameSize() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers)))
+        try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Now the server is going to change SETTINGS_MAX_FRAME_SIZE. We set this twice to confirm we do this properly.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .maxFrameSize, value: 1<<15), HTTP2Setting(parameter: .maxFrameSize, value: 1<<16)], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Now the client will send a very large DATA frame. It must be passed through as a single entity, and accepted by the remote peer.
+        var buffer = self.clientChannel.allocator.buffer(capacity: 65535)
+        buffer.writeBytes(repeatElement(UInt8(0xFF), count: 65535))
+        let bodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .byteBuffer(buffer))))
+        try self.assertFramesRoundTrip(frames: [bodyFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

@@ -460,6 +460,22 @@ class HTTP2FrameParserTests: XCTestCase {
         XCTAssertEqual(buf, expectedBufContent)
     }
 
+
+    func testDataFrameEncodingViolatingMaxFrameSize() throws {
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+        XCTAssertEqual(encoder.maxFrameSize, 16384)
+
+        var content = self.allocator.buffer(capacity: 16385)
+        content.writeBytes(repeatElement(UInt8(0), count: 16385))
+
+        let frame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(content))))
+        var target = self.allocator.buffer(capacity: 1024)
+
+        XCTAssertThrowsError(try encoder.encode(frame: frame, to: &target)) { error in
+            XCTAssertEqual(error as? InternalError, .codecError(code: .frameSizeError))
+        }
+    }
+
     func testDataFrameDecodeFailureRootStream() {
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x01,           // 3-byte payload length (1 byte)
@@ -499,6 +515,23 @@ class HTTP2FrameParserTests: XCTestCase {
                 return
             }
         })
+    }
+
+    func testDataFrameDecodingViolatingMaxFrameSize() throws {
+        let frameBytes: [UInt8] = [
+            0x00, 0x40, 0x01,           // 3-byte payload length (16385 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x01,                       // 1-byte flags (END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        var badFrameBuf = byteBuffer(withBytes: frameBytes)
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        XCTAssertEqual(decoder.maxFrameSize, 16384)
+
+        decoder.append(bytes: &badFrameBuf)
+        XCTAssertThrowsError(try decoder.nextFrame()) { error in
+            XCTAssertEqual(error as? InternalError, .codecError(code: .frameSizeError))
+        }
     }
     
     // MARK: - HEADERS frames
