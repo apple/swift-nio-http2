@@ -312,6 +312,31 @@ class OutboundFlowControlBufferTests: XCTestCase {
         self.buffer.updateWindowOfStream(streamOne, newSize: 20)
         self.receivedFrames().assertFramesMatch([dataFrame], dataFileRegionToByteBuffer: false)
     }
+
+    func testChangingStreamWindowSizeToZeroAndBack() {
+        // This test checks that updating the window size to zero on a flushable stream makes it no longer flushable.
+        let streamOne = HTTP2StreamID(1)
+        self.buffer.streamCreated(streamOne, initialWindowSize: 0)
+
+        let dataFrame = self.createDataFrame(streamOne, byteBufferSize: 15)
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: nil).assertNothing())
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        // The stream has data to write but the window size is zero, so it won't write.
+        self.buffer.flushReceived()
+
+        self.buffer.updateWindowOfStream(streamOne, newSize: 15)
+        self.buffer.updateWindowOfStream(streamOne, newSize: 0)
+
+        // Check the stream has been marked unflushable.
+        self.buffer.flushReceived()
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        self.buffer.updateWindowOfStream(streamOne, newSize: 15)
+        self.buffer.flushReceived()
+
+        self.receivedFrames().assertFramesMatch([dataFrame], dataFileRegionToByteBuffer: false)
+    }
 }
 
 
