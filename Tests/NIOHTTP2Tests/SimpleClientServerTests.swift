@@ -1032,4 +1032,65 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try XCTAssertFalse(self.clientChannel.finish()))
         XCTAssertNoThrow(try XCTAssertFalse(self.serverChannel.finish()))
     }
+
+    func testOpeningWindowsViaSettingsInitialWindowSize() throws {
+        try self.basicHTTP2Connection()
+
+        // Start by having the client shrink the server's initial window size to 0. We should get an ACK as well.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .initialWindowSize, value: 0)], sender: self.clientChannel, receiver: self.serverChannel)
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Now open a stream.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers, endStream: true)))
+        try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Confirm there's no bonus frame sitting around.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // The server can respond with a headers frame and a DATA frame.
+        let serverHeaders = HPACKHeaders([(":status", "200")])
+        let respFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: serverHeaders)))
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Confirm there's no bonus frame sitting around.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Now we're going to send in a DATA frame. This will not be sent, as the window size is 0.
+        var buffer = self.clientChannel.allocator.buffer(capacity: 5)
+        buffer.writeStaticString("hello")
+        let dataFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .byteBuffer(buffer), endStream: true)))
+        self.serverChannel.writeAndFlush(dataFrame, promise: nil)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // No frames should be produced.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Now the client will send a new SETTINGS frame. This will produce a SETTINGS ACK, and widen the flow control window a bit.
+        // We make this one a bit tricky to confirm that we do the math properly: we set the window size to 5, then to 3. The new value
+        // should be 3.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .initialWindowSize, value: 5), HTTP2Setting(parameter: .initialWindowSize, value: 3)], sender: self.clientChannel, receiver: self.serverChannel)
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .byteBuffer(buffer.readSlice(length: 3)!)))))
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Sending the same SETTINGS frame again does not produce more data.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .initialWindowSize, value: 3)], sender: self.clientChannel, receiver: self.serverChannel)
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Now we can widen the window again, and get the rest of the frame.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .initialWindowSize, value: 6)], sender: self.clientChannel, receiver: self.serverChannel)
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .byteBuffer(buffer.readSlice(length: 2)!), endStream: true))))
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

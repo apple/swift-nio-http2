@@ -337,6 +337,40 @@ class OutboundFlowControlBufferTests: XCTestCase {
 
         self.receivedFrames().assertFramesMatch([dataFrame], dataFileRegionToByteBuffer: false)
     }
+
+    func testStreamWindowChanges() {
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        self.buffer.streamCreated(streamOne, initialWindowSize: 15)
+        self.buffer.streamCreated(streamThree, initialWindowSize: 15)
+
+        var oneFrame = self.createDataFrame(streamOne, byteBufferSize: 30)
+        let threeFrame = self.createDataFrame(streamThree, byteBufferSize: 15)
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(oneFrame, promise: nil).assertNothing())
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(threeFrame, promise: nil).assertNothing())
+        XCTAssertNil(self.buffer.nextFlushedWritableFrame())
+
+        // Let the window be consumed.
+        self.buffer.flushReceived()
+        self.receivedFrames().sorted(by: { $0.streamID < $1.streamID }).assertFramesMatch([oneFrame.sliceDataFrame(length: 15), threeFrame])
+
+        // Ok, now we can increase the window size for all streams. This makes more data available.
+        self.buffer.initialWindowSizeChanged(10)
+        self.receivedFrames().assertFramesMatch([oneFrame.sliceDataFrame(length: 10)])
+
+        let secondThreeFrame = self.createDataFrame(streamThree, byteBufferSize: 5)
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(secondThreeFrame, promise: nil).assertNothing())
+        self.buffer.flushReceived()
+        self.receivedFrames().assertFramesMatch([secondThreeFrame])
+
+        // Now we shrink the window.
+        self.buffer.initialWindowSizeChanged(-10)
+
+        // And attempt to send another frame on stream three. This should be buffered.
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(secondThreeFrame, promise: nil).assertNothing())
+        self.buffer.flushReceived()
+        XCTAssertNil(self.buffer.nextFlushedWritableFrame())
+    }
 }
 
 
