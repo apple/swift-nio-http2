@@ -157,6 +157,22 @@ internal struct OutboundFlowControlBuffer {
         let frame = HTTP2Frame(streamID: nextStreamID, payload: payload)
         return (frame, promise)
     }
+
+    internal mutating func initialWindowSizeChanged(_ delta: Int) {
+        self.streamDataBuffers.mutatingForEachValue {
+            let hadPendingData = $0.hasPendingData
+            $0.currentWindowSize += delta
+            let hasPendingData = $0.hasPendingData
+
+            if !hadPendingData && hasPendingData {
+                assert(!self.flushableStreams.contains($0.streamID))
+                self.flushableStreams.insert($0.streamID)
+            } else if hadPendingData && !hasPendingData {
+                assert(self.flushableStreams.contains($0.streamID))
+                self.flushableStreams.remove($0.streamID)
+            }
+        }
+    }
 }
 
 

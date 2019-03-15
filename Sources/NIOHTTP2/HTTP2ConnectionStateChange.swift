@@ -18,7 +18,7 @@
 /// This enumeration allows users to avoid needing to replicate the complete HTTP/2
 /// state machine. Instead, users can use this enumeration to determine the new state
 /// of the connection and affected streams.
-public enum NIOHTTP2ConnectionStateChange: Hashable {
+internal enum NIOHTTP2ConnectionStateChange: Hashable {
     /// A stream has been created.
     case streamCreated(StreamCreated)
 
@@ -36,24 +36,24 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
     /// being sent or received.
     case bulkStreamClosure(BulkStreamClosure)
 
-    /// Settings have been changed.
-    case settingsChanged(SettingsChanged)
+    /// The remote peer's settings have been changed.
+    case remoteSettingsChanged(RemoteSettingsChanged)
 
     /// A stream has been created.
-    public struct StreamCreated: Hashable {
-        public var streamID: HTTP2StreamID
+    internal struct StreamCreated: Hashable {
+        internal var streamID: HTTP2StreamID
 
         /// The initial local stream window size. This may be nil if there is no local stream window.
         /// This occurs if the stream has been pushed by the remote peer, in which case we will never be able
         /// to send on it.
-        public var localStreamWindowSize: Int?
+        internal var localStreamWindowSize: Int?
 
         /// The initial remote stream window size. This may be nil if there is no remote stream window.
         /// This occurs if the stream has been pushed by the local peer, in which case tje remote peer will never be able
         /// to send on it.
-        public var remoteStreamWindowSize: Int?
+        internal var remoteStreamWindowSize: Int?
 
-        public init(streamID: HTTP2StreamID, localStreamWindowSize: Int?, remoteStreamWindowSize: Int?) {
+        internal init(streamID: HTTP2StreamID, localStreamWindowSize: Int?, remoteStreamWindowSize: Int?) {
             self.streamID = streamID
             self.localStreamWindowSize = localStreamWindowSize
             self.remoteStreamWindowSize = remoteStreamWindowSize
@@ -61,16 +61,16 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
     }
 
     /// A stream has been closed.
-    public struct StreamClosed: Hashable {
-        public var streamID: HTTP2StreamID
+    internal struct StreamClosed: Hashable {
+        internal var streamID: HTTP2StreamID
 
-        public var localConnectionWindowSize: Int
+        internal var localConnectionWindowSize: Int
 
-        public var remoteConnectionWindowSize: Int
+        internal var remoteConnectionWindowSize: Int
 
-        public var reason: HTTP2ErrorCode?
+        internal var reason: HTTP2ErrorCode?
 
-        public init(streamID: HTTP2StreamID, localConnectionWindowSize: Int, remoteConnectionWindowSize: Int, reason: HTTP2ErrorCode?) {
+        internal init(streamID: HTTP2StreamID, localConnectionWindowSize: Int, remoteConnectionWindowSize: Int, reason: HTTP2ErrorCode?) {
             self.streamID = streamID
             self.localConnectionWindowSize = localConnectionWindowSize
             self.remoteConnectionWindowSize = remoteConnectionWindowSize
@@ -81,10 +81,10 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
     /// A stream has been created and immediately closed. In this case, the only relevant bit of information
     /// is the stream ID: flow control windows are not relevant as this frame is not flow controlled and does
     /// not change window sizes.
-    public struct StreamCreatedAndClosed: Hashable {
-        public var streamID: HTTP2StreamID
+    internal struct StreamCreatedAndClosed: Hashable {
+        internal var streamID: HTTP2StreamID
 
-        public init(streamID: HTTP2StreamID) {
+        internal init(streamID: HTTP2StreamID) {
             self.streamID = streamID
         }
     }
@@ -97,31 +97,31 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
     /// both the connection and stream window sizes: window update frames change
     /// only one. To avoid ambiguity, we report the current window size of the connection
     /// on all such events, and the relevant stream if there is one (which there usually is).
-    public struct FlowControlChange: Hashable {
-        public var localConnectionWindowSize: Int
+    internal struct FlowControlChange: Hashable {
+        internal var localConnectionWindowSize: Int
 
-        public var remoteConnectionWindowSize: Int
+        internal var remoteConnectionWindowSize: Int
 
-        public var localStreamWindowSize: StreamWindowSizeChange?
+        internal var localStreamWindowSize: StreamWindowSizeChange?
 
         /// The information about the stream window size. Either the local or remote
         /// stream window information may be nil, if there is no flow control window
         /// for that direction (e.g. if the stream is half-closed).
-        public struct StreamWindowSizeChange: Hashable {
-            public var streamID: HTTP2StreamID
+        internal struct StreamWindowSizeChange: Hashable {
+            internal var streamID: HTTP2StreamID
 
-            public var localStreamWindowSize: Int?
+            internal var localStreamWindowSize: Int?
 
-            public var remoteStreamWindowSize: Int?
+            internal var remoteStreamWindowSize: Int?
 
-            public init(streamID: HTTP2StreamID, localStreamWindowSize: Int?, remoteStreamWindowSize: Int?) {
+            internal init(streamID: HTTP2StreamID, localStreamWindowSize: Int?, remoteStreamWindowSize: Int?) {
                 self.streamID = streamID
                 self.localStreamWindowSize = localStreamWindowSize
                 self.remoteStreamWindowSize = remoteStreamWindowSize
             }
         }
 
-        public init(localConnectionWindowSize: Int, remoteConnectionWindowSize: Int, localStreamWindowSize: StreamWindowSizeChange?) {
+        internal init(localConnectionWindowSize: Int, remoteConnectionWindowSize: Int, localStreamWindowSize: StreamWindowSizeChange?) {
             self.localConnectionWindowSize = localConnectionWindowSize
             self.remoteConnectionWindowSize = remoteConnectionWindowSize
             self.localStreamWindowSize = localStreamWindowSize
@@ -129,24 +129,20 @@ public enum NIOHTTP2ConnectionStateChange: Hashable {
     }
 
     /// A large number of streams have been closed at once.
-    public struct BulkStreamClosure: Hashable {
-        public var closedStreams: [HTTP2StreamID]
+    internal struct BulkStreamClosure: Hashable {
+        internal var closedStreams: [HTTP2StreamID]
 
-        public init(closedStreams: [HTTP2StreamID]) {
+        internal init(closedStreams: [HTTP2StreamID]) {
             self.closedStreams = closedStreams
         }
     }
 
-    /// Settings have changed in a way that is not trivial to decode.
+    /// The remote peer's settings have changed in a way that is not trivial to decode.
     ///
     /// This object keeps track of the change on all stream window sizes via
     /// SETTINGS frame.
-    public struct SettingsChanged: Hashable {
-        public var streamWindowSizeChange: Int
-
-        public init(streamWindowSizeChange: Int) {
-            self.streamWindowSizeChange = streamWindowSizeChange
-        }
+    internal struct RemoteSettingsChanged: Hashable {
+        internal var streamWindowSizeChange: Int = 0
     }
 }
 
