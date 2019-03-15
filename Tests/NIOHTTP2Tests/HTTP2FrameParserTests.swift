@@ -1481,6 +1481,84 @@ class HTTP2FrameParserTests: XCTestCase {
             XCTAssertEqual(error as? InternalError, .codecError(code: .protocolError))
         }
     }
+
+    func testContinuationFrameStreamZero() throws {
+        var headers2 = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
+        var headers1 = headers2.readSlice(length: 10)!
+
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x0a,           // 3-byte payload length (10 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
+        buf.writeBuffer(&headers1)
+
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+
+        // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
+        decoder.append(bytes: &buf)
+        XCTAssertNil(try decoder.nextFrame())
+
+        // should consume all the bytes
+        XCTAssertEqual(buf.readableBytes, 0)
+        buf.clear()
+
+        let continuationFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x07,           // 3-byte payload length (7 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x04,                       // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier, stream 0
+        ]
+        buf.writeBytes(continuationFrameBytes)
+        buf.writeBuffer(&headers2)
+
+        // This should fail
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame()) { error in
+            XCTAssertEqual(error as? InternalError, .codecError(code: .protocolError))
+        }
+    }
+
+    func testContinuationFrameWrongStream() throws {
+        var headers2 = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
+        var headers1 = headers2.readSlice(length: 10)!
+
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x0a,           // 3-byte payload length (10 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
+        buf.writeBuffer(&headers1)
+
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+
+        // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
+        decoder.append(bytes: &buf)
+        XCTAssertNil(try decoder.nextFrame())
+
+        // should consume all the bytes
+        XCTAssertEqual(buf.readableBytes, 0)
+        buf.clear()
+
+        let continuationFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x07,           // 3-byte payload length (7 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x04,                       // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier, stream 3
+        ]
+        buf.writeBytes(continuationFrameBytes)
+        buf.writeBuffer(&headers2)
+
+        // This should fail
+        decoder.append(bytes: &buf)
+        XCTAssertThrowsError(try decoder.nextFrame()) { error in
+            XCTAssertEqual(error as? InternalError, .codecError(code: .protocolError))
+        }
+    }
     
     // MARK: - ALTSVC frames
     
