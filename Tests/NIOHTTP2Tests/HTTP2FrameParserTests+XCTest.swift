@@ -79,6 +79,8 @@ extension HTTP2FrameParserTests {
                 ("testHeadersContinuationFrameDecoding", testHeadersContinuationFrameDecoding),
                 ("testPushPromiseContinuationFrameDecoding", testPushPromiseContinuationFrameDecoding),
                 ("testUnsolicitedContinuationFrame", testUnsolicitedContinuationFrame),
+                ("testContinuationFrameStreamZero", testContinuationFrameStreamZero),
+                ("testContinuationFrameWrongStream", testContinuationFrameWrongStream),
                 ("testAltServiceFrameDecoding", testAltServiceFrameDecoding),
                 ("testAltServiceFrameDecodingFailure", testAltServiceFrameDecodingFailure),
                 ("testAltServiceFrameEncoding", testAltServiceFrameEncoding),

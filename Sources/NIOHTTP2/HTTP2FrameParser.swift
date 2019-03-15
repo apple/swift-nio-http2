@@ -528,6 +528,11 @@ struct HTTP2FrameDecoder {
                 throw InternalError.codecError(code: .protocolError)
             }
 
+            // This must be for the stream we're buffering header block fragments for, or this is an error.
+            guard header.rawStreamID == state.header.rawStreamID else {
+                throw InternalError.codecError(code: .protocolError)
+            }
+
             self.state = .accumulatingContinuationPayload(AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: state, continuationHeader: header))
         }
 
