@@ -120,6 +120,9 @@ public struct HPACKDecoder {
             // 0b1xxxxxxx -- one-bit prefix, seven bits of value
             // purely-indexed header field/value
             let hidx = try buffer.readEncodedInteger(withPrefix: 7)
+            guard hidx != 0 else {
+                throw NIOHPACKErrors.ZeroHeaderIndex()
+            }
             return try self.decodeIndexedHeader(from: Int(hidx))
             
         case let x where x & 0b1100_0000 == 0b0100_0000:
