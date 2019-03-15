@@ -464,6 +464,10 @@ extension NIOHTTP2Handler {
             if settingsChange.streamWindowSizeChange != 0 {
                 self.outboundBuffer.initialWindowSizeChanged(settingsChange.streamWindowSizeChange)
             }
+        case .localSettingsChanged(let settingsChange):
+            if settingsChange.streamWindowSizeChange != 0 {
+                self.inboundEventBuffer.pendingUserEvent(NIOHTTP2BulkStreamWindowChangeEvent(delta: settingsChange.streamWindowSizeChange))
+            }
         }
     }
 

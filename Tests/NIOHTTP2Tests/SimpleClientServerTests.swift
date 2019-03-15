@@ -1093,4 +1093,81 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testSettingsAckNotifiesAboutChangedFlowControl() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+        let recorder = UserEventRecorder()
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(recorder).wait())
+
+        // Let's open a few streams.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
+        let frames = [HTTP2StreamID(1), HTTP2StreamID(3), HTTP2StreamID(5)].map { HTTP2Frame(streamID: $0, payload: .headers(.init(headers: headers))) }
+        try self.assertFramesRoundTrip(frames: frames, sender: self.clientChannel, receiver: self.serverChannel)
+
+        // We will have some user events here, none should be a SETTINGS_INITIAL_WINDOW_SIZE change.
+        XCTAssertFalse(recorder.events.contains(where: { $0 is NIOHTTP2BulkStreamWindowChangeEvent }))
+
+        // Now the client will send, and get acknowledged, a new settings with a different stream window size.
+        // For fanciness, we change it twice.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .initialWindowSize, value: 60000), HTTP2Setting(parameter: .initialWindowSize, value: 50000)], sender: self.clientChannel, receiver: self.serverChannel)
+        let events = recorder.events.compactMap { $0 as? NIOHTTP2BulkStreamWindowChangeEvent }
+        XCTAssertEqual(events, [NIOHTTP2BulkStreamWindowChangeEvent(delta: -15535)])
+
+        // Let's do it again, just to prove it isn't a fluke.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .initialWindowSize, value: 65535)], sender: self.clientChannel, receiver: self.serverChannel)
+        let newEvents = recorder.events.compactMap { $0 as? NIOHTTP2BulkStreamWindowChangeEvent }
+        XCTAssertEqual(newEvents, [NIOHTTP2BulkStreamWindowChangeEvent(delta: -15535), NIOHTTP2BulkStreamWindowChangeEvent(delta: 15535)])
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges() throws {
+        // This test verifies that the stream multiplexer pays attention to notifications about settings changes to flow
+        // control windows. It can't do that by *raising* the flow control window, as that information is duplicated in the
+        // stream flow control change notifications sent by receiving data frames. So it must do it by *shrinking* the window.
+
+        // Begin by getting the connection up and add a stream multiplexer.
+        try self.basicHTTP2Connection()
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .server, channel: self.serverChannel)).wait())
+
+        var largeBuffer = self.clientChannel.allocator.buffer(capacity: 32767)
+        largeBuffer.writeBytes(repeatElement(UInt8(0xFF), count: 32767))
+
+        // Let's open a stream, and write a DATA frame that consumes slightly less than half the window.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
+        let headersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers)))
+        let bodyFrame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(largeBuffer))))
+
+        self.clientChannel.write(headersFrame, promise: nil)
+        self.clientChannel.writeAndFlush(bodyFrame, promise: nil)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // No window update frame should be emitted.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Now have the server shrink the client's flow control window.
+        // When it does this, the stream multiplexer will be told, and the stream will set its new expected maintained window size accordingly.
+        // However, the new *actual* window size will now be small enough to emit a window update for. Note that the connection will not have a window
+        // update frame sent as well maintain its size.
+        try self.assertSettingsUpdateWithAck([(HTTP2Setting(parameter: .initialWindowSize, value: 32768))], sender: self.serverChannel, receiver: self.clientChannel)
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 1, windowIncrement: 32767)
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // Shrink it further. We shouldn't emit another window update.
+        try self.assertSettingsUpdateWithAck([(HTTP2Setting(parameter: .initialWindowSize, value: 16384))], sender: self.serverChannel, receiver: self.clientChannel)
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // And resize up. No window update either.
+        try self.assertSettingsUpdateWithAck([(HTTP2Setting(parameter: .initialWindowSize, value: 65535))], sender: self.serverChannel, receiver: self.clientChannel)
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
