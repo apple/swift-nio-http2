@@ -1289,4 +1289,14 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    func testMultiplexerIgnoresPriorityFrames() throws {
+        self.channel.addNoOpMultiplexer(mode: .server)
+
+        let simplePingFrame = HTTP2Frame(streamID: 106, payload: .priority(.init(exclusive: true, dependency: .rootStream, weight: 15)))
+        XCTAssertNoThrow(try self.channel.writeInbound(simplePingFrame))
+        XCTAssertNoThrow(try self.channel.assertReceivedFrame().assertFrameMatches(this: simplePingFrame))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }
