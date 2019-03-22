@@ -91,7 +91,7 @@ final class ReentrancyTests: XCTestCase {
         XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(reEntrancyHandler).wait())
 
         // Now we can deliver these bytes.
-        XCTAssertTrue(try self.serverChannel.writeInbound(frameBuffer))
+        XCTAssertTrue(try self.serverChannel.writeInbound(frameBuffer).isFull)
 
         // If this worked, we want to see that the server received SETTINGS, PING, SETTINGS, PING. No other order is
         // ok, no errors should have been hit.

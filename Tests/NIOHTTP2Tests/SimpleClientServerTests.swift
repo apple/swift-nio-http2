@@ -1029,8 +1029,8 @@ class SimpleClientServerTests: XCTestCase {
             XCTFail("No Goaway frame")
         }
 
-        XCTAssertNoThrow(try XCTAssertFalse(self.clientChannel.finish()))
-        XCTAssertNoThrow(try XCTAssertFalse(self.serverChannel.finish()))
+        XCTAssertNoThrow(try XCTAssertTrue(self.clientChannel.finish().isClean))
+        XCTAssertNoThrow(try XCTAssertTrue(self.serverChannel.finish().isClean))
     }
 
     func testOpeningWindowsViaSettingsInitialWindowSize() throws {
