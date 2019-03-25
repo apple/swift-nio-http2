@@ -228,6 +228,9 @@ struct HTTP2FrameDecoder {
     private var state: ParserState
     private var allocator: ByteBufferAllocator
 
+    // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
+    internal var maxFrameSize: UInt32 = 1<<14
+
     /// Creates a new HTTP2 frame decoder.
     ///
     /// - parameter allocator: A `ByteBufferAllocator` used when accumulating blocks of data
@@ -317,6 +320,11 @@ struct HTTP2FrameDecoder {
         case .accumulatingFrameHeader(var state):
             guard let header = state.unusedBytes.readFrameHeader() else {
                 return .needMoreData
+            }
+
+            // Confirm that SETTINGS_MAX_FRAME_SIZE is respected.
+            guard header.length <= self.maxFrameSize else {
+                throw InternalError.codecError(code: .frameSizeError)
             }
 
             if header.type != 0 {
@@ -924,6 +932,9 @@ struct HTTP2FrameEncoder {
     private let allocator: ByteBufferAllocator
     var headerEncoder: HPACKEncoder
 
+    // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
+    var maxFrameSize: UInt32 = 1<<14
+
     init(allocator: ByteBufferAllocator) {
         self.allocator = allocator
         self.headerEncoder = HPACKEncoder(allocator: allocator)
@@ -1123,6 +1134,11 @@ struct HTTP2FrameEncoder {
 
             payloadSize = buf.writerIndex - payloadStart
             extraFrameData = nil
+        }
+
+        // Confirm we're not about to violate SETTINGS_MAX_FRAME_SIZE.
+        guard payloadSize <= Int(self.maxFrameSize) else {
+            throw InternalError.codecError(code: .frameSizeError)
         }
 
         // Write the frame data. This is the payload size and the flags byte.

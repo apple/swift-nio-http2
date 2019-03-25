@@ -464,9 +464,16 @@ extension NIOHTTP2Handler {
             if settingsChange.streamWindowSizeChange != 0 {
                 self.outboundBuffer.initialWindowSizeChanged(settingsChange.streamWindowSizeChange)
             }
+            if let newMaxFrameSize = settingsChange.newMaxFrameSize {
+                self.frameEncoder.maxFrameSize = newMaxFrameSize
+                self.outboundBuffer.maxFrameSize = Int(newMaxFrameSize)
+            }
         case .localSettingsChanged(let settingsChange):
             if settingsChange.streamWindowSizeChange != 0 {
                 self.inboundEventBuffer.pendingUserEvent(NIOHTTP2BulkStreamWindowChangeEvent(delta: settingsChange.streamWindowSizeChange))
+            }
+            if let newMaxFrameSize = settingsChange.newMaxFrameSize {
+                self.frameDecoder.maxFrameSize = newMaxFrameSize
             }
         }
     }

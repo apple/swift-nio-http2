@@ -63,8 +63,7 @@ extension HasRemoteSettings {
                     // respect that possibility.
                     effect.streamWindowSizeChange += Int(delta)
                 case .maxFrameSize:
-                    // TODO(cory): Implement!
-                    break
+                    effect.newMaxFrameSize = newValue
                 default:
                     // No operation required
                     return

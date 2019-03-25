@@ -146,6 +146,8 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
     /// SETTINGS frame.
     internal struct RemoteSettingsChanged: Hashable {
         internal var streamWindowSizeChange: Int = 0
+
+        internal var newMaxFrameSize: UInt32?
     }
 
     /// The local peer's settings have changed in a way that is not trivial to decode.
@@ -154,6 +156,8 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
     /// SETTINGS frame.
     internal struct LocalSettingsChanged: Hashable {
         internal var streamWindowSizeChange: Int = 0
+
+        internal var newMaxFrameSize: UInt32?
     }
 }
 
