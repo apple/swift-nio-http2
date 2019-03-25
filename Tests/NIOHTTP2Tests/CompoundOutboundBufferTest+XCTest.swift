@@ -33,6 +33,7 @@ extension CompoundOutboundBufferTest {
                 ("testFlowControlStreamThrows", testFlowControlStreamThrows),
                 ("testDelayedFlowControlStreamErrors", testDelayedFlowControlStreamErrors),
                 ("testBufferedFrameDrops", testBufferedFrameDrops),
+                ("testRejectsPrioritySelfDependency", testRejectsPrioritySelfDependency),
            ]
    }
 }

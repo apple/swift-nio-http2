@@ -39,6 +39,7 @@ extension OutboundFlowControlBufferTests {
                 ("testOverlargeFramesAreSplitOnMaxFrameSizeFileRegion", testOverlargeFramesAreSplitOnMaxFrameSizeFileRegion),
                 ("testChangingStreamWindowSizeToZeroAndBack", testChangingStreamWindowSizeToZeroAndBack),
                 ("testStreamWindowChanges", testStreamWindowChanges),
+                ("testRejectsPrioritySelfDependency", testRejectsPrioritySelfDependency),
            ]
    }
 }

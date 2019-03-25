@@ -184,10 +184,20 @@ public enum NIOHTTP2Errors {
 
     /// A :status header was received with an invalid value.
     public struct InvalidStatusValue: NIOHTTP2Error {
-        var value: String
+        public var value: String
 
         public init(_ value: String) {
             self.value = value
+        }
+    }
+
+    /// A priority update was received that would create a PRIORITY cycle.
+    public struct PriorityCycle: NIOHTTP2Error {
+        /// The affected stream ID.
+        public var streamID: HTTP2StreamID
+
+        public init(streamID: HTTP2StreamID) {
+            self.streamID = streamID
         }
     }
 }

@@ -371,6 +371,15 @@ class OutboundFlowControlBufferTests: XCTestCase {
         self.buffer.flushReceived()
         XCTAssertNil(self.buffer.nextFlushedWritableFrame())
     }
+
+    func testRejectsPrioritySelfDependency() {
+        XCTAssertThrowsError(try self.buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: false, dependency: 1, weight: 36))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+        }
+        XCTAssertThrowsError(try self.buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+        }
+    }
 }
 
 
