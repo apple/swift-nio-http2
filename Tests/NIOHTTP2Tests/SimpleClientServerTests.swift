@@ -1193,4 +1193,67 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testStreamErrorOnSelfDependentPriorityFrames() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Send a PRIORITY frame that has a self-dependency. Note that we aren't policing these outbound:
+        // as we can't detect cycles generally without maintaining a bunch of state, we simply don't. That
+        // allows us to emit this.
+        let frame = HTTP2Frame(streamID: 1, payload: .priority(.init(exclusive: false, dependency: 1, weight: 32)))
+        self.clientChannel.writeAndFlush(frame, promise: nil)
+
+        // We treat this as a connection error.
+        guard let frameData = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive frame")
+            return
+        }
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+        }
+
+        guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(http2ErrorCode: .protocolError), opaqueData: nil)
+
+        XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
+        _ = try? self.serverChannel.finish()
+    }
+
+    func testStreamErrorOnSelfDependentHeadersFrames() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Send a HEADERS frame that has a self-dependency. Note that we aren't policing these outbound:
+        // as we can't detect cycles generally without maintaining a bunch of state, we simply don't. That
+        // allows us to emit this.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let frame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers, priorityData: .init(exclusive: true, dependency: 1, weight: 64))))
+        self.clientChannel.writeAndFlush(frame, promise: nil)
+
+        // We treat this as a connection error.
+        guard let frameData = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive frame")
+            return
+        }
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+        }
+
+        guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(http2ErrorCode: .protocolError), opaqueData: nil)
+
+        XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
+        _ = try? self.serverChannel.finish()
+    }
 }

@@ -206,7 +206,7 @@ extension NIOHTTP2Handler {
         // All frames have one basic processing step: do we send them on, or drop them?
         // Some frames have further processing steps, regarding triggering user events or other operations.
         // Here we centralise this processing.
-        let result: StateMachineResultWithEffect
+        var result: StateMachineResultWithEffect
 
         switch frame.payload {
         case .alternativeService, .origin:
@@ -218,6 +218,16 @@ extension NIOHTTP2Handler {
             result = self.stateMachine.receiveGoaway(lastStreamID: lastStreamID)
         case .headers(let headerBody):
             result = self.stateMachine.receiveHeaders(streamID: frame.streamID, headers: headerBody.headers, isEndStreamSet: headerBody.endStream)
+
+            // Apply a priority update if one is here. If this fails, it may cause a connection error.
+            if let priorityData = headerBody.priorityData {
+                do {
+                    try self.outboundBuffer.priorityUpdate(streamID: frame.streamID, priorityData: priorityData)
+                } catch {
+                    result = StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+                }
+            }
+
         case .ping(let pingData, let ack):
             let (stateMachineResult, postPingOperation) = self.stateMachine.receivePing(ackFlagSet: ack)
             result = stateMachineResult
@@ -230,8 +240,17 @@ extension NIOHTTP2Handler {
                 self.encodeAndWriteFrame(context: context, frame: responseFrame, promise: nil)
                 self.wroteAutomaticFrame = true
             }
-        case .priority:
+
+        case .priority(let priorityData):
             result = self.stateMachine.receivePriority()
+
+            // Apply a priority update if one is here. If this fails, it may cause a connection error.
+            do {
+                try self.outboundBuffer.priorityUpdate(streamID: frame.streamID, priorityData: priorityData)
+            } catch {
+                result = StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+            }
+
         case .pushPromise(let pushedStreamData):
             result = self.stateMachine.receivePushPromise(originalStreamID: frame.streamID, childStreamID: pushedStreamData.pushedStreamID, headers: pushedStreamData.headers)
         case .rstStream(let reason):

@@ -53,6 +53,8 @@ extension SimpleClientServerTests {
                 ("testSettingsAckNotifiesAboutChangedFlowControl", testSettingsAckNotifiesAboutChangedFlowControl),
                 ("testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges", testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges),
                 ("testChangingMaxFrameSize", testChangingMaxFrameSize),
+                ("testStreamErrorOnSelfDependentPriorityFrames", testStreamErrorOnSelfDependentPriorityFrames),
+                ("testStreamErrorOnSelfDependentHeadersFrames", testStreamErrorOnSelfDependentHeadersFrames),
            ]
    }
 }

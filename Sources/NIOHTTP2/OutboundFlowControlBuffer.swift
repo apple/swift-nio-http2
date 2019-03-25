@@ -176,6 +176,20 @@ internal struct OutboundFlowControlBuffer {
 }
 
 
+// MARK: Priority API
+extension OutboundFlowControlBuffer {
+    /// A frame with new priority data has been received that affects prioritisation of outbound frames.
+    internal mutating func priorityUpdate(streamID: HTTP2StreamID, priorityData: HTTP2Frame.StreamPriorityData) throws {
+        // Right now we don't actually do anything with priority information. However, we do want to police some parts of
+        // RFC 7540 § 5.3, where we can, so this hook is already in place for us to extend later.
+        if streamID == priorityData.dependency {
+            // Streams may not depend on themselves!
+            throw NIOHTTP2Errors.PriorityCycle(streamID: streamID)
+        }
+    }
+}
+
+
 private struct StreamFlowControlState {
     let streamID: HTTP2StreamID
     var currentWindowSize: Int

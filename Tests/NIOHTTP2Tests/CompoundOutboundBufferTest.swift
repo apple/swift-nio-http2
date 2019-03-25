@@ -208,6 +208,17 @@ final class CompoundOutboundBufferTest: XCTestCase {
         }
         XCTAssertEqual(results, [true, false, false, false])
     }
+
+    func testRejectsPrioritySelfDependency() {
+        var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1)
+
+        XCTAssertThrowsError(try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: false, dependency: 1, weight: 36))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+        }
+        XCTAssertThrowsError(try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+        }
+    }
 }
 
 

@@ -181,6 +181,10 @@ extension CompoundOutboundBuffer {
         self.flowControlBuffer.initialWindowSizeChanged(delta)
     }
 
+    mutating func priorityUpdate(streamID: HTTP2StreamID, priorityData: HTTP2Frame.StreamPriorityData) throws {
+        try self.flowControlBuffer.priorityUpdate(streamID: streamID, priorityData: priorityData)
+    }
+
     var maxFrameSize: Int {
         get {
             return self.flowControlBuffer.maxFrameSize
