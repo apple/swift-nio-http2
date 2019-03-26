@@ -8,8 +8,6 @@ services:
       args:
         ubuntu_version: "18.04"
         swift_version: "5.0"
-        swift_flavour: "DEVELOPMENT-SNAPSHOT-2019-02-17-a"
-        swift_builds_suffix: "branch"
         h2spec_version: "2.2.1"
 
   test:
