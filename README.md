@@ -2,8 +2,6 @@
 
 This project contains HTTP/2 support for Swift projects using [SwiftNIO](https://github.com/apple/swift-nio).
 
-Please be aware that this project is currently in a **beta** state, and is subject to change. There are a number of current limitations in the project (see the **Beta** section for more details), and the API remains subject to change.
-
 ## Building
 
 `swift-nio-http2` is a SwiftPM project and can be built and tested very simply:
@@ -13,29 +11,23 @@ $ swift build
 $ swift test
 ```
 
-Note, however, that you need nghttp2 installed and available to the linker. On macOS or other Darwin platforms, the easiest way to get nghttp2 is via Homebrew:
+## Versions
 
-```bash
-$ brew install nghttp2
-```
+Just like the rest of the SwiftNIO family, swift-nio-http2 follows [SemVer 2.0.0](https://semver.org/#semantic-versioning-200) with a separate document
+declaring [SwiftNIO's Public API](https://github.com/apple/swift-nio/blob/master/docs/public-api.md).
 
-For more recent Linux systems, nghttp2 may be available from your package manager. Otherwise, you may need to [build it from source](https://nghttp2.org/documentation/package_README.html#requirements).
+### `swift-nio-http2` 1.x
 
-## Beta
+`swift-nio-http2` versions 1.x are a pure-Swift implementatation of the HTTP/2 protocol for SwiftNIO. It's part of the SwiftNIO 2 family of repositories and does not have any dependencies besides [`swift-nio`](https://github.com/apple/swift-nio) and Swift 5. As the latest version, it lives on the [`master`](https://github.com/apple/swift-nio-http2) branch.
 
-This project is currently in a beta state. The intention is to allow the wider SwiftNIO community to get early access in order to provide feedback and help guide the development of the HTTP/2 support.
+To depend on `swift-nio-http2`, put the following in the `dependencies` of your `Package.swift`:
 
-The current version of these bindings has a dependency on nghttp2. This dependency is intended to be temporary: it was used to get the functionality up-and-running, but as time goes on nghttp2 should be scaled back, and eventually removed once all the functionality it provides has been replaced with Swift code.
+    .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.0.0"),
 
-Due to this early state, there are a number of limitations in the current bindings. Please be aware of them. The known limitations are listed below:
+### `swift-nio-http2` 0.x
 
-1. Promises on control frame writes do not work and will be leaked. Promises on DATA frame writes work just fine and will be fulfilled correctly.
-2. No support for manual flow control window management, only automatic.
-3. No support for sending priority frames, and received priority frames will not be transmitted on the channel pipeline.
-4. No support for push promise frames, either sending or receiving.
-5. No low-level support for managing DATA frame boundaries: DATA frames may be interleaved and merged/split as necessary by nghttp2.
+The legacy `swift-nio-http` 0.x is part of the SwiftNIO 1 family of repositories and works on Swift 4.1 and newer but requires [nghttp2](https://nghttp2.org) to be installed on your system. The source code can be found on the [`nghttp2-support-branch`](https://github.com/apple/swift-nio-http2/tree/nghttp2-support-branch).
 
-If you choose to use this project, please submit feedback and bug reports when you encounter problems or limitations.
 
 ## Developing SwiftNIO HTTP/2
 
