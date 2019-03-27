@@ -210,6 +210,15 @@ public enum NIOHTTP2Errors {
             self.streamID = streamID
         }
     }
+
+    /// An attempt was made to send a header field with a field name that is not valid in HTTP/2.
+    public struct InvalidHTTP2HeaderFieldName: NIOHTTP2Error {
+        public var fieldName: String
+
+        public init(_ fieldName: String) {
+            self.fieldName = fieldName
+        }
+    }
 }
 
 

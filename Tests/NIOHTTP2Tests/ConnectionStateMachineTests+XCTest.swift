@@ -83,6 +83,8 @@ extension ConnectionStateMachineTests {
                 ("testRatchetingGoawayForBothPeersEvenWhenFullyQuiesced", testRatchetingGoawayForBothPeersEvenWhenFullyQuiesced),
                 ("testClientTrailersMustHaveEndStreamSet", testClientTrailersMustHaveEndStreamSet),
                 ("testServerTrailersMustHaveEndStreamSet", testServerTrailersMustHaveEndStreamSet),
+                ("testRejectHeadersWithUppercaseHeaderFieldName", testRejectHeadersWithUppercaseHeaderFieldName),
+                ("testAllowHeadersWithUppercaseHeaderFieldNameWhenValidationDisabled", testAllowHeadersWithUppercaseHeaderFieldNameWhenValidationDisabled),
            ]
    }
 }

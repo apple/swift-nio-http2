@@ -88,8 +88,15 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         case server
     }
 
-    public init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings) {
-        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode))
+    /// Whether a certain operation has validation enabled or not.
+    public enum ValidationState {
+        case enabled
+
+        case disabled
+    }
+
+    public init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings, headerBlockValidation: ValidationState = .enabled) {
+        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation))
         self.mode = mode
         self.initialSettings = initialSettings
         self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100)
@@ -526,6 +533,18 @@ private extension HTTP2ConnectionStateMachine.ConnectionRole {
             self = .client
         case .server:
             self = .server
+        }
+    }
+}
+
+
+extension HTTP2ConnectionStateMachine.ValidationState {
+    init(_ state: NIOHTTP2Handler.ValidationState) {
+        switch state {
+        case .enabled:
+            self = .enabled
+        case .disabled:
+            self = .disabled
         }
     }
 }

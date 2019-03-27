@@ -18,6 +18,8 @@ import NIOHPACK
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
 protocol SendingPushPromiseState: HasFlowControlWindows {
+    var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
+
     var streamState: ConnectionStreamState { get set }
 
     var localInitialWindowSize: UInt32 { get }
@@ -31,12 +33,14 @@ extension SendingPushPromiseState {
     }
 
     fileprivate mutating func _sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
+        let validateHeaderBlock = self.headerBlockValidation == .enabled
+
         // While receivePushPromise has a two step process involving creating the child stream first, here we do it the other
         // way around. This is because we don't want to bother creating a child stream if the headers aren't valid, and because
         // we don't have to emit a frame to report the error (we just return it to the user), we don't have to have a stream
         // whose state we can modify.
         func parentStateModifier(stateMachine: inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect {
-            return stateMachine.sendPushPromise(headers: headers)
+            return stateMachine.sendPushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
         }
 
         // First, however, we need to check we can push at all!
