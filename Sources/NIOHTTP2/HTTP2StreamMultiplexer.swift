@@ -91,6 +91,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                 channel.performActivation()
             }
         }
+        context.fireChannelActive()
     }
 
     public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {

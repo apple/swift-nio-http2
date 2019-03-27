@@ -1299,4 +1299,20 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    func testMultiplexerForwardsActiveToParent() throws {
+        self.channel.addNoOpMultiplexer(mode: .client)
+
+        var didActivate = false
+
+        let activePromise = self.channel.eventLoop.makePromise(of: Void.self)
+        activePromise.futureResult.whenSuccess {
+            didActivate = true
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(ActiveHandler(activatedPromise: activePromise)).wait())
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/nothing")).wait())
+        XCTAssertTrue(didActivate)
+        
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }
