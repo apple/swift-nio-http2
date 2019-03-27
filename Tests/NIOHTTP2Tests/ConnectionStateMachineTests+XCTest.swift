@@ -81,6 +81,8 @@ extension ConnectionStateMachineTests {
                 ("testDisablingPushPreventsPush", testDisablingPushPreventsPush),
                 ("testRatchetingGoawayEvenWhenFullyQueisced", testRatchetingGoawayEvenWhenFullyQueisced),
                 ("testRatchetingGoawayForBothPeersEvenWhenFullyQuiesced", testRatchetingGoawayForBothPeersEvenWhenFullyQuiesced),
+                ("testClientTrailersMustHaveEndStreamSet", testClientTrailersMustHaveEndStreamSet),
+                ("testServerTrailersMustHaveEndStreamSet", testServerTrailersMustHaveEndStreamSet),
            ]
    }
 }

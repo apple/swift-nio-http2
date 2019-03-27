@@ -1476,8 +1476,8 @@ class ConnectionStateMachineTests: XCTestCase {
 
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
-        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -1720,6 +1720,38 @@ class ConnectionStateMachineTests: XCTestCase {
         // And again, the duplicate goaway is fine.
         assertGoawaySucceeds(self.client.sendGoaway(lastStreamID: .rootStream), droppingStreams: nil)
         assertGoawaySucceeds(self.server.receiveGoaway(lastStreamID: .rootStream), droppingStreams: nil)
+    }
+
+    func testClientTrailersMustHaveEndStreamSet() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        // Client initiates a stream.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        // If the client attempts to send trailers without end stream, this fails with a stream error.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+    }
+
+    func testServerTrailersMustHaveEndStreamSet() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        // Client initiates a stream.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Server sends back headers.
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // If the server attempts to send trailers without end stream, this fails with a stream error.
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
     }
 }
 

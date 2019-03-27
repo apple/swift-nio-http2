@@ -200,6 +200,16 @@ public enum NIOHTTP2Errors {
             self.streamID = streamID
         }
     }
+
+    /// An attempt was made to send trailers without setting END_STREAM on them.
+    public struct TrailersWithoutEndStream: NIOHTTP2Error {
+        /// The affected stream ID.
+        public var streamID: HTTP2StreamID
+
+        public init(streamID: HTTP2StreamID) {
+            self.streamID = streamID
+        }
+    }
 }
 
 
