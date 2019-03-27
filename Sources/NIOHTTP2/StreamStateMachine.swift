@@ -850,6 +850,12 @@ extension HTTP2StreamStateMachine {
     /// target final state.
     private mutating func processTrailers(_ headers: HPACKHeaders, isEndStreamSet endStream: Bool, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
         // TODO(cory): Implement
+
+        // End stream must be set on trailers.
+        guard endStream else {
+            return StateMachineResultWithStreamEffect(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.TrailersWithoutEndStream(streamID: self.streamID), type: .protocolError), effect: nil)
+        }
+
         self.state = target
         return StateMachineResultWithStreamEffect(result: .succeed, effect: effect)
     }
