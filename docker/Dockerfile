@@ -41,8 +41,9 @@ RUN [ -z $install_curl_from_source ] || tar xzf $HOME/curl.tar.gz --directory $H
 RUN [ -z $install_curl_from_source ] || ( cd $HOME/.curl && ./configure --with-ssl && make && make install && cd - )
 RUN [ -z $install_curl_from_source ] || ldconfig
 
-# ruby
-RUN apt-get update && apt-get install -y ruby
+# ruby and jazzy for docs generation
+RUN apt-get update && apt-get install -y ruby ruby-dev libsqlite3-dev
+RUN gem install jazzy --no-ri --no-rdoc
 
 # nghttp2
 ARG install_nghttp2_from_source
@@ -59,7 +60,6 @@ RUN [ -z $h2spec_version ] || mkdir $HOME/.h2spec
 RUN [ -z $h2spec_version ] || wget -q https://github.com/summerwind/h2spec/releases/download/v$h2spec_version/h2spec_linux_amd64.tar.gz -O $HOME/h2spec.tar.gz
 RUN [ -z $h2spec_version ] || tar xzf $HOME/h2spec.tar.gz --directory $HOME/.h2spec
 RUN [ -z $h2spec_version ] || mv $HOME/.h2spec/h2spec /usr/local/bin/h2spec
-
 
 # swift
 ARG swift_version=4.0.3
