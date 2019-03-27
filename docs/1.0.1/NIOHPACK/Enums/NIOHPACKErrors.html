@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>NIOHPACKErrors Enumeration Reference</title>
+    <link rel="stylesheet" type="text/css" href="../css/jazzy.css" />
+    <link rel="stylesheet" type="text/css" href="../css/highlight.css" />
+    <meta charset="utf-8">
+    <script src="../js/jquery.min.js" defer></script>
+    <script src="../js/jazzy.js" defer></script>
+    
+    <script src="../js/lunr.min.js" defer></script>
+    <script src="../js/typeahead.jquery.js" defer></script>
+    <script src="../js/jazzy.search.js" defer></script>
+  </head>
+  <body>
+
+    <a name="//apple_ref/swift/Enum/NIOHPACKErrors" class="dashAnchor"></a>
+
+    <a title="NIOHPACKErrors Enumeration Reference"></a>
+
+    <header class="header">
+      <p class="header-col header-col--primary">
+        <a class="header-link" href="../index.html">
+          NIOHPACK Docs
+        </a>
+         (95% documented)
+      </p>
+    
+      <p class="header-col--secondary">
+        <form role="search" action="../search.json">
+          <input type="text" placeholder="Search documentation" data-typeahead>
+        </form>
+      </p>
+    
+        <p class="header-col header-col--secondary">
+          <a class="header-link" href="https://github.com/apple/swift-nio-http2">
+            <img class="header-icon" src="../img/gh.png"/>
+            View on GitHub
+          </a>
+        </p>
+    
+    </header>
+
+    <p class="breadcrumbs">
+      <a class="breadcrumb" href="../index.html">NIOHPACK Reference</a>
+      <img class="carat" src="../img/carat.png" />
+      NIOHPACKErrors Enumeration Reference
+    </p>
+
+    <div class="content-wrapper">
+      <nav class="navigation">
+        <ul class="nav-groups">
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Enums.html">Enumerations</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/HPACKIndexing.html">HPACKIndexing</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/HuffmanDecodeError.html">HuffmanDecodeError</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/HuffmanDecodeError.html#/s:8NIOHPACK18HuffmanDecodeErrorO12InvalidStateV">– InvalidState</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/HuffmanDecodeError.html#/s:8NIOHPACK18HuffmanDecodeErrorO11InvalidUTF8V">– InvalidUTF8</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors.html">NIOHPACKErrors</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/InvalidHeaderIndex.html">– InvalidHeaderIndex</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/IndexedHeaderWithNoValue.html">– IndexedHeaderWithNoValue</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/StringLengthBeyondPayloadSize.html">– StringLengthBeyondPayloadSize</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/InvalidUTF8Data.html">– InvalidUTF8Data</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/InvalidHeaderStartByte.html">– InvalidHeaderStartByte</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/InvalidDynamicTableSize.html">– InvalidDynamicTableSize</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors.html#/s:8NIOHPACK14NIOHPACKErrorsO29IllegalDynamicTableSizeChangeV">– IllegalDynamicTableSizeChange</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/FailedToAddIndexedHeader.html">– FailedToAddIndexedHeader</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors.html#/s:8NIOHPACK14NIOHPACKErrorsO17InsufficientInputV">– InsufficientInput</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors.html#/s:8NIOHPACK14NIOHPACKErrorsO20EncoderAlreadyActiveV">– EncoderAlreadyActive</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors.html#/s:8NIOHPACK14NIOHPACKErrorsO17EncoderNotStartedV">– EncoderNotStarted</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHPACKErrors/ZeroHeaderIndex.html">– ZeroHeaderIndex</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Protocols.html">Protocols</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Structs.html">Structures</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HPACKDecoder.html">HPACKDecoder</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HPACKEncoder.html">HPACKEncoder</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HPACKEncoder.html#/s:8NIOHPACK12HPACKEncoderV16HeaderDefinitionV">– HeaderDefinition</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HPACKHeaders.html">HPACKHeaders</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HPACKHeaders/Iterator.html">– Iterator</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/IndexedHeaderTable.html">IndexedHeaderTable</a>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </nav>
+      <article class="main-content">
+
+        <section class="section">
+          <div class="section-content">
+            <h1>NIOHPACKErrors</h1>
+              <div class="declaration">
+                <div class="language">
+                  <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">enum</span> <span class="kt">NIOHPACKErrors</span></code></pre>
+
+                </div>
+              </div>
+            <p>Errors raised by NIOHPACK while encoding/decoding data.</p>
+
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-content">
+            <div class="task-group">
+              <ul class="item-container">
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO18InvalidHeaderIndexV"></a>
+                    <a name="//apple_ref/swift/Struct/InvalidHeaderIndex" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO18InvalidHeaderIndexV">InvalidHeaderIndex</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>An indexed header referenced an index that doesn&rsquo;t exist in our
+header tables.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/InvalidHeaderIndex.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">InvalidHeaderIndex</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO24IndexedHeaderWithNoValueV"></a>
+                    <a name="//apple_ref/swift/Struct/IndexedHeaderWithNoValue" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO24IndexedHeaderWithNoValueV">IndexedHeaderWithNoValue</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>A header block indicated an indexed header with no accompanying
+value, but the index referenced an entry with no value of its own
+e.g. one of the many valueless items in the static header table.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/IndexedHeaderWithNoValue.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">IndexedHeaderWithNoValue</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO29StringLengthBeyondPayloadSizeV"></a>
+                    <a name="//apple_ref/swift/Struct/StringLengthBeyondPayloadSize" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO29StringLengthBeyondPayloadSizeV">StringLengthBeyondPayloadSize</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>An encoded string contained an invalid length that extended
+beyond its frame&rsquo;s payload size.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/StringLengthBeyondPayloadSize.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">StringLengthBeyondPayloadSize</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO15InvalidUTF8DataV"></a>
+                    <a name="//apple_ref/swift/Struct/InvalidUTF8Data" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO15InvalidUTF8DataV">InvalidUTF8Data</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Decoded string data could not be parsed as valid UTF-8.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/InvalidUTF8Data.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">InvalidUTF8Data</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO22InvalidHeaderStartByteV"></a>
+                    <a name="//apple_ref/swift/Struct/InvalidHeaderStartByte" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO22InvalidHeaderStartByteV">InvalidHeaderStartByte</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The start byte of a header did not match any format allowed by
+the HPACK specification.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/InvalidHeaderStartByte.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">InvalidHeaderStartByte</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO23InvalidDynamicTableSizeV"></a>
+                    <a name="//apple_ref/swift/Struct/InvalidDynamicTableSize" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO23InvalidDynamicTableSizeV">InvalidDynamicTableSize</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>A dynamic table size update specified an invalid size.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/InvalidDynamicTableSize.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">InvalidDynamicTableSize</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO29IllegalDynamicTableSizeChangeV"></a>
+                    <a name="//apple_ref/swift/Struct/IllegalDynamicTableSizeChange" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO29IllegalDynamicTableSizeChangeV">IllegalDynamicTableSizeChange</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>A dynamic table size update was found outside its allowed place.
+They may only be included at the start of a header block.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">IllegalDynamicTableSizeChange</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO24FailedToAddIndexedHeaderV"></a>
+                    <a name="//apple_ref/swift/Struct/FailedToAddIndexedHeader" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO24FailedToAddIndexedHeaderV">FailedToAddIndexedHeader</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>A new header could not be added to the dynamic table. Usually
+this means the header itself is larger than the current
+dynamic table size.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/FailedToAddIndexedHeader.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">FailedToAddIndexedHeader</span><span class="o">&lt;</span><span class="kt">Name</span><span class="p">,</span> <span class="kt">Value</span><span class="o">&gt;</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span> <span class="k">where</span> <span class="kt">Name</span> <span class="p">:</span> <span class="kt">Collection</span><span class="p">,</span> <span class="kt">Value</span> <span class="p">:</span> <span class="kt">Collection</span><span class="p">,</span> <span class="kt">Name</span><span class="o">.</span><span class="kt">Element</span> <span class="o">==</span> <span class="kt">UInt8</span><span class="p">,</span> <span class="kt">Value</span><span class="o">.</span><span class="kt">Element</span> <span class="o">==</span> <span class="kt">UInt8</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO17InsufficientInputV"></a>
+                    <a name="//apple_ref/swift/Struct/InsufficientInput" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO17InsufficientInputV">InsufficientInput</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Ran out of input bytes while decoding.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">InsufficientInput</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO20EncoderAlreadyActiveV"></a>
+                    <a name="//apple_ref/swift/Struct/EncoderAlreadyActive" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO20EncoderAlreadyActiveV">EncoderAlreadyActive</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>HPACK encoder asked to begin a new header block while partway through encoding
+another block.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">EncoderAlreadyActive</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO17EncoderNotStartedV"></a>
+                    <a name="//apple_ref/swift/Struct/EncoderNotStarted" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO17EncoderNotStartedV">EncoderNotStarted</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>HPACK encoder asked to append a header without first calling <code>beginEncoding(allocator:)</code>.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">EncoderNotStarted</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHPACK14NIOHPACKErrorsO15ZeroHeaderIndexV"></a>
+                    <a name="//apple_ref/swift/Struct/ZeroHeaderIndex" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHPACK14NIOHPACKErrorsO15ZeroHeaderIndexV">ZeroHeaderIndex</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>HPACK decoder asked to decode an indexed header with index zero.</p>
+
+                        <a href="../Enums/NIOHPACKErrors/ZeroHeaderIndex.html" class="slightly-smaller">See more</a>
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">ZeroHeaderIndex</span> <span class="p">:</span> <span class="kt"><a href="../Protocols.html#/s:8NIOHPACK13NIOHPACKErrorP">NIOHPACKError</a></span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+      </article>
+    </div>
+    <section class="footer">
+      <p>&copy; 2019 <a class="link" href="https://github.com/apple/swift-nio-http2" target="_blank" rel="external">swift-nio team</a>. All rights reserved. (Last updated: 2019-03-27)</p>
+      <p>Generated by <a class="link" href="https://github.com/realm/jazzy" target="_blank" rel="external">jazzy ♪♫ v0.9.5</a>, a <a class="link" href="https://realm.io" target="_blank" rel="external">Realm</a> project.</p>
+    </section>
+  </body>
+</div>
+</html>

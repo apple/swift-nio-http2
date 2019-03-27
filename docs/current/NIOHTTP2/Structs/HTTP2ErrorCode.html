@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>HTTP2ErrorCode Structure Reference</title>
+    <link rel="stylesheet" type="text/css" href="../css/jazzy.css" />
+    <link rel="stylesheet" type="text/css" href="../css/highlight.css" />
+    <meta charset="utf-8">
+    <script src="../js/jquery.min.js" defer></script>
+    <script src="../js/jazzy.js" defer></script>
+    
+    <script src="../js/lunr.min.js" defer></script>
+    <script src="../js/typeahead.jquery.js" defer></script>
+    <script src="../js/jazzy.search.js" defer></script>
+  </head>
+  <body>
+
+    <a name="//apple_ref/swift/Struct/HTTP2ErrorCode" class="dashAnchor"></a>
+
+    <a title="HTTP2ErrorCode Structure Reference"></a>
+
+    <header class="header">
+      <p class="header-col header-col--primary">
+        <a class="header-link" href="../index.html">
+          NIOHTTP2 Docs
+        </a>
+         (79% documented)
+      </p>
+    
+      <p class="header-col--secondary">
+        <form role="search" action="../search.json">
+          <input type="text" placeholder="Search documentation" data-typeahead>
+        </form>
+      </p>
+    
+        <p class="header-col header-col--secondary">
+          <a class="header-link" href="https://github.com/apple/swift-nio-http2">
+            <img class="header-icon" src="../img/gh.png"/>
+            View on GitHub
+          </a>
+        </p>
+    
+    </header>
+
+    <p class="breadcrumbs">
+      <a class="breadcrumb" href="../index.html">NIOHTTP2 Reference</a>
+      <img class="carat" src="../img/carat.png" />
+      HTTP2ErrorCode Structure Reference
+    </p>
+
+    <div class="content-wrapper">
+      <nav class="navigation">
+        <ul class="nav-groups">
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Classes.html">Classes</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Classes/HTTP2StreamMultiplexer.html">HTTP2StreamMultiplexer</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Classes/HTTP2ToHTTP1ClientCodec.html">HTTP2ToHTTP1ClientCodec</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Classes/HTTP2ToHTTP1ClientCodec/HTTPProtocol.html">– HTTPProtocol</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Classes/HTTP2ToHTTP1ServerCodec.html">HTTP2ToHTTP1ServerCodec</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Classes/NIOHTTP2Handler.html">NIOHTTP2Handler</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Classes/NIOHTTP2Handler/ParserMode.html">– ParserMode</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Global Variables.html">Global Variables</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Global Variables.html#/s:8NIOHTTP20A22SupportedALPNProtocolsSaySSGvp">NIOHTTP2SupportedALPNProtocols</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Global Variables.html#/s:8NIOHTTP218nioDefaultSettingsSayAA12HTTP2SettingVGvp">nioDefaultSettings</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Enums.html">Enumerations</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors.html">NIOHTTP2Errors</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/InvalidALPNToken.html">– InvalidALPNToken</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/NoSuchStream.html">– NoSuchStream</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/StreamClosed.html">– StreamClosed</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/BadClientMagic.html">– BadClientMagic</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/BadStreamStateTransition.html">– BadStreamStateTransition</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/InvalidFlowControlWindowSize.html">– InvalidFlowControlWindowSize</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/FlowControlViolation.html">– FlowControlViolation</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/InvalidSetting.html">– InvalidSetting</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/IOOnClosedConnection.html">– IOOnClosedConnection</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/ReceivedBadSettings.html">– ReceivedBadSettings</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/MaxStreamsViolation.html">– MaxStreamsViolation</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/StreamIDTooSmall.html">– StreamIDTooSmall</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/MissingPreface.html">– MissingPreface</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/CreatedStreamAfterGoaway.html">– CreatedStreamAfterGoaway</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/InvalidStreamIDForPeer.html">– InvalidStreamIDForPeer</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/RaisedGoawayLastStreamID.html">– RaisedGoawayLastStreamID</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/InvalidWindowIncrementSize.html">– InvalidWindowIncrementSize</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/PushInViolationOfSetting.html">– PushInViolationOfSetting</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/Unsupported.html">– Unsupported</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/UnableToSerializeFrame.html">– UnableToSerializeFrame</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/UnableToParseFrame.html">– UnableToParseFrame</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/MissingPseudoHeader.html">– MissingPseudoHeader</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/DuplicatePseudoHeader.html">– DuplicatePseudoHeader</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/MissingHostHeader.html">– MissingHostHeader</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/DuplicateHostHeader.html">– DuplicateHostHeader</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/InvalidStatusValue.html">– InvalidStatusValue</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/PriorityCycle.html">– PriorityCycle</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Enums/NIOHTTP2Errors/TrailersWithoutEndStream.html">– TrailersWithoutEndStream</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Extensions.html">Extensions</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Extensions/ByteBuffer.html">ByteBuffer</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Extensions/Channel.html">Channel</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Extensions/ChannelPipeline.html">ChannelPipeline</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Extensions/Int.html">Int</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Extensions/Int32.html">Int32</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Extensions/UInt32.html">UInt32</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Protocols.html">Protocols</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Protocols.html#/s:8NIOHTTP20A5ErrorP">NIOHTTP2Error</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Structs.html">Structures</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2ErrorCode.html">HTTP2ErrorCode</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2Frame.html">HTTP2Frame</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2Frame/StreamPriorityData.html">– StreamPriorityData</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2Frame/FramePayload.html">– FramePayload</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2PingData.html">HTTP2PingData</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2Setting.html">HTTP2Setting</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2SettingsParameter.html">HTTP2SettingsParameter</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2StreamChannelOptions.html">HTTP2StreamChannelOptions</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/HTTP2StreamID.html">HTTP2StreamID</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/NIOHTTP2BulkStreamWindowChangeEvent.html">NIOHTTP2BulkStreamWindowChangeEvent</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/NIOHTTP2StreamCreatedEvent.html">NIOHTTP2StreamCreatedEvent</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/NIOHTTP2WindowUpdatedEvent.html">NIOHTTP2WindowUpdatedEvent</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/StreamClosedEvent.html">StreamClosedEvent</a>
+              </li>
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Structs/StreamIDOption.html">StreamIDOption</a>
+              </li>
+            </ul>
+          </li>
+          <li class="nav-group-name">
+            <a class="nav-group-name-link" href="../Typealiases.html">Type Aliases</a>
+            <ul class="nav-group-tasks">
+              <li class="nav-group-task">
+                <a class="nav-group-task-link" href="../Typealiases.html#/s:8NIOHTTP213HTTP2Settingsa">HTTP2Settings</a>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </nav>
+      <article class="main-content">
+
+        <section class="section">
+          <div class="section-content">
+            <h1>HTTP2ErrorCode</h1>
+              <div class="declaration">
+                <div class="language">
+                  <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">struct</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                </div>
+              </div>
+            <p>An HTTP/2 error code.</p>
+
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-content">
+            <div class="task-group">
+              <ul class="item-container">
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV07networkD0Sivp"></a>
+                    <a name="//apple_ref/swift/Property/networkCode" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV07networkD0Sivp">networkCode</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The underlying network representation of the error code.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">networkCode</span><span class="p">:</span> <span class="kt">Int</span> <span class="p">{</span> <span class="k">get</span> <span class="k">set</span> <span class="p">}</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV07networkD0ACSi_tcfc"></a>
+                    <a name="//apple_ref/swift/Method/init(networkCode:)" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV07networkD0ACSi_tcfc">init(networkCode:)</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Create a HTTP/2 error code from the given network value.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="nf">init</span><span class="p">(</span><span class="nv">networkCode</span><span class="p">:</span> <span class="kt">Int</span><span class="p">)</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV02noC0ACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/noError" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV02noC0ACvpZ">noError</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The associated condition is not a result of an error. For example,
+a GOAWAY might include this code to indicate graceful shutdown of
+a connection.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">noError</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV08protocolC0ACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/protocolError" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV08protocolC0ACvpZ">protocolError</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint detected an unspecific protocol error. This error is
+for use when a more specific error code is not available.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">protocolError</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV08internalC0ACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/internalError" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV08internalC0ACvpZ">internalError</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint encountered an unexpected internal error.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">internalError</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV011flowControlC0ACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/flowControlError" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV011flowControlC0ACvpZ">flowControlError</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint detected that its peer violated the flow-control
+protocol.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">flowControlError</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV15settingsTimeoutACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/settingsTimeout" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV15settingsTimeoutACvpZ">settingsTimeout</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint sent a SETTINGS frame but did not receive a
+response in a timely manner.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">settingsTimeout</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV12streamClosedACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/streamClosed" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV12streamClosedACvpZ">streamClosed</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint received a frame after a stream was half-closed.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">streamClosed</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV09frameSizeC0ACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/frameSizeError" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV09frameSizeC0ACvpZ">frameSizeError</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint received a frame with an invalid size.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">frameSizeError</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV13refusedStreamACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/refusedStream" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV13refusedStreamACvpZ">refusedStream</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint refused the stream prior to performing any
+application processing.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">refusedStream</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV6cancelACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/cancel" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV6cancelACvpZ">cancel</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>Used by the endpoint to indicate that the stream is no
+longer needed.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">cancel</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV011compressionC0ACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/compressionError" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV011compressionC0ACvpZ">compressionError</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint is unable to maintain the header compression
+context for the connection.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">compressionError</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV07connectC0ACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/connectError" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV07connectC0ACvpZ">connectError</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The connection established in response to a CONNECT request
+was reset or abnormally closed.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">connectError</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV15enhanceYourCalmACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/enhanceYourCalm" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV15enhanceYourCalmACvpZ">enhanceYourCalm</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint detected that its peer is exhibiting a behavior
+that might be generating excessive load.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">enhanceYourCalm</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV18inadequateSecurityACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/inadequateSecurity" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV18inadequateSecurityACvpZ">inadequateSecurity</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The underlying transport has properties that do not meet
+minimum security requirements.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">inadequateSecurity</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:8NIOHTTP214HTTP2ErrorCodeV14http11RequiredACvpZ"></a>
+                    <a name="//apple_ref/swift/Variable/http11Required" class="dashAnchor"></a>
+                    <a class="token" href="#/s:8NIOHTTP214HTTP2ErrorCodeV14http11RequiredACvpZ">http11Required</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        <p>The endpoint requires that HTTP/1.1 be used instead of HTTP/2.</p>
+
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="kd">static</span> <span class="k">let</span> <span class="nv">http11Required</span><span class="p">:</span> <span class="kt">HTTP2ErrorCode</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            <div class="task-group">
+              <ul class="item-container">
+                <li class="item">
+                  <div>
+                    <code>
+                    <a name="/s:s28CustomDebugStringConvertibleP16debugDescriptionSSvp"></a>
+                    <a name="//apple_ref/swift/Property/debugDescription" class="dashAnchor"></a>
+                    <a class="token" href="#/s:s28CustomDebugStringConvertibleP16debugDescriptionSSvp">debugDescription</a>
+                    </code>
+                  </div>
+                  <div class="height-container">
+                    <div class="pointer-container"></div>
+                    <section class="section">
+                      <div class="pointer"></div>
+                      <div class="abstract">
+                        
+                      </div>
+                      <div class="declaration">
+                        <h4>Declaration</h4>
+                        <div class="language">
+                          <p class="aside-title">Swift</p>
+                          <pre class="highlight swift"><code><span class="kd">public</span> <span class="k">var</span> <span class="nv">debugDescription</span><span class="p">:</span> <span class="kt">String</span> <span class="p">{</span> <span class="k">get</span> <span class="p">}</span></code></pre>
+
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+      </article>
+    </div>
+    <section class="footer">
+      <p>&copy; 2019 <a class="link" href="https://github.com/apple/swift-nio-http2" target="_blank" rel="external">swift-nio team</a>. All rights reserved. (Last updated: 2019-03-27)</p>
+      <p>Generated by <a class="link" href="https://github.com/realm/jazzy" target="_blank" rel="external">jazzy ♪♫ v0.9.5</a>, a <a class="link" href="https://realm.io" target="_blank" rel="external">Realm</a> project.</p>
+    </section>
+  </body>
+</div>
+</html>

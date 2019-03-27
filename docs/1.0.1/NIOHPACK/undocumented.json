@@ -1,0 +1,33 @@
+{
+  "warnings": [
+    {
+      "file": "/code/Sources/NIOHPACK/HPACKDecoder.swift",
+      "line": 29,
+      "symbol": "HPACKDecoder.maxDynamicTableSize",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHPACK/HPACKEncoder.swift",
+      "line": 30,
+      "symbol": "HPACKEncoder.HeaderDefinition",
+      "symbol_kind": "source.lang.swift.decl.struct",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHPACK/HPACKErrors.swift",
+      "line": 17,
+      "symbol": "NIOHPACKError",
+      "symbol_kind": "source.lang.swift.decl.protocol",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHPACK/HPACKErrors.swift",
+      "line": 108,
+      "symbol": "NIOHPACKErrors.ZeroHeaderIndex.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    }
+  ],
+  "source_directory": "/code"
+}
