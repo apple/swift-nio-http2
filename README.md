@@ -1,6 +1,6 @@
 # SwiftNIO HTTP/2
 
-This project contains HTTP/2 support for Swift projects using [SwiftNIO](https://github.com/apple/swift-nio).
+This project contains HTTP/2 support for Swift projects using [SwiftNIO](https://github.com/apple/swift-nio). To get started, check the [API docs](https://apple.github.io/swift-nio-http2/docs/current/NIOHTTP2/index.html).
 
 ## Building
 
