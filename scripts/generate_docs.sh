@@ -59,7 +59,7 @@ jazzy_args=(--clean
             --github_url https://github.com/apple/swift-nio-http2
             --theme fullwidth
             --xcodebuild-arguments -scheme,swift-nio-http2-Package)
-cat > "$module_switcher" <<EOF
+cat > "$module_switcher" <<"EOF"
 # swift-nio-http2 Docs
 
 swift-nio-http2 contains multiple modules:
@@ -69,6 +69,18 @@ EOF
 for module in "${modules[@]}"; do
   echo " - [$module](../$module/index.html)" >> "$module_switcher"
 done
+
+cat >> "$module_switcher" <<"EOF"
+
+---
+
+For the API documentation of the other repositories in the SwiftNIO family check:
+
+- [`swift-nio` API docs](https://apple.github.io/swift-nio/docs/current/NIO/index.html)
+- [`swift-nio-ssl` API docs](https://apple.github.io/swift-nio-ssl/docs/current/NIOSSL/index.html)
+- [`swift-nio-http2` API docs](https://apple.github.io/swift-nio-http2/docs/current/NIOHTTP2/index.html)
+
+EOF
 
 tmp=`mktemp -d`
 for module in "${modules[@]}"; do
