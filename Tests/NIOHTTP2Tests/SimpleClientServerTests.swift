@@ -1256,4 +1256,35 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
         _ = try? self.serverChannel.finish()
     }
+
+    func testInvalidRequestHeaderBlockAllowsRstStream() throws {
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, headerBlockValidation: .disabled)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server)).wait())
+        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
+
+        // We're going to send some invalid HTTP/2 request headers. The client has validation disabled, and will allow it, but the server will not.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"), ("UPPERCASE", "not allowed")])
+        let frame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers)))
+        self.clientChannel.writeAndFlush(frame, promise: nil)
+
+        // We treat this as a stream error.
+        guard let frameData = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive frame")
+            return
+        }
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidHTTP2HeaderFieldName, NIOHTTP2Errors.InvalidHTTP2HeaderFieldName("UPPERCASE"))
+        }
+
+        guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertRstStreamFrame(streamID: 1, errorCode: .protocolError)
+
+        XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
+        _ = try? self.serverChannel.finish()
+    }
 }

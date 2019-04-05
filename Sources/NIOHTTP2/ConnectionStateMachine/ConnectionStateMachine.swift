@@ -63,13 +63,15 @@ import NIOHPACK
 /// frames that just incidentally have a stream ID on them, rather than stream-scoped frames like all the others.
 struct HTTP2ConnectionStateMachine {
     /// The state required for a connection that is currently idle.
-    private struct IdleConnectionState: ConnectionStateWithRole {
+    private struct IdleConnectionState: ConnectionStateWithRole, ConnectionStateWithConfiguration {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
     }
 
     /// The state required for a connection that has sent a connection preface.
-    private struct PrefaceSentState: ConnectionStateWithRole, MaySendFrames, HasLocalSettings, HasFlowControlWindows {
+    private struct PrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames, HasLocalSettings, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -85,6 +87,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromIdle idleState: IdleConnectionState, localSettings settings: HTTP2SettingsState) {
             self.role = idleState.role
+            self.headerBlockValidation = idleState.headerBlockValidation
             self.localSettings = settings
             self.streamState = ConnectionStreamState()
 
@@ -94,8 +97,9 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that has received a connection preface.
-    private struct PrefaceReceivedState: ConnectionStateWithRole, MayReceiveFrames, HasRemoteSettings, HasFlowControlWindows {
+    private struct PrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MayReceiveFrames, HasRemoteSettings, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -111,6 +115,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromIdle idleState: IdleConnectionState, remoteSettings settings: HTTP2SettingsState) {
             self.role = idleState.role
+            self.headerBlockValidation = idleState.headerBlockValidation
             self.remoteSettings = settings
             self.streamState = ConnectionStreamState()
 
@@ -120,8 +125,9 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is active.
-    private struct ActiveConnectionState: ConnectionStateWithRole, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, HasFlowControlWindows {
+    private struct ActiveConnectionState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -138,6 +144,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromPrefaceReceived state: PrefaceReceivedState, localSettings settings: HTTP2SettingsState) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
             self.localSettings = settings
@@ -148,6 +155,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromPrefaceSent state: PrefaceSentState, remoteSettings settings: HTTP2SettingsState) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.localSettings = state.localSettings
             self.streamState = state.streamState
             self.remoteSettings = settings
@@ -159,8 +167,9 @@ struct HTTP2ConnectionStateMachine {
 
     /// The state required for a connection that is quiescing, but where the local peer has not yet sent its
     /// preface.
-    private struct QuiescingPrefaceReceivedState: ConnectionStateWithRole, RemotelyQuiescingState, MayReceiveFrames, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    private struct QuiescingPrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, RemotelyQuiescingState, MayReceiveFrames, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -182,6 +191,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromPrefaceReceived state: PrefaceReceivedState, lastStreamID: HTTP2StreamID) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
             self.inboundFlowControlWindow = state.inboundFlowControlWindow
@@ -193,8 +203,9 @@ struct HTTP2ConnectionStateMachine {
 
     /// The state required for a connection that is quiescing, but where the remote peer has not yet sent its
     /// preface.
-    private struct QuiescingPrefaceSentState: ConnectionStateWithRole, LocallyQuiescingState, MaySendFrames, HasLocalSettings, QuiescingState, HasFlowControlWindows {
+    private struct QuiescingPrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, MaySendFrames, HasLocalSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -216,6 +227,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromPrefaceSent state: PrefaceSentState, lastStreamID: HTTP2StreamID) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.localSettings = state.localSettings
             self.streamState = state.streamState
             self.inboundFlowControlWindow = state.inboundFlowControlWindow
@@ -226,8 +238,9 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to the remote peer quiescing the connection.
-    private struct RemotelyQuiescedState: ConnectionStateWithRole, RemotelyQuiescingState, MayReceiveFrames, MaySendFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    private struct RemotelyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, RemotelyQuiescingState, MayReceiveFrames, MaySendFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -250,6 +263,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromActive state: ActiveConnectionState, lastLocalStreamID streamID: HTTP2StreamID) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -260,6 +274,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromQuiescingPrefaceReceived state: QuiescingPrefaceReceivedState, localSettings settings: HTTP2SettingsState) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.remoteSettings = state.remoteSettings
             self.localSettings = settings
             self.streamState = state.streamState
@@ -270,8 +285,9 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to the local user quiescing the connection.
-    private struct LocallyQuiescedState: ConnectionStateWithRole, LocallyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    private struct LocallyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -294,6 +310,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromActive state: ActiveConnectionState, lastRemoteStreamID streamID: HTTP2StreamID) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -304,6 +321,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromQuiescingPrefaceSent state: QuiescingPrefaceSentState, remoteSettings settings: HTTP2SettingsState) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.localSettings = state.localSettings
             self.remoteSettings = settings
             self.streamState = state.streamState
@@ -314,8 +332,9 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to both peers sending GOAWAY.
-    private struct BothQuiescingState: ConnectionStateWithRole, LocallyQuiescingState, RemotelyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    private struct BothQuiescingState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, RemotelyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -338,6 +357,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromRemotelyQuiesced state: RemotelyQuiescedState, lastRemoteStreamID streamID: HTTP2StreamID) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -350,6 +370,7 @@ struct HTTP2ConnectionStateMachine {
 
         init(fromLocallyQuiesced state: LocallyQuiescedState, lastLocalStreamID streamID: HTTP2StreamID) {
             self.role = state.role
+            self.headerBlockValidation = state.headerBlockValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -362,28 +383,32 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that has completely quiesced.
-    private struct FullyQuiescedState: ConnectionStateWithRole, LocallyQuiescingState, RemotelyQuiescingState, SendAndReceiveGoawayState {
+    private struct FullyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, RemotelyQuiescingState, SendAndReceiveGoawayState {
         let role: ConnectionRole
+        var headerBlockValidation: ValidationState
         var streamState: ConnectionStreamState
         var lastLocalStreamID: HTTP2StreamID
         var lastRemoteStreamID: HTTP2StreamID
 
-        init<PreviousState: LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(previousState: PreviousState) {
+        init<PreviousState: LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
             self.role = previousState.role
+            self.headerBlockValidation = previousState.headerBlockValidation
             self.streamState = previousState.streamState
             self.lastLocalStreamID = previousState.lastLocalStreamID
             self.lastRemoteStreamID = previousState.lastRemoteStreamID
         }
 
-        init<PreviousState: LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(previousState: PreviousState) {
+        init<PreviousState: LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
             self.role = previousState.role
+            self.headerBlockValidation = previousState.headerBlockValidation
             self.streamState = previousState.streamState
             self.lastLocalStreamID = .maxID
             self.lastRemoteStreamID = previousState.lastRemoteStreamID
         }
 
-        init<PreviousState: RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(previousState: PreviousState) {
+        init<PreviousState: RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
             self.role = previousState.role
+            self.headerBlockValidation = previousState.headerBlockValidation
             self.streamState = previousState.streamState
             self.lastLocalStreamID = previousState.lastLocalStreamID
             self.lastRemoteStreamID = .maxID
@@ -445,10 +470,16 @@ struct HTTP2ConnectionStateMachine {
         case client
     }
 
+    /// The state of a specific validation option.
+    enum ValidationState {
+        case enabled
+        case disabled
+    }
+
     private var state: State
 
-    init(role: ConnectionRole) {
-        self.state = .idle(.init(role: role))
+    init(role: ConnectionRole, headerBlockValidation: ValidationState = .enabled) {
+        self.state = .idle(.init(role: role, headerBlockValidation: headerBlockValidation))
     }
 
     /// Whether this connection is closed.
@@ -1293,7 +1324,7 @@ extension HTTP2ConnectionStateMachine {
     //
     // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
     // connection more work can always be done.
-    private mutating func closeIfNeeded<State: QuiescingState & LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(_ state: State) {
+    private mutating func closeIfNeeded<State: QuiescingState & LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(_ state: State) {
         if state.quiescedByServer && state.streamState.openStreams == 0 {
             self.state = .fullyQuiesced(.init(previousState: state))
         }
@@ -1303,7 +1334,7 @@ extension HTTP2ConnectionStateMachine {
     //
     // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
     // connection more work can always be done.
-    private mutating func closeIfNeeded<State: QuiescingState & LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(_ state: State) {
+    private mutating func closeIfNeeded<State: QuiescingState & LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(_ state: State) {
         if state.quiescedByServer && state.streamState.openStreams == 0 {
             self.state = .fullyQuiesced(.init(previousState: state))
         }
@@ -1313,7 +1344,7 @@ extension HTTP2ConnectionStateMachine {
     //
     // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
     // connection more work can always be done.
-    private mutating func closeIfNeeded<State: QuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole>(_ state: State) {
+    private mutating func closeIfNeeded<State: QuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(_ state: State) {
         if state.quiescedByServer && state.streamState.openStreams == 0 {
             self.state = .fullyQuiesced(.init(previousState: state))
         }
@@ -1352,4 +1383,9 @@ extension ConnectionStateWithRole {
             return .client
         }
     }
+}
+
+/// A simple protocol that provides helpers that apply to all connection states that have configuration.
+private protocol ConnectionStateWithConfiguration {
+    var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
 }

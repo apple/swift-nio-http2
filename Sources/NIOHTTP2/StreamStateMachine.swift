@@ -265,7 +265,7 @@ extension HTTP2StreamStateMachine {
     /// it meets the requirements of RFC 7540 for containing a well-formed header block, and additionally
     /// checks whether the value of the end stream bit is acceptable. If all checks pass, transitions the
     /// state to the appropriate next entry.
-    mutating func sendHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
+    mutating func sendHeaders(headers: HPACKHeaders, validateHeaderBlock: Bool, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         // We can send headers in the following states:
         //
         // - idle, when we are a client, in which case we are sending our request headers
@@ -284,14 +284,24 @@ extension HTTP2StreamStateMachine {
         case .idle(.client, localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedLocalPeerIdle(remoteWindow: remoteWindow) : .halfOpenLocalPeerIdle(localWindow: localWindow, remoteWindow: remoteWindow)
             let targetEffect: StreamStateChange = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
-            return self.processRequestHeaders(headers, targetState: targetState, targetEffect: targetEffect)
+            return self.processRequestHeaders(headers,
+                                              validateHeaderBlock: validateHeaderBlock,
+                                              targetState: targetState,
+                                              targetEffect: targetEffect)
 
         case .halfOpenRemoteLocalIdle(localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedLocalPeerActive(localRole: .server, initiatedBy: .client, remoteWindow: remoteWindow) : .fullyOpen(localRole: .server, localWindow: localWindow, remoteWindow: remoteWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: nil)
+            return self.processResponseHeaders(headers,
+                                               validateHeaderBlock: validateHeaderBlock,
+                                               targetStateIfFinal: targetState,
+                                               targetEffectIfFinal: nil)
 
         case .halfOpenLocalPeerIdle(localWindow: _, remoteWindow: let remoteWindow):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerIdle(remoteWindow: remoteWindow), targetEffect: nil)
+            return self.processTrailers(headers,
+                                        validateHeaderBlock: validateHeaderBlock,
+                                        isEndStreamSet: endStream,
+                                        targetState: .halfClosedLocalPeerIdle(remoteWindow: remoteWindow),
+                                        targetEffect: nil)
 
         case .reservedLocal(let localWindow):
             let targetState: State
@@ -305,10 +315,17 @@ extension HTTP2StreamStateMachine {
                 targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
             }
 
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
+            return self.processResponseHeaders(headers,
+                                               validateHeaderBlock: validateHeaderBlock,
+                                               targetStateIfFinal: targetState,
+                                               targetEffectIfFinal: targetEffect)
 
         case .fullyOpen(let localRole, localWindow: _, remoteWindow: let remoteWindow):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: .client, remoteWindow: remoteWindow), targetEffect: nil)
+            return self.processTrailers(headers,
+                                        validateHeaderBlock: validateHeaderBlock,
+                                        isEndStreamSet: endStream,
+                                        targetState: .halfClosedLocalPeerActive(localRole: localRole, initiatedBy: .client, remoteWindow: remoteWindow),
+                                        targetEffect: nil)
 
         case .halfClosedRemoteLocalIdle(let localWindow):
             let targetState: State
@@ -321,10 +338,17 @@ extension HTTP2StreamStateMachine {
                 targetState = .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localWindow: localWindow)
                 targetEffect = nil
             }
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
+            return self.processResponseHeaders(headers,
+                                               validateHeaderBlock: validateHeaderBlock,
+                                               targetStateIfFinal: targetState,
+                                               targetEffectIfFinal: targetEffect)
 
         case .halfClosedRemoteLocalActive:
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil), targetEffect: .streamClosed(.init(streamID: self.streamID, reason: nil)))
+            return self.processTrailers(headers,
+                                        validateHeaderBlock: validateHeaderBlock,
+                                        isEndStreamSet: endStream,
+                                        targetState: .closed(reason: nil),
+                                        targetEffect: .streamClosed(.init(streamID: self.streamID, reason: nil)))
 
         // Sending a HEADERS frame as an idle server, or on a closed stream, is a connection error
         // of type PROTOCOL_ERROR. In any other state, sending a HEADERS frame is a stream error of
@@ -340,7 +364,7 @@ extension HTTP2StreamStateMachine {
         }
     }
 
-    mutating func receiveHeaders(headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
+    mutating func receiveHeaders(headers: HPACKHeaders, validateHeaderBlock: Bool, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         // We can receive headers in the following states:
         //
         // - idle, when we are a server, in which case we are receiving request headers
@@ -359,14 +383,24 @@ extension HTTP2StreamStateMachine {
         case .idle(.server, localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedRemoteLocalIdle(localWindow: localWindow) : .halfOpenRemoteLocalIdle(localWindow: localWindow, remoteWindow: remoteWindow)
             let targetEffect: StreamStateChange = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
-            return self.processRequestHeaders(headers, targetState: targetState, targetEffect: targetEffect)
+            return self.processRequestHeaders(headers,
+                                              validateHeaderBlock: validateHeaderBlock,
+                                              targetState: targetState,
+                                              targetEffect: targetEffect)
 
         case .halfOpenLocalPeerIdle(localWindow: let localWindow, remoteWindow: let remoteWindow):
             let targetState: State = endStream ? .halfClosedRemoteLocalActive(localRole: .client,initiatedBy: .client, localWindow: localWindow) : .fullyOpen(localRole: .client, localWindow: localWindow, remoteWindow: remoteWindow)
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: nil)
+            return self.processResponseHeaders(headers,
+                                               validateHeaderBlock: validateHeaderBlock,
+                                               targetStateIfFinal: targetState,
+                                               targetEffectIfFinal: nil)
 
         case .halfOpenRemoteLocalIdle(localWindow: let localWindow, remoteWindow: _):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalIdle(localWindow: localWindow), targetEffect: nil)
+            return self.processTrailers(headers,
+                                        validateHeaderBlock: validateHeaderBlock,
+                                        isEndStreamSet: endStream,
+                                        targetState: .halfClosedRemoteLocalIdle(localWindow: localWindow),
+                                        targetEffect: nil)
 
         case .reservedRemote(let remoteWindow):
             let targetState: State
@@ -380,10 +414,17 @@ extension HTTP2StreamStateMachine {
                 targetEffect = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
             }
 
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
+            return self.processResponseHeaders(headers,
+                                               validateHeaderBlock: validateHeaderBlock,
+                                               targetStateIfFinal: targetState,
+                                               targetEffectIfFinal: targetEffect)
 
         case .fullyOpen(let localRole, localWindow: let localWindow, remoteWindow: _):
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow), targetEffect: nil)
+            return self.processTrailers(headers,
+                                        validateHeaderBlock: validateHeaderBlock,
+                                        isEndStreamSet: endStream,
+                                        targetState: .halfClosedRemoteLocalActive(localRole: localRole, initiatedBy: .client, localWindow: localWindow),
+                                        targetEffect: nil)
 
         case .halfClosedLocalPeerIdle(let remoteWindow):
             let targetState: State
@@ -397,10 +438,17 @@ extension HTTP2StreamStateMachine {
                 targetEffect = nil
             }
 
-            return self.processResponseHeaders(headers, targetStateIfFinal: targetState, targetEffectIfFinal: targetEffect)
+            return self.processResponseHeaders(headers,
+                                               validateHeaderBlock: validateHeaderBlock,
+                                               targetStateIfFinal: targetState,
+                                               targetEffectIfFinal: targetEffect)
 
         case .halfClosedLocalPeerActive:
-            return self.processTrailers(headers, isEndStreamSet: endStream, targetState: .closed(reason: nil), targetEffect: .streamClosed(.init(streamID: self.streamID, reason: nil)))
+            return self.processTrailers(headers,
+                                        validateHeaderBlock: validateHeaderBlock,
+                                        isEndStreamSet: endStream,
+                                        targetState: .closed(reason: nil),
+                                        targetEffect: .streamClosed(.init(streamID: self.streamID, reason: nil)))
 
         // Receiving a HEADERS frame as an idle client, or on a closed stream, is a connection error
         // of type PROTOCOL_ERROR. In any other state, receiving a HEADERS frame is a stream error of
@@ -537,7 +585,7 @@ extension HTTP2StreamStateMachine {
         }
     }
 
-    mutating func sendPushPromise(headers: HPACKHeaders) -> StateMachineResultWithStreamEffect {
+    mutating func sendPushPromise(headers: HPACKHeaders, validateHeaderBlock: Bool) -> StateMachineResultWithStreamEffect {
         // We can send PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a server. In this case we assert that the stream was initiated by the client.
@@ -549,7 +597,7 @@ extension HTTP2StreamStateMachine {
         switch self.state {
         case .fullyOpen(localRole: .server, localWindow: _, remoteWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localWindow: _):
-            return self.processRequestHeaders(headers, targetState: self.state, targetEffect: nil)
+            return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
 
         // Sending a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
@@ -562,7 +610,7 @@ extension HTTP2StreamStateMachine {
         }
     }
 
-    mutating func receivePushPromise(headers: HPACKHeaders) -> StateMachineResultWithStreamEffect {
+    mutating func receivePushPromise(headers: HPACKHeaders, validateHeaderBlock: Bool) -> StateMachineResultWithStreamEffect {
         // We can receive PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a client. In this case we assert that the stream was initiated by us.
@@ -572,7 +620,7 @@ extension HTTP2StreamStateMachine {
         switch self.state {
         case .fullyOpen(localRole: .client, localWindow: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteWindow: _):
-            return self.processRequestHeaders(headers, targetState: self.state, targetEffect: nil)
+            return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
 
         // Receiving a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
@@ -708,21 +756,14 @@ extension HTTP2StreamStateMachine {
     }
 
     mutating func sendRstStream(reason: HTTP2ErrorCode) -> StateMachineResultWithStreamEffect {
-        // We can send RST_STREAM frames in almost all states. The only state where it is entirely forbidden
-        // by RFC 7540 is idle, which is a transitory state that we tend to leave pretty quickly.
-        if case .idle = self.state {
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
-        }
-
+        // We can send RST_STREAM frames in all states, including idle. We allow it in idle because errors may be occurred when receiving a stream opening
+        // frame e.g. request headers.
         self.state = .closed(reason: reason)
         return .init(result: .succeed, effect: .streamClosed(.init(streamID: self.streamID, reason: reason)))
     }
 
     mutating func receiveRstStream(reason: HTTP2ErrorCode) -> StateMachineResultWithStreamEffect {
         // We can receive RST_STREAM frames in any state but idle.
-        // TODO(cory): Right now this is identical to sendRstStream. If we end up doing separate handling for this,
-        // we'll want the two functions, but if that never changes then we can just have this function call the one
-        // above.
         if case .idle = self.state {
             return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
         }
@@ -824,8 +865,15 @@ extension HTTP2StreamStateMachine {
 extension HTTP2StreamStateMachine {
     /// Validate that the request headers meet the requirements of RFC 7540. If they do,
     /// transitions to the target state.
-    private mutating func processRequestHeaders(_ headers: HPACKHeaders, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
-        // TODO(cory): Implement
+    private mutating func processRequestHeaders(_ headers: HPACKHeaders, validateHeaderBlock: Bool, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
+        if validateHeaderBlock {
+            do {
+                try headers.validateRequestBlock()
+            } catch {
+                return StateMachineResultWithStreamEffect(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
+            }
+        }
+
         self.state = target
         return StateMachineResultWithStreamEffect(result: .succeed, effect: effect)
     }
@@ -833,8 +881,14 @@ extension HTTP2StreamStateMachine {
     /// Validate that the response headers meet the requirements of RFC 7540. Also characterises
     /// them to check whether the headers are informational or final, and if the headers are
     /// valid and correspond to a final response, transitions to the appropriate target state.
-    private mutating func processResponseHeaders(_ headers: HPACKHeaders, targetStateIfFinal finalState: State, targetEffectIfFinal finalEffect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
-        // TODO(cory): Implement
+    private mutating func processResponseHeaders(_ headers: HPACKHeaders, validateHeaderBlock: Bool, targetStateIfFinal finalState: State, targetEffectIfFinal finalEffect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
+        if validateHeaderBlock {
+            do {
+                try headers.validateResponseBlock()
+            } catch {
+                return StateMachineResultWithStreamEffect(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
+            }
+        }
 
         // The barest minimum of functionality is to distinguish final and non-final headers, so we do that for now.
         if !headers.isInformationalResponse {
@@ -848,8 +902,14 @@ extension HTTP2StreamStateMachine {
 
     /// Validates that the trailers meet the requirements of RFC 7540. If they do, transitions to the
     /// target final state.
-    private mutating func processTrailers(_ headers: HPACKHeaders, isEndStreamSet endStream: Bool, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
-        // TODO(cory): Implement
+    private mutating func processTrailers(_ headers: HPACKHeaders, validateHeaderBlock: Bool, isEndStreamSet endStream: Bool, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
+        if validateHeaderBlock {
+            do {
+                try headers.validateTrailersBlock()
+            } catch {
+                return StateMachineResultWithStreamEffect(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
+            }
+        }
 
         // End stream must be set on trailers.
         guard endStream else {

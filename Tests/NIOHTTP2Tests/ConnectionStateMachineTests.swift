@@ -1753,5 +1753,77 @@ class ConnectionStateMachineTests: XCTestCase {
         assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
         assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: false))
     }
+
+    func testRejectHeadersWithUppercaseHeaderFieldName() {
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+
+        self.exchangePreamble()
+
+        let invalidExtraHeaders = [("UppercaseFieldName", "value")]
+
+        // First, test that client initial headers may not contain uppercase headers.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+
+        // Next, set up a valid stream for the client and confirm that the server response cannot have uppercase headers.
+        assertSucceeds(self.client.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+
+        // Next, test this with trailers.
+        assertSucceeds(self.client.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+    }
+
+    func testAllowHeadersWithUppercaseHeaderFieldNameWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+        let streamFive = HTTP2StreamID(5)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let invalidExtraHeaders = [("UppercaseFieldName", "value")]
+
+        // First, test that client initial headers may not contain uppercase headers.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+
+        // Next, set up a valid stream for the client and confirm that the server response cannot have uppercase headers.
+        assertSucceeds(self.client.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.responseHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+
+        // Next, test this with trailers.
+        assertSucceeds(self.client.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+    }
+}
+
+
+extension HPACKHeaders {
+    /// Take the header block and add some more.
+    internal func withExtraHeaders(_ headers: [(String, String)]) -> HPACKHeaders {
+        var newHeaders = self
+        for header in headers {
+            newHeaders.add(name: header.0, value: header.1)
+        }
+        return newHeaders
+    }
 }
 

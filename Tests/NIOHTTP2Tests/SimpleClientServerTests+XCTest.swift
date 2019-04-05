@@ -55,6 +55,7 @@ extension SimpleClientServerTests {
                 ("testChangingMaxFrameSize", testChangingMaxFrameSize),
                 ("testStreamErrorOnSelfDependentPriorityFrames", testStreamErrorOnSelfDependentPriorityFrames),
                 ("testStreamErrorOnSelfDependentHeadersFrames", testStreamErrorOnSelfDependentHeadersFrames),
+                ("testInvalidRequestHeaderBlockAllowsRstStream", testInvalidRequestHeaderBlockAllowsRstStream),
            ]
    }
 }

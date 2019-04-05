@@ -20,6 +20,8 @@ import NIOHPACK
 protocol ReceivingPushPromiseState: HasFlowControlWindows {
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
 
+    var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
+
     var streamState: ConnectionStreamState { get set }
 
     var remoteInitialWindowSize: UInt32 { get }
@@ -47,12 +49,14 @@ extension ReceivingPushPromiseState {
             return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.PushInViolationOfSetting(), type: .protocolError), effect: nil)
         }
 
+        let validateHeaderBlock = self.headerBlockValidation == .enabled
+
         do {
             try self.streamState.createRemotelyPushedStream(streamID: childStreamID,
                                                             remoteInitialWindowSize: self.remoteInitialWindowSize)
 
            let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: true) {
-                $0.receivePushPromise(headers: headers)
+                $0.receivePushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
             }
             return StateMachineResultWithEffect(result, connectionState: self)
         } catch {
