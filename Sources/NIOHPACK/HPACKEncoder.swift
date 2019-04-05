@@ -43,7 +43,7 @@ public struct HPACKEncoder {
     var headerIndexTable: IndexedHeaderTable
     
     private var state: EncoderState
-    private var buffer: ByteBuffer!
+    private var buffer: ByteBuffer
     
     /// Whether to use Huffman encoding.
     public let useHuffmanEncoding: Bool
@@ -110,6 +110,10 @@ public struct HPACKEncoder {
         self.headerIndexTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)
         self.useHuffmanEncoding = useHuffmanEncoding
         self.state = .idle
+
+        // In my ideal world this allocation would be of size 0, but we need to have it be a little bit bigger to support the incremental encoding
+        // mode. I want to remove it: see https://github.com/apple/swift-nio-http2/issues/85.
+        self.buffer = allocator.buffer(capacity: 128)
     }
     
     /// Sets up the encoder to begin encoding a new header block.
@@ -120,9 +124,9 @@ public struct HPACKEncoder {
         if case .encoding = self.state {
             throw NIOHPACKErrors.EncoderAlreadyActive()
         }
-        
-        // create a buffer
-        self.buffer = allocator.buffer(capacity: 128)   // arbitrary size
+
+        self.buffer.clear()
+
         switch self.state {
         case .idle:
             self.state = .encoding
@@ -147,17 +151,23 @@ public struct HPACKEncoder {
         }
         
         self.state = .idle
-        defer { self.buffer = nil }
         return self.buffer
     }
     
     /// A one-shot encoder that writes to a provided buffer.
+    ///
+    /// In general this encoding mechanism is more efficient than the incremental one.
     public mutating func encode(headers: HPACKHeaders, to buffer: inout ByteBuffer) throws {
         if case .encoding = self.state {
             throw NIOHPACKErrors.EncoderAlreadyActive()
         }
-        
-        self.buffer = buffer
+
+        swap(&self.buffer, &buffer)
+        defer {
+            swap(&self.buffer, &buffer)
+            self.state = .idle
+        }
+
         switch self.state {
         case .idle:
             self.state = .encoding
@@ -173,14 +183,8 @@ public struct HPACKEncoder {
         default:
             break
         }
-        
-        do {
-            try self.append(headers: headers)
-            buffer = try self.endEncoding()
-        } catch {
-            _ = try? self.endEncoding()
-            throw error
-        }
+
+        try self.append(headers: headers)
     }
     
     /// Appends() headers in the default fashion: indexed if possible, literal+indexable if not.

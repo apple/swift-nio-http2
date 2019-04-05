@@ -118,11 +118,36 @@ struct HeaderTableStorage {
             self.buffer.equalCaseInsensitiveASCII(view: name, at: $0.name)
         }
     }
-    
-    func indices<C: Collection>(matching name: C) -> LazyMatchingIndicesSequence where C.Element == UInt8 {
-        return self.headers.enumerated().lazy.filter {
-            self.buffer.equalCaseInsensitiveASCII(view: name, at: $1.name)
-        }.map { (idx, header) in idx }
+
+    enum MatchType {
+        case full(Int)
+        case partial(Int)
+        case none
+    }
+
+    func closestMatch<Name: Collection, Value: Collection>(name: Name, value: Value) -> MatchType where Name.Element == UInt8, Value.Element == UInt8 {
+        var partialIndex: Int? = nil
+
+        for (index, header) in self.headers.enumerated() {
+            // Check if the header name matches.
+            guard self.buffer.equalCaseInsensitiveASCII(view: name, at: header.name) else {
+                continue
+            }
+
+            if partialIndex == nil {
+                partialIndex = index
+            }
+
+            if self.view(of: header.value).matches(value) {
+                return .full(index)
+            }
+        }
+
+        if let partial = partialIndex {
+            return .partial(partial)
+        } else {
+            return .none
+        }
     }
     
     func firstIndex<C : Collection>(matching name: C) -> Int? where C.Element == UInt8 {
