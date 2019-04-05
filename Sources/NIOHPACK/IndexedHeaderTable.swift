@@ -85,15 +85,14 @@ public struct IndexedHeaderTable {
         }
         
         var firstHeaderIndex: Int? = nil
-        for index in self.staticTable.indices(matching: name) {
-            // we've found a name, at least
-            if firstHeaderIndex == nil {
-                firstHeaderIndex = index
-            }
-            
-            if self.staticTable.view(of: self.staticTable[index].value).matches(value) {
-                return (index, true)
-            }
+
+        switch self.staticTable.closestMatch(name: name, value: value) {
+        case .full(let index):
+            return (index, true)
+        case .partial(let index):
+            firstHeaderIndex = index
+        case .none:
+            break
         }
         
         // no complete match: search the dynamic table now

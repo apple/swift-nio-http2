@@ -105,25 +105,12 @@ struct DynamicHeaderTable {
         // If we have a value, locate the index of the lowest header which contains that
         // value, but if no value matches, return the index of the lowest header with a
         // matching name alone.
-        var firstNameMatch: Int? = nil
-        for index in self.storage.indices(matching: name) {
-            if firstNameMatch == nil {
-                // record the first (most recent) index with a matching header name,
-                // in case there's no value match.
-                firstNameMatch = index
-            }
-            
-            if self.storage.view(of: self.storage[index].value).matches(value) {
-                // this entry has both the name and the value we're seeking
-                return (index, true)
-            }
-        }
-        
-        // no value matches -- but did we find a name?
-        if let index = firstNameMatch {
+        switch self.storage.closestMatch(name: name, value: value) {
+        case .full(let index):
+            return (index, true)
+        case .partial(let index):
             return (index, false)
-        } else {
-            // no matches at all
+        case .none:
             return nil
         }
     }
