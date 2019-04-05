@@ -56,12 +56,8 @@ class HuffmanCodingTests: XCTestCase {
         XCTAssertEqual(numBytes, bytes.count, "Wrong length encoding '\(string)'", file: file, line: line)
         
         assertEqualContents(self.scratchBuffer, bytes, file: file, line: line)
-        
-        var buf = ByteBufferAllocator().buffer(capacity: utf8.count)
-        let numDecoded = try scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes, into: &buf)
-        XCTAssertEqual(numDecoded, utf8.count)
-        
-        let decoded = buf.readString(length: buf.readableBytes)
+
+        let decoded = try scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes)
         XCTAssertEqual(decoded, string, "Failed to decode '\(string)'", file: file, line: line)
     }
 
@@ -145,16 +141,12 @@ class HuffmanCodingTests: XCTestCase {
             return data.copyBytes(to: bytePtr)
         }
         
-        var targetBuffer = ByteBufferAllocator().buffer(capacity: data.count)
-        
         // warm up the decoder
-        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
+        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
         
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            targetBuffer.clear()
-            
             startMeasuring()
-            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
+            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
         }
     }
     
@@ -196,16 +188,12 @@ class HuffmanCodingTests: XCTestCase {
             return data.copyBytes(to: bytePtr)
         }
         
-        var targetBuffer = ByteBufferAllocator().buffer(capacity: data.count)
-        
         // ensure the decoder table has been loaded
-        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
+        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
         
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            targetBuffer.clear()
-            
             startMeasuring()
-            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes, into: &targetBuffer)
+            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
         }
     }
 

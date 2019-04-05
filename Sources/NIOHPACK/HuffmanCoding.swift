@@ -171,66 +171,93 @@ fileprivate let decoderTable = HuffmanDecoderTable()
 
 extension ByteBuffer {
     
-    /// Decodes a huffman-encoded string into a provided `ByteBuffer`.
+    /// Decodes a huffman-encoded string from the `ByteBuffer`.
     ///
     /// - Parameter at: The location of the encoded bytes to read.
     /// - Parameter length: The number of huffman-encoded octets to read.
-    /// - Parameter output: A `ByteBuffer` into which decoded UTF-8 octets will be
-    ///                     written.
-    /// - Returns: The number of UTF-8 characters written into the output `ByteBuffer`.
+    /// - Returns: The decoded `String`.
     /// - Throws: HuffmanDecodeError if the data could not be decoded.
     @discardableResult
-    func getHuffmanEncodedString(at index: Int, length: Int, into output: inout ByteBuffer) throws -> Int {
+    func getHuffmanEncodedString(at index: Int, length: Int) throws -> String {
         precondition(index + length <= self.capacity, "Requested range out of bounds: \(index ..< index+length) vs. \(self.capacity)")
         if length == 0 {
-            return 0
+            return ""
         }
-        
-        var state: UInt8 = 0
-        var acceptable = false
-        let start = output.writerIndex
 
-        // We force-unwrap here to crash if we attempt to decode out of bounds.
-        for ch in self.viewBytes(at: index, length: length)! {
-            var t = decoderTable[state: state, nybble: ch >> 4]
-            if t.flags.contains(.failure) {
+        // We have a rough heuristic here, which is that the maximal compression efficiency of the huffman table is 2x.
+        let capacity = length * 2
+
+        let decoded = try String(unsafeUninitializedCapacity: capacity) { (backingStorage, initializedCapacity) in
+            var state: UInt8 = 0
+            var offset = 0
+            var acceptable = false
+
+            // We force-unwrap here to crash if we attempt to decode out of bounds.
+            for ch in self.viewBytes(at: index, length: length)! {
+                var t = decoderTable[state: state, nybble: ch >> 4]
+                if t.flags.contains(.failure) {
+                    throw HuffmanDecodeError.InvalidState()
+                }
+                if t.flags.contains(.symbol) {
+                    backingStorage[offset] = t.sym
+                    offset += 1
+                }
+
+                t = decoderTable[state: t.state, nybble: ch & 0xf]
+                if t.flags.contains(.failure) {
+                    throw HuffmanDecodeError.InvalidState()
+                }
+                if t.flags.contains(.symbol) {
+                    backingStorage[offset] = t.sym
+                    offset += 1
+                }
+
+                state = t.state
+                acceptable = t.flags.contains(.accepted)
+            }
+
+            guard acceptable else {
                 throw HuffmanDecodeError.InvalidState()
             }
-            if t.flags.contains(.symbol) {
-                output.writeInteger(t.sym)
-            }
-            
-            t = decoderTable[state: t.state, nybble: ch & 0xf]
-            if t.flags.contains(.failure) {
-                throw HuffmanDecodeError.InvalidState()
-            }
-            if t.flags.contains(.symbol) {
-                output.writeInteger(t.sym)
-            }
-            
-            state = t.state
-            acceptable = t.flags.contains(.accepted)
+
+            initializedCapacity = offset
         }
+
         
-        guard acceptable else {
-            throw HuffmanDecodeError.InvalidState()
-        }
-        
-        return output.writerIndex - start
+        return decoded
     }
     
-    /// Reads a huffman-encoded string into a provided `ByteBuffer`, starting at the buffer's
+    /// Decodes a huffman-encoded string from the provided `ByteBuffer`, starting at the buffer's
     /// current `readerIndex`. Updates the `readerIndex` when it completes.
     ///
     /// - Parameter length: The number of huffman-encoded octets to read.
-    /// - Parameter output: A `ByteBuffer` into which decoded UTF-8 octets will be
-    ///                     written.
-    /// - Returns: The number of UTF-8 characters written into the output `ByteBuffer`.
+    /// - Returns: The decoded `String`.
     /// - Throws: HuffmanDecodeError if the data could not be decoded.
     @discardableResult
-    mutating func readHuffmanEncodedString(of length: Int, into output: inout ByteBuffer) throws -> Int {
-        let result = try self.getHuffmanEncodedString(at: self.readerIndex, length: length, into: &output)
+    mutating func readHuffmanEncodedString(length: Int) throws -> String {
+        let result = try self.getHuffmanEncodedString(at: self.readerIndex, length: length)
         self.moveReaderIndex(forwardBy: length)
         return result
+    }
+}
+
+
+extension String {
+    /// This is a backport of a proposed String initializer that will allow writing directly into an uninitialized String's backing memory.
+    /// This feature will be useful when decoding Huffman-encoded HPACK strings.
+    ///
+    /// As this API does not currently exist we fake it out by using a pointer and accepting the extra copy.
+    init(unsafeUninitializedCapacity capacity: Int,
+         initializingUTF8With initializer: (_ buffer: UnsafeMutableBufferPointer<UInt8>, _ initializedCount: inout Int) throws -> Void) rethrows {
+        var buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: capacity)
+        defer {
+            buffer.deallocate()
+        }
+
+        var initializedCount = 0
+        try initializer(buffer, &initializedCount)
+        precondition(initializedCount <= capacity, "Overran buffer in initializer!")
+
+        self = String(decoding: UnsafeMutableBufferPointer(start: buffer.baseAddress!, count: initializedCount), as: UTF8.self)
     }
 }

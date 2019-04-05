@@ -33,8 +33,6 @@ public struct HPACKDecoder {
     // private but tests
     var headerTable: IndexedHeaderTable
     
-    private var decodeBuffer: ByteBuffer
-    
     var dynamicTableLength: Int {
         return headerTable.dynamicTableLength
     }
@@ -76,10 +74,6 @@ public struct HPACKDecoder {
     /// - Parameter maxDynamicTableSize: Maximum allowed size of the dynamic header table.
     public init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = HPACKDecoder.maxDynamicTableSize) {
         self.headerTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)
-        
-        // start the decode buffer at the requested size of the dynamic header list table, or the default
-        // size, whichever is larger.
-        self.decodeBuffer = allocator.buffer(capacity: max(maxDynamicTableSize, DynamicHeaderTable.defaultSize))
     }
     
     /// Reads HPACK encoded header data from a `ByteBuffer`.
@@ -94,21 +88,35 @@ public struct HPACKDecoder {
     public mutating func decodeHeaders(from buffer: inout ByteBuffer) throws -> HPACKHeaders {
         // take a local copy to mutate
         var bufCopy = buffer
-        self.decodeBuffer.clear()
-        
         var headers: [HPACKHeader] = []
+
         while bufCopy.readableBytes > 0 {
-            // this will update our own `decodeBuffer` property.
-            if let header = try self.decodeHeader(from: &bufCopy) {
+            switch try self.decodeHeader(from: &bufCopy) {
+            case .tableSizeChange:
+                // RFC 7541 § 4.2 <https://httpwg.org/specs/rfc7541.html#maximum.table.size>:
+                //
+                // 2. "This dynamic table size update MUST occur at the beginning of the first header block
+                //    following the change to the dynamic table size."
+                guard headers.count == 0 else {
+                    // If our decode buffer has any data in it, then this is out of place.
+                    // Treat it as an invalid input
+                    throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
+                }
+            case .header(let header):
                 headers.append(header)
             }
         }
         
         buffer = bufCopy
-        return HPACKHeaders(buffer: self.decodeBuffer, headers: headers)
+        return HPACKHeaders(headers: headers)
     }
-    
-    private mutating func decodeHeader(from buffer: inout ByteBuffer) throws -> HPACKHeader? {
+
+    enum DecodeResult {
+        case tableSizeChange
+        case header(HPACKHeader)
+    }
+
+    private mutating func decodeHeader(from buffer: inout ByteBuffer) throws -> DecodeResult {
         // peek at the first byte to decide how many significant bits of that byte we
         // will need to include in our decoded integer. Some values use a one-bit prefix,
         // some use two, or four.
@@ -123,13 +131,13 @@ public struct HPACKDecoder {
             guard hidx != 0 else {
                 throw NIOHPACKErrors.ZeroHeaderIndex()
             }
-            return try self.decodeIndexedHeader(from: Int(hidx))
+            return try .header(self.decodeIndexedHeader(from: Int(hidx)))
             
         case let x where x & 0b1100_0000 == 0b0100_0000:
             // 0b01xxxxxx -- two-bit prefix, six bits of value
             // literal header with possibly-indexed name
             let hidx = try buffer.readEncodedInteger(withPrefix: 6)
-            return try self.decodeLiteralHeader(from: &buffer, headerName: HPACKString(fromEncodedInteger: hidx), addToIndex: true)
+            return try .header(self.decodeLiteralHeader(from: &buffer, headerName: HPACKString(fromEncodedInteger: hidx), addToIndex: true))
             
         case let x where x & 0b1111_0000 == 0b0000_0000:
             // 0b0000xxxx -- four-bit prefix, four bits of value
@@ -137,7 +145,7 @@ public struct HPACKDecoder {
             let hidx = try buffer.readEncodedInteger(withPrefix: 4)
             var header = try self.decodeLiteralHeader(from: &buffer, headerName: HPACKString(fromEncodedInteger: hidx), addToIndex: false)
             header.indexing = .nonIndexable
-            return header
+            return .header(header)
             
         case let x where x & 0b1111_0000 == 0b0001_0000:
             // 0b0001xxxx -- four-bit prefix, four bits of value
@@ -146,30 +154,22 @@ public struct HPACKDecoder {
             let hidx = try buffer.readEncodedInteger(withPrefix: 4)
             var header = try self.decodeLiteralHeader(from: &buffer, headerName: HPACKString(fromEncodedInteger: hidx), addToIndex: false)
             header.indexing = .neverIndexed
-            return header
+            return .header(header)
             
         case let x where x & 0b1110_0000 == 0b0010_0000:
             // 0b001xxxxx -- three-bit prefix, five bits of value
             // dynamic header table size update
             let newMaxLength = try Int(buffer.readEncodedInteger(withPrefix: 5))
             
-            // RFC 7541 § 4.2 <https://httpwg.org/specs/rfc7541.html#maximum.table.size> gives us two conditions:
+            // RFC 7541 § 4.2 <https://httpwg.org/specs/rfc7541.html#maximum.table.size>:
             //
             // 1. "the chosen size MUST stay lower than or equal to the maximum set by the protocol."
             guard newMaxLength <= self.headerTable.maxDynamicTableLength else {
                 throw NIOHPACKErrors.InvalidDynamicTableSize(requestedSize: newMaxLength, allowedSize: self.headerTable.maxDynamicTableLength)
             }
             
-            // 2. "This dynamic table size update MUST occur at the beginning of the first header block
-            //    following the change to the dynamic table size."
-            guard self.decodeBuffer.readableBytes == 0 else {
-                // If our decode buffer has any data in it, then this is out of place.
-                // Treat it as an invalid input
-                throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
-            }
-            
             self.allowedDynamicTableLength = newMaxLength
-            return nil
+            return .tableSizeChange
             
         default:
             throw NIOHPACKErrors.InvalidHeaderStartByte(byte: initial)
@@ -177,43 +177,31 @@ public struct HPACKDecoder {
     }
     
     private mutating func decodeIndexedHeader(from hidx: Int) throws -> HPACKHeader {
-        let (h, v) = try self.headerTable.headerViews(at: hidx)
-        
-        let start = self.decodeBuffer.writerIndex
-        let nlen = self.decodeBuffer.writeBytes(h)
-        let vlen = self.decodeBuffer.writeBytes(v)
-        
-        return HPACKHeader(start: start, nameLength: nlen, valueLength: vlen)
+        let (name, value) = try self.headerTable.header(at: hidx)
+        return HPACKHeader(name: name, value: value)
     }
     
     private mutating func decodeLiteralHeader(from buffer: inout ByteBuffer, headerName: HPACKString,
                                               addToIndex: Bool) throws -> HPACKHeader {
-        let nameStart = self.decodeBuffer.writerIndex
-        let nameLen: Int
-        let valueLen: Int
+        let name: String
         
         switch headerName {
         case .indexed(let idx):
-            let (name, _) = try self.headerTable.headerViews(at: idx)
-            nameLen = self.decodeBuffer.writeBytes(name)
+            (name, _) = try self.headerTable.header(at: idx)
         case .literal:
-            nameLen = try self.readEncodedString(from: &buffer)
+            name = try self.readEncodedString(from: &buffer)
         }
         
-        valueLen = try self.readEncodedString(from: &buffer)
+        let value = try self.readEncodedString(from: &buffer)
         
         if addToIndex {
-            // These views are safe to force-unwrap as we have just written these bytes into the decode buffer.
-            let nameView = self.decodeBuffer.viewBytes(at: nameStart, length: nameLen)!
-            let valueView = self.decodeBuffer.viewBytes(at: nameStart + nameLen, length: valueLen)!
-            
-            try headerTable.add(headerNamed: nameView, value: valueView)
+            try headerTable.add(headerNamed: name, value: value)
         }
         
-        return HPACKHeader(start: nameStart, nameLength: nameLen, valueLength: valueLen)
+        return HPACKHeader(name: name, value: value)
     }
     
-    private mutating func readEncodedString(from buffer: inout ByteBuffer) throws -> Int {
+    private mutating func readEncodedString(from buffer: inout ByteBuffer) throws -> String {
         // peek to read the encoding bit
         guard let initialByte: UInt8 = buffer.getInteger(at: buffer.readerIndex) else {
             throw NIOHPACKErrors.InsufficientInput()
@@ -225,16 +213,12 @@ public struct HPACKDecoder {
         guard len <= buffer.readableBytes else {
             throw NIOHPACKErrors.StringLengthBeyondPayloadSize(length: len, available: buffer.readableBytes)
         }
-        
-        let outputLength: Int
+
         if huffmanEncoded {
-            outputLength = try buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: len, into: &self.decodeBuffer)
+            return try buffer.readHuffmanEncodedString(length: len)
         } else {
             // This force-unwrap is safe as we have checked above that len is less than or equal to the buffer readable bytes.
-            outputLength = self.decodeBuffer.writeBytes(buffer.viewBytes(at: buffer.readerIndex, length: len)!)
+           return buffer.readString(length: len)!
         }
-        
-        buffer.moveReaderIndex(forwardBy: len)
-        return outputLength
     }
 }

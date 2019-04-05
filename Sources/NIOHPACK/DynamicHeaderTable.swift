@@ -57,8 +57,8 @@ struct DynamicHeaderTable {
         return self.storage.count
     }
     
-    init(allocator: ByteBufferAllocator, maximumLength: Int = DynamicHeaderTable.defaultSize) {
-        self.storage = HeaderTableStorage(allocator: allocator, maxSize: maximumLength)
+    init(maximumLength: Int = DynamicHeaderTable.defaultSize) {
+        self.storage = HeaderTableStorage(maxSize: maximumLength)
         self.maximumTableLength = maximumLength
         self.allowedLength = maximumLength  // until we're told otherwise, this is what we assume the other side expects.
     }
@@ -66,10 +66,6 @@ struct DynamicHeaderTable {
     /// Subscripts into the dynamic table alone, using a zero-based index.
     subscript(i: Int) -> HeaderTableEntry {
         return self.storage[i]
-    }
-    
-    func view(of index: HPACKHeaderIndex) -> ByteBufferView {
-        return self.storage.view(of: index)
     }
     
     // internal for testing
@@ -94,7 +90,7 @@ struct DynamicHeaderTable {
     /// - Returns: A tuple containing the matching index and, if a value was specified as a
     ///            parameter, an indication whether that value was also found. Returns `nil`
     ///            if no matching header name could be located.
-    func findExistingHeader<Name: Collection, Value: Collection>(named name: Name, value: Value?) -> (index: Int, containsValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
+    func findExistingHeader(named name: String, value: String?) -> (index: Int, containsValue: Bool)? {
         // looking for both name and value, but can settle for just name if no value
         // has been provided. Return the first matching name (lowest index) in that case.
         guard let value = value else {
@@ -124,16 +120,17 @@ struct DynamicHeaderTable {
     /// > emptied of all existing entries and results in an empty table."
     ///
     /// - Parameters:
-    ///   - name: A collection of UTF-8 code points comprising the name of the header to insert.
-    ///   - value: A collection of UTF-8 code points comprising the value of the header to insert.
+    ///   - name: A String representing the name of the header field.
+    ///   - value: A String representing the value of the header field.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader<Name: Collection, Value: Collection>(named name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
+    mutating func addHeader(named name: String, value: String) throws {
         do {
             try self.storage.add(name: name, value: value)
-        } catch let error as RingBufferError.BufferOverrun {
+        } catch InternalError.unableToAddHeaderToTable(let excess) {
             // ping the error up the stack, with more information
-            throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + error.amount,
-                                                          name: name, value: value)
+            // TODO(cory): Remove the genericism here in future.
+            throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + excess,
+                                                          name: name.utf8, value: value.utf8)
         }
     }
 }
