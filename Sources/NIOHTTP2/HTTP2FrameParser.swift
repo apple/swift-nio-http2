@@ -730,7 +730,7 @@ struct HTTP2FrameDecoder {
             }
 
             return .settings(.ack)
-        } else if length == 0 || length % 6 != 0 {
+        } else if length % 6 != 0 {
             // A SETTINGS frame with a length other than a multiple of 6 octets MUST be treated
             // as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
             throw InternalError.codecError(code: .frameSizeError)

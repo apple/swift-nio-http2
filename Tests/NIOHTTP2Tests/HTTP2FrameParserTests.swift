@@ -869,6 +869,21 @@ class HTTP2FrameParserTests: XCTestCase {
         
         try assertReadsFrame(from: &buf, matching: expectedFrame)
     }
+
+  func testSettingsFrameDecodingWithNoSettings() throws {
+    let settings: [HTTP2Setting] = []
+    let expectedFrame = HTTP2Frame(payload: .settings(.settings(settings)), streamID: .rootStream)
+
+    let frameBytes: [UInt8] = [
+      0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+      0x04,                       // 1-byte frame type (SETTINGS)
+      0x00,                       // 1-byte flags (none)
+      0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+    ]
+    var buf = byteBuffer(withBytes: frameBytes)
+
+    try assertReadsFrame(from: &buf, matching: expectedFrame)
+  }
     
     func testSettingsFrameDecodingWithUnknownItems() throws {
         let settings: [HTTP2Setting] = [
