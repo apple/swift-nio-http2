@@ -172,6 +172,15 @@ public enum NIOHTTP2Errors {
         }
     }
 
+    /// A header block contained a pseudo-header after a regular header.
+    public struct PseudoHeaderAfterRegularHeader: NIOHTTP2Error {
+        public var name: String
+
+        public init(_ name: String) {
+            self.name = name
+        }
+    }
+
     /// An outbound request was about to be sent, but does not contain a Host header.
     public struct MissingHostHeader: NIOHTTP2Error {
         public init() { }

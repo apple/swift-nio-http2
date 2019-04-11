@@ -85,6 +85,8 @@ extension ConnectionStateMachineTests {
                 ("testServerTrailersMustHaveEndStreamSet", testServerTrailersMustHaveEndStreamSet),
                 ("testRejectHeadersWithUppercaseHeaderFieldName", testRejectHeadersWithUppercaseHeaderFieldName),
                 ("testAllowHeadersWithUppercaseHeaderFieldNameWhenValidationDisabled", testAllowHeadersWithUppercaseHeaderFieldNameWhenValidationDisabled),
+                ("testRejectPseudoHeadersAfterRegularHeaders", testRejectPseudoHeadersAfterRegularHeaders),
+                ("testAllowPseudoHeadersAfterRegularHeaders", testAllowPseudoHeadersAfterRegularHeaders),
            ]
    }
 }
