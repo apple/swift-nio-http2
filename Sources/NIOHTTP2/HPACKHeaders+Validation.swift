@@ -37,12 +37,42 @@ extension HPACKHeaders {
 }
 
 
+/// A HTTP/2 header block is divided into two sections: the leading section, containing pseudo-headers, and
+/// the regular header section. Once the first regular header has been seen and we have transitioned into the
+/// header section, it is an error to see a pseudo-header again in this block.
+fileprivate enum BlockSection {
+    case pseudoHeaders
+    case headers
+
+    fileprivate mutating func validField(_ field: HeaderFieldName) throws {
+        switch (self, field.fieldType) {
+        case (.pseudoHeaders, .pseudoHeaderField),
+             (.headers, .regularHeaderField):
+            // Another header of the same type we're expecting. Do nothing.
+            break
+
+        case (.pseudoHeaders, .regularHeaderField):
+            // The regular header fields have begun.
+            self = .headers
+
+        case (.headers, .pseudoHeaderField):
+            // This is an error: it's not allowed to send a pseudo-header field once a regular
+            // header field has been sent.
+            throw NIOHTTP2Errors.PseudoHeaderAfterRegularHeader(":\(field.baseName)")
+        }
+    }
+}
+
+
 /// A `HeaderBlockValidator` is an object that can confirm that a HPACK block meets certain constraints.
 fileprivate protocol HeaderBlockValidator {
     init()
 
+    var blockSection: BlockSection { get set }
+
     mutating func validateNextField(name: HeaderFieldName, value: String) throws
 }
+
 
 extension HeaderBlockValidator {
     /// Validates that a header block meets the requirements of this `HeaderBlockValidator`.
@@ -50,13 +80,17 @@ extension HeaderBlockValidator {
         var validator = Self()
         for (name, value, _) in block {
             let fieldName = try HeaderFieldName(name)
+            try validator.blockSection.validField(fieldName)
             try validator.validateNextField(name: fieldName, value: value)
         }
     }
 }
 
+
 /// An object that can be used to validate if a given header block is a valid request header block.
-fileprivate struct RequestBlockValidator { }
+fileprivate struct RequestBlockValidator {
+    var blockSection: BlockSection = .pseudoHeaders
+}
 
 extension RequestBlockValidator: HeaderBlockValidator {
     fileprivate mutating func validateNextField(name: HeaderFieldName, value: String) throws {
@@ -66,7 +100,9 @@ extension RequestBlockValidator: HeaderBlockValidator {
 
 
 /// An object that can be used to validate if a given header block is a valid response header block.
-fileprivate struct ResponseBlockValidator { }
+fileprivate struct ResponseBlockValidator {
+    var blockSection: BlockSection = .pseudoHeaders
+}
 
 extension ResponseBlockValidator: HeaderBlockValidator {
     fileprivate mutating func validateNextField(name: HeaderFieldName, value: String) throws {
@@ -76,7 +112,9 @@ extension ResponseBlockValidator: HeaderBlockValidator {
 
 
 /// An object that can be used to validate if a given header block is a valid trailer block.
-fileprivate struct TrailersValidator { }
+fileprivate struct TrailersValidator {
+    var blockSection: BlockSection = .pseudoHeaders
+}
 
 extension TrailersValidator: HeaderBlockValidator {
     fileprivate mutating func validateNextField(name: HeaderFieldName, value: String) throws {
@@ -89,20 +127,39 @@ extension TrailersValidator: HeaderBlockValidator {
 ///
 /// Used to validate the correctness of a specific header field name at a given
 /// point in a header block.
-fileprivate struct HeaderFieldName { }
+fileprivate struct HeaderFieldName {
+    /// The type of this header-field: pseudo-header or regular.
+    fileprivate var fieldType: FieldType
+
+    /// The base name of this header field, which is the name with any leading colon stripped off.
+    fileprivate var baseName: Substring
+}
+
+extension HeaderFieldName {
+    /// The types of header fields in HTTP/2.
+    enum FieldType {
+        case pseudoHeaderField
+        case regularHeaderField
+    }
+}
 
 extension HeaderFieldName {
     fileprivate init(_ fieldName: String) throws {
-        let fieldBytes = Substring(fieldName).utf8
+        let fieldSubstring = Substring(fieldName)
+        let fieldBytes = fieldSubstring.utf8
 
-        let baseName: Substring.UTF8View
+        let baseNameBytes: Substring.UTF8View
         if fieldBytes.first == UInt8(ascii: ":") {
-            baseName = fieldBytes.dropFirst()
+            baseNameBytes = fieldBytes.dropFirst()
+            self.fieldType = .pseudoHeaderField
+            self.baseName = fieldSubstring.dropFirst()
         } else {
-            baseName = fieldBytes
+            baseNameBytes = fieldBytes
+            self.fieldType = .regularHeaderField
+            self.baseName = fieldSubstring
         }
 
-        guard baseName.isValidFieldName else {
+        guard baseNameBytes.isValidFieldName else {
             throw NIOHTTP2Errors.InvalidHTTP2HeaderFieldName(fieldName)
         }
     }
