@@ -142,13 +142,23 @@ extension RequestBlockValidator: HeaderBlockValidator {
         // This is a bit awkward.
         //
         // For now we don't support extended-CONNECT, but when we do we'll need to update the logic here.
-        guard let pseudoHeaderType = pseudoHeaderType, pseudoHeaderType == .method else {
+        guard let pseudoHeaderType = pseudoHeaderType else {
             // Nothing to do here.
             return
         }
 
-        // This is a method pseudo-header. Check if the value is CONNECT.
-        self.isConnectRequest = value == "CONNECT"
+        switch pseudoHeaderType {
+        case .method:
+            // This is a method pseudo-header. Check if the value is CONNECT.
+            self.isConnectRequest = value == "CONNECT"
+        case .path:
+            // This is a path pseudo-header. It must not be empty.
+            if value.utf8.count == 0 {
+                throw NIOHTTP2Errors.EmptyPathHeader()
+            }
+        default:
+            break
+        }
     }
 
     var allowedPseudoHeaderFields: PseudoHeaders {

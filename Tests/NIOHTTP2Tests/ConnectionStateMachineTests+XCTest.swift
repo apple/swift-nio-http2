@@ -91,6 +91,8 @@ extension ConnectionStateMachineTests {
                 ("testAllowRequestHeadersWithMissingMethodFieldWhenValidationDisabled", testAllowRequestHeadersWithMissingMethodFieldWhenValidationDisabled),
                 ("testRejectRequestHeadersWithMissingPathField", testRejectRequestHeadersWithMissingPathField),
                 ("testAllowRequestHeadersWithMissingPathFieldWhenValidationDisabled", testAllowRequestHeadersWithMissingPathFieldWhenValidationDisabled),
+                ("testRejectRequestHeadersWithEmptyPathField", testRejectRequestHeadersWithEmptyPathField),
+                ("testAllowRequestHeadersWithEmptyPathFieldWhenValidationDisabled", testAllowRequestHeadersWithEmptyPathFieldWhenValidationDisabled),
                 ("testRejectRequestHeadersWithMissingSchemeField", testRejectRequestHeadersWithMissingSchemeField),
                 ("testAllowRequestHeadersWithMissingSchemeFieldWhenValidationDisabled", testAllowRequestHeadersWithMissingSchemeFieldWhenValidationDisabled),
                 ("testRejectRequestHeadersWithDuplicateMethodField", testRejectRequestHeadersWithDuplicateMethodField),
