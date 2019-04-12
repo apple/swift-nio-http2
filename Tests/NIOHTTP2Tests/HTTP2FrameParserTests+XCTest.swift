@@ -56,6 +56,7 @@ extension HTTP2FrameParserTests {
                 ("testResetStreamFrameDecodingFailure", testResetStreamFrameDecodingFailure),
                 ("testResetStreamFrameEncoding", testResetStreamFrameEncoding),
                 ("testSettingsFrameDecoding", testSettingsFrameDecoding),
+                ("testSettingsFrameDecodingWithNoSettings", testSettingsFrameDecodingWithNoSettings),
                 ("testSettingsFrameDecodingWithUnknownItems", testSettingsFrameDecodingWithUnknownItems),
                 ("testSettingsFrameDecodingFailure", testSettingsFrameDecodingFailure),
                 ("testSettingsFrameEncoding", testSettingsFrameEncoding),
