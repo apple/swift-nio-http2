@@ -210,6 +210,11 @@ public enum NIOHTTP2Errors {
         public init() { }
     }
 
+    /// A HTTP/2 header block was received with an empty :path header.
+    public struct EmptyPathHeader: NIOHTTP2Error {
+        public init() { }
+    }
+
     /// A :status header was received with an invalid value.
     public struct InvalidStatusValue: NIOHTTP2Error {
         public var value: String
