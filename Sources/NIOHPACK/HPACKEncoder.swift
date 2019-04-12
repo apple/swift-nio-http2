@@ -205,11 +205,11 @@ public struct HPACKEncoder {
         for header in headers {
             switch header.indexing {
             case .indexable:
-                try self._appendIndexed(header: header.name.utf8, value: header.value.utf8)
+                try self._appendIndexed(header: header.name, value: header.value)
             case .nonIndexable:
-                self._appendNonIndexed(header: header.name.utf8, value: header.value.utf8)
+                self._appendNonIndexed(header: header.name, value: header.value)
             case .neverIndexed:
-                self._appendNeverIndexed(header: header.name.utf8, value: header.value.utf8)
+                self._appendNeverIndexed(header: header.name, value: header.value)
             }
         }
     }
@@ -222,17 +222,14 @@ public struct HPACKEncoder {
             throw NIOHPACKErrors.EncoderNotStarted()
         }
         
-        for header in headers.headerIndices {
-            let nameView = headers.view(of: header.name)
-            let valueView = headers.view(of: header.value)
-            
-            switch header.indexing {
+        for header in headers {
+            switch header.indexable {
             case .indexable:
-                try self._appendIndexed(header: nameView, value: valueView)
+                try self._appendIndexed(header: header.name, value: header.value)
             case .nonIndexable:
-                self._appendNonIndexed(header: nameView, value: valueView)
+                self._appendNonIndexed(header: header.name, value: header.value)
             case .neverIndexed:
-                self._appendNeverIndexed(header: nameView, value: valueView)
+                self._appendNeverIndexed(header: header.name, value: header.value)
             }
         }
     }
@@ -244,11 +241,11 @@ public struct HPACKEncoder {
         guard case .encoding = self.state else {
             throw NIOHPACKErrors.EncoderNotStarted()
         }
-        try self._appendIndexed(header: name.utf8, value: value.utf8)
+        try self._appendIndexed(header: name, value: value)
     }
     
     /// Returns `true` if the item needs to be added to the header table
-    private mutating func _appendIndexed<Name: Collection, Value: Collection>(header name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
+    private mutating func _appendIndexed(header name: String, value: String) throws {
         if let (index, hasValue) = self.headerIndexTable.firstHeaderMatch(for: name, value: value) {
             if hasValue {
                 // purely indexed. Nice & simple.
@@ -273,7 +270,9 @@ public struct HPACKEncoder {
         try self.headerIndexTable.add(headerNamed: name, value: value)
     }
     
-    private mutating func appendEncodedString<C: Collection>(_ utf8: C) where C.Element == UInt8 {
+    private mutating func appendEncodedString(_ string: String) {
+        let utf8 = string.utf8
+
         // encode the value
         if self.useHuffmanEncoding {
             // problem: we need to encode the length before the encoded bytes, so we can't just receive the length
@@ -292,10 +291,10 @@ public struct HPACKEncoder {
         guard case .encoding = self.state else {
             throw NIOHPACKErrors.EncoderNotStarted()
         }
-        self._appendNonIndexed(header: header.utf8, value: value.utf8)
+        self._appendNonIndexed(header: header, value: value)
     }
     
-    private mutating func _appendNonIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
+    private mutating func _appendNonIndexed(header: String, value: String) {
         if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: value) {
             // we actually don't care if it has a value in this instance; we're only indexing the
             // name.
@@ -314,12 +313,11 @@ public struct HPACKEncoder {
         guard case .encoding = self.state else {
             throw NIOHPACKErrors.EncoderNotStarted()
         }
-        self._appendNeverIndexed(header: header.utf8, value: value.utf8)
+        self._appendNeverIndexed(header: header, value: value)
     }
     
-    private mutating func _appendNeverIndexed<Name: Collection, Value: Collection>(header: Name, value: Value) where Name.Element == UInt8, Value.Element == UInt8 {
-        // compiler doesn't like us passing `nil` here as it can't infer the types, apparently.
-        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: Optional<Value>.none) {
+    private mutating func _appendNeverIndexed(header: String, value: String) {
+        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: nil) {
             // we only use the index in this instance
             self.buffer.write(encodedInteger: UInt(index), prefix: 4, prefixBits: 0x10)
             // now append the value

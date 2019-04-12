@@ -15,54 +15,14 @@
 import NIO
 import NIOHTTP1
 
-/// Very similar to `NIOHTTP1.HTTPHeaders`, but we have our own version to make some
-/// small changes inside.
+/// Very similar to `NIOHTTP1.HTTPHeaders`, but with extra data for storing indexing
+/// information.
 public struct HPACKHeaders {
-    final private class _Storage {
-        var buffer: ByteBuffer
-        var headers: [HPACKHeader]
-        
-        init(buffer: ByteBuffer, headers: [HPACKHeader]) {
-            self.buffer = buffer
-            self.headers = headers
-        }
-        
-        func copy() -> _Storage {
-            return .init(buffer: self.buffer, headers: self.headers)
-        }
-    }
-    private var _storage: _Storage
-    
-    fileprivate var buffer: ByteBuffer {
-        return self._storage.buffer
-    }
-    
-    fileprivate var headers: [HPACKHeader] {
-        return self._storage.headers
-    }
-    
-    /// Returns the `String` for the given `HPACKHeaderIndex`.
-    ///
-    /// - Parameter idx: The index into the underlying storage.
-    /// - Returns: The value.
-    private func string(idx: HPACKHeaderIndex) -> String {
-        return self.buffer.getString(at: idx.start, length: idx.length)!
-    }
-    
-    /// Return all names.
-    private var names: [HPACKHeaderIndex] {
-        return self.headers.map { $0.name }
-    }
-    
-    /// Constructor used to create a set of contiguous headers from an encoded
-    /// header buffer.
-    init(buffer: ByteBuffer, headers: [HPACKHeader]) {
-        self._storage = _Storage(buffer: buffer, headers: headers)
-    }
+    internal var headers: [HPACKHeader]
     
     /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
     public init(httpHeaders: HTTPHeaders) {
-        self.init(Array(httpHeaders), allocator: ByteBufferAllocator())
+        self.init(Array(httpHeaders))
     }
     
     /// Construct a `HPACKHeaders` structure.
@@ -73,9 +33,7 @@ public struct HPACKHeaders {
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
     public init(_ headers: [(String, String)] = []) {
-        // Note: this initializer exists because of https://bugs.swift.org/browse/SR-7415.
-        // Otherwise we'd only have the one below with a default argument for `allocator`.
-        self.init(headers, allocator: ByteBufferAllocator())
+        self.headers = headers.map { HPACKHeader(name: $0.0, value: $0.1) }
     }
     
     /// Construct a `HPACKHeaders` structure.
@@ -86,28 +44,20 @@ public struct HPACKHeaders {
     /// - parameters
     ///     - headers: An initial set of headers to use to populate the header block.
     ///     - allocator: The allocator to use to allocate the underlying storage.
+    @available(*, deprecated, renamed: "init(_:)")
     public init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
-        // Reserve enough space in the array to hold all indices.
-        var array: [HPACKHeader] = []
-        array.reserveCapacity(headers.count)
-        
-        self.init(buffer: allocator.buffer(capacity: 256), headers: array)
-        
-        for (key, value) in headers {
-            self.add(name: key, value: value)
-        }
+        // We no longer use an allocator so we don't need this method anymore.
+        self.init(headers)
     }
     
     /// Internal initializer to make things easier for unit tests.
     init(fullHeaders: [(HPACKIndexing, String, String)]) {
-        var array: [HPACKHeader] = []
-        array.reserveCapacity(fullHeaders.count)
-        
-        self.init(buffer: ByteBufferAllocator().buffer(capacity: 256), headers: array)
-        
-        for (indexing, key, value) in fullHeaders {
-            self.add(name: key, value: value, indexing: indexing)
-        }
+        self.headers = fullHeaders.map { HPACKHeader(name: $0.1, value: $0.2, indexing: $0.0) }
+    }
+
+    /// Internal initializer for use in HPACK decoding.
+    init(headers: [HPACKHeader]) {
+        self.headers = headers
     }
     
     /// Add a header name/value pair to the block.
@@ -121,39 +71,7 @@ public struct HPACKHeaders {
     /// - Parameter value: The header field value to add for the given name.
     public mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         precondition(!name.utf8.contains(where: { !$0.isASCII }), "name must be ASCII")
-        if !isKnownUniquelyReferenced(&self._storage) {
-            self._storage = self._storage.copy()
-        }
-        
-        let nameStart = self.buffer.writerIndex
-        let nameLength = self._storage.buffer.writeString(name)
-        let valueLength = self._storage.buffer.writeString(value)
-        
-        self._storage.headers.append(HPACKHeader(start: nameStart, nameLength: nameLength,
-                                                 valueLength: valueLength, indexing: indexing))
-    }
-    
-    /// Add a name/value pair to the block without going through the String class and the
-    /// ensuing UTF8 -> UTF16 -> UTF8 conversions.
-    ///
-    /// This method is strictly additive: if there are other values for the given header name
-    /// already in the block, this will add a new entry. `add` performs case-insensitive
-    /// comparisons on the header field name.
-    ///
-    /// - Parameter name: The header field name. For maximum compatibility this should be an
-    ///     ASCII string. For HTTP/2 lowercase header names are strongly encouraged.
-    /// - Parameter value: The header field value to add for the given name.
-    private mutating func add(nameBytes: ByteBufferView, valueBytes: ByteBufferView, indexing: HPACKIndexing = .indexable) {
-        precondition(!nameBytes.contains(where: { !$0.isASCII }), "name must be ASCII")
-        if !isKnownUniquelyReferenced(&self._storage) {
-            self._storage = self._storage.copy()
-        }
-        
-        let nameStart = self.buffer.writerIndex
-        let nameLength = self._storage.buffer.writeBytes(nameBytes)
-        let valueLength = self._storage.buffer.writeBytes(valueBytes)
-        self._storage.headers.append(HPACKHeader(start: nameStart, nameLength: nameLength,
-                                                 valueLength: valueLength, indexing: indexing))
+        self.headers.append(HPACKHeader(name: name, value: value, indexing: indexing))
     }
     
     /// Retrieve all of the values for a given header field name from the block.
@@ -171,12 +89,11 @@ public struct HPACKHeaders {
         guard !self.headers.isEmpty else {
             return []
         }
-        
-        let utf8 = name.utf8
+
         var array: [String] = []
         for header in self.headers {
-            if self.buffer.equalCaseInsensitiveASCII(view: utf8, at: header.name) {
-                array.append(self.string(idx: header.value))
+            if header.name.isEqualCaseInsensitiveASCIIBytes(to: name) {
+                array.append(header.value)
             }
         }
         
@@ -192,10 +109,9 @@ public struct HPACKHeaders {
         guard !self.headers.isEmpty else {
             return false
         }
-        
-        let utf8 = name.utf8
+
         for header in self.headers {
-            if self.buffer.equalCaseInsensitiveASCII(view: utf8, at: header.name) {
+            if header.name.isEqualCaseInsensitiveASCIIBytes(to: name) {
                 return true
             }
         }
@@ -227,75 +143,101 @@ public struct HPACKHeaders {
     internal subscript(position: Int) -> (String, String) {
         precondition(position < self.headers.endIndex, "Position \(position) is beyond bounds of \(self.headers.endIndex)")
         let header = self.headers[position]
-        let name = self.string(idx: header.name)
-        let value = self.string(idx: header.value)
-        return (name, value)
-    }
-    
-    /// Enables encoders to directly enumerate the header views themselves without converting via `String`.
-    internal var headerIndices: [HPACKHeader] {
-        return self.headers
-    }
-    internal func view(of index: HPACKHeaderIndex) -> ByteBufferView {
-        // We force-unwrap here as failure to pass a correct index is an internal programmer error.
-        return self.buffer.viewBytes(at: index.start, length: index.length)!
+        return (header.name, header.value)
     }
 }
 
-extension HPACKHeaders: Sequence {
+
+extension HPACKHeaders: RandomAccessCollection {
     public typealias Element = (name: String, value: String, indexable: HPACKIndexing)
-    
+
+    public struct Index: Comparable {
+        fileprivate let base: Array<HPACKHeaders>.Index
+        public static func < (lhs: Index, rhs: Index) -> Bool {
+            return lhs.base < rhs.base
+        }
+    }
+
+    public var startIndex: HPACKHeaders.Index {
+        return .init(base: self.headers.startIndex)
+    }
+
+    public var endIndex: HPACKHeaders.Index {
+        return .init(base: self.headers.endIndex)
+    }
+
+    public func index(before i: HPACKHeaders.Index) -> HPACKHeaders.Index {
+        return .init(base: self.headers.index(before: i.base))
+    }
+
+    public func index(after i: HPACKHeaders.Index) -> HPACKHeaders.Index {
+        return .init(base: self.headers.index(after: i.base))
+    }
+
+    public subscript(position: HPACKHeaders.Index) -> Element {
+        let element = self.headers[position.base]
+        return (name: element.name, value: element.value, indexable: element.indexing)
+    }
+
+    // Why are we providing an `Iterator` when we could just use the default one?
+    // The answer is that we changed from Sequence to RandomAccessCollection in a SemVer minor release. The
+    // previous code had a special-case Iterator, and so to avoid breaking that abstraction we need to provide one
+    // here too. Happily, however, we can simply delegate to the underlying Iterator type.
+
     /// An iterator of HTTP header fields.
     ///
     /// This iterator will return each value for a given header name separately. That
     /// means that `name` is not guaranteed to be unique in a given block of headers.
-    public struct Iterator : IteratorProtocol {
-        private var headerParts: Array<(String, String, HPACKIndexing)>.Iterator
-        
-        init(headerParts: Array<(String, String, HPACKIndexing)>.Iterator) {
-            self.headerParts = headerParts
+    public struct Iterator: IteratorProtocol {
+        private var base: Array<HPACKHeader>.Iterator
+
+        init(_ base: HPACKHeaders) {
+            self.base = base.headers.makeIterator()
         }
-        
+
         public mutating func next() -> Element? {
-            return headerParts.next()
+            guard let element = self.base.next() else {
+                return nil
+            }
+            return (name: element.name, value: element.value, indexable: element.indexing)
         }
     }
-    
+
     public func makeIterator() -> HPACKHeaders.Iterator {
-        return Iterator(headerParts: headers.map { (self.string(idx: $0.name), self.string(idx: $0.value), $0.indexing) }.makeIterator())
+        return Iterator(self)
     }
 }
+
 
 extension HPACKHeaders: CustomStringConvertible {
     public var description: String {
         var headersArray: [(HPACKIndexing, String, String)] = []
         headersArray.reserveCapacity(self.headers.count)
-        
+
         for h in self.headers {
-            headersArray.append((h.indexing, self.string(idx: h.name), self.string(idx: h.value)))
+            headersArray.append((h.indexing, h.name, h.value))
         }
         return headersArray.description
     }
 }
 
 extension HPACKHeaders: Equatable {
-    public static func == (lhs: HPACKHeaders, rhs: HPACKHeaders) -> Bool {
+    public static func ==(lhs: HPACKHeaders, rhs: HPACKHeaders) -> Bool {
         guard lhs.headers.count == rhs.headers.count else {
             return false
         }
-        
-        let lhsNames = Set(lhs.names.lazy.map { lhs.string(idx: $0).lowercased() })
-        let rhsNames = Set(rhs.names.lazy.map { rhs.string(idx: $0).lowercased() })
+        let lhsNames = Set(lhs.headers.map { $0.name.lowercased() })
+        let rhsNames = Set(rhs.headers.map { $0.name.lowercased() })
         guard lhsNames == rhsNames else {
             return false
         }
-        
+
         for name in lhsNames {
             guard lhs[name].sorted() == rhs[name].sorted() else {
                 return false
             }
         }
-        
+
         return true
     }
 }
@@ -325,68 +267,15 @@ public enum HPACKIndexing: CustomStringConvertible {
     }
 }
 
-/// Describes the location of a single header name/value string within a buffer.
-struct HPACKHeaderIndex {
-    var start: Int
-    var length: Int
-    
-    init(start: Int, length: Int) {
-        assert(start >= 0, "start must not be negative")
-        assert(length >= 0, "length must not be negative")
-        self.start = start
-        self.length = length
-    }
-    
-    mutating func adjust(by delta: Int, wrappingAt max: Int) {
-        if self.start + delta < 0 {
-            self.start += max + delta
-        } else {
-            self.start += delta
-        }
-        assert(self.start >= 0, "start must not be negative")
-    }
-}
-
-extension HPACKHeaderIndex: CustomStringConvertible {
-    var description: String {
-        return "\(self.start)..<\(self.start + self.length)"
-    }
-}
-
-struct HPACKHeader {
+internal struct HPACKHeader {
     var indexing: HPACKIndexing
-    var name: HPACKHeaderIndex
-    var value: HPACKHeaderIndex
+    var name: String
+    var value: String
     
-    init(start: Int, nameLength: Int, valueLength: Int, indexing: HPACKIndexing = .indexable) {
+    internal init(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         self.indexing = indexing
-        self.name = HPACKHeaderIndex(start: start, length: nameLength)
-        self.value = HPACKHeaderIndex(start: start + nameLength, length: valueLength)
-    }
-    
-    init(start: Int, nameLength: Int, valueStart: Int, valueLength: Int, indexing: HPACKIndexing = .indexable) {
-        self.indexing = indexing
-        self.name = HPACKHeaderIndex(start: start, length: nameLength)
-        self.value = HPACKHeaderIndex(start: valueStart, length: valueLength)
-    }
-}
-
-private extension ByteBuffer {
-    func equalCaseInsensitiveASCII(view: String.UTF8View, at index: HPACKHeaderIndex) -> Bool {
-        guard view.count == index.length else {
-            return false
-        }
-
-        // We force unwrap as Invalid HPACKHeaderIndexes are programmer error.
-        let bufView = self.viewBytes(at: index.start, length: index.length)!
-        for (idx, byte) in view.enumerated() {
-            let bufIdx = bufView.index(bufView.startIndex, offsetBy: idx)
-            guard byte.isASCII && bufView[bufIdx] & 0xdf == byte & 0xdf else {
-                return false
-            }
-        }
-        
-        return true
+        self.name = name
+        self.value = value
     }
 }
 
@@ -424,4 +313,46 @@ private extension Substring {
     }
 }
 
+
+extension Sequence where Self.Element == UInt8 {
+    /// Compares the collection of `UInt8`s to a case insensitive collection.
+    ///
+    /// This collection could be get from applying the `UTF8View`
+    ///   property on the string protocol.
+    ///
+    /// - Parameter bytes: The string constant in the form of a collection of `UInt8`
+    /// - Returns: Whether the collection contains **EXACTLY** this array or no, but by ignoring case.
+    fileprivate func compareCaseInsensitiveASCIIBytes<T: Sequence>(to: T) -> Bool
+        where T.Element == UInt8 {
+            // fast path: we can get the underlying bytes of both
+            let maybeMaybeResult = self.withContiguousStorageIfAvailable { lhsBuffer -> Bool? in
+                to.withContiguousStorageIfAvailable { rhsBuffer in
+                    if lhsBuffer.count != rhsBuffer.count {
+                        return false
+                    }
+
+                    for idx in 0 ..< lhsBuffer.count {
+                        // let's hope this gets vectorised ;)
+                        if lhsBuffer[idx] & 0xdf != rhsBuffer[idx] & 0xdf && lhsBuffer[idx].isASCII {
+                            return false
+                        }
+                    }
+                    return true
+                }
+            }
+
+            if let maybeResult = maybeMaybeResult, let result = maybeResult {
+                return result
+            } else {
+                return self.elementsEqual(to, by: {return (($0 & 0xdf) == ($1 & 0xdf) && $0.isASCII)})
+            }
+    }
+}
+
+
+extension String {
+    internal func isEqualCaseInsensitiveASCIIBytes(to: String) -> Bool {
+        return self.utf8.compareCaseInsensitiveASCIIBytes(to: to.utf8)
+    }
+}
 

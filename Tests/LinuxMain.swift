@@ -41,7 +41,6 @@ import XCTest
          testCase(IntegerCodingTests.allTests),
          testCase(OutboundFlowControlBufferTests.allTests),
          testCase(ReentrancyTests.allTests),
-         testCase(RingBufferTests.allTests),
          testCase(SimpleClientServerTests.allTests),
     ])
 #endif
