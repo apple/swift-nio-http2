@@ -252,6 +252,18 @@ public enum NIOHTTP2Errors {
             self.fieldName = fieldName
         }
     }
+
+    /// Connection-specific header fields are forbidden in HTTP/2: this error is raised when one is
+    /// sent or received.
+    public struct ForbiddenHeaderField: NIOHTTP2Error {
+        public var name: String
+        public var value: String
+
+        public init(name: String, value: String) {
+            self.name = name
+            self.value = value
+        }
+    }
 }
 
 
