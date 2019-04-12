@@ -108,3 +108,11 @@ public enum NIOHPACKErrors {
         public init() { }
     }
 }
+
+/// This enum covers errors that are thrown internally for messaging reasons. These should
+/// not leak.
+internal enum InternalError: Error {
+    case unableToAddHeaderToTable(excess: Int)
+}
+
+extension InternalError: Hashable { }

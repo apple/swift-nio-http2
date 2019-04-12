@@ -21,14 +21,18 @@ public struct IndexedHeaderTable {
     let staticTable: HeaderTableStorage
     @usableFromInline
     var dynamicTable: DynamicHeaderTable
+
+    // TODO(cory): This property should be removed, we only keep it for use in headerViews(at:).
+    private var allocator: ByteBufferAllocator
     
     /// Creates a new header table, optionally specifying a maximum size for the dynamic
     /// portion of the table.
     ///
     /// - Parameter maxDynamicTableSize: Maximum size of the dynamic table. Default = 4096.
     init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = DynamicHeaderTable.defaultSize) {
-        self.staticTable = HeaderTableStorage(allocator: allocator, staticHeaderList: StaticHeaderTable)
-        self.dynamicTable = DynamicHeaderTable(allocator: allocator, maximumLength: maxDynamicTableSize)
+        self.staticTable = HeaderTableStorage(staticHeaderList: StaticHeaderTable)
+        self.dynamicTable = DynamicHeaderTable(maximumLength: maxDynamicTableSize)
+        self.allocator = allocator
     }
     
     /// Obtains the header key/value pair at the given index within the table.
@@ -38,30 +42,37 @@ public struct IndexedHeaderTable {
     /// - Returns: A tuple containing the name and value of the stored header.
     /// - Throws: `NIOHPACKErrors.InvalidHeaderIndex` if the supplied index was invalid.
     public func header(at index: Int) throws -> (name: String, value: String) {
-        let (nameView, valueView) = try self.headerViews(at: index)
-        return (String(decoding: nameView, as: UTF8.self), String(decoding: valueView, as: UTF8.self))
+        let result: HeaderTableEntry
+        if index < self.staticTable.count {
+            result = self.staticTable[index]
+        } else if index - self.staticTable.count < self.dynamicTable.count {
+            result = self.dynamicTable[index - self.staticTable.count]
+        } else {
+            throw NIOHPACKErrors.InvalidHeaderIndex(suppliedIndex: index, availableIndex: self.staticTable.count + self.dynamicTable.count - 1)
+        }
+
+        return (name: result.name, value: result.value)
     }
     
     /// Obtains the header key/value pair at the given index within the table as sequences of
     /// raw bytes.
     ///
+    /// Now deprecated in favour of the method that uses Strings to avoid allocations.
+    ///
     /// - note: Per RFC 7541, this uses a *1-based* index.
     /// - Parameter index: The index to query.
     /// - Returns: A tuple containing the name and value of the stored header.
     /// - Throws: `NIOHPACKErrors.InvalidHeaderIndex` if the supplied index was invalid.
+    @available(*, deprecated, renamed: "header(at:)")
     public func headerViews(at index: Int) throws -> (name: ByteBufferView, value: ByteBufferView) {
-        let result: (ByteBufferView, ByteBufferView)
-        if index < self.staticTable.count {
-            let entry = self.staticTable[index]
-            result = (self.staticTable.view(of: entry.name), self.staticTable.view(of: entry.value))
-        } else if index - self.staticTable.count < self.dynamicTable.count {
-            let entry = self.dynamicTable[index - self.staticTable.count]
-            result = (self.dynamicTable.view(of: entry.name), self.dynamicTable.view(of: entry.value))
-        } else {
-            throw NIOHPACKErrors.InvalidHeaderIndex(suppliedIndex: index, availableIndex: self.staticTable.count + self.dynamicTable.count - 1)
-        }
-        
-        return result
+        let (name, value) = try self.header(at: index)
+
+        var nameBuffer = self.allocator.buffer(capacity: name.utf8.count)
+        var valueBuffer = self.allocator.buffer(capacity: value.utf8.count)
+        nameBuffer.writeString(name)
+        valueBuffer.writeString(value)
+
+        return (nameBuffer.readableBytesView, valueBuffer.readableBytesView)
     }
     
     /// Searches the table to locate an existing header with the given name and value. If
@@ -75,10 +86,6 @@ public struct IndexedHeaderTable {
     ///            whether the item at that index also contains a matching value. Returns `nil`
     ///            if no match could be found.
     public func firstHeaderMatch(for name: String, value: String?) -> (index: Int, matchesValue: Bool)? {
-        return self.firstHeaderMatch(for: name.utf8, value: value?.utf8)
-    }
-    
-    func firstHeaderMatch<Name: Collection, Value: Collection>(for name: Name, value: Value?) -> (index: Int, matchesValue: Bool)? where Name.Element == UInt8, Value.Element == UInt8 {
         guard let value = value else {
             // AnySequence only has `first(where:)` method, not `first` property.
             return self.staticTable.firstIndex(matching: name).map { ($0, false) }
@@ -127,7 +134,7 @@ public struct IndexedHeaderTable {
     ///   - value: The value of the header to insert.
     /// - Returns: `true` if the header was added to the table, `false` if not.
     public mutating func add(headerNamed name: String, value: String) throws {
-        try self.add(headerNamed: name.utf8, value: value.utf8)
+        try self.dynamicTable.addHeader(named: name, value: value)
     }
     
     /// Appends a header to the table.
@@ -137,11 +144,18 @@ public struct IndexedHeaderTable {
     /// > an attempt to add an entry larger than the maximum size causes the table to be
     /// > emptied of all existing entries and results in an empty table."
     ///
+    /// This method is deprecated in favour of the version that takes Strings, as that version performs
+    /// better.
+    ///
     /// - Parameters:
     ///   - name: A sequence of contiguous bytes containing the name of the header to insert.
     ///   - value: A sequence of contiguous bytes containing the value of the header to insert.
+    @available(*, deprecated, renamed: "add(headerNamed:value:)")
     public mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
-        try self.dynamicTable.addHeader(named: name, value: value)
+        let nameString = String(decoding: name, as: UTF8.self)
+        let valueString = String(decoding: value, as: UTF8.self)
+        
+        try self.add(headerNamed: nameString, value: valueString)
     }
     
     /// Internal for test access.

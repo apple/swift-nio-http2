@@ -107,7 +107,7 @@ class HeaderTableTests: XCTestCase {
         // get code coverage for dynamic table search with no value to match
         // Note that the resulting index is an index into the dynamic table only, so we
         // have to modify it to check that it's what we expect.
-        if let found = table.dynamicTable.findExistingHeader(named: "custom-key".utf8, value: Optional<[UInt8]>.none) {
+        if let found = table.dynamicTable.findExistingHeader(named: "custom-key", value: nil) {
             XCTAssertEqualTuple((62 - StaticHeaderTable.count, false), found)
         }
         
