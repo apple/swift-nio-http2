@@ -11,6 +11,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
+import NIOHPACK
 
 public protocol NIOHTTP2Error: Equatable, Error { }
 
@@ -178,6 +179,24 @@ public enum NIOHTTP2Errors {
 
         public init(_ name: String) {
             self.name = name
+        }
+    }
+
+    /// An unknown pseudo-header was received.
+    public struct UnknownPseudoHeader: NIOHTTP2Error {
+        public var name: String
+
+        public init(_ name: String) {
+            self.name = name
+        }
+    }
+
+    /// A header block was received with an invalid set of pseudo-headers for the block type.
+    public struct InvalidPseudoHeaders: NIOHTTP2Error {
+        public var headerBlock: HPACKHeaders
+
+        public init(_ block: HPACKHeaders) {
+            self.headerBlock = block
         }
     }
 
