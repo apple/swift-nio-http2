@@ -113,6 +113,15 @@ extension ConnectionStateMachineTests {
                 ("testAllowSimpleConnectRequest", testAllowSimpleConnectRequest),
                 ("testRejectRequestHeadersWithoutAuthorityFieldOnCONNECT", testRejectRequestHeadersWithoutAuthorityFieldOnCONNECT),
                 ("testAllowRequestHeadersWithoutAuthorityFieldOnCONNECTValidationDisabled", testAllowRequestHeadersWithoutAuthorityFieldOnCONNECTValidationDisabled),
+                ("testRejectHeadersWithConnectionHeader", testRejectHeadersWithConnectionHeader),
+                ("testAllowHeadersWithConnectionHeaderWhenValidationDisabled", testAllowHeadersWithConnectionHeaderWhenValidationDisabled),
+                ("testRejectHeadersWithTransferEncodingHeader", testRejectHeadersWithTransferEncodingHeader),
+                ("testAllowHeadersWithTransferEncodingHeaderWhenValidationDisabled", testAllowHeadersWithTransferEncodingHeaderWhenValidationDisabled),
+                ("testRejectHeadersWithProxyConnectionHeader", testRejectHeadersWithProxyConnectionHeader),
+                ("testAllowHeadersWithProxyConnectionHeaderWhenValidationDisabled", testAllowHeadersWithProxyConnectionHeaderWhenValidationDisabled),
+                ("testRejectHeadersWithTEHeaderNotTrailers", testRejectHeadersWithTEHeaderNotTrailers),
+                ("testAllowHeadersWithTEHeaderNotTrailersWhenValidationDisabled", testAllowHeadersWithTEHeaderNotTrailersWhenValidationDisabled),
+                ("testAllowHeadersWithTEHeaderSetToTrailers", testAllowHeadersWithTEHeaderSetToTrailers),
            ]
    }
 }

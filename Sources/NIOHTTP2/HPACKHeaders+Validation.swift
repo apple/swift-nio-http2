@@ -86,6 +86,7 @@ extension HeaderBlockValidator {
         for (name, value, _) in block {
             let fieldName = try HeaderFieldName(name)
             try blockSection.validField(fieldName)
+            try fieldName.legalHeaderField(value: value)
 
             let thisPseudoHeaderFieldType = try seenPseudoHeaders.seenNewHeaderField(fieldName)
 
@@ -142,22 +143,28 @@ extension RequestBlockValidator: HeaderBlockValidator {
         // This is a bit awkward.
         //
         // For now we don't support extended-CONNECT, but when we do we'll need to update the logic here.
-        guard let pseudoHeaderType = pseudoHeaderType else {
-            // Nothing to do here.
-            return
-        }
+        if let pseudoHeaderType = pseudoHeaderType {
+            assert(name.fieldType == .pseudoHeaderField)
 
-        switch pseudoHeaderType {
-        case .method:
-            // This is a method pseudo-header. Check if the value is CONNECT.
-            self.isConnectRequest = value == "CONNECT"
-        case .path:
-            // This is a path pseudo-header. It must not be empty.
-            if value.utf8.count == 0 {
-                throw NIOHTTP2Errors.EmptyPathHeader()
+            switch pseudoHeaderType {
+            case .method:
+                // This is a method pseudo-header. Check if the value is CONNECT.
+                self.isConnectRequest = value == "CONNECT"
+            case .path:
+                // This is a path pseudo-header. It must not be empty.
+                if value.utf8.count == 0 {
+                    throw NIOHTTP2Errors.EmptyPathHeader()
+                }
+            default:
+                break
             }
-        default:
-            break
+        } else {
+            assert(name.fieldType == .regularHeaderField)
+
+            // We want to check that if the TE header field is present, it only contains "trailers".
+            if name.baseName == "te" && value != "trailers" {
+                throw NIOHTTP2Errors.ForbiddenHeaderField(name: String(name.baseName), value: value)
+            }
         }
     }
 
@@ -247,6 +254,27 @@ extension HeaderFieldName {
 
         guard baseNameBytes.isValidFieldName else {
             throw NIOHTTP2Errors.InvalidHTTP2HeaderFieldName(fieldName)
+        }
+    }
+
+    func legalHeaderField(value: String) throws {
+        // RFC 7540 § 8.1.2.2 forbids all connection-specific header fields. A connection-specific header field technically
+        // is one that is listed in the Connection header, but could also be proxy-connection & transfer-encoding, even though
+        // those are not usually listed in the Connection header. For defensiveness sake, we forbid those too.
+        //
+        // There is one more wrinkle, which is that the client is allowed to send TE: trailers, and forbidden from sending TE
+        // with anything else. We police that separately, as TE is only defined on requests, so we can avoid checking for it
+        // on responses and trailers.
+        guard self.fieldType == .regularHeaderField else {
+            // Pseudo-headers are never connection-specific.
+            return
+        }
+
+        switch self.baseName {
+        case "connection", "transfer-encoding", "proxy-connection":
+            throw NIOHTTP2Errors.ForbiddenHeaderField(name: String(self.baseName), value: value)
+        default:
+            return
         }
     }
 }
