@@ -56,7 +56,7 @@ class ConfiguringPipelineTests: XCTestCase {
 
         // Let's try sending a request.
         let requestPromise = self.clientChannel.eventLoop.makePromise(of: Void.self)
-        let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]), endStream: true)))
+        let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/")]), endStream: true)))
 
         clientHandler.createStreamChannel(promise: nil) { channel, streamID in
             XCTAssertEqual(streamID, HTTP2StreamID(1))

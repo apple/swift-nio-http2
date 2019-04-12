@@ -68,9 +68,11 @@ fileprivate enum BlockSection {
 fileprivate protocol HeaderBlockValidator {
     init()
 
-    var blockSection: BlockSection { get set }
+    var allowedPseudoHeaderFields: PseudoHeaders { get }
 
-    mutating func validateNextField(name: HeaderFieldName, value: String) throws
+    var mandatoryPseudoHeaderFields: PseudoHeaders { get }
+
+    mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws
 }
 
 
@@ -78,10 +80,23 @@ extension HeaderBlockValidator {
     /// Validates that a header block meets the requirements of this `HeaderBlockValidator`.
     fileprivate static func validateBlock(_ block: HPACKHeaders) throws {
         var validator = Self()
+        var blockSection = BlockSection.pseudoHeaders
+        var seenPseudoHeaders = PseudoHeaders(rawValue: 0)
+
         for (name, value, _) in block {
             let fieldName = try HeaderFieldName(name)
-            try validator.blockSection.validField(fieldName)
-            try validator.validateNextField(name: fieldName, value: value)
+            try blockSection.validField(fieldName)
+
+            let thisPseudoHeaderFieldType = try seenPseudoHeaders.seenNewHeaderField(fieldName)
+
+            try validator.validateNextField(name: fieldName, value: value, pseudoHeaderType: thisPseudoHeaderFieldType)
+        }
+
+        // We must only have seen pseudo-header fields allowed on this type of header block,
+        // and at least the mandatory set.
+        guard validator.allowedPseudoHeaderFields.isSuperset(of: seenPseudoHeaders) &&
+              validator.mandatoryPseudoHeaderFields.isSubset(of: seenPseudoHeaders) else {
+            throw NIOHTTP2Errors.InvalidPseudoHeaders(block)
         }
     }
 }
@@ -89,23 +104,82 @@ extension HeaderBlockValidator {
 
 /// An object that can be used to validate if a given header block is a valid request header block.
 fileprivate struct RequestBlockValidator {
-    var blockSection: BlockSection = .pseudoHeaders
+    private var isConnectRequest: Bool = false
 }
 
 extension RequestBlockValidator: HeaderBlockValidator {
-    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String) throws {
-        return
+    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws {
+        // We have a wrinkle here: the set of allowed and mandatory pseudo headers for requests depends on whether this request is a CONNECT request.
+        // If it isn't, RFC 7540 § 8.1.2.3 rules, and says that:
+        //
+        // > All HTTP/2 requests MUST include exactly one valid value for the ":method", ":scheme", and ":path" pseudo-header fields
+        //
+        // Unfortunately, it also has an extra clause that says "unless it is a CONNECT request". That clause makes RFC 7540 § 8.3 relevant, which
+        // says:
+        //
+        // > The ":scheme" and ":path" pseudo-header fields MUST be omitted.
+        //
+        // Implicitly, the :authority pseudo-header field must be present here as well, as § 8.3 imposes a specific form on that header field which
+        // cannot make much sense if the field is optional.
+        //
+        // This is further complicated by RFC 8441 (Bootstrapping WebSockets with HTTP/2) which defines the "extended" CONNECT method. RFC 8441 § 4
+        // says:
+        //
+        // > A new pseudo-header field :protocol MAY be included on request HEADERS indicating the desired protocol to be spoken on the tunnel
+        // > created by CONNECT.
+        //
+        // > On requests that contain the :protocol pseudo-header field, the :scheme and :path pseudo-header fields of the target URI
+        // > MUST also be included.
+        //
+        // > On requests bearing the :protocol pseudo-header field, the :authority pseudo-header field is interpreted according to
+        // > Section 8.1.2.3 of [RFC7540] instead of Section 8.3 of that document.
+        //
+        // We can summarise these rules loosely by saying that:
+        //
+        // - On non-CONNECT requests or CONNECT requests with the :protocol pseudo-header, :method, :scheme, and :path are mandatory, :authority is allowed.
+        // - On CONNECT requests without the :protocol pseudo-header, :method and :authority are mandatory, no others are allowed.
+        //
+        // This is a bit awkward.
+        //
+        // For now we don't support extended-CONNECT, but when we do we'll need to update the logic here.
+        guard let pseudoHeaderType = pseudoHeaderType, pseudoHeaderType == .method else {
+            // Nothing to do here.
+            return
+        }
+
+        // This is a method pseudo-header. Check if the value is CONNECT.
+        self.isConnectRequest = value == "CONNECT"
+    }
+
+    var allowedPseudoHeaderFields: PseudoHeaders {
+        // For the logic behind this if statement, see the comment in validateNextField.
+        if self.isConnectRequest {
+            return .allowedConnectRequestHeaders
+        } else {
+            return .allowedRequestHeaders
+        }
+    }
+
+    var mandatoryPseudoHeaderFields: PseudoHeaders {
+        // For the logic behind this if statement, see the comment in validateNextField.
+        if self.isConnectRequest {
+            return .mandatoryConnectRequestHeaders
+        } else {
+            return .mandatoryRequestHeaders
+        }
     }
 }
 
 
 /// An object that can be used to validate if a given header block is a valid response header block.
 fileprivate struct ResponseBlockValidator {
-    var blockSection: BlockSection = .pseudoHeaders
+    let allowedPseudoHeaderFields: PseudoHeaders = .allowedResponseHeaders
+
+    let mandatoryPseudoHeaderFields: PseudoHeaders = .mandatoryResponseHeaders
 }
 
 extension ResponseBlockValidator: HeaderBlockValidator {
-    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String) throws {
+    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws {
         return
     }
 }
@@ -113,11 +187,13 @@ extension ResponseBlockValidator: HeaderBlockValidator {
 
 /// An object that can be used to validate if a given header block is a valid trailer block.
 fileprivate struct TrailersValidator {
-    var blockSection: BlockSection = .pseudoHeaders
+    let allowedPseudoHeaderFields: PseudoHeaders = []
+
+    let mandatoryPseudoHeaderFields: PseudoHeaders = []
 }
 
 extension TrailersValidator: HeaderBlockValidator {
-    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String) throws {
+    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws {
         return
     }
 }
@@ -212,5 +288,71 @@ extension Substring.UTF8View {
                 return false
             }
         }
+    }
+}
+
+
+/// A set of all pseudo-headers defined in HTTP/2.
+fileprivate struct PseudoHeaders: OptionSet {
+    var rawValue: UInt8
+
+    static let path = PseudoHeaders(rawValue: 1 << 0)
+    static let method = PseudoHeaders(rawValue: 1 << 1)
+    static let scheme = PseudoHeaders(rawValue: 1 << 2)
+    static let authority = PseudoHeaders(rawValue: 1 << 3)
+    static let status = PseudoHeaders(rawValue: 1 << 4)
+
+    static let mandatoryRequestHeaders: PseudoHeaders = [.path, .method, .scheme]
+    static let allowedRequestHeaders: PseudoHeaders = [.path, .method, .scheme, .authority]
+    static let mandatoryConnectRequestHeaders: PseudoHeaders = [.method, .authority]
+    static let allowedConnectRequestHeaders: PseudoHeaders = [.method, .authority]
+    static let mandatoryResponseHeaders: PseudoHeaders = [.status]
+    static let allowedResponseHeaders: PseudoHeaders = [.status]
+}
+
+extension PseudoHeaders {
+    /// Obtain a PseudoHeaders optionset containing the bit for a known pseudo header. Fails if this is an unknown pseudoheader.
+    /// Traps if this is not a pseudo-header at all.
+    init?(headerFieldName name: HeaderFieldName) {
+        precondition(name.fieldType == .pseudoHeaderField)
+
+        switch name.baseName {
+        case "path":
+            self = .path
+        case "method":
+            self = .method
+        case "scheme":
+            self = .scheme
+        case "authority":
+            self = .authority
+        case "status":
+            self = .status
+        default:
+            return nil
+        }
+    }
+}
+
+extension PseudoHeaders {
+    /// Updates this set of PseudoHeaders with any new pseudo headers we've seen. Also returns a PseudoHeaders that marks
+    /// the type of this specific header field.
+    mutating func seenNewHeaderField(_ name: HeaderFieldName) throws -> PseudoHeaders? {
+        // We need to check if this is a pseudo-header field we've seen before and one we recognise.
+        // We only want to see a pseudo-header field once.
+        guard name.fieldType == .pseudoHeaderField else {
+            return nil
+        }
+
+        guard let pseudoHeaderType = PseudoHeaders(headerFieldName: name) else {
+            throw NIOHTTP2Errors.UnknownPseudoHeader(":\(name.baseName)")
+        }
+
+        if self.contains(pseudoHeaderType) {
+            throw NIOHTTP2Errors.DuplicatePseudoHeader(":\(name.baseName)")
+        }
+
+        self.formUnion(pseudoHeaderType)
+
+        return pseudoHeaderType
     }
 }

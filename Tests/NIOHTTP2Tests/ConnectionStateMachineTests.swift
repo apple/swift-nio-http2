@@ -340,8 +340,8 @@ class ConnectionStateMachineTests: XCTestCase {
         // Server completes both streams.
         assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
         assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
-        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
-        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
 
         // Cleanup
         assertSucceeds(self.client.sendGoaway(lastStreamID: streamTwo))
@@ -1872,6 +1872,351 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.server.sendHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
         assertSucceeds(self.client.receiveHeaders(streamID: streamFive, headers: ConnectionStateMachineTests.trailers.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithMissingMethodField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain :method.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithMissingMethodFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain :method.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithMissingPathField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost"), (":scheme", "https"), (":method", "GET"), ("content-length", "0")])
+
+        // Request headers must contain :path.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithMissingPathFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost"), (":scheme", "https"), (":method", "GET"), ("content-length", "0")])
+
+        // Request headers must contain :path.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithMissingSchemeField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost"), (":method", "GET"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain :scheme.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithMissingSchemeFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost"), (":method", "GET"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain :scheme.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithDuplicateMethodField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":method", "GET"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain only one :method.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithDuplicateMethodFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":method", "GET"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain only one :method.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithDuplicatePathField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":path", "/"), (":path", "/"), (":authority", "localhost"), (":scheme", "https"), (":method", "GET"), ("content-length", "0")])
+
+        // Request headers must contain only one :path.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithDuplicatePathFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":path", "/"), (":path", "/"), (":authority", "localhost"), (":scheme", "https"), (":method", "GET"), ("content-length", "0")])
+
+        // Request headers must contain only one :path.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithDuplicateSchemeField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":scheme", "https"), (":scheme", "https"), (":authority", "localhost"), (":method", "GET"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain only one :scheme.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithDuplicateSchemeFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":scheme", "https"), (":scheme", "https"), (":authority", "localhost"), (":method", "GET"), (":path", "/"), ("content-length", "0")])
+
+        // Request headers must contain only one :scheme.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectResponseHeadersWithMissingStatusField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([("content-length", "0")])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Response headers must contain :status.
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowResponseHeadersWithMissingStatusFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([("content-length", "0")])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Response headers must contain :status.
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectResponseHeadersWithDuplicateStatusField() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":status", "200"), (":status", "200"), ("content-length", "0")])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Response headers must contain only one :status.
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowResponseHeadersWithDuplicateStatusFieldWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":status", "200"), (":status", "200"), ("content-length", "0")])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Response headers must contain only one :status.
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectTrailersHeadersWithAnyPseudoHeader() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let trailers = HPACKHeaders([(":method", "GET")])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Trailers must not contain pseudo-headers.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: trailers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: trailers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithSchemeFieldOnCONNECT() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost:443"), (":method", "CONNECT"), (":scheme", "https")])
+
+        // Request headers for a CONNECT request must not contain :scheme.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithSchemeFieldOnCONNECTValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost:443"), (":method", "CONNECT"), (":scheme", "https")])
+
+        // Request headers for a CONNECT request must not contain :scheme.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithPathFieldOnCONNECT() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost:443"), (":method", "CONNECT"), (":path", "/")])
+
+        // Request headers for a CONNECT request must not contain :scheme.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithPathFieldOnCONNECTValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost:443"), (":method", "CONNECT"), (":path", "/")])
+
+        // Request headers for a CONNECT request must not contain :scheme.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowSimpleConnectRequest() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":authority", "localhost:443"), (":method", "CONNECT")])
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectRequestHeadersWithoutAuthorityFieldOnCONNECT() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":method", "CONNECT")])
+
+        // Request headers for a CONNECT request must contain :authority.
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testAllowRequestHeadersWithoutAuthorityFieldOnCONNECTValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, headerBlockValidation: .disabled)
+        self.client = .init(role: .client, headerBlockValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":method", "CONNECT")])
+
+        // Request headers for a CONNECT request must not contain :scheme.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
     }
 }
 
