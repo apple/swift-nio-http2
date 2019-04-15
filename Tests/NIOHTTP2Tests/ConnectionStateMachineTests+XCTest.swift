@@ -124,6 +124,20 @@ extension ConnectionStateMachineTests {
                 ("testAllowHeadersWithTEHeaderSetToTrailers", testAllowHeadersWithTEHeaderSetToTrailers),
                 ("testSettingActualMaxFrameSize", testSettingActualMaxFrameSize),
                 ("testSettingActualInitialWindowSize", testSettingActualInitialWindowSize),
+                ("testPolicingExceedingContentLengthForRequests", testPolicingExceedingContentLengthForRequests),
+                ("testPolicingExceedingContentLengthForResponses", testPolicingExceedingContentLengthForResponses),
+                ("testPolicingMissingContentLengthForRequests", testPolicingMissingContentLengthForRequests),
+                ("testPolicingMissingContentLengthForResponses", testPolicingMissingContentLengthForResponses),
+                ("testPolicingInvalidContentLengthForRequestsWithEndStream", testPolicingInvalidContentLengthForRequestsWithEndStream),
+                ("testPolicingInvalidContentLengthForResponsesWithEndStream", testPolicingInvalidContentLengthForResponsesWithEndStream),
+                ("testValidContentLengthForRequestsWithEndStream", testValidContentLengthForRequestsWithEndStream),
+                ("testValidContentLengthForResponsesWithEndStream", testValidContentLengthForResponsesWithEndStream),
+                ("testNoPolicingExceedingContentLengthForRequestsWhenValidationDisabled", testNoPolicingExceedingContentLengthForRequestsWhenValidationDisabled),
+                ("testNoPolicingExceedingContentLengthForResponsesWhenValidationDisabled", testNoPolicingExceedingContentLengthForResponsesWhenValidationDisabled),
+                ("testNoPolicingMissingContentLengthForRequestsWhenValidationDisabled", testNoPolicingMissingContentLengthForRequestsWhenValidationDisabled),
+                ("testNoPolicingMissingContentLengthForResponsesWhenValidationDisabled", testNoPolicingMissingContentLengthForResponsesWhenValidationDisabled),
+                ("testNoPolicingInvalidContentLengthForRequestsWithEndStreamWhenValidationDisabled", testNoPolicingInvalidContentLengthForRequestsWithEndStreamWhenValidationDisabled),
+                ("testNoPolicingInvalidContentLengthForResponsesWithEndStreamWhenValidationDisabled", testNoPolicingInvalidContentLengthForResponsesWithEndStreamWhenValidationDisabled),
            ]
    }
 }

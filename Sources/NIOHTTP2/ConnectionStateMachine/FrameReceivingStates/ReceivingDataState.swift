@@ -24,7 +24,7 @@ protocol ReceivingDataState: HasFlowControlWindows {
 
 extension ReceivingDataState {
     /// Called to receive a DATA frame.
-    mutating func receiveData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func receiveData(streamID: HTTP2StreamID, contentLength: Int, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         do {
             try self.inboundFlowControlWindow.consume(flowControlledBytes: flowControlledBytes)
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
@@ -34,7 +34,7 @@ extension ReceivingDataState {
         }
 
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
-            $0.receiveData(flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            $0.receiveData(contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
         }
 
         // We need to be a bit careful here. The backing code may have triggered either an ignoreFrame or streamError. While both of these

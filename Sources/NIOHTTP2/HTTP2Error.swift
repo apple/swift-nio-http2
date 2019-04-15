@@ -264,6 +264,11 @@ public enum NIOHTTP2Errors {
             self.value = value
         }
     }
+
+    /// A request or response has violated the expected content length, either exceeding or falling beneath it.
+    public struct ContentLengthViolated: NIOHTTP2Error {
+        public init() { }
+    }
 }
 
 
