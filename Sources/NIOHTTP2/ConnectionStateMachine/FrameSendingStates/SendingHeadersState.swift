@@ -23,6 +23,8 @@ protocol SendingHeadersState: HasFlowControlWindows {
 
     var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
 
+    var contentLengthValidation: HTTP2ConnectionStateMachine.ValidationState { get }
+
     var streamState: ConnectionStreamState { get set }
 
     var localInitialWindowSize: UInt32 { get }
@@ -35,6 +37,7 @@ extension SendingHeadersState {
     mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         let result: StateMachineResultWithStreamEffect
         let validateHeaderBlock = self.headerBlockValidation == .enabled
+        let validateContentLength = self.contentLengthValidation == .enabled
 
         if self.role == .client && streamID.mayBeInitiatedBy(.client) {
             do {
@@ -42,7 +45,7 @@ extension SendingHeadersState {
                                                                               localRole: .client,
                                                                               localInitialWindowSize: self.localInitialWindowSize,
                                                                               remoteInitialWindowSize: self.remoteInitialWindowSize) {
-                    $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, isEndStreamSet: endStream)
+                    $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, isEndStreamSet: endStream)
                 }
             } catch {
                 return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
@@ -50,7 +53,7 @@ extension SendingHeadersState {
         } else {
             // HEADERS cannot create streams for servers, so this must be for a stream we already know about.
             result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
-                $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, isEndStreamSet: endStream)
+                $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, isEndStreamSet: endStream)
             }
         }
 
@@ -64,9 +67,10 @@ extension SendingHeadersState where Self: RemotelyQuiescingState {
     /// be modifying an existing one.
     mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         let validateHeaderBlock = self.headerBlockValidation == .enabled
+        let validateContentLength = self.contentLengthValidation == .enabled
         
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
-            $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, isEndStreamSet: endStream)
+            $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, isEndStreamSet: endStream)
         }
         return StateMachineResultWithEffect(result, connectionState: self)
     }

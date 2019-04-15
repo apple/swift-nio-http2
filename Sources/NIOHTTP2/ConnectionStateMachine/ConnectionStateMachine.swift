@@ -66,12 +66,14 @@ struct HTTP2ConnectionStateMachine {
     private struct IdleConnectionState: ConnectionStateWithRole, ConnectionStateWithConfiguration {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
     }
 
     /// The state required for a connection that has sent a connection preface.
     private struct PrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames, HasLocalSettings, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -88,6 +90,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromIdle idleState: IdleConnectionState, localSettings settings: HTTP2SettingsState) {
             self.role = idleState.role
             self.headerBlockValidation = idleState.headerBlockValidation
+            self.contentLengthValidation = idleState.contentLengthValidation
             self.localSettings = settings
             self.streamState = ConnectionStreamState()
 
@@ -100,6 +103,7 @@ struct HTTP2ConnectionStateMachine {
     private struct PrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MayReceiveFrames, HasRemoteSettings, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -116,6 +120,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromIdle idleState: IdleConnectionState, remoteSettings settings: HTTP2SettingsState) {
             self.role = idleState.role
             self.headerBlockValidation = idleState.headerBlockValidation
+            self.contentLengthValidation = idleState.contentLengthValidation
             self.remoteSettings = settings
             self.streamState = ConnectionStreamState()
 
@@ -128,6 +133,7 @@ struct HTTP2ConnectionStateMachine {
     private struct ActiveConnectionState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -145,6 +151,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromPrefaceReceived state: PrefaceReceivedState, localSettings settings: HTTP2SettingsState) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
             self.localSettings = settings
@@ -156,6 +163,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromPrefaceSent state: PrefaceSentState, remoteSettings settings: HTTP2SettingsState) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.localSettings = state.localSettings
             self.streamState = state.streamState
             self.remoteSettings = settings
@@ -170,6 +178,7 @@ struct HTTP2ConnectionStateMachine {
     private struct QuiescingPrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, RemotelyQuiescingState, MayReceiveFrames, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -192,6 +201,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromPrefaceReceived state: PrefaceReceivedState, lastStreamID: HTTP2StreamID) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
             self.inboundFlowControlWindow = state.inboundFlowControlWindow
@@ -206,6 +216,7 @@ struct HTTP2ConnectionStateMachine {
     private struct QuiescingPrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, MaySendFrames, HasLocalSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
         var inboundFlowControlWindow: HTTP2FlowControlWindow
@@ -228,6 +239,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromPrefaceSent state: PrefaceSentState, lastStreamID: HTTP2StreamID) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.localSettings = state.localSettings
             self.streamState = state.streamState
             self.inboundFlowControlWindow = state.inboundFlowControlWindow
@@ -241,6 +253,7 @@ struct HTTP2ConnectionStateMachine {
     private struct RemotelyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, RemotelyQuiescingState, MayReceiveFrames, MaySendFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -264,6 +277,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromActive state: ActiveConnectionState, lastLocalStreamID streamID: HTTP2StreamID) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -275,6 +289,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromQuiescingPrefaceReceived state: QuiescingPrefaceReceivedState, localSettings settings: HTTP2SettingsState) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.remoteSettings = state.remoteSettings
             self.localSettings = settings
             self.streamState = state.streamState
@@ -288,6 +303,7 @@ struct HTTP2ConnectionStateMachine {
     private struct LocallyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -311,6 +327,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromActive state: ActiveConnectionState, lastRemoteStreamID streamID: HTTP2StreamID) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -322,6 +339,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromQuiescingPrefaceSent state: QuiescingPrefaceSentState, remoteSettings settings: HTTP2SettingsState) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.localSettings = state.localSettings
             self.remoteSettings = settings
             self.streamState = state.streamState
@@ -335,6 +353,7 @@ struct HTTP2ConnectionStateMachine {
     private struct BothQuiescingState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, RemotelyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var localSettings: HTTP2SettingsState
         var remoteSettings: HTTP2SettingsState
         var streamState: ConnectionStreamState
@@ -358,6 +377,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromRemotelyQuiesced state: RemotelyQuiescedState, lastRemoteStreamID streamID: HTTP2StreamID) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -371,6 +391,7 @@ struct HTTP2ConnectionStateMachine {
         init(fromLocallyQuiesced state: LocallyQuiescedState, lastLocalStreamID streamID: HTTP2StreamID) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
+            self.contentLengthValidation = state.contentLengthValidation
             self.localSettings = state.localSettings
             self.remoteSettings = state.remoteSettings
             self.streamState = state.streamState
@@ -386,6 +407,7 @@ struct HTTP2ConnectionStateMachine {
     private struct FullyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, RemotelyQuiescingState, SendAndReceiveGoawayState {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
+        var contentLengthValidation: ValidationState
         var streamState: ConnectionStreamState
         var lastLocalStreamID: HTTP2StreamID
         var lastRemoteStreamID: HTTP2StreamID
@@ -393,6 +415,7 @@ struct HTTP2ConnectionStateMachine {
         init<PreviousState: LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
             self.role = previousState.role
             self.headerBlockValidation = previousState.headerBlockValidation
+            self.contentLengthValidation = previousState.contentLengthValidation
             self.streamState = previousState.streamState
             self.lastLocalStreamID = previousState.lastLocalStreamID
             self.lastRemoteStreamID = previousState.lastRemoteStreamID
@@ -401,6 +424,7 @@ struct HTTP2ConnectionStateMachine {
         init<PreviousState: LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
             self.role = previousState.role
             self.headerBlockValidation = previousState.headerBlockValidation
+            self.contentLengthValidation = previousState.contentLengthValidation
             self.streamState = previousState.streamState
             self.lastLocalStreamID = .maxID
             self.lastRemoteStreamID = previousState.lastRemoteStreamID
@@ -409,6 +433,7 @@ struct HTTP2ConnectionStateMachine {
         init<PreviousState: RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
             self.role = previousState.role
             self.headerBlockValidation = previousState.headerBlockValidation
+            self.contentLengthValidation = previousState.contentLengthValidation
             self.streamState = previousState.streamState
             self.lastLocalStreamID = previousState.lastLocalStreamID
             self.lastRemoteStreamID = .maxID
@@ -478,8 +503,8 @@ struct HTTP2ConnectionStateMachine {
 
     private var state: State
 
-    init(role: ConnectionRole, headerBlockValidation: ValidationState = .enabled) {
-        self.state = .idle(.init(role: role, headerBlockValidation: headerBlockValidation))
+    init(role: ConnectionRole, headerBlockValidation: ValidationState = .enabled, contentLengthValidation: ValidationState = .enabled) {
+        self.state = .idle(.init(role: role, headerBlockValidation: headerBlockValidation, contentLengthValidation: contentLengthValidation))
     }
 
     /// Whether this connection is closed.
@@ -668,38 +693,38 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a DATA frame has been received.
-    mutating func receiveData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func receiveData(streamID: HTTP2StreamID, contentLength: Int, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         switch self.state {
         case .prefaceReceived(var state):
-            let result = state.receiveData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .prefaceReceived(state)
             return result
 
         case .active(var state):
-            let result = state.receiveData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .active(state)
             return result
 
         case .locallyQuiesced(var state):
-            let result = state.receiveData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .locallyQuiesced(state)
             self.closeIfNeeded(state)
             return result
 
         case .remotelyQuiesced(var state):
-            let result = state.receiveData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .remotelyQuiesced(state)
             self.closeIfNeeded(state)
             return result
 
         case .bothQuiescing(var state):
-            let result = state.receiveData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .bothQuiescing(state)
             self.closeIfNeeded(state)
             return result
 
         case .quiescingPrefaceReceived(var state):
-            let result = state.receiveData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .quiescingPrefaceReceived(state)
             return result
 
@@ -713,38 +738,38 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a user is trying to send a DATA frame.
-    mutating func sendData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func sendData(streamID: HTTP2StreamID, contentLength: Int, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         switch self.state {
         case .prefaceSent(var state):
-            let result = state.sendData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .prefaceSent(state)
             return result
 
         case .active(var state):
-            let result = state.sendData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .active(state)
             return result
 
         case .locallyQuiesced(var state):
-            let result = state.sendData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .locallyQuiesced(state)
             self.closeIfNeeded(state)
             return result
 
         case .remotelyQuiesced(var state):
-            let result = state.sendData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .remotelyQuiesced(state)
             self.closeIfNeeded(state)
             return result
 
         case .bothQuiescing(var state):
-            let result = state.sendData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .bothQuiescing(state)
             self.closeIfNeeded(state)
             return result
 
         case .quiescingPrefaceSent(var state):
-            let result = state.sendData(streamID: streamID, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
             self.state = .quiescingPrefaceSent(state)
             return result
 
@@ -1388,4 +1413,6 @@ extension ConnectionStateWithRole {
 /// A simple protocol that provides helpers that apply to all connection states that have configuration.
 private protocol ConnectionStateWithConfiguration {
     var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
+
+    var contentLengthValidation: HTTP2ConnectionStateMachine.ValidationState { get}
 }

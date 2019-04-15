@@ -95,8 +95,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         case disabled
     }
 
-    public init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings, headerBlockValidation: ValidationState = .enabled) {
-        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation))
+    public init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings, headerBlockValidation: ValidationState = .enabled, contentLengthValidation: ValidationState = .enabled) {
+        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
         self.mode = mode
         self.initialSettings = initialSettings
         self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100)
@@ -220,7 +220,7 @@ extension NIOHTTP2Handler {
             // TODO(cory): Implement
             fatalError("Currently some frames are unhandled.")
         case .data(let dataBody):
-            result = self.stateMachine.receiveData(streamID: frame.streamID, flowControlledBytes: flowControlledLength, isEndStreamSet: dataBody.endStream)
+            result = self.stateMachine.receiveData(streamID: frame.streamID, contentLength: dataBody.data.readableBytes, flowControlledBytes: flowControlledLength, isEndStreamSet: dataBody.endStream)
         case .goAway(let lastStreamID, _, _):
             result = self.stateMachine.receiveGoaway(lastStreamID: lastStreamID)
         case .headers(let headerBody):
@@ -368,7 +368,7 @@ extension NIOHTTP2Handler {
             fatalError("Currently some frames are unhandled.")
         case .data(let data):
             // TODO(cory): Correctly account for padding data.
-            result = self.stateMachine.sendData(streamID: frame.streamID, flowControlledBytes: data.data.readableBytes, isEndStreamSet: data.endStream)
+            result = self.stateMachine.sendData(streamID: frame.streamID, contentLength: data.data.readableBytes, flowControlledBytes: data.data.readableBytes, isEndStreamSet: data.endStream)
         case .goAway(let lastStreamID, _, _):
             result = self.stateMachine.sendGoaway(lastStreamID: lastStreamID)
         case .headers(let headerContent):

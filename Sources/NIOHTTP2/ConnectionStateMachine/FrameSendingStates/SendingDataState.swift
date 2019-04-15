@@ -24,7 +24,7 @@ protocol SendingDataState: HasFlowControlWindows {
 
 extension SendingDataState {
     /// Called to send a DATA frame.
-    mutating func sendData(streamID: HTTP2StreamID, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func sendData(streamID: HTTP2StreamID, contentLength: Int, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         do {
             try self.outboundFlowControlWindow.consume(flowControlledBytes: flowControlledBytes)
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
@@ -34,7 +34,7 @@ extension SendingDataState {
         }
 
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
-            $0.sendData(flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            $0.sendData(contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
         }
         return StateMachineResultWithEffect(result, connectionState: self)
     }

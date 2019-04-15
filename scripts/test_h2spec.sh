@@ -37,7 +37,7 @@ function stop_server() {
 
 # Simple thing to do. Start the server in the background.
 swift build
-"$(swift build --show-bin-path)/NIOHTTP2Server" 127.0.0.1 8888 &
+"$(swift build --show-bin-path)/NIOHTTP2Server" 127.0.0.1 8888 > /dev/null 2>&1 & disown
 SERVER_PID=$!
 echo "$SERVER_PID"
 
