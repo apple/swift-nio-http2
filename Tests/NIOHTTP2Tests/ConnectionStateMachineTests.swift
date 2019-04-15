@@ -2498,6 +2498,26 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
     }
+
+    func testSettingActualMaxFrameSize() {
+        self.exchangePreamble()
+
+        // It must be possible to set SETTINGS_MAX_FRAME_SIZE to (2**24)-1.
+        let trickySettings: HTTP2Settings = [HTTP2Setting(parameter: .maxFrameSize, value: (1<<24) - 1)]
+        assertSucceeds(self.client.sendSettings(trickySettings))
+        assertSucceeds(self.server.receiveSettings(.settings(trickySettings), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings(.ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+    }
+
+    func testSettingActualInitialWindowSize() {
+        self.exchangePreamble()
+
+        // It must be possible to set SETTINGS_INITIAL_WINDOW_SIZE to (2**31)-1.
+        let trickySettings: HTTP2Settings = [HTTP2Setting(parameter: .initialWindowSize, value: (1<<31) - 1)]
+        assertSucceeds(self.client.sendSettings(trickySettings))
+        assertSucceeds(self.server.receiveSettings(.settings(trickySettings), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings(.ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+    }
 }
 
 

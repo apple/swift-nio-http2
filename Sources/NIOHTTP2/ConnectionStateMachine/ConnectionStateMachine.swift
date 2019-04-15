@@ -1304,11 +1304,11 @@ extension HTTP2ConnectionStateMachine {
                     return .connectionError(underlyingError: NIOHTTP2Errors.InvalidSetting(setting: setting), type: .protocolError)
                 }
             case .initialWindowSize:
-                guard setting._value < HTTP2FlowControlWindow.maxSize else {
+                guard setting._value <= HTTP2FlowControlWindow.maxSize else {
                     return .connectionError(underlyingError: NIOHTTP2Errors.InvalidSetting(setting: setting), type: .flowControlError)
                 }
             case .maxFrameSize:
-                guard setting._value >= (1 << 14) && setting._value < ((1 << 24) - 1) else {
+                guard setting._value >= (1 << 14) && setting._value <= ((1 << 24) - 1) else {
                     return .connectionError(underlyingError: NIOHTTP2Errors.InvalidSetting(setting: setting), type: .protocolError)
                 }
             default:

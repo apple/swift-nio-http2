@@ -122,6 +122,8 @@ extension ConnectionStateMachineTests {
                 ("testRejectHeadersWithTEHeaderNotTrailers", testRejectHeadersWithTEHeaderNotTrailers),
                 ("testAllowHeadersWithTEHeaderNotTrailersWhenValidationDisabled", testAllowHeadersWithTEHeaderNotTrailersWhenValidationDisabled),
                 ("testAllowHeadersWithTEHeaderSetToTrailers", testAllowHeadersWithTEHeaderSetToTrailers),
+                ("testSettingActualMaxFrameSize", testSettingActualMaxFrameSize),
+                ("testSettingActualInitialWindowSize", testSettingActualInitialWindowSize),
            ]
    }
 }
