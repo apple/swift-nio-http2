@@ -56,6 +56,7 @@ extension SimpleClientServerTests {
                 ("testStreamErrorOnSelfDependentPriorityFrames", testStreamErrorOnSelfDependentPriorityFrames),
                 ("testStreamErrorOnSelfDependentHeadersFrames", testStreamErrorOnSelfDependentHeadersFrames),
                 ("testInvalidRequestHeaderBlockAllowsRstStream", testInvalidRequestHeaderBlockAllowsRstStream),
+                ("testClientConnectionErrorCorrectlyReported", testClientConnectionErrorCorrectlyReported),
            ]
    }
 }
