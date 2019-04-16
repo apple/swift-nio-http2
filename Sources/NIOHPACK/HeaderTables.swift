@@ -122,18 +122,20 @@ struct HeaderTableStorage {
         self.maxSize = newSize
     }
     
-    mutating func add(name: String, value: String) throws {
+    mutating func add(name: String, value: String) {
         let entry = HeaderTableEntry(name: name, value: value)
 
         var newLength = self.length + entry.length
         if newLength > self.maxSize {
             self.purge(toRelease: newLength - maxSize)
             newLength = self.length + entry.length
+        }
 
-            if newLength > self.maxSize {
-                // Danger, Will Robinson! We can't free up enough space!
-                throw InternalError.unableToAddHeaderToTable(excess: newLength - self.maxSize)
-            }
+
+        if newLength > self.maxSize {
+            // We can't free up enough space. This is not an error: RFC 7541 § 4.4 explicitly allows it.
+            // In this case, the append fails but the above purge is preserved.
+            return
         }
 
         self.headers.prepend(entry)
