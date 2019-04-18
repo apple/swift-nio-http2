@@ -1159,17 +1159,17 @@ fileprivate struct FrameHeader {
 
 fileprivate extension ByteBuffer {
     mutating func readFrameHeader() -> FrameHeader? {
-        guard self.readableBytes >= 9 else {
-            return nil
+        let saveSelf = self
+        guard let lenHigh = self.readInteger(as: UInt16.self),
+            let lenLow = self.readInteger(as: UInt8.self),
+            let type = self.readInteger(as: UInt8.self),
+            let flags = self.readInteger(as: UInt8.self),
+            let rawStreamID = self.readInteger(as: UInt32.self) else {
+                self = saveSelf
+                return nil
         }
 
-        let lenBytes: [UInt8] = self.readBytes(length: 3)!
-        let len = Int(lenBytes[0]) << 16 | Int(lenBytes[1]) << 8 | Int(lenBytes[2])
-        let type: UInt8 = self.readInteger()!
-        let flags: UInt8 = self.readInteger()!
-        let rawStreamID: UInt32 = self.readInteger()!
-
-        return FrameHeader(length: len, type: type, flags: FrameFlags(rawValue: flags), rawStreamID: rawStreamID)
+        return FrameHeader(length: Int(lenHigh) << 8 | Int(lenLow), type: type, flags: FrameFlags(rawValue: flags), rawStreamID: rawStreamID)
     }
 
     mutating func writePayloadSize(_ size: Int, at location: Int) {
