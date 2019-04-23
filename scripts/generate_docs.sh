@@ -86,7 +86,8 @@ tmp=`mktemp -d`
 for module in "${modules[@]}"; do
   args=("${jazzy_args[@]}"  --output "$tmp/docs/$version/$module" --docset-path "$tmp/docset/$version/$module" --module "$module")
   if [[ -f "$root_path/.build/sourcekitten/$module.json" ]]; then
-    args+=(--sourcekitten-sourcefile "$root_path/.build/sourcekitten/$module.json")
+    args+=(--sourcekitten-sourcefile "$root_path/.build/sourcekitten/$module.json"
+           --root-url "https://apple.github.io/swift-nio-http2/docs/$version/$module")
   fi
   jazzy "${args[@]}"
 done
