@@ -24,7 +24,7 @@ protocol ReceivingGoawayState {
 
 extension ReceivingGoawayState {
     mutating func receiveGoAwayFrame(lastStreamID: HTTP2StreamID) -> StateMachineResultWithEffect {
-        guard lastStreamID.mayBeInitiatedBy(self.role) || lastStreamID == .rootStream else {
+        guard lastStreamID.mayBeInitiatedBy(self.role) || lastStreamID == .rootStream || lastStreamID == .maxID else {
             // The remote peer has sent a GOAWAY with an invalid stream ID.
             return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), effect: nil)
         }
@@ -37,7 +37,7 @@ extension ReceivingGoawayState {
 
 extension ReceivingGoawayState where Self: RemotelyQuiescingState {
     mutating func receiveGoAwayFrame(lastStreamID: HTTP2StreamID) -> StateMachineResultWithEffect {
-        guard lastStreamID.mayBeInitiatedBy(self.role) || lastStreamID == .rootStream else {
+        guard lastStreamID.mayBeInitiatedBy(self.role) || lastStreamID == .rootStream || lastStreamID == .maxID else {
             // The remote peer has sent a GOAWAY with an invalid stream ID.
             return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), effect: nil)
         }

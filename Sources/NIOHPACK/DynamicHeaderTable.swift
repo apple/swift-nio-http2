@@ -123,14 +123,7 @@ struct DynamicHeaderTable {
     ///   - name: A String representing the name of the header field.
     ///   - value: A String representing the value of the header field.
     /// - Returns: `true` if the header was added to the table, `false` if not.
-    mutating func addHeader(named name: String, value: String) throws {
-        do {
-            try self.storage.add(name: name, value: value)
-        } catch InternalError.unableToAddHeaderToTable(let excess) {
-            // ping the error up the stack, with more information
-            // TODO(cory): Remove the genericism here in future.
-            throw NIOHPACKErrors.FailedToAddIndexedHeader(bytesNeeded: self.storage.length + excess,
-                                                          name: name.utf8, value: value.utf8)
-        }
+    mutating func addHeader(named name: String, value: String) {
+        self.storage.add(name: name, value: value)
     }
 }

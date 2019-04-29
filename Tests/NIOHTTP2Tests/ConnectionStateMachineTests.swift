@@ -109,7 +109,7 @@ class ConnectionStateMachineTests: XCTestCase {
     var clientDecoder: HTTP2FrameDecoder!
 
     static let requestHeaders = {
-        return HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+        return HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
     }()
 
     static let responseHeaders = {
@@ -264,20 +264,20 @@ class ConnectionStateMachineTests: XCTestCase {
         self.exchangePreamble()
 
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
 
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 300, flowControlledBytes: 300, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 300, flowControlledBytes: 300, isEndStreamSet: false))
 
         // Now both sides send another DATA frame and then trailers. Oooooh, trailers.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
-        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 300, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 300, flowControlledBytes: 300, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 300, flowControlledBytes: 300, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
 
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
@@ -365,8 +365,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveRstStream(streamID: streamOne, reason: .noError))
 
         // Client attempts to send on this stream fail. Servers ignore the frame.
-        assertConnectionError(type: .streamClosed, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
-        assertIgnored(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertIgnored(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
 
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
         assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
@@ -410,13 +410,13 @@ class ConnectionStateMachineTests: XCTestCase {
         // Client attempts to send on a closed stream fails, but the server ignores such frames.
         var temporaryServer = self.server!
         var temporaryClient = self.client!
-        assertConnectionError(type: .streamClosed, temporaryServer.sendData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
-        assertConnectionError(type: .streamClosed, temporaryClient.receiveData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryServer.sendData(streamID: streamFive, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryClient.receiveData(streamID: streamFive, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
 
         temporaryServer = self.server!
         temporaryClient = self.client!
-        assertConnectionError(type: .streamClosed, temporaryClient.sendData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
-        assertIgnored(temporaryServer.receiveData(streamID: streamFive, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryClient.sendData(streamID: streamFive, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertIgnored(temporaryServer.receiveData(streamID: streamFive, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
     }
 
     func testWindowUpdateOnClosedStreamAfterServerGoaway() {
@@ -533,13 +533,13 @@ class ConnectionStateMachineTests: XCTestCase {
         // Client attempts to send on a closed stream fails, and the server rejects such frames.
         var temporaryServer = self.server!
         var temporaryClient = self.client!
-        assertConnectionError(type: .streamClosed, temporaryServer.sendData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
-        assertIgnored(temporaryClient.receiveData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryServer.sendData(streamID: streamFour, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertIgnored(temporaryClient.receiveData(streamID: streamFour, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
 
         temporaryServer = self.server!
         temporaryClient = self.client!
-        assertConnectionError(type: .streamClosed, temporaryClient.sendData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
-        assertConnectionError(type: .streamClosed, temporaryServer.receiveData(streamID: streamFour, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryClient.sendData(streamID: streamFour, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertConnectionError(type: .streamClosed, temporaryServer.receiveData(streamID: streamFour, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
     }
 
     func testWindowUpdateOnClosedStreamAfterClientGoaway() {
@@ -605,7 +605,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.sendPing())
         assertConnectionError(type: .protocolError, self.client.sendPriority())
         assertConnectionError(type: .protocolError, self.client.sendPushPromise(originalStreamID: streamOne, childStreamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders))
@@ -620,7 +620,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.sendPing())
         assertConnectionError(type: .protocolError, self.client.sendPriority())
         assertConnectionError(type: .protocolError, self.client.sendPushPromise(originalStreamID: streamOne, childStreamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders))
@@ -638,7 +638,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.server.sendPing())
         assertConnectionError(type: .protocolError, self.server.sendPriority())
         assertConnectionError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -653,7 +653,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.receivePing(ackFlagSet: false))
         assertConnectionError(type: .protocolError, self.client.receivePriority())
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -670,7 +670,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.receivePing(ackFlagSet: false))
         assertConnectionError(type: .protocolError, self.client.receivePriority())
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -688,7 +688,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // We only need one of the state machines here.
         assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.server.receivePing(ackFlagSet: false))
         assertConnectionError(type: .protocolError, self.server.receivePriority())
         assertConnectionError(type: .protocolError, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -773,8 +773,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
 
         // We can now do all of the streamy things.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertSucceeds(self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertSucceeds(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertSucceeds(self.client.sendRstStream(streamID: streamOne, reason: .noError))
@@ -818,8 +818,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
 
         // We can now do all of the streamy things.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertSucceeds(self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertSucceeds(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertSucceeds(self.client.sendRstStream(streamID: streamOne, reason: .noError))
@@ -857,10 +857,10 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveGoaway(lastStreamID: streamOne))
 
         // All the streamy operations work on stream one except push promise.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertSucceeds(self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertSucceeds(self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertSucceeds(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
@@ -951,8 +951,8 @@ class ConnectionStateMachineTests: XCTestCase {
         // Stream specific things don't work.
         assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
-        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertConnectionError(type: .protocolError, self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertConnectionError(type: .protocolError, self.client.sendRstStream(streamID: streamOne, reason: .noError))
@@ -1088,8 +1088,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
 
         // The default value of the flow control window is 65535. So let's see if we can hit it. First, let's send 65535 bytes from client to server.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 65535, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 65535, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 65535, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 65535, isEndStreamSet: false))
 
         // Now the server opens the *stream window only*.
         assertSucceeds(self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 1000))
@@ -1098,22 +1098,22 @@ class ConnectionStateMachineTests: XCTestCase {
         // The client cannot send more than one byte on this stream.
         var temporaryServer = self.server!
         var temporaryClient = self.client!
-        assertConnectionError(type: .flowControlError, temporaryClient.sendData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
-        assertConnectionError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+        assertConnectionError(type: .flowControlError, temporaryClient.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
+        assertConnectionError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
 
         // Now the server opens the connection flow control window.
         assertSucceeds(self.server.sendWindowUpdate(streamID: .rootStream, windowIncrement: 65535))
         assertSucceeds(self.client.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 65535))
 
         // The client may now send 1000 bytes.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 1000, isEndStreamSet: false))
 
         // But any attempt to send more fails, again.
         temporaryServer = self.server!
         temporaryClient = self.client!
-        assertStreamError(type: .flowControlError, temporaryClient.sendData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
-        assertStreamError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+        assertStreamError(type: .flowControlError, temporaryClient.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
+        assertStreamError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
 
         // The server can increase the flow control window by sending a SETTINGS frame with the appropriate new setting.
         // This adds 1000 to the window size.
@@ -1123,13 +1123,13 @@ class ConnectionStateMachineTests: XCTestCase {
         // In this state, the client may send new data, but if the server doesn't receive the ACK first it holds the client to the new value.
         temporaryServer = self.server!
         temporaryClient = self.client!
-        assertSucceeds(temporaryClient.sendData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
-        assertStreamError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertSucceeds(temporaryClient.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertStreamError(type: .flowControlError, temporaryServer.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 1000, isEndStreamSet: false))
 
         // Once the server receives the ACK, it's fine.
         assertSucceeds(self.server.receiveSettings(.ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 1000, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 1000, isEndStreamSet: false))
 
         // Open the flow control window of the stream.
         assertSucceeds(self.server.sendWindowUpdate(streamID: streamOne, windowIncrement: 65535))
@@ -1137,10 +1137,10 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // At this stage the stream has a window size of 65535, but the connection should not have gained the extra 2000 bytes from the change in
         // SETTINGS_INITIAL_WINDOW_SIZE, so it should have a size of 63535. Verify this by exceeding it.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 63535, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 63535, isEndStreamSet: false))
-        assertConnectionError(type: .flowControlError, self.client.sendData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
-        assertConnectionError(type: .flowControlError, self.server.receiveData(streamID: streamOne, flowControlledBytes: 1, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 63535, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 63535, isEndStreamSet: false))
+        assertConnectionError(type: .flowControlError, self.client.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
+        assertConnectionError(type: .flowControlError, self.server.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
     }
 
     func testTrailersWithoutData() {
@@ -1172,8 +1172,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
 
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: true))
     }
 
     func testPushedResponsesMayHaveBodies() {
@@ -1194,8 +1194,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
 
-        assertSucceeds(self.server.sendData(streamID: streamTwo, flowControlledBytes: 1024, isEndStreamSet: true))
-        assertSucceeds(self.client.receiveData(streamID: streamTwo, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.server.sendData(streamID: streamTwo, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamTwo, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: true))
     }
 
     func testDataFramesWithoutEndStream() {
@@ -1206,20 +1206,20 @@ class ConnectionStateMachineTests: XCTestCase {
         // We can send some DATA frames while only the client has opened.
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: false))
 
         // We can send some more while the server has opened.
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: false))
 
         // And we can send some after the server is done.
-        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
-        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: false))
     }
 
     func testSendingCompleteRequestBeforeResponse() {
@@ -1230,14 +1230,14 @@ class ConnectionStateMachineTests: XCTestCase {
         // We can send a complete request before the remote peer sends us anything.
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 1024, flowControlledBytes: 1024, isEndStreamSet: true))
 
         // The remote peer can then respond.
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
-        assertSucceeds(self.server.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
-        assertSucceeds(self.client.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
     }
 
     func testWindowUpdateValidity() {
@@ -1270,8 +1270,8 @@ class ConnectionStateMachineTests: XCTestCase {
         var tempServer = self.server!
 
         // If we close the client side of the stream, it's ok for the client to send. The server may not send, but the client will tolerate it.
-        assertSucceeds(tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
-        assertSucceeds(tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(tempClient.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(tempServer.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
 
         assertSucceeds(tempClient.sendWindowUpdate(streamID: streamOne, windowIncrement: 10))
         assertSucceeds(tempServer.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10))
@@ -1288,8 +1288,8 @@ class ConnectionStateMachineTests: XCTestCase {
         assertCanWindowUpdate(client: self.client, server: self.server)
 
         // If we close now it's ok for the client to send. The server may not send, but the client will tolerate it.
-        assertSucceeds(self.client.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
-        assertSucceeds(self.server.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
         tempClient = self.client!
         tempServer = self.server!
         assertSucceeds(tempClient.sendWindowUpdate(streamID: streamOne, windowIncrement: 10))
@@ -1345,8 +1345,8 @@ class ConnectionStateMachineTests: XCTestCase {
         var tempServer = self.server!
 
         // We can't do it before we've opened a stream.
-        assertConnectionError(type: .protocolError, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .protocolError, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, tempClient.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, tempServer.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
 
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
@@ -1354,10 +1354,10 @@ class ConnectionStateMachineTests: XCTestCase {
         // We can't send it after we have sent end stream, or before we've sent our headers.
         tempClient = self.client!
         tempServer = self.server!
-        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertStreamError(type: .streamClosed, tempServer.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertStreamError(type: .streamClosed, tempClient.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempClient.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
 
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
@@ -1365,8 +1365,8 @@ class ConnectionStateMachineTests: XCTestCase {
         // The client still can't do it, regardless of what the server just did.
         tempClient = self.client!
         tempServer = self.server!
-        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
 
         assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -1376,19 +1376,19 @@ class ConnectionStateMachineTests: XCTestCase {
         // The client can't send on pushed streams either.
         tempClient = self.client!
         tempServer = self.server!
-        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
-        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempClient.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertStreamError(type: .streamClosed, tempServer.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
 
-        assertSucceeds(self.server.sendData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: true))
-        assertSucceeds(self.client.receiveData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.server.sendData(streamID: streamTwo, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamTwo, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: true))
 
         // Neither peer can send on closed streams.
         tempClient = self.client!
         tempServer = self.server!
-        assertConnectionError(type: .streamClosed, tempClient.sendData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .streamClosed, tempServer.receiveData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .streamClosed, tempServer.sendData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
-        assertConnectionError(type: .streamClosed, tempClient.receiveData(streamID: streamTwo, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .streamClosed, tempClient.sendData(streamID: streamTwo, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .streamClosed, tempServer.receiveData(streamID: streamTwo, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .streamClosed, tempServer.sendData(streamID: streamTwo, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertConnectionError(type: .streamClosed, tempClient.receiveData(streamID: streamTwo, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
     }
 
     func testChangingInitialWindowSizeLotsOfStreams() {
@@ -1451,20 +1451,20 @@ class ConnectionStateMachineTests: XCTestCase {
         for streamID in [streamOne, streamTwo, streamThree, streamFour, streamFive, streamSeven] {
             var tempClient = self.client!
             var tempServer = self.server!
-            assertSucceeds(tempServer.sendData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
-            assertSucceeds(tempClient.receiveData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
-            assertStreamError(type: .flowControlError, tempServer.sendData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
-            assertStreamError(type: .flowControlError, tempClient.receiveData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
+            assertSucceeds(tempServer.sendData(streamID: streamID, contentLength: 15, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertSucceeds(tempClient.receiveData(streamID: streamID, contentLength: 15, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempServer.sendData(streamID: streamID, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempClient.receiveData(streamID: streamID, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
         }
 
         // The client can only send on streams three and five, but it will.
         for streamID in [streamThree, streamFive] {
             var tempClient = self.client!
             var tempServer = self.server!
-            assertSucceeds(tempClient.sendData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
-            assertSucceeds(tempServer.receiveData(streamID: streamID, flowControlledBytes: 66535, isEndStreamSet: false))
-            assertStreamError(type: .flowControlError, tempClient.sendData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
-            assertStreamError(type: .flowControlError, tempServer.receiveData(streamID: streamID, flowControlledBytes: 1, isEndStreamSet: false))
+            assertSucceeds(tempClient.sendData(streamID: streamID, contentLength: 15, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertSucceeds(tempServer.receiveData(streamID: streamID, contentLength: 15, flowControlledBytes: 66535, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempClient.sendData(streamID: streamID, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
+            assertStreamError(type: .flowControlError, tempServer.receiveData(streamID: streamID, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: false))
         }
     }
 
@@ -2497,6 +2497,354 @@ class ConnectionStateMachineTests: XCTestCase {
         // Client headers may contain TE: trailers.
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders.withExtraHeaders(invalidExtraHeaders), isEndStreamSet: true))
+    }
+
+    func testSettingActualMaxFrameSize() {
+        self.exchangePreamble()
+
+        // It must be possible to set SETTINGS_MAX_FRAME_SIZE to (2**24)-1.
+        let trickySettings: HTTP2Settings = [HTTP2Setting(parameter: .maxFrameSize, value: (1<<24) - 1)]
+        assertSucceeds(self.client.sendSettings(trickySettings))
+        assertSucceeds(self.server.receiveSettings(.settings(trickySettings), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings(.ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+    }
+
+    func testSettingActualInitialWindowSize() {
+        self.exchangePreamble()
+
+        // It must be possible to set SETTINGS_INITIAL_WINDOW_SIZE to (2**31)-1.
+        let trickySettings: HTTP2Settings = [HTTP2Setting(parameter: .initialWindowSize, value: (1<<31) - 1)]
+        assertSucceeds(self.client.sendSettings(trickySettings))
+        assertSucceeds(self.server.receiveSettings(.settings(trickySettings), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.client.receiveSettings(.ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+    }
+
+    func testPolicingExceedingContentLengthForRequests() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "POST"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+
+        // Send in 25 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        var tempClient = self.client!
+        var tempServer = self.server!
+
+        // Sending any more data fails.
+        assertStreamError(type: .protocolError, tempClient.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, tempServer.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+
+        // But if we send a zero length frame that works fine.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testPolicingExceedingContentLengthForResponses() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 25 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        var tempClient = self.client!
+        var tempServer = self.server!
+
+        // Sending any more data fails.
+        assertStreamError(type: .protocolError, tempServer.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, tempClient.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+
+        // But if we send a zero length frame that works fine.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testPolicingMissingContentLengthForRequests() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "POST"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+
+        // Send in 20 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        // Closing the stream fails.
+        assertStreamError(type: .protocolError, self.client.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testPolicingMissingContentLengthForResponses() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 20 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        // Closing the stream fails.
+        assertStreamError(type: .protocolError, self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testPolicingInvalidContentLengthForRequestsWithEndStream() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "POST"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "25")])
+
+        // Set up the connection
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+    }
+
+    func testPolicingInvalidContentLengthForResponsesWithEndStream() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
+    }
+
+    func testValidContentLengthForRequestsWithEndStream() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "POST"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "0")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+    }
+
+    func testValidContentLengthForResponsesWithEndStream() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
+    }
+
+    func testNoPolicingExceedingContentLengthForRequestsWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, contentLengthValidation: .disabled)
+        self.client = .init(role: .client, contentLengthValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "POST"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+
+        // Send in 25 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        var tempClient = self.client!
+        var tempServer = self.server!
+
+        // Sending any more data succeeds.
+        assertSucceeds(tempClient.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(tempServer.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+
+        // But if we send a zero length frame that works fine.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testNoPolicingExceedingContentLengthForResponsesWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, contentLengthValidation: .disabled)
+        self.client = .init(role: .client, contentLengthValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 25 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        var tempClient = self.client!
+        var tempServer = self.server!
+
+        // Sending any more data succeeds.
+        assertSucceeds(tempServer.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(tempClient.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+
+        // But if we send a zero length frame that works fine.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testNoPolicingMissingContentLengthForRequestsWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, contentLengthValidation: .disabled)
+        self.client = .init(role: .client, contentLengthValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "POST"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: false))
+
+        // Send in 20 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        // Closing the stream succeeds.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testNoPolicingMissingContentLengthForResponsesWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, contentLengthValidation: .disabled)
+        self.client = .init(role: .client, contentLengthValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 20 bytes over two frames, messing with the flow controlled length to just be a bit tricky.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 10, flowControlledBytes: 15, isEndStreamSet: false))
+
+        // Closing the stream succeeds.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testNoPolicingInvalidContentLengthForRequestsWithEndStreamWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, contentLengthValidation: .disabled)
+        self.client = .init(role: .client, contentLengthValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "POST"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("content-length", "25")])
+
+        // Set up the succeeds
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+    }
+
+    func testNoPolicingInvalidContentLengthForResponsesWithEndStreamWhenValidationDisabled() {
+        let streamOne = HTTP2StreamID(1)
+
+        // Override the setup with validation disabled.
+        self.server = .init(role: .server, contentLengthValidation: .disabled)
+        self.client = .init(role: .client, contentLengthValidation: .disabled)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server succeeds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
     }
 }
 

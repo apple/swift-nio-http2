@@ -1287,4 +1287,35 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
         _ = try? self.serverChannel.finish()
     }
+
+    func testClientConnectionErrorCorrectlyReported() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now we're going to try to trigger a connection error in the client. We'll do it by sending a weird SETTINGS frame that isn't valid.
+        let weirdSettingsFrame: [UInt8] = [
+            0x00, 0x00, 0x06,           // 3-byte payload length (6 bytes)
+            0x04,                       // 1-byte frame type (SETTINGS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+            0x00, 0x02,                 // SETTINGS_ENABLE_PUSH
+            0x00, 0x00, 0x00, 0x03,     //      = 3, an invalid value
+        ]
+        var settingsBuffer = self.clientChannel.allocator.buffer(capacity: 128)
+        settingsBuffer.writeBytes(weirdSettingsFrame)
+
+        XCTAssertThrowsError(try self.clientChannel.writeInbound(settingsBuffer)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidSetting, NIOHTTP2Errors.InvalidSetting(setting: HTTP2Setting(parameter: .enablePush, value: 3)))
+        }
+
+        guard let goAwayFrame = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive GOAWAY frame")
+            return
+        }
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(goAwayFrame))
+        try self.serverChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: 0x01, opaqueData: nil)
+
+        XCTAssertNoThrow(XCTAssertTrue(try self.serverChannel.finish().isClean))
+        _ = try? self.clientChannel.finish()
+    }
 }
