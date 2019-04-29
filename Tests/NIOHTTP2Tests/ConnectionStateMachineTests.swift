@@ -427,12 +427,12 @@ class ConnectionStateMachineTests: XCTestCase {
 
         self.setupServerGoaway(streamsToOpen: [streamOne, streamThree, streamFive, streamSeven], lastStreamID: streamThree, expectedToClose: [streamFive, streamSeven])
 
-        // Server attempts to send on a closed stream fails, and clients reject that attempt as well.
+        // Server attempts to send on a closed stream fails, and clients ignore that attempt.
         // Client attempts to send on a closed stream fails, but the server ignores such frames.
         var temporaryServer = self.server!
         var temporaryClient = self.client!
         assertConnectionError(type: .streamClosed, temporaryServer.sendWindowUpdate(streamID: streamFive, windowIncrement: 15))
-        assertConnectionError(type: .streamClosed, temporaryClient.receiveWindowUpdate(streamID: streamFive, windowIncrement: 15))
+        assertIgnored(temporaryClient.receiveWindowUpdate(streamID: streamFive, windowIncrement: 15))
 
         temporaryServer = self.server!
         temporaryClient = self.client!
@@ -551,7 +551,7 @@ class ConnectionStateMachineTests: XCTestCase {
         self.setupClientGoaway(clientStreamID: streamOne, streamsToOpen: [streamTwo, streamFour, streamSix], lastStreamID: streamTwo, expectedToClose: [streamFour, streamSix])
 
         // Server attempts to send on a closed stream fails, but clients ignore that attempt.
-        // Client attempts to send on a closed stream fails, and the server rejects such frames.
+        // Client attempts to send on a closed stream fails, but the server ignores that attempt.
         var temporaryServer = self.server!
         var temporaryClient = self.client!
         assertConnectionError(type: .streamClosed, temporaryServer.sendWindowUpdate(streamID: streamFour, windowIncrement: 15))
@@ -560,7 +560,7 @@ class ConnectionStateMachineTests: XCTestCase {
         temporaryServer = self.server!
         temporaryClient = self.client!
         assertConnectionError(type: .streamClosed, temporaryClient.sendWindowUpdate(streamID: streamFour, windowIncrement: 15))
-        assertConnectionError(type: .streamClosed, temporaryServer.receiveWindowUpdate(streamID: streamFour, windowIncrement: 15))
+        assertIgnored(temporaryServer.receiveWindowUpdate(streamID: streamFour, windowIncrement: 15))
     }
 
     func testRstStreamOnClosedStreamAfterClientGoaway() {
@@ -1313,6 +1313,36 @@ class ConnectionStateMachineTests: XCTestCase {
         assertStreamError(type: .flowControlError, tempServer.receiveWindowUpdate(streamID: streamTwo, windowIncrement: UInt32(Int32.max)))
         assertStreamError(type: .protocolError, tempServer.sendWindowUpdate(streamID: streamTwo, windowIncrement: 15))
         assertStreamError(type: .protocolError, tempClient.receiveWindowUpdate(streamID: streamTwo, windowIncrement: 15))
+    }
+
+    func testWindowUpdateOnClosedStream() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        // Client sends a request.
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        // Server sends a response.
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // Client sends end stream, server receives end stream.
+        assertSucceeds(self.client.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+
+        // Client is now half closed (local), server is half closed (remote)
+
+        // Server sends end stream and is now closed.
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+
+        // Client is half closed and sends window update, the server MUST ignore this.
+        assertSucceeds(self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 10))
+        assertIgnored(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10))
+
+        // Client receives end stream and closes.
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
     }
 
     func testWindowIncrementsOfSizeZeroArentOk() {

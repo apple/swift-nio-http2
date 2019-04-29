@@ -168,14 +168,16 @@ struct ConnectionStreamState {
     /// - parameters:
     ///     - streamID: The ID of the stream to modify.
     ///     - ignoreRecentlyReset: Whether a recently reset stream should be ignored. Should be set to `true` when receiving frames.
+    ///     - ignoreClosed: Whether a closed stream should be ignored. Should be set to `true` when receiving window update frames.
     ///     - modifier: A block that will be invoked to modify the stream state, if present.
     /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
     @inline(__always)
     mutating func modifyStreamState(streamID: HTTP2StreamID,
                                     ignoreRecentlyReset: Bool,
+                                    ignoreClosed: Bool = false,
                                     _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams[streamID].autoClosingTransform(modifier) else {
-            return StateMachineResultWithStreamEffect(result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: ignoreRecentlyReset), effect: nil)
+            return StateMachineResultWithStreamEffect(result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: ignoreRecentlyReset, ignoreClosed: ignoreClosed), effect: nil)
         }
 
         if let effect = result.effect, effect.closedStream {
@@ -201,7 +203,7 @@ struct ConnectionStreamState {
                                           _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams[streamID].autoClosingTransform(modifier) else {
             // We never ignore recently reset streams here, as this should only ever be used when *sending* frames.
-            return StateMachineResultWithStreamEffect(result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: false), effect: nil)
+            return StateMachineResultWithStreamEffect(result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: false, ignoreClosed: false), effect: nil)
         }
 
 
@@ -297,8 +299,9 @@ struct ConnectionStreamState {
     /// - parameters:
     ///     - streamID: The ID of the missing stream.
     ///     - ignoreRecentlyReset: Whether a recently reset stream should be ignored.
+    ///     - ignoreClosed: Whether a closed stream should be ignored.
     /// - returns: A `StateMachineResult` for this frame error.
-    private func streamMissing(streamID: HTTP2StreamID, ignoreRecentlyReset: Bool) -> StateMachineResult {
+    private func streamMissing(streamID: HTTP2StreamID, ignoreRecentlyReset: Bool, ignoreClosed: Bool) -> StateMachineResult {
         if ignoreRecentlyReset && self.recentlyResetStreams.contains(streamID) {
             return .ignoreFrame
         }
@@ -310,8 +313,11 @@ struct ConnectionStreamState {
             return .connectionError(underlyingError: NIOHTTP2Errors.NoSuchStream(streamID: streamID), type: .protocolError)
         default:
             // This stream must have already been closed.
-            return .connectionError(underlyingError: NIOHTTP2Errors.NoSuchStream(streamID: streamID), type: .streamClosed)
-
+            if ignoreClosed {
+              return .ignoreFrame
+            } else {
+              return .connectionError(underlyingError: NIOHTTP2Errors.NoSuchStream(streamID: streamID), type: .streamClosed)
+            }
         }
     }
 

@@ -55,7 +55,7 @@ extension ReceivingPushPromiseState {
             try self.streamState.createRemotelyPushedStream(streamID: childStreamID,
                                                             remoteInitialWindowSize: self.remoteInitialWindowSize)
 
-           let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: true) {
+            let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: true) {
                 $0.receivePushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
             }
             return StateMachineResultWithEffect(result, connectionState: self)
