@@ -68,6 +68,7 @@ extension ConnectionStateMachineTests {
                 ("testDataFramesWithoutEndStream", testDataFramesWithoutEndStream),
                 ("testSendingCompleteRequestBeforeResponse", testSendingCompleteRequestBeforeResponse),
                 ("testWindowUpdateValidity", testWindowUpdateValidity),
+                ("testWindowUpdateOnClosedStream", testWindowUpdateOnClosedStream),
                 ("testWindowIncrementsOfSizeZeroArentOk", testWindowIncrementsOfSizeZeroArentOk),
                 ("testCannotSendDataFrames", testCannotSendDataFrames),
                 ("testChangingInitialWindowSizeLotsOfStreams", testChangingInitialWindowSizeLotsOfStreams),

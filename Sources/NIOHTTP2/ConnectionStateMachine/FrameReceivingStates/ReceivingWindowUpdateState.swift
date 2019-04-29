@@ -41,7 +41,7 @@ extension ReceivingWindowUpdateState {
             }
         } else {
             // This is an update for a specific stream: it's responsible for policing any errors.
-            let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
+            let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true, ignoreClosed: true) {
                 $0.receiveWindowUpdate(windowIncrement: increment)
             }
             return StateMachineResultWithEffect(result, connectionState: self)
