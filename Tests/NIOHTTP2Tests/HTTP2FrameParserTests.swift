@@ -154,7 +154,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPaddingIsNotAllowedByEncoder() {
         let bytes = self.byteBuffer(withBytes: [0x00, 0x01, 0x02, 0x03])
-        let frame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(bytes), paddingBytes: 0)), streamID: HTTP2StreamID(1))
+        let frame = HTTP2Frame(streamID: HTTP2StreamID(1), payload: .data(.init(data: .byteBuffer(bytes), paddingBytes: 0)))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         var target = self.allocator.buffer(capacity: 48)
         
@@ -170,8 +170,8 @@ class HTTP2FrameParserTests: XCTestCase {
 
     func testDataFrameDecodingNoPadding() throws {
         let payload = byteBuffer(withStaticString: "Hello, World!")
-        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payload), endStream: true)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(payload), endStream: true)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x0d,           // 3-byte payload length (13 bytes)
@@ -188,8 +188,8 @@ class HTTP2FrameParserTests: XCTestCase {
     func testDataFrameDecodingWithPadding() throws {
         let payload = byteBuffer(withStaticString: "Hello, World!")
         // We remove the PADDED flag when eliding padding bytes.
-        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payload), endStream: true)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(payload), endStream: true)))
         
         // Unpadded frame is 22 bytes. When we add padding, we get +1 byte for pad length, +1 byte of padding, for 24 bytes total
         let frameBytes: [UInt8] = [
@@ -218,8 +218,8 @@ class HTTP2FrameParserTests: XCTestCase {
 
         let expectedPayload = byteBuffer(withStaticString: "Hello, World!")
         // We remove the PADDED flag when eliding padding bytes.
-        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)))
 
         var frameBuffer = byteBuffer(withBytes: frameBytes, extraCapacity: expectedPayload.readableBytes)
         frameBuffer.writeBytes(expectedPayload.readableBytesView)
@@ -258,10 +258,10 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeBytes(payload.readableBytesView)
         
         // two separate pieces
-        let expectedFrame1 = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payloadHalf))),
-                                        streamID: HTTP2StreamID(1))
-        let expectedFrame2 = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payloadHalf), endStream: true)),
-                                        streamID: HTTP2StreamID(1))
+        let expectedFrame1 = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                        payload: .data(.init(data: .byteBuffer(payloadHalf))))
+        let expectedFrame2 = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                        payload: .data(.init(data: .byteBuffer(payloadHalf), endStream: true)))
         
         var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
         
@@ -296,10 +296,10 @@ class HTTP2FrameParserTests: XCTestCase {
         XCTAssertEqual(buf.readableBytes, 40)
         
         // two separate pieces, padded flag removed along with padding bytes
-        let expectedFrame1 = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payloadHalf))),
-                                        streamID: HTTP2StreamID(1))
-        let expectedFrame2 = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payloadHalf), endStream: true)),
-                                        streamID: HTTP2StreamID(1))
+        let expectedFrame1 = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                        payload: .data(.init(data: .byteBuffer(payloadHalf))))
+        let expectedFrame2 = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                        payload: .data(.init(data: .byteBuffer(payloadHalf), endStream: true)))
         
         var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
         
@@ -327,8 +327,8 @@ class HTTP2FrameParserTests: XCTestCase {
     func testDataFrameDecodingMultibyteLength() throws {
         var payload = allocator.buffer(capacity: 16384)
         payload.writeBytes(repeatElement(0, count: 16384))
-        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payload), endStream: true)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(payload), endStream: true)))
 
         let frameBytes: [UInt8] = [
             0x00, 0x40, 0x00,           // 3-byte payload length (16384 bytes)
@@ -351,8 +351,8 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
 
         let payload = allocator.buffer(capacity: 0)
-        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payload), endStream: true)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(payload), endStream: true)))
 
         var buf = byteBuffer(withBytes: frameBytes)
         try assertReadsFrame(from: &buf, matching: expectedFrame, expectedFlowControlledLength: 0)
@@ -370,8 +370,8 @@ class HTTP2FrameParserTests: XCTestCase {
 
         let expectedPayload = allocator.buffer(capacity: 0)
         // We remove the PADDED flag when eliding padding bytes.
-        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)))
 
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 1)
         buf.writeInteger(UInt8(0))
@@ -391,8 +391,8 @@ class HTTP2FrameParserTests: XCTestCase {
 
         let expectedPayload = allocator.buffer(capacity: 0)
         // We remove the PADDED flag when eliding padding bytes.
-        let expectedFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(expectedPayload), endStream: true)))
 
         var frameBuffer = byteBuffer(withBytes: frameBytes)
         var firstPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
@@ -421,7 +421,7 @@ class HTTP2FrameParserTests: XCTestCase {
         var payloadBytes = allocator.buffer(capacity: payload.count)
         payloadBytes.writeString(payload)
 
-        let frame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payloadBytes), endStream: true)), streamID: streamID)
+        let frame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(payloadBytes), endStream: true)))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
 
         let frameBytes: [UInt8] = [
@@ -443,7 +443,7 @@ class HTTP2FrameParserTests: XCTestCase {
         var payloadBytes = allocator.buffer(capacity: 16384)
         payloadBytes.writeBytes(repeatElement(0, count: 16384))
 
-        let frame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(payloadBytes), endStream: true)), streamID: streamID)
+        let frame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(payloadBytes), endStream: true)))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
 
         let frameBytes: [UInt8] = [
@@ -537,8 +537,8 @@ class HTTP2FrameParserTests: XCTestCase {
     // MARK: - HEADERS frames
     
     func testHeadersFrameDecodingNoPriorityNoPadding() throws {
-        let expectedFrame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .headers(.init(headers: self.simpleHeaders)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x11,           // 3-byte payload length (17 bytes)
@@ -553,8 +553,8 @@ class HTTP2FrameParserTests: XCTestCase {
     }
     
     func testHeadersFrameDecodingNoPriorityWithPadding() throws {
-        let expectedFrame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders, paddingBytes: 3)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .headers(.init(headers: self.simpleHeaders, paddingBytes: 3)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x15,           // 3-byte payload length (21 bytes)
@@ -572,8 +572,8 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testHeadersFrameDecodingWithPriorityNoPadding() throws {
         let priority = HTTP2Frame.StreamPriorityData(exclusive: true, dependency: HTTP2StreamID(1), weight: 139)
-        let expectedFrame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders, priorityData: priority)),
-                                       streamID: HTTP2StreamID(3))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(3),
+                                       payload: .headers(.init(headers: self.simpleHeaders, priorityData: priority)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x16,           // 3-byte payload length (22 bytes)
@@ -591,8 +591,8 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testHeadersFrameDecodingWithPriorityWithPadding() throws {
         let priority = HTTP2Frame.StreamPriorityData(exclusive: true, dependency: HTTP2StreamID(1), weight: 139)
-        let expectedFrame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders, priorityData: priority, paddingBytes: 8)),
-                                       streamID: HTTP2StreamID(3))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(3),
+                                       payload: .headers(.init(headers: self.simpleHeaders, priorityData: priority, paddingBytes: 8)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x1F,           // 3-byte payload length (31 bytes)
@@ -650,7 +650,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testHeadersFrameEncodingNoPriority() throws {
         let streamID = HTTP2StreamID(1)
-        let frame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders)), streamID: streamID)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: self.simpleHeaders)))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -672,7 +672,7 @@ class HTTP2FrameParserTests: XCTestCase {
         let priorityData = HTTP2Frame.StreamPriorityData(exclusive: true, dependency: HTTP2StreamID(1), weight: 139)
         let streamID = HTTP2StreamID(3)
         
-        let frame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders, priorityData: priorityData)), streamID: streamID)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: self.simpleHeaders, priorityData: priorityData)))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -696,7 +696,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPriorityFrameDecoding() throws {
         let priorityData = HTTP2Frame.StreamPriorityData(exclusive: true, dependency: HTTP2StreamID(1), weight: 139)
-        let expectedFrame = HTTP2Frame(payload: .priority(priorityData), streamID: HTTP2StreamID(3))
+        let expectedFrame = HTTP2Frame(streamID: 3, payload: .priority(priorityData))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x05,           // 3-byte payload length (5 bytes)
@@ -751,7 +751,7 @@ class HTTP2FrameParserTests: XCTestCase {
     func testPriorityFrameEncoding() throws {
         let streamID = HTTP2StreamID(3)
         let priorityData = HTTP2Frame.StreamPriorityData(exclusive: true, dependency: HTTP2StreamID(1), weight: 139)
-        let frame = HTTP2Frame(payload: .priority(priorityData), streamID: streamID)
+        let frame = HTTP2Frame(streamID: streamID, payload: .priority(priorityData))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -773,7 +773,7 @@ class HTTP2FrameParserTests: XCTestCase {
     // MARK: - RST_STREAM frames
     
     func testResetStreamFrameDecoding() throws {
-        let expectedFrame = HTTP2Frame(payload: .rstStream(.protocolError), streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: 1, payload: .rstStream(.protocolError))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x04,           // 3-byte payload length (4 bytes)
@@ -825,7 +825,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testResetStreamFrameEncoding() throws {
         let streamID = HTTP2StreamID(1)
-        let frame = HTTP2Frame(payload: .rstStream(.protocolError), streamID: streamID)
+        let frame = HTTP2Frame(streamID: streamID, payload: .rstStream(.protocolError))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -851,7 +851,7 @@ class HTTP2FrameParserTests: XCTestCase {
             HTTP2Setting(parameter: .initialWindowSize, value: 32_768),
             HTTP2Setting(parameter: .maxHeaderListSize, value: 2_048)
         ]
-        let expectedFrame = HTTP2Frame(payload: .settings(.settings(settings)), streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(settings)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x12,           // 3-byte payload length (18 bytes)
@@ -872,7 +872,7 @@ class HTTP2FrameParserTests: XCTestCase {
 
   func testSettingsFrameDecodingWithNoSettings() throws {
     let settings: [HTTP2Setting] = []
-    let expectedFrame = HTTP2Frame(payload: .settings(.settings(settings)), streamID: .rootStream)
+    let expectedFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(settings)))
 
     let frameBytes: [UInt8] = [
       0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
@@ -892,7 +892,7 @@ class HTTP2FrameParserTests: XCTestCase {
             HTTP2Setting(parameter: HTTP2SettingsParameter(fromNetwork: 0x99), value: 32_768),
             HTTP2Setting(parameter: .maxHeaderListSize, value: 2_048)
         ]
-        let expectedFrame = HTTP2Frame(payload: .settings(.settings(settings)), streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(settings)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x18,           // 3-byte payload length (18 bytes)
@@ -960,7 +960,7 @@ class HTTP2FrameParserTests: XCTestCase {
             HTTP2Setting(parameter: .initialWindowSize, value: 32_768),
             HTTP2Setting(parameter: .maxHeaderListSize, value: 2_048)
         ]
-        let frame = HTTP2Frame(payload: .settings(.settings(settings)), streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(settings)))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -984,7 +984,7 @@ class HTTP2FrameParserTests: XCTestCase {
     }
     
     func testSettingsAckFrameDecoding() throws {
-        let expectedFrame = HTTP2Frame(payload: .settings(.ack), streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.ack))
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
             0x04,                       // 1-byte frame type (SETTINGS)
@@ -1032,7 +1032,7 @@ class HTTP2FrameParserTests: XCTestCase {
     }
     
     func testSettingsAckFrameEncoding() throws {
-        let frame = HTTP2Frame(payload: .settings(.ack), streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(.ack))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1053,8 +1053,8 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPushPromiseFrameDecodingNoPadding() throws {
         let streamID = HTTP2StreamID(3)
-        let expectedFrame = HTTP2Frame(payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x15,           // 3-byte payload length (21 bytes)
@@ -1071,8 +1071,8 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPushPromiseFrameDecodingWithPadding() throws {
         let streamID = HTTP2StreamID(3)
-        let expectedFrame = HTTP2Frame(payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders, paddingBytes: 1)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders, paddingBytes: 1)))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x17,           // 3-byte payload length (23 bytes) (32 total)
@@ -1117,8 +1117,8 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPushPromiseFrameEncoding() throws {
         let streamID = HTTP2StreamID(3)
-        let frame = HTTP2Frame(payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders)),
-                               streamID: HTTP2StreamID(1))
+        let frame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                               payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders)))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1141,7 +1141,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPingFrameDecoding() throws {
         let pingData = HTTP2PingData(withTuple: (0,1,2,3,4,5,6,7))
-        let expectedFrame = HTTP2Frame(payload: .ping(pingData, ack: false), streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(pingData, ack: false))
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x08,           // 3-byte payload length (8 bytes)
             0x06,                       // 1-byte frame type (PING)
@@ -1159,7 +1159,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPingAckFrameDecoding() throws {
         let pingData = HTTP2PingData(withTuple: (0,1,2,3,4,5,6,7))
-        let expectedFrame = HTTP2Frame(payload: .ping(pingData, ack: true), streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(pingData, ack: true))
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x08,           // 3-byte payload length (8 bytes)
             0x06,                       // 1-byte frame type (PING)
@@ -1214,7 +1214,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPingFrameEncoding() throws {
         let pingData = HTTP2PingData(withTuple: (0,1,2,3,4,5,6,7))
-        let frame = HTTP2Frame(payload: .ping(pingData, ack: false), streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .ping(pingData, ack: false))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1237,7 +1237,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPingAckFrameEncoding() throws {
         let pingData = HTTP2PingData(withTuple: (0,1,2,3,4,5,6,7))
-        let frame = HTTP2Frame(payload: .ping(pingData, ack: true), streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .ping(pingData, ack: true))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1264,8 +1264,8 @@ class HTTP2FrameParserTests: XCTestCase {
         let dataBytes: [UInt8] = [0, 1, 2, 3, 4, 5, 6, 7]
         let lastStreamID = HTTP2StreamID(1)
         let opaqueData = self.byteBuffer(withBytes: dataBytes)
-        let expectedFrame = HTTP2Frame(payload: .goAway(lastStreamID: lastStreamID, errorCode: .frameSizeError, opaqueData: opaqueData),
-                                       streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream,
+                                       payload: .goAway(lastStreamID: lastStreamID, errorCode: .frameSizeError, opaqueData: opaqueData))
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x10,           // 3-byte payload length (16 bytes)
             0x07,                       // 1-byte frame type (GOAWAY)
@@ -1315,8 +1315,8 @@ class HTTP2FrameParserTests: XCTestCase {
         let dataBytes: [UInt8] = [0, 1, 2, 3, 4, 5, 6, 7]
         let lastStreamID = HTTP2StreamID(1)
         let opaqueData = self.byteBuffer(withBytes: dataBytes)
-        let frame = HTTP2Frame(payload: .goAway(lastStreamID: lastStreamID, errorCode: .frameSizeError, opaqueData: opaqueData),
-                               streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream,
+                               payload: .goAway(lastStreamID: lastStreamID, errorCode: .frameSizeError, opaqueData: opaqueData))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1338,8 +1338,8 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testGoAwayFrameEncodingWithNoOpaqueData() throws {
         let lastStreamID = HTTP2StreamID(1)
-        let frame = HTTP2Frame(payload: .goAway(lastStreamID: lastStreamID, errorCode: .frameSizeError, opaqueData: nil),
-                               streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream,
+                               payload: .goAway(lastStreamID: lastStreamID, errorCode: .frameSizeError, opaqueData: nil))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1361,7 +1361,7 @@ class HTTP2FrameParserTests: XCTestCase {
     // MARK: - WINDOW_UPDATE frame
     
     func testWindowUpdateFrameDecoding() throws {
-        let expectedFrame = HTTP2Frame(payload: .windowUpdate(windowSizeIncrement: 5), streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: 1, payload: .windowUpdate(windowSizeIncrement: 5))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x04,           // 3-byte payload length (4 bytes)
@@ -1401,7 +1401,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testWindowUpdateFrameEncoding() throws {
         let streamID = HTTP2StreamID(1)
-        let frame = HTTP2Frame(payload: .windowUpdate(windowSizeIncrement: 5), streamID: streamID)
+        let frame = HTTP2Frame(streamID: streamID, payload: .windowUpdate(windowSizeIncrement: 5))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1422,8 +1422,8 @@ class HTTP2FrameParserTests: XCTestCase {
     // MARK: - CONTINUATION frames
     
     func testHeadersContinuationFrameDecoding() throws {
-        let expectedFrame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .headers(.init(headers: self.simpleHeaders)))
         
         var headers2 = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
         var headers1 = headers2.readSlice(length: 10)!
@@ -1466,8 +1466,8 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testPushPromiseContinuationFrameDecoding() throws {
         let streamID = HTTP2StreamID(3)
-        let expectedFrame = HTTP2Frame(payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .pushPromise(.init(pushedStreamID: streamID, headers: self.simpleHeaders)))
         
         var headers2 = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
         var headers1 = headers2.readSlice(length: 10)!
@@ -1614,8 +1614,8 @@ class HTTP2FrameParserTests: XCTestCase {
         let origin = "apple.com"
         var field = self.allocator.buffer(capacity: 10)
         field.writeStaticString("h2=\":8000\"")
-        let expectedFrame = HTTP2Frame(payload: .alternativeService(origin: origin, field: field),
-                                       streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream,
+                                       payload: .alternativeService(origin: origin, field: field))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x15,           // 3-byte payload length (21 bytes)
@@ -1674,7 +1674,7 @@ class HTTP2FrameParserTests: XCTestCase {
         let origin = "apple.com"
         var field = self.allocator.buffer(capacity: 10)
         field.writeStaticString("h2=\":8000\"")
-        let frame = HTTP2Frame(payload: .alternativeService(origin: origin, field: field), streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .alternativeService(origin: origin, field: field))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1699,7 +1699,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testOriginFrameDecoding() throws {
         let origins = ["apple.com", "www.apple.com", "www2.apple.com"]
-        let expectedFrame = HTTP2Frame(payload: .origin(origins), streamID: .rootStream)
+        let expectedFrame = HTTP2Frame(streamID: .rootStream, payload: .origin(origins))
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x2a,           // 3-byte payload length (42 bytes)
@@ -1759,7 +1759,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     func testOriginFrameEncoding() throws {
         let origins = ["apple.com", "www.apple.com", "www2.apple.com"]
-        let frame = HTTP2Frame(payload: .origin(origins), streamID: .rootStream)
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .origin(origins))
         var encoder = HTTP2FrameEncoder(allocator: self.allocator)
         
         let frameBytes: [UInt8] = [
@@ -1785,8 +1785,8 @@ class HTTP2FrameParserTests: XCTestCase {
     // MARK: - Multi-Frame Buffers
     
     func testHeaderAndContinuationsInOneBuffer() throws {
-        let expectedFrame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .headers(.init(headers: self.simpleHeaders)))
         
         // Break into four chunks
         var allHeaderBytes = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
@@ -1831,8 +1831,8 @@ class HTTP2FrameParserTests: XCTestCase {
     }
     
     func testPushPromiseAndContinuationsInOneBuffer() throws {
-        let expectedFrame = HTTP2Frame(payload: .pushPromise(.init(pushedStreamID: HTTP2StreamID(3), headers: self.simpleHeaders)),
-                                       streamID: HTTP2StreamID(1))
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .pushPromise(.init(pushedStreamID: HTTP2StreamID(3), headers: self.simpleHeaders)))
         
         // Break into four chunks
         var allHeaderBytes = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
@@ -1933,10 +1933,10 @@ class HTTP2FrameParserTests: XCTestCase {
         dataBuf.writeBytes(dataFrameBytes[9...])
         
         let streamID = HTTP2StreamID(1)
-        let settingsAckFrame = HTTP2Frame(payload: .settings(.ack), streamID: .rootStream)
-        let headersFrame = HTTP2Frame(payload: .headers(.init(headers: self.simpleHeaders)), streamID: streamID)
-        let dataFrame = HTTP2Frame(payload: .data(.init(data: .byteBuffer(dataBuf), endStream: true)), streamID: streamID)
-        let goawayFrame = HTTP2Frame(payload: .goAway(lastStreamID: streamID, errorCode: .noError, opaqueData: dataBuf), streamID: .rootStream)
+        let settingsAckFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.ack))
+        let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: self.simpleHeaders)))
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(dataBuf), endStream: true)))
+        let goawayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: streamID, errorCode: .noError, opaqueData: dataBuf))
         
         var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
         decoder.append(bytes: &buf)
