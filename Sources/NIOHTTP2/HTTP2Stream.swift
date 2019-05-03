@@ -15,12 +15,12 @@
 import NIOHTTP1
 import NIOHPACK
 
-private extension HTTPHeaders {
+extension HPACKHeaders {
     /// Whether this `HTTPHeaders` corresponds to a final response or not.
     ///
     /// This function is only valid if called on a response header block. If the :status header
     /// is not present, this will throw.
-    func isInformationalResponse() throws -> Bool {
+    fileprivate func isInformationalResponse() throws -> Bool {
         return try self.peekPseudoHeader(name: ":status").first! == "1"
     }
 }
@@ -57,7 +57,7 @@ struct HTTP2HeadersStateMachine {
     }
 
     /// Called when about to process a HTTP headers block to determine its type.
-    mutating func newHeaders(block: HTTPHeaders) throws -> HeaderType {
+    mutating func newHeaders(block: HPACKHeaders) throws -> HeaderType {
         let newType: HeaderType
 
         switch (self.mode, self.previousHeader) {

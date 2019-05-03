@@ -148,7 +148,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let trailersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: trailers, endStream: true)))
         XCTAssertNoThrow(try self.channel.writeInbound(trailersFrame))
 
-        self.channel.assertReceivedServerRequestPart(.end(trailers.asH1Headers()))
+        self.channel.assertReceivedServerRequestPart(.end(HTTPHeaders(regularHeadersFrom: trailers)))
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -160,8 +160,8 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
 
         // A basic response.
-        let responseHeaders = HPACKHeaders(  [("server", "swift-nio"), ("other", "header")])
-        let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: responseHeaders.asH1Headers())
+        let responseHeaders = HPACKHeaders([("server", "swift-nio"), ("other", "header")])
+        let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: HTTPHeaders(regularHeadersFrom: responseHeaders))
         self.channel.writeAndFlush(HTTPServerResponsePart.head(responseHead), promise: nil)
 
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
@@ -177,7 +177,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now trailers.
         let trailers = HPACKHeaders([("a trailer", "yes"), ("another trailer", "still yes")])
-        self.channel.writeAndFlush(HTTPServerResponsePart.end(trailers.asH1Headers()), promise: nil)
+        self.channel.writeAndFlush(HTTPServerResponsePart.end(HTTPHeaders(regularHeadersFrom: trailers)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
         writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, headers: trailers)
 
@@ -192,7 +192,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // A basic response.
         let responseHeaders = HPACKHeaders([("server", "swift-nio"), ("other", "header")])
-        let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: responseHeaders.asH1Headers())
+        let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: HTTPHeaders(regularHeadersFrom: responseHeaders))
         self.channel.writeAndFlush(HTTPServerResponsePart.head(responseHead), promise: nil)
 
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
@@ -216,7 +216,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // First, we're going to send a few 103 blocks.
         let informationalResponseHeaders = HPACKHeaders([("link", "no link really")])
-        let informationalResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .custom(code: 103, reasonPhrase: "Early Hints"), headers: informationalResponseHeaders.asH1Headers())
+        let informationalResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .custom(code: 103, reasonPhrase: "Early Hints"), headers: HTTPHeaders(regularHeadersFrom: informationalResponseHeaders))
         for _ in 0..<3 {
             self.channel.write(HTTPServerResponsePart.head(informationalResponseHead), promise: nil)
         }
@@ -230,7 +230,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now we finish up with a basic response.
         let responseHeaders = HPACKHeaders([("server", "swift-nio"), ("other", "header")])
-        let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: responseHeaders.asH1Headers())
+        let responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: HTTPHeaders(regularHeadersFrom: responseHeaders))
         self.channel.writeAndFlush(HTTPServerResponsePart.head(responseHead), promise: nil)
         self.channel.writeAndFlush(HTTPServerResponsePart.end(nil), promise: nil)
 
@@ -344,7 +344,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([("host", "example.org"), ("other", "header")])
         var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/post")
-        requestHead.headers = requestHeaders.asH1Headers()
+        requestHead.headers = HTTPHeaders(regularHeadersFrom: requestHeaders)
         self.channel.writeAndFlush(HTTPClientRequestPart.head(requestHead), promise: nil)
 
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
@@ -360,7 +360,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         // Now trailers.
         let trailers = HPACKHeaders([("a trailer", "yes"), ("another trailer", "still yes")])
-        self.channel.writeAndFlush(HTTPClientRequestPart.end(trailers.asH1Headers()), promise: nil)
+        self.channel.writeAndFlush(HTTPClientRequestPart.end(HTTPHeaders(regularHeadersFrom: trailers)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
         writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, headers: trailers)
 

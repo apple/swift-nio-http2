@@ -22,7 +22,7 @@ public struct HPACKHeaders {
     
     /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
     public init(httpHeaders: HTTPHeaders) {
-        self.init(Array(httpHeaders))
+        self.headers = httpHeaders.map { HPACKHeader(name: $0.name, value: $0.value) }
     }
     
     /// Construct a `HPACKHeaders` structure.
