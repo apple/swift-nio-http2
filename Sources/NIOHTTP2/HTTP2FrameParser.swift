@@ -220,8 +220,11 @@ struct HTTP2FrameDecoder {
         /// We are accumulating a CONTINUATION frame.
         case accumulatingContinuationPayload(AccumulatingContinuationPayloadParserState)
 
-        // We are waiting for a new CONTINUATION frame to arrive.
+        /// We are waiting for a new CONTINUATION frame to arrive.
         case accumulatingHeaderBlockFragments(AccumulatingHeaderBlockFragmentsParserState)
+
+        /// A temporary state where we are appending data to a buffer. Must always be exited after the append operation.
+        case appending
     }
 
     internal var headerDecoder: HPACKDecoder
@@ -257,26 +260,41 @@ struct HTTP2FrameDecoder {
     mutating func append(bytes: inout ByteBuffer) {
         switch self.state {
         case .awaitingClientMagic(var state):
-            state.accumulate(bytes: &bytes)
-            self.state = .awaitingClientMagic(state)
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: &bytes)
+                newState = .awaitingClientMagic(state)
+            }
         case .initialized:
+            // No need for the CoW helper here, as moveReaderIndex does not CoW.
             self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
             bytes.moveReaderIndex(to: bytes.writerIndex)        // we ate all the bytes
         case .accumulatingFrameHeader(var state):
-            state.accumulate(bytes: &bytes)
-            self.state = .accumulatingFrameHeader(state)
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: &bytes)
+                newState = .accumulatingFrameHeader(state)
+            }
         case .accumulatingData(var state):
-            state.accumulate(bytes: &bytes)
-            self.state = .accumulatingData(state)
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: &bytes)
+                newState = .accumulatingData(state)
+            }
         case .simulatingDataFrames(var state):
-            state.accumulate(bytes: &bytes)
-            self.state = .simulatingDataFrames(state)
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: &bytes)
+                newState = .simulatingDataFrames(state)
+            }
         case .accumulatingContinuationPayload(var state):
-            state.accumulate(bytes: &bytes)
-            self.state = .accumulatingContinuationPayload(state)
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: &bytes)
+                newState = .accumulatingContinuationPayload(state)
+            }
         case .accumulatingHeaderBlockFragments(var state):
-            state.accumulate(bytes: &bytes)
-            self.state = .accumulatingHeaderBlockFragments(state)
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: &bytes)
+                newState = .accumulatingHeaderBlockFragments(state)
+            }
+        case .appending:
+            preconditionFailure("Cannot recursively append in appending state")
         }
     }
 
@@ -542,6 +560,9 @@ struct HTTP2FrameDecoder {
             }
 
             self.state = .accumulatingContinuationPayload(AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: state, continuationHeader: header))
+
+        case .appending:
+            preconditionFailure("Attempting to process in appending state")
         }
 
         return .continue
@@ -1230,5 +1251,41 @@ private struct FrameFlags: OptionSet, CustomStringConvertible {
             }
         }
         return "[\(strings.joined(separator: ", "))]"
+    }
+}
+
+
+// MARK: CoW helpers
+extension HTTP2FrameDecoder {
+    /// So, uh...this function needs some explaining.
+    ///
+    /// There is a downside to having all of the parser data in associated data on enumerations: any modification of
+    /// that data will trigger copy on write for heap-allocated data. That means that when we append data to the underlying
+    /// ByteBuffer we will CoW it, which is not good.
+    ///
+    /// The way we can avoid this is by using this helper function. It will temporarily set state to a value with no
+    /// associated data, before attempting the body of the function. It will also verify that the parser never
+    /// remains in this bad state.
+    ///
+    /// A key note here is that all callers must ensure that they return to a good state before they exit.
+    ///
+    /// Sadly, because it's generic and has a closure, we need to force it to be inlined at all call sites, which is
+    /// not ideal.
+    @inline(__always)
+    private mutating func avoidingParserCoW<ReturnType>(_ body: (inout ParserState) -> ReturnType) -> ReturnType {
+        self.state = .appending
+        defer {
+            assert(!self.isAppending)
+        }
+
+        return body(&self.state)
+    }
+
+    private var isAppending: Bool {
+        if case .appending = self.state {
+            return true
+        } else {
+            return false
+        }
     }
 }
