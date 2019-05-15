@@ -60,14 +60,12 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         } else if case .headers = frame.payload {
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
+                                             multiplexer: self,
                                              streamID: streamID,
                                              targetWindowSize: 65535,
                                              initiatedRemotely: true)
             self.streams[streamID] = channel
             channel.configure(initializer: self.inboundStreamStateInitializer, userPromise: nil)
-            channel.closeFuture.whenComplete { _ in
-                self.childChannelClosed(streamID: streamID)
-            }
             channel.receiveInboundFrame(frame)
         } else {
             // This frame is for a stream we know nothing about. We can't do much about it, so we
@@ -121,7 +119,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         context.fireUserInboundEventTriggered(event)
     }
 
-    private func childChannelClosed(streamID: HTTP2StreamID) {
+    internal func childChannelClosed(streamID: HTTP2StreamID) {
         self.streams.removeValue(forKey: streamID)
     }
 
@@ -180,14 +178,12 @@ extension HTTP2StreamMultiplexer {
             self.nextOutboundStreamID = HTTP2StreamID(Int32(streamID) + 2)
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
+                                             multiplexer: self,
                                              streamID: streamID,
                                              targetWindowSize: 65535,  // TODO: make configurable
                                              initiatedRemotely: false)
             self.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
-            channel.closeFuture.whenComplete { _ in
-                self.childChannelClosed(streamID: streamID)
-            }
         }
     }
 }
