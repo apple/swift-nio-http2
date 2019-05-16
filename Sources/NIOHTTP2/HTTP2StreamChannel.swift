@@ -93,7 +93,7 @@ private enum StreamChannelState {
 
 
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    internal init(allocator: ByteBufferAllocator, parent: Channel, streamID: HTTP2StreamID, targetWindowSize: Int32, initiatedRemotely: Bool) {
+    internal init(allocator: ByteBufferAllocator, parent: Channel, multiplexer: HTTP2StreamMultiplexer, streamID: HTTP2StreamID, targetWindowSize: Int32, initiatedRemotely: Bool) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.makePromise()
         self.localAddress = parent.localAddress
@@ -101,6 +101,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.parent = parent
         self.eventLoop = parent.eventLoop
         self.streamID = streamID
+        self.multiplexer = multiplexer
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
         // FIXME: that's just wrong
         self.isWritable = true
@@ -117,8 +118,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self._pipeline = ChannelPipeline(channel: self)
     }
 
-    @discardableResult
-    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?) -> EventLoopFuture<Void> {
+    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?){
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
         // 2. Calling the initializer, if provided.
@@ -133,6 +133,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             if self.parent!.isActive {
                 self.performActivation()
             }
+
+            // We aren't using cascade here to avoid the allocations it causes.
+            promise?.succeed(self)
         }
 
         f.whenFailure { (error: Error) in
@@ -141,8 +144,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             } else {
                 self.errorEncountered(error: error)
             }
+
+            promise?.fail(error)
         }
-        return f
     }
 
     /// Activates this channel.
@@ -161,6 +165,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     public let allocator: ByteBufferAllocator
 
     private let closePromise: EventLoopPromise<()>
+
+    private let multiplexer: HTTP2StreamMultiplexer
 
     public var closeFuture: EventLoopFuture<Void> {
         return self.closePromise.futureResult
@@ -394,6 +400,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.eventLoop.execute {
             self.removeHandlers(channel: self)
             self.closePromise.succeed(())
+            self.multiplexer.childChannelClosed(streamID: self.streamID)
         }
     }
 
@@ -414,6 +421,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.eventLoop.execute {
             self.removeHandlers(channel: self)
             self.closePromise.fail(error)
+            self.multiplexer.childChannelClosed(streamID: self.streamID)
         }
     }
 
