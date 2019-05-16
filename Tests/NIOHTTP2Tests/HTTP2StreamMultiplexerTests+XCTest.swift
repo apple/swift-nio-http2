@@ -60,6 +60,8 @@ extension HTTP2StreamMultiplexerTests {
                 ("testInitiatedChildChannelActivates", testInitiatedChildChannelActivates),
                 ("testMultiplexerIgnoresPriorityFrames", testMultiplexerIgnoresPriorityFrames),
                 ("testMultiplexerForwardsActiveToParent", testMultiplexerForwardsActiveToParent),
+                ("testCreatedChildChannelCanBeClosedImmediately", testCreatedChildChannelCanBeClosedImmediately),
+                ("testCreatedChildChannelCanBeClosedBeforeWritingHeaders", testCreatedChildChannelCanBeClosedBeforeWritingHeaders),
            ]
    }
 }

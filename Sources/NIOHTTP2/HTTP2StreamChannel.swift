@@ -37,28 +37,45 @@ public struct HTTP2StreamChannelOptions {
 
 /// The current state of a stream channel.
 private enum StreamChannelState {
+    /// The stream has been created, but not configured.
     case idle
+
+    /// The is "active": we haven't sent channelActive yet, but it exists on the network and any shutdown must cause a frame to be emitted.
     case remoteActive
+
+    /// This is also "active", but different to the above: we've sent channelActive, but the NIOHTTP2Handler hasn't seen the frame yet,
+    /// and so we can close this channel without action if needed.
+    case localActive
+
+    /// This is actually active: channelActive has been fired and the HTTP2Handler believes this stream exists.
     case active
+
+    /// We are closing from a state where channelActive had been fired. In practice this is only ever active, as
+    /// in localActive we transition directly to closed.
     case closing
-    case closingFromIdle
+
+    /// We're closing from a state where we have never fired channel active, but where the channel was on the network.
+    /// This means we need to send frames and wait for their side effects.
+    case closingNeverActivated
+
+    /// We're fully closed.
     case closed
 
     mutating func activate() {
         switch self {
         case .idle, .remoteActive:
             self = .active
-        case .active, .closing, .closingFromIdle, .closed:
+        case .localActive, .active, .closing, .closingNeverActivated, .closed:
             preconditionFailure("Became active from state \(self)")
         }
     }
 
     mutating func beginClosing() {
         switch self {
-        case .active, .closing:
+        case .active, .localActive, .closing:
             self = .closing
-        case .idle, .closingFromIdle, .remoteActive:
-            self = .closingFromIdle
+        case .idle, .closingNeverActivated, .remoteActive:
+            self = .closingNeverActivated
         case .closed:
             preconditionFailure("Cannot begin closing while closed")
         }
@@ -66,7 +83,7 @@ private enum StreamChannelState {
 
     mutating func completeClosing() {
         switch self {
-        case .idle, .remoteActive, .closing, .closingFromIdle, .active:
+        case .idle, .remoteActive, .closing, .closingNeverActivated, .active, .localActive:
             self = .closed
         case .closed:
             preconditionFailure("Complete closing from \(self)")
@@ -322,7 +339,14 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             }
         }
 
-        self.closedWhileOpen()
+        switch self.state {
+        case .idle, .localActive, .closed:
+            // The stream isn't open on the network, just go straight to closed cleanly.
+            self.closedCleanly()
+        case .remoteActive, .active, .closing, .closingNeverActivated:
+            // In all of these states the stream is still on the network and we need to wait.
+            self.closedWhileOpen()
+        }
     }
 
     public func triggerUserOutboundEvent0(_ event: Any, promise: EventLoopPromise<Void>?) {

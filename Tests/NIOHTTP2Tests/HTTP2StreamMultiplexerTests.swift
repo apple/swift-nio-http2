@@ -1315,4 +1315,48 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    func testCreatedChildChannelCanBeClosedImmediately() throws {
+        var closed = false
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.channel) { (channel, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.makeFailedFuture(MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        XCTAssertFalse(closed)
+        multiplexer.createStreamChannel(promise: nil) { (channel, streamID) in
+            channel.close().whenComplete { _ in closed = true }
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertTrue(closed)
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testCreatedChildChannelCanBeClosedBeforeWritingHeaders() throws {
+        var closed = false
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.channel) { (channel, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.makeFailedFuture(MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        let channelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: channelPromise) { (channel, streamID) in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+
+        let child = try assertNoThrowWithValue(channelPromise.futureResult.wait())
+        child.closeFuture.whenComplete { _ in closed = true }
+
+        XCTAssertFalse(closed)
+        child.close(promise: nil)
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertTrue(closed)
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }
