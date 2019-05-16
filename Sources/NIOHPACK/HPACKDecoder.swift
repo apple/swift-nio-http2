@@ -89,6 +89,7 @@ public struct HPACKDecoder {
         // take a local copy to mutate
         var bufCopy = buffer
         var headers: [HPACKHeader] = []
+        headers.reserveCapacity(16)
 
         while bufCopy.readableBytes > 0 {
             switch try self.decodeHeader(from: &bufCopy) {
