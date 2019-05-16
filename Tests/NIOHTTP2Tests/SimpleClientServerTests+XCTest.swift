@@ -57,6 +57,7 @@ extension SimpleClientServerTests {
                 ("testStreamErrorOnSelfDependentHeadersFrames", testStreamErrorOnSelfDependentHeadersFrames),
                 ("testInvalidRequestHeaderBlockAllowsRstStream", testInvalidRequestHeaderBlockAllowsRstStream),
                 ("testClientConnectionErrorCorrectlyReported", testClientConnectionErrorCorrectlyReported),
+                ("testChangingMaxConcurrentStreams", testChangingMaxConcurrentStreams),
            ]
    }
 }

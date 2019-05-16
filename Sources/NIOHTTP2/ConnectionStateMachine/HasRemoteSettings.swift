@@ -48,6 +48,7 @@ extension HasRemoteSettings {
                     } else {
                         self.streamState.maxServerInitiatedStreams = newValue
                     }
+                    effect.newMaxConcurrentStreams = newValue
                 case .headerTableSize:
                     frameDecoder.headerDecoder.maxDynamicTableLength = Int(newValue)
                 case .initialWindowSize:

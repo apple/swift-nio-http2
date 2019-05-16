@@ -1318,4 +1318,46 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.serverChannel.finish().isClean))
         _ = try? self.clientChannel.finish()
     }
+
+    func testChangingMaxConcurrentStreams() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers, endStream: true)))
+        try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Now the server is going to change SETTINGS_MAX_CONCURRENT_STREAMS. We set this twice to confirm we do this properly.
+        try self.assertSettingsUpdateWithAck([HTTP2Setting(parameter: .maxConcurrentStreams, value: 50), HTTP2Setting(parameter: .maxConcurrentStreams, value: 1)], sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Now the client will attempt to open another stream. This should buffer.
+        let reqFrame2 = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: headers, endStream: true)))
+        self.clientChannel.writeAndFlush(reqFrame2, promise: nil)
+        XCTAssertNoThrow(try XCTAssertNil(self.clientChannel.readOutbound(as: ByteBuffer.self)))
+
+        // The server will now complete the first stream, which should lead to the second stream being emitted.
+        let responseHeaders = HPACKHeaders([(":status", "200")])
+        let respFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: responseHeaders, endStream: true)))
+        self.serverChannel.writeAndFlush(respFrame, promise: nil)
+        self.interactInMemory(self.serverChannel, self.clientChannel)
+
+        // The client should have seen the server response.
+        guard let response = try assertNoThrowWithValue(self.clientChannel.readInbound(as: HTTP2Frame.self)) else {
+            XCTFail("Did not receive server HEADERS frame")
+            return
+        }
+        response.assertFrameMatches(this: respFrame)
+
+        // The server should have seen the new client request.
+        guard let request = try assertNoThrowWithValue(self.serverChannel.readInbound(as: HTTP2Frame.self)) else {
+            XCTFail("Did not receive client HEADERS frame")
+            return
+        }
+        request.assertFrameMatches(this: reqFrame2)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

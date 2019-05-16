@@ -148,6 +148,8 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
         internal var streamWindowSizeChange: Int = 0
 
         internal var newMaxFrameSize: UInt32?
+
+        internal var newMaxConcurrentStreams: UInt32?
     }
 
     /// The local peer's settings have changed in a way that is not trivial to decode.

@@ -486,13 +486,15 @@ extension NIOHTTP2Handler {
                 promise?.fail(error)
             }
         case .remoteSettingsChanged(let settingsChange):
-            // TODO(cory): also max concurrent streams.
             if settingsChange.streamWindowSizeChange != 0 {
                 self.outboundBuffer.initialWindowSizeChanged(settingsChange.streamWindowSizeChange)
             }
             if let newMaxFrameSize = settingsChange.newMaxFrameSize {
                 self.frameEncoder.maxFrameSize = newMaxFrameSize
                 self.outboundBuffer.maxFrameSize = Int(newMaxFrameSize)
+            }
+            if let newMaxConcurrentStreams = settingsChange.newMaxConcurrentStreams {
+                self.outboundBuffer.maxOutboundStreams = Int(newMaxConcurrentStreams)
             }
         case .localSettingsChanged(let settingsChange):
             if settingsChange.streamWindowSizeChange != 0 {
