@@ -100,8 +100,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self._pipeline = ChannelPipeline(channel: self)
     }
 
-    @discardableResult
-    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?) -> EventLoopFuture<Void> {
+    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?){
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
         // 2. Calling the initializer, if provided.
@@ -116,6 +115,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             if self.parent!.isActive {
                 self.performActivation()
             }
+
+            // We aren't using cascade here to avoid the allocations it causes.
+            promise?.succeed(self)
         }
 
         f.whenFailure { (error: Error) in
@@ -124,8 +126,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             } else {
                 self.errorEncountered(error: error)
             }
+
+            promise?.fail(error)
         }
-        return f
     }
 
     /// Activates this channel.
