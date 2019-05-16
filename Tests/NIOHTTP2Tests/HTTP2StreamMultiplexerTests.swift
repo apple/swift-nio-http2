@@ -1330,9 +1330,9 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             channel.close().whenComplete { _ in closed = true }
             return channel.eventLoop.makeSucceededFuture(())
         }
-        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        self.channel.embeddedEventLoop.run()
         XCTAssertTrue(closed)
-        XCTAssertNoThrow(try self.channel.finish())
+        XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean()))
     }
 
     func testCreatedChildChannelCanBeClosedBeforeWritingHeaders() throws {
@@ -1348,15 +1348,15 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         multiplexer.createStreamChannel(promise: channelPromise) { (channel, streamID) in
             return channel.eventLoop.makeSucceededFuture(())
         }
-        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        self.channel.embeddedEventLoop.run()
 
         let child = try assertNoThrowWithValue(channelPromise.futureResult.wait())
         child.closeFuture.whenComplete { _ in closed = true }
 
         XCTAssertFalse(closed)
         child.close(promise: nil)
-        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        self.channel.embeddedEventLoop.run()
         XCTAssertTrue(closed)
-        XCTAssertNoThrow(try self.channel.finish())
+        XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean()))
     }
 }
