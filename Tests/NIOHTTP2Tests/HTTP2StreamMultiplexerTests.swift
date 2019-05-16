@@ -1332,7 +1332,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         }
         self.channel.embeddedEventLoop.run()
         XCTAssertTrue(closed)
-        XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean()))
+        XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
     }
 
     func testCreatedChildChannelCanBeClosedBeforeWritingHeaders() throws {
@@ -1357,6 +1357,6 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         child.close(promise: nil)
         self.channel.embeddedEventLoop.run()
         XCTAssertTrue(closed)
-        XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean()))
+        XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
     }
 }
