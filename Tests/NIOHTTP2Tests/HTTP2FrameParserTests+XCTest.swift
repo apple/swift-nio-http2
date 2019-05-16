@@ -93,6 +93,7 @@ extension HTTP2FrameParserTests {
                 ("testHeaderAndContinuationsInOneBuffer", testHeaderAndContinuationsInOneBuffer),
                 ("testPushPromiseAndContinuationsInOneBuffer", testPushPromiseAndContinuationsInOneBuffer),
                 ("testMultipleFramesInOneBuffer", testMultipleFramesInOneBuffer),
+                ("testCorrectlyAccountForFlowControlledLength", testCorrectlyAccountForFlowControlledLength),
            ]
    }
 }

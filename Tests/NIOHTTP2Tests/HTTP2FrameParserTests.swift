@@ -1962,4 +1962,35 @@ class HTTP2FrameParserTests: XCTestCase {
         XCTAssertNil(noFrame)
     }
 
+    func testCorrectlyAccountForFlowControlledLength() throws {
+        var payload = ByteBufferAllocator().buffer(capacity: 2)
+        payload.writeBytes(repeatElement(UInt8(0), count: 2))
+
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x02,           // 3-byte payload length (2 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x00,                       // 0-byte flags
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        var buf = byteBuffer(withBytes: frameBytes, extraCapacity: payload.readableBytes)
+        buf.writeBytes(payload.readableBytesView)
+
+        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var slice = buf.readSlice(length: 10)!
+        decoder.append(bytes: &slice)
+        guard let result = try assertNoThrowWithValue(decoder.nextFrame()) else {
+            XCTFail("Failed to parse frame")
+            return
+        }
+        XCTAssertEqual(result.flowControlledLength, 2)
+
+        slice = buf.readSlice(length: 1)!
+        decoder.append(bytes: &slice)
+        guard let result2 = try decoder.nextFrame() else {
+            XCTFail("Failed to parse frame")
+            return
+        }
+        XCTAssertEqual(result2.flowControlledLength, 0)
+    }
+
 }

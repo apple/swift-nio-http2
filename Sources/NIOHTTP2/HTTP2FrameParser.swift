@@ -481,6 +481,11 @@ struct HTTP2FrameDecoder {
             var frameBytes: ByteBuffer
             var nextState: ParserState
             var flags: FrameFlags = state.header.flags
+
+            // We extract the flow controlled length early because we only ever emit it once for a given frame.
+            // This operation mutates the flow controlled length and sets it to zero, so it will always give an appropriate result.
+            let flowControlledLength = state.flowControlledLength()
+
             if state.payload.readableBytes >= state.remainingByteCount {
                 // read all the bytes for this last frame
                 frameBytes = state.payload.readSlice(length: state.remainingByteCount - Int(state.expectedPadding))!
@@ -510,7 +515,7 @@ struct HTTP2FrameDecoder {
             let dataPayload = HTTP2Frame.FramePayload.Data(data: .byteBuffer(frameBytes), endStream: flags.contains(.endStream), paddingBytes: nil)
             let outputFrame = HTTP2Frame(streamID: streamID, payload: .data(dataPayload))
             self.state = nextState
-            return .frame(outputFrame, flowControlledLength: state.flowControlledLength())
+            return .frame(outputFrame, flowControlledLength: flowControlledLength)
 
         case .accumulatingContinuationPayload(var state):
             guard state.continuationHeader.length <= state.continuationPayload.readableBytes else {
