@@ -62,6 +62,8 @@ extension HTTP2StreamMultiplexerTests {
                 ("testMultiplexerForwardsActiveToParent", testMultiplexerForwardsActiveToParent),
                 ("testCreatedChildChannelCanBeClosedImmediately", testCreatedChildChannelCanBeClosedImmediately),
                 ("testCreatedChildChannelCanBeClosedBeforeWritingHeaders", testCreatedChildChannelCanBeClosedBeforeWritingHeaders),
+                ("testCreatedChildChannelCanBeClosedImmediatelyWhenBaseIsActive", testCreatedChildChannelCanBeClosedImmediatelyWhenBaseIsActive),
+                ("testCreatedChildChannelCanBeClosedBeforeWritingHeadersWhenBaseIsActive", testCreatedChildChannelCanBeClosedBeforeWritingHeadersWhenBaseIsActive),
            ]
    }
 }

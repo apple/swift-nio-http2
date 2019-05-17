@@ -63,19 +63,36 @@ private enum StreamChannelState {
 
     mutating func activate() {
         switch self {
-        case .idle, .remoteActive:
+        case .idle:
+            self = .localActive
+        case .remoteActive:
             self = .active
         case .localActive, .active, .closing, .closingNeverActivated, .closed:
             preconditionFailure("Became active from state \(self)")
         }
     }
 
+    mutating func networkActive() {
+        switch self {
+        case .idle:
+            self = .remoteActive
+        case .localActive:
+            self = .active
+        case .closed:
+            preconditionFailure("Stream must be reset on network activation when closed")
+        case .remoteActive, .active, .closing, .closingNeverActivated:
+            preconditionFailure("Cannot become network active twice, in state \(self)")
+        }
+    }
+
     mutating func beginClosing() {
         switch self {
-        case .active, .localActive, .closing:
+        case .active, .closing:
             self = .closing
-        case .idle, .closingNeverActivated, .remoteActive:
+        case .closingNeverActivated, .remoteActive:
             self = .closingNeverActivated
+        case .idle, .localActive:
+            preconditionFailure("Idle streams immediately close")
         case .closed:
             preconditionFailure("Cannot begin closing while closed")
         }
@@ -93,7 +110,7 @@ private enum StreamChannelState {
 
 
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    internal init(allocator: ByteBufferAllocator, parent: Channel, multiplexer: HTTP2StreamMultiplexer, streamID: HTTP2StreamID, targetWindowSize: Int32, initiatedRemotely: Bool) {
+    internal init(allocator: ByteBufferAllocator, parent: Channel, multiplexer: HTTP2StreamMultiplexer, streamID: HTTP2StreamID, targetWindowSize: Int32) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.makePromise()
         self.localAddress = parent.localAddress
@@ -105,12 +122,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
         // FIXME: that's just wrong
         self.isWritable = true
-
-        if initiatedRemotely {
-            self.state = .remoteActive
-        } else {
-            self.state = .idle
-        }
+        self.state = .idle
 
         // To begin with we initialize autoRead to false, but we are going to fetch it from our parent before we
         // go much further.
@@ -152,12 +164,35 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     /// Activates this channel.
     internal func performActivation() {
         precondition(self.parent?.isActive ?? false, "Parent must be active to activate the child")
+
+        if self.state == .closed || self.state == .closingNeverActivated {
+            // We're already closed, or we've been asked to close and are waiting for the network.
+            // No need to activate in either case
+            return
+        }
+
         self.state.activate()
         self.pipeline.fireChannelActive()
         if self.autoRead {
             self.read0()
         }
         self.deliverPendingWrites()
+    }
+
+    internal func networkActivationReceived() {
+        if self.state == .closed {
+            // Uh-oh: we got an activation but we think we're closed! We need to send a RST_STREAM frame.
+            let resetFrame = HTTP2Frame(streamID: self.streamID, payload: .rstStream(.cancel))
+            self.parent?.writeAndFlush(resetFrame, promise: nil)
+            return
+        }
+        self.state.networkActive()
+
+        // If we got here, we may need to flush some pending reads. Notably we don't call read0 here as
+        // we don't actually want to start reading before activation, which tryToRead will refuse to do.
+        if self.pendingReads.count > 0 {
+            self.tryToRead()
+        }
     }
 
     private var _pipeline: ChannelPipeline!
@@ -241,7 +276,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     public let isWritable: Bool
 
     public var isActive: Bool {
-        return self.state == .active || self.state == .closing
+        return self.state == .active || self.state == .closing || self.state == .localActive
     }
 
     public var _channelCore: ChannelCore {
