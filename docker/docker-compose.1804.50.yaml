@@ -18,7 +18,7 @@ services:
 
   test:
     image: swift-nio-http2:18.04-5.0
-    command: /bin/bash -cl "swift test && ./scripts/integration_tests.sh"
+    command: /bin/bash -cl "swift test -Xswiftc -warnings-as-errors && ./scripts/integration_tests.sh"
     environment:
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=70010
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
