@@ -549,13 +549,13 @@ internal extension HTTP2StreamChannel {
     ///     - frame: The `HTTP2Frame` to send to the network.
     ///     - promise: The promise associated with the frame write.
     private func receiveOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
-        guard let parent = self.parent, self.state != .closed else {
+        guard self.state != .closed else {
             let error = ChannelError.alreadyClosed
             promise?.fail(error)
             self.errorEncountered(error: error)
             return
         }
-        parent.write(frame, promise: promise)
+        self.multiplexer.childChannelWrite(frame, promise: promise)
     }
 
     /// Called when a stream closure is received from the network.
@@ -576,7 +576,7 @@ internal extension HTTP2StreamChannel {
             let frame = HTTP2Frame(streamID: self.streamID, payload: .windowUpdate(windowSizeIncrement: increment))
             self.receiveOutboundFrame(frame, promise: nil)
             // This flush should really go away, but we need it for now until we sort out window management.
-            self.parent?.flush()
+            self.multiplexer.childChannelFlush()
         }
     }
 
@@ -585,7 +585,7 @@ internal extension HTTP2StreamChannel {
             let frame = HTTP2Frame(streamID: self.streamID, payload: .windowUpdate(windowSizeIncrement: increment))
             self.receiveOutboundFrame(frame, promise: nil)
             // This flush should really go away, but we need it for now until we sort out window management.
-            self.parent?.flush()
+            self.multiplexer.childChannelFlush()
         }
     }
 }
