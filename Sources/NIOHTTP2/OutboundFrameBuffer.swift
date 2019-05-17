@@ -151,6 +151,9 @@ extension CompoundOutboundBuffer {
             }
         }
 
+        // Mark the flush point, as any frame we forwarded on is by defintion flushed.
+        self.flowControlBuffer.flushReceived()
+
         if let (frame, promise) = self.flowControlBuffer.nextFlushedWritableFrame() {
             return .frame(frame, promise)
         } else {
