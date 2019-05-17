@@ -10,8 +10,18 @@ services:
         swift_version: "5.0"
         h2spec_version: "2.2.1"
 
+  integration-tests:
+    image: swift-nio-http2:18.04-5.0
+    environment:
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=70010
+      - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
+
   test:
     image: swift-nio-http2:18.04-5.0
+    command: /bin/bash -cl "swift test && ./scripts/integration_tests.sh"
+    environment:
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=70010
+      - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
 
   h2spec:
     image: swift-nio-http2:18.04-5.0
