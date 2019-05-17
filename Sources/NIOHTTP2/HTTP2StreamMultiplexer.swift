@@ -62,8 +62,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                                              parent: self.channel,
                                              multiplexer: self,
                                              streamID: streamID,
-                                             targetWindowSize: 65535,
-                                             initiatedRemotely: true)
+                                             targetWindowSize: 65535)
             self.streams[streamID] = channel
             channel.configure(initializer: self.inboundStreamStateInitializer, userPromise: nil)
             channel.receiveInboundFrame(frame)
@@ -111,6 +110,10 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             let channels = self.streams.values
             for channel in channels {
                 channel.initialWindowSizeChanged(delta: evt.delta)
+            }
+        case let evt as NIOHTTP2StreamCreatedEvent:
+            if let channel = self.streams[evt.streamID] {
+                channel.networkActivationReceived()
             }
         default:
             break
@@ -180,8 +183,7 @@ extension HTTP2StreamMultiplexer {
                                              parent: self.channel,
                                              multiplexer: self,
                                              streamID: streamID,
-                                             targetWindowSize: 65535,  // TODO: make configurable
-                                             initiatedRemotely: false)
+                                             targetWindowSize: 65535)  // TODO: make configurable
             self.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
         }
