@@ -219,6 +219,68 @@ final class CompoundOutboundBufferTest: XCTestCase {
             XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
         }
     }
+
+    func testBufferedFlushedFrameBufferingBehindFlowControl() {
+        // This is a test that hits an edge case occasionally spotted under high load.
+        // Specifically, this test catches the case where we have a flushed DATA frame buffered in the concurrent streams
+        // buffer that gets unbuffered from there, and rebuffered into the flow control buffer. In this instance, the
+        // buggy effect will be for this frame to get "stuck", as we were failing to propgate the fact that the frame
+        // is flushed.
+        var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1)
+
+        // Shrink the connection window size.
+        buffer.connectionWindowSize = 5
+
+        // Now, prepare our four frames. We'll open a stream and consume the connection window, then
+        // attempt to open another stream and send a data frame. The second two frames must buffer.
+        let firstHeaders = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let firstData = self.createDataFrame(1, byteBufferSize: 5)
+        let secondHeaders = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let secondData = self.createDataFrame(3, byteBufferSize: 5)
+
+        XCTAssertNoThrow(try buffer.processOutboundFrame(firstHeaders, promise: nil).assertForward())
+        buffer.streamCreated(1, initialWindowSize: 65535)
+        XCTAssertNoThrow(try buffer.processOutboundFrame(firstData, promise: nil).assertNothing())
+
+        XCTAssertNoThrow(try buffer.processOutboundFrame(secondHeaders, promise: nil).assertNothing())
+        XCTAssertNoThrow(try buffer.processOutboundFrame(secondData, promise: nil).assertNothing())
+
+        // Now mark them flushed.
+        buffer.flushReceived()
+
+        // Now grab that first data frame and consume the connection window.
+        guard case .frame(let firstUnbufferedFrame, _) = buffer.nextFlushedWritableFrame() else {
+            XCTFail("Did not unbuffer a data frame")
+            return
+        }
+        buffer.connectionWindowSize = 0
+        firstUnbufferedFrame.assertFrameMatches(this: firstData)
+
+        // Now complete the first stream.
+        XCTAssertEqual(buffer.streamClosed(1).count, 0)
+
+        // Ask for the next frame, which should be the headers.
+        guard case .frame(let secondUnbufferedFrame, _) = buffer.nextFlushedWritableFrame() else {
+            XCTFail("Did not unbuffer a headers frame")
+            return
+        }
+        buffer.streamCreated(3, initialWindowSize: 65535)
+        secondUnbufferedFrame.assertFrameMatches(this: secondHeaders)
+
+        // The second frame must not unbuffer, as there is no room in the connection window.
+        guard case .noFrame = buffer.nextFlushedWritableFrame() else {
+            XCTFail("Emitted a frame unexpectedly")
+            return
+        }
+
+        // Now increase the connection window size. This should free up the frame.
+        buffer.connectionWindowSize = 5
+        guard case .frame(let thirdUnbufferedFrame, _) = buffer.nextFlushedWritableFrame() else {
+            XCTFail("Did not unbuffer a data frame")
+            return
+        }
+        thirdUnbufferedFrame.assertFrameMatches(this: secondData)
+    }
 }
 
 
