@@ -15,6 +15,7 @@ services:
     environment:
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=70010
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=360000
 
   test:
     image: swift-nio-http2:18.04-5.0
@@ -22,6 +23,7 @@ services:
     environment:
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=70010
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=360000
 
   h2spec:
     image: swift-nio-http2:18.04-5.0

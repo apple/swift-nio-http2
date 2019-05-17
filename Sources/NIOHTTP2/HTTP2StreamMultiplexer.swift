@@ -30,6 +30,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private var streams: [HTTP2StreamID: HTTP2StreamChannel] = [:]
     private let inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?
     private let channel: Channel
+    private var context: ChannelHandlerContext!
     private var nextOutboundStreamID: HTTP2StreamID
     private var connectionFlowControlManager: InboundWindowManager
 
@@ -37,6 +38,11 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         // We now need to check that we're on the same event loop as the one we were originally given.
         // If we weren't, this is a hard failure, as there is a thread-safety issue here.
         self.channel.eventLoop.preconditionInEventLoop()
+        self.context = context
+    }
+
+    public func handlerRemoved(context: ChannelHandlerContext) {
+        self.context = nil
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -122,10 +128,6 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         context.fireUserInboundEventTriggered(event)
     }
 
-    internal func childChannelClosed(streamID: HTTP2StreamID) {
-        self.streams.removeValue(forKey: streamID)
-    }
-
     private func newConnectionWindowSize(newSize: Int, context: ChannelHandlerContext) {
         guard let increment = self.connectionFlowControlManager.newWindowSize(newSize) else {
             return
@@ -187,5 +189,21 @@ extension HTTP2StreamMultiplexer {
             self.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
         }
+    }
+}
+
+
+// MARK:- Child to parent calls
+extension HTTP2StreamMultiplexer {
+    internal func childChannelClosed(streamID: HTTP2StreamID) {
+        self.streams.removeValue(forKey: streamID)
+    }
+
+    internal func childChannelWrite(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+        self.context.write(self.wrapOutboundOut(frame), promise: promise)
+    }
+
+    internal func childChannelFlush() {
+        self.context.flush()
     }
 }
