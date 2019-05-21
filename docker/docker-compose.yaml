@@ -23,11 +23,18 @@ services:
     <<: *common
     command: /bin/bash -cl "./scripts/sanity.sh"
 
-  test:
+  unit-tests:
     <<: *common
-    command: /bin/bash -cl "swift test"
+    command: /bin/bash -cl "swift test -Xswiftc -warnings-as-errors"
+
+  integration-tests:
+    <<: *common
+    command: /bin/bash -cl "./scripts/integration_tests.sh"
 
   h2spec:
     <<: *common
     command: /bin/bash -cl "./scripts/test_h2spec.sh"
 
+  test:
+    <<: *common
+    command: /bin/bash -cl "swift test -Xswiftc -warnings-as-errors && ./scripts/integration_tests.sh && ./scripts/test_h2spec.sh"
