@@ -97,6 +97,13 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         context.fireChannelActive()
     }
 
+    public func channelInactive(context: ChannelHandlerContext) {
+        for channel in self.streams.values {
+            channel.receiveStreamClosed(nil)
+        }
+        context.fireChannelInactive()
+    }
+
     public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case let evt as StreamClosedEvent:
