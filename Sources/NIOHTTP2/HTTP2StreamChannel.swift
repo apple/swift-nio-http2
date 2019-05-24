@@ -416,7 +416,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.state.beginClosing()
         let resetFrame = HTTP2Frame(streamID: self.streamID, payload: .rstStream(.cancel))
         self.receiveOutboundFrame(resetFrame, promise: nil)
-        self.parent?.flush()
+        self.multiplexer.childChannelFlush()
     }
 
     private func closedCleanly() {
@@ -514,7 +514,7 @@ private extension HTTP2StreamChannel {
             let write = self.pendingWrites.removeFirst()
             self.receiveOutboundFrame(write.0, promise: write.1)
         }
-        self.parent?.flush()
+        self.multiplexer.childChannelFlush()
     }
 
     /// Fails all pending writes with the given error.
