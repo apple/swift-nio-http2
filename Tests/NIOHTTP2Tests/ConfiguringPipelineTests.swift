@@ -138,4 +138,47 @@ class ConfiguringPipelineTests: XCTestCase {
         // We don't expect anything else at this point.
         XCTAssertNil(try self.serverChannel.readOutbound(as: IOData.self))
     }
+
+    func testClosingParentChannelClosesStreamChannel() throws {
+        /// A channel handler that succeeds a promise when the channel becomes inactive.
+        final class InactiveHandler: ChannelInboundHandler {
+            typealias InboundIn = Any
+
+            let inactivePromise: EventLoopPromise<Void>
+
+            init(inactivePromise: EventLoopPromise<Void>) {
+                self.inactivePromise = inactivePromise
+            }
+
+            func channelInactive(context: ChannelHandlerContext) {
+                inactivePromise.succeed(())
+            }
+        }
+
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server).wait())
+
+        XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        let inactivePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.makePromise()
+        let streamChannelPromise: EventLoopPromise<Channel> = self.clientChannel.eventLoop.makePromise()
+
+        clientMultiplexer.createStreamChannel(promise: streamChannelPromise) { channel, _ in
+            return channel.pipeline.addHandler(InactiveHandler(inactivePromise: inactivePromise))
+        }
+
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+
+        let streamChannel = try assertNoThrowWithValue(try streamChannelPromise.futureResult.wait())
+        // Close the parent channel, not the stream channel.
+        XCTAssertNoThrow(try self.clientChannel.close().wait())
+
+        XCTAssertNoThrow(try inactivePromise.futureResult.wait())
+        XCTAssertFalse(streamChannel.isActive)
+
+        XCTAssertThrowsError(try self.clientChannel.finish()) { error in
+            XCTAssertEqual(error as? ChannelError, .alreadyClosed)
+        }
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
