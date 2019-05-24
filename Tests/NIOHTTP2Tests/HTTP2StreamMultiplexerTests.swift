@@ -110,6 +110,41 @@ final class ReadCounter: ChannelOutboundHandler {
 }
 
 
+/// A handler that tracks the number of times flush() was called on the channel.
+final class FlushCounter: ChannelOutboundHandler {
+    typealias OutboundIn = Any
+    typealias OutboundOut = Any
+
+    var flushCount = 0
+
+    func flush(context: ChannelHandlerContext) {
+        self.flushCount += 1
+        context.flush()
+    }
+}
+
+
+/// A channel handler that sends a response in response to a HEADERS frame.
+final class QuickResponseHandler: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame
+    typealias OutboundOut = HTTP2Frame
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let frame = self.unwrapInboundIn(data)
+
+        guard case .headers = frame.payload else {
+            context.fireChannelRead(data)
+            return
+        }
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
+        let responseFrame = HTTP2Frame(streamID: frame.streamID, payload: .headers(.init(headers: responseHeaders, endStream: true)))
+        context.writeAndFlush(self.wrapOutboundOut(responseFrame), promise: nil)
+        context.fireChannelRead(data)
+    }
+}
+
+
 /// A channel handler that succeeds a promise when removed from
 /// a pipeline.
 final class HandlerRemovedHandler: ChannelInboundHandler {
@@ -1427,5 +1462,39 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         self.channel.embeddedEventLoop.run()
         XCTAssertTrue(closed)
         XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
+    }
+
+    func testMultiplexerCoalescesFlushCallsDuringChannelRead() throws {
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        // Add a flush counter.
+        let flushCounter = FlushCounter()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(flushCounter).wait())
+
+        // Add a server-mode multiplexer that will add an auto-response handler.
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
+            channel.pipeline.addHandler(QuickResponseHandler())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        // We're going to send in 10 request frames.
+        let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        XCTAssertEqual(flushCounter.flushCount, 0)
+
+        let framesToSend = stride(from: 1, through: 19, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(.init(headers: requestHeaders, endStream: true))) }
+        for frame in framesToSend  {
+            self.channel.pipeline.fireChannelRead(NIOAny(frame))
+        }
+        self.channel.embeddedEventLoop.run()
+
+        // Response frames should have been written, but no flushes, so they aren't visible.
+        XCTAssertEqual(try self.channel.sentFrames().count, 0)
+        XCTAssertEqual(flushCounter.flushCount, 0)
+
+        // Now send channel read complete. The frames should be flushed through.
+        self.channel.pipeline.fireChannelReadComplete()
+        XCTAssertEqual(try self.channel.sentFrames().count, 10)
+        XCTAssertEqual(flushCounter.flushCount, 1)
     }
 }

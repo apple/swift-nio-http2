@@ -164,6 +164,17 @@ extension EmbeddedChannel {
         let content: HTTP2Frame? = try? assertNoThrowWithValue(self.readInbound())
         XCTAssertNil(content, "Received unexpected content: \(content!)", file: file, line: line)
     }
+
+    /// Retrieve all sent frames.
+    func sentFrames(file: StaticString = #file, line: UInt = #line) throws -> [HTTP2Frame] {
+        var receivedFrames: [HTTP2Frame] = Array()
+
+        while let frame = try assertNoThrowWithValue(self.readOutbound(as: HTTP2Frame.self), file: file, line: line) {
+            receivedFrames.append(frame)
+        }
+
+        return receivedFrames
+    }
 }
 
 extension HTTP2Frame {

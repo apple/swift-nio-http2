@@ -33,6 +33,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private var context: ChannelHandlerContext!
     private var nextOutboundStreamID: HTTP2StreamID
     private var connectionFlowControlManager: InboundWindowManager
+    private var flushState: FlushState = .notReading
 
     public func handlerAdded(context: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
@@ -48,6 +49,8 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let frame = self.unwrapInboundIn(data)
         let streamID = frame.streamID
+
+        self.flushState.startReading()
 
         guard streamID != .rootStream else {
             // For stream 0 we forward all frames on to the main channel.
@@ -77,6 +80,26 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             // are going to fire an error and drop the frame.
             let error = NIOHTTP2Errors.NoSuchStream(streamID: streamID)
             context.fireErrorCaught(error)
+        }
+    }
+
+    public func channelReadComplete(context: ChannelHandlerContext) {
+        if case .flushPending = self.flushState {
+            self.flushState = .notReading
+            context.flush()
+        } else {
+            self.flushState = .notReading
+        }
+
+        context.fireChannelReadComplete()
+    }
+
+    public func flush(context: ChannelHandlerContext) {
+        switch self.flushState {
+        case .reading, .flushPending:
+            self.flushState = .flushPending
+        case .notReading:
+            context.flush()
         }
     }
 
@@ -163,6 +186,33 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     }
 }
 
+
+extension HTTP2StreamMultiplexer {
+    /// The state of the multiplexer for flush coalescing.
+    ///
+    /// The stream multiplexer aims to perform limited flush coalescing on the read side by delaying flushes from the child and
+    /// parent channels until channelReadComplete is received. To do this we need to track what state we're in.
+    enum FlushState {
+        /// No channelReads have been fired since the last channelReadComplete, so we probably aren't reading. Let any
+        /// flushes through.
+        case notReading
+
+        /// We've started reading, but don't have any pending flushes.
+        case reading
+
+        /// We're in the read loop, and have received a flush.
+        case flushPending
+
+        mutating func startReading() {
+            if case .notReading = self {
+                self = .reading
+            }
+        }
+    }
+}
+
+
+
 extension HTTP2StreamMultiplexer {
     /// Create a new `Channel` for a new stream initiated by this peer.
     ///
@@ -204,6 +254,6 @@ extension HTTP2StreamMultiplexer {
     }
 
     internal func childChannelFlush() {
-        self.context.flush()
+        self.flush(context: context)
     }
 }
