@@ -104,6 +104,20 @@ extension HTTP2StreamID: ExpressibleByIntegerLiteral {
 }
 
 
+// MARK:- Strideable conformance for HTTP2StreamID
+extension HTTP2StreamID: Strideable {
+    public typealias Stride = Int
+
+    public func advanced(by n: Stride) -> HTTP2StreamID {
+        return HTTP2StreamID(self.networkStreamID + Int32(n))
+    }
+
+    public func distance(to other: HTTP2StreamID) -> Stride {
+        return Int(other.networkStreamID - self.networkStreamID)
+    }
+}
+
+
 // MARK:- Helper initializers for integer conversion.
 public extension Int {
     /// Create an Int holding the integer value of this streamID.

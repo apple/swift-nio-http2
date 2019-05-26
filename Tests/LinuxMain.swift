@@ -43,5 +43,6 @@ import XCTest
          testCase(OutboundFlowControlBufferTests.allTests),
          testCase(ReentrancyTests.allTests),
          testCase(SimpleClientServerTests.allTests),
+         testCase(StreamIDTests.allTests),
     ])
 #endif
