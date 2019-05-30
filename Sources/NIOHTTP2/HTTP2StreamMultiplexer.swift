@@ -34,6 +34,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private var nextOutboundStreamID: HTTP2StreamID
     private var connectionFlowControlManager: InboundWindowManager
     private var flushState: FlushState = .notReading
+    private var didReadChannels: StreamChannelList = StreamChannelList()
 
     public func handlerAdded(context: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
@@ -44,6 +45,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
     public func handlerRemoved(context: ChannelHandlerContext) {
         self.context = nil
+        self.didReadChannels.removeAll()
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -66,6 +68,9 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
         if let channel = streams[streamID] {
             channel.receiveInboundFrame(frame)
+            if !channel.inList {
+                self.didReadChannels.append(channel)
+            }
         } else if case .headers = frame.payload {
             let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
                                              parent: self.channel,
@@ -75,6 +80,10 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             self.streams[streamID] = channel
             channel.configure(initializer: self.inboundStreamStateInitializer, userPromise: nil)
             channel.receiveInboundFrame(frame)
+
+            if !channel.inList {
+                self.didReadChannels.append(channel)
+            }
         } else {
             // This frame is for a stream we know nothing about. We can't do much about it, so we
             // are going to fire an error and drop the frame.
@@ -84,6 +93,11 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     }
 
     public func channelReadComplete(context: ChannelHandlerContext) {
+        // Call channelReadComplete on the children until this has been propagated enough.
+        while let channel = self.didReadChannels.removeFirst() {
+            channel.receiveParentChannelReadComplete()
+        }
+
         if case .flushPending = self.flushState {
             self.flushState = .notReading
             context.flush()

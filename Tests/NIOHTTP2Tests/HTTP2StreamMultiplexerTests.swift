@@ -124,6 +124,19 @@ final class FlushCounter: ChannelOutboundHandler {
 }
 
 
+final class ReadCompleteCounter: ChannelInboundHandler {
+    typealias InboundIn = Any
+    typealias InboundOut = Any
+
+    var readCompleteCount = 0
+
+    func channelReadComplete(context: ChannelHandlerContext) {
+        self.readCompleteCount += 1
+        context.fireChannelReadComplete()
+    }
+}
+
+
 /// A channel handler that sends a response in response to a HEADERS frame.
 final class QuickResponseHandler: ChannelInboundHandler {
     typealias InboundIn = HTTP2Frame
@@ -1496,5 +1509,119 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         self.channel.pipeline.fireChannelReadComplete()
         XCTAssertEqual(try self.channel.sentFrames().count, 10)
         XCTAssertEqual(flushCounter.flushCount, 1)
+    }
+
+    func testMultiplexerDoesntFireReadCompleteForEachFrame() {
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        let frameRecorder = InboundFrameRecorder()
+        let readCompleteCounter = ReadCompleteCounter()
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (childChannel, _) in
+            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+                childChannel.pipeline.addHandler(readCompleteCounter)
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 0)
+
+        // Wake up and activate the stream.
+        let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let requestFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: requestHeaders, endStream: false)))
+        self.channel.pipeline.fireChannelRead(NIOAny(requestFrame))
+        self.activateStream(1)
+        self.channel.embeddedEventLoop.run()
+
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 1)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 0)
+
+        // Now we're going to send 9 data frames.
+        var requestData = self.channel.allocator.buffer(capacity: 1024)
+        requestData.writeBytes("Hello world!".utf8)
+        let dataFrames = repeatElement(HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(requestData), endStream: false))), count: 9)
+
+        for frame in dataFrames {
+            self.channel.pipeline.fireChannelRead(NIOAny(frame))
+        }
+
+        // We should have 10 reads, and zero read completes.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 10)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 0)
+
+        // Fire read complete on the parent and it'll propagate to the child.
+        self.channel.pipeline.fireChannelReadComplete()
+
+        // We should have 10 reads, and one read complete.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 10)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 1)
+
+        // If we fire a new read complete on the parent, the child doesn't see it this time, as it received no frames.
+        self.channel.pipeline.fireChannelReadComplete()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 10)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 1)
+    }
+
+    func testMultiplexerCorrectlyTellsAllStreamsAboutReadComplete() {
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        // These are deliberately getting inserted to all streams. The test above confirms the single-stream
+        // behaviour is correct.
+        let frameRecorder = InboundFrameRecorder()
+        let readCompleteCounter = ReadCompleteCounter()
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (childChannel, _) in
+            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+                childChannel.pipeline.addHandler(readCompleteCounter)
+            }
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 0)
+
+        // Wake up and activate the streams.
+        let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+
+        for streamID in [HTTP2StreamID(1), HTTP2StreamID(3), HTTP2StreamID(5)] {
+            let requestFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders, endStream: false)))
+            self.channel.pipeline.fireChannelRead(NIOAny(requestFrame))
+            self.activateStream(streamID)
+        }
+        self.channel.embeddedEventLoop.run()
+
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 3)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 0)
+
+        // Firing in readComplete causes a readComplete for each stream.
+        self.channel.pipeline.fireChannelReadComplete()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 3)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 3)
+
+        // Now we're going to send a data frame on stream 1.
+        var requestData = self.channel.allocator.buffer(capacity: 1024)
+        requestData.writeBytes("Hello world!".utf8)
+        let frame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(requestData), endStream: false)))
+        self.channel.pipeline.fireChannelRead(NIOAny(frame))
+
+        // We should have 4 reads, and 3 read completes.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 4)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 3)
+
+        // Fire read complete on the parent and it'll propagate to the child, but only to the one
+        // that saw a frame.
+        self.channel.pipeline.fireChannelReadComplete()
+
+        // We should have 4 reads, and 4 read completes.
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 4)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 4)
+
+        // If we fire a new read complete on the parent, the children don't see it.
+        self.channel.pipeline.fireChannelReadComplete()
+        XCTAssertEqual(frameRecorder.receivedFrames.count, 4)
+        XCTAssertEqual(readCompleteCounter.readCompleteCount, 4)
     }
 }

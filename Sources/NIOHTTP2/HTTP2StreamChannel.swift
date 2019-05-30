@@ -316,6 +316,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     /// stream is flushed, at which time we deliver them all. This buffer holds the pending ones.
     private var pendingWrites: MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)> = MarkedCircularBuffer(initialCapacity: 8)
 
+    /// A list node used to hold stream channels.
+    internal var streamChannelListNode: StreamChannelListNode = StreamChannelListNode()
+
     public func register0(promise: EventLoopPromise<Void>?) {
         fatalError("not implemented \(#function)")
     }
@@ -466,8 +469,6 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             return
         }
 
-        assert(self.pendingReads.count > 0, "tryToRead called without reads!")
-
         // If we're not active, we will hold on to these reads.
         guard self.isActive else {
             return
@@ -538,8 +539,11 @@ internal extension HTTP2StreamChannel {
             return
         }
 
-        self.pendingReads.append(frame)
-        self.tryToRead()
+        if self.unsatisfiedRead {
+            self.pipeline.fireChannelRead(NIOAny(frame))
+        } else {
+            self.pendingReads.append(frame)
+        }
     }
 
 
@@ -563,6 +567,9 @@ internal extension HTTP2StreamChannel {
     /// - parameters:
     ///     - reason: The reason received from the network, if any.
     func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
+        // The stream is closed, we should aim to deliver any read frames we have for it.
+        self.tryToRead()
+
         if let reason = reason {
             let err = NIOHTTP2Errors.StreamClosed(streamID: self.streamID, errorCode: reason)
             self.errorEncountered(error: err)
@@ -588,5 +595,8 @@ internal extension HTTP2StreamChannel {
             self.multiplexer.childChannelFlush()
         }
     }
-}
 
+    func receiveParentChannelReadComplete() {
+        self.tryToRead()
+    }
+}
