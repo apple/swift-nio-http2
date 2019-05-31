@@ -110,6 +110,12 @@ internal struct OutboundFlowControlBuffer {
         }
     }
 
+    internal func invalidateBuffer(reason: ChannelError) {
+        for buffer in self.streamDataBuffers.values {
+            buffer.dataBuffer.failAllWrites(error: reason)
+        }
+    }
+
     internal mutating func streamCreated(_ streamID: HTTP2StreamID, initialWindowSize: UInt32) {
         assert(streamID != .rootStream)
 
@@ -303,6 +309,12 @@ private struct DataBuffer {
         var buffer = MarkedCircularBuffer<BufferElement>(initialCapacity: 0)
         swap(&buffer, &self.bufferedChunks)
         return buffer
+    }
+
+    func failAllWrites(error: ChannelError) {
+        for chunk in self.bufferedChunks {
+            chunk.1?.fail(error)
+        }
     }
 }
 

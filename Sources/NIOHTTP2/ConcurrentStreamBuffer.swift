@@ -81,6 +81,14 @@ struct ConcurrentStreamBuffer {
         return nil
     }
 
+    func invalidateBuffer(reason: ChannelError) {
+        for buffer in self.bufferedFrames {
+            for (_, promise) in buffer.frames {
+                promise?.fail(reason)
+            }
+        }
+    }
+
     mutating func streamCreated(_ streamID: HTTP2StreamID) {
         // We only care about outbound streams.
         guard streamID.mayBeInitiatedBy(self.mode) else {

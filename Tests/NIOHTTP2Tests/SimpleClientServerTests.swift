@@ -1360,4 +1360,38 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testFailsPromisesForBufferedWrites() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're going to queue some frames in the client, but not flush them. The HEADERS frame will pass
+        // right through, but the DATA ones won't.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers, endStream: false)))
+
+        var promiseResults: [Bool?] = Array(repeatElement(nil as Bool?, count: 5))
+        self.clientChannel.write(reqFrame, promise: nil)
+
+        let bodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
+        for index in promiseResults.indices {
+            self.clientChannel.write(bodyFrame).map {
+                promiseResults[index] = true
+            }.whenFailure {
+                XCTAssertEqual($0 as? ChannelError, ChannelError.ioOnClosedChannel)
+                promiseResults[index] = false
+            }
+        }
+
+        XCTAssertEqual(promiseResults, [nil, nil, nil, nil, nil])
+
+        // Close the channel.
+        self.clientChannel.close(promise: nil)
+        self.clientChannel.embeddedEventLoop.run()
+
+        // The promises should be succeeded.
+        XCTAssertEqual(promiseResults, [false, false, false, false, false])
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

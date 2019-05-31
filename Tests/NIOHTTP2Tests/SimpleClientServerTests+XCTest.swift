@@ -58,6 +58,7 @@ extension SimpleClientServerTests {
                 ("testInvalidRequestHeaderBlockAllowsRstStream", testInvalidRequestHeaderBlockAllowsRstStream),
                 ("testClientConnectionErrorCorrectlyReported", testClientConnectionErrorCorrectlyReported),
                 ("testChangingMaxConcurrentStreams", testChangingMaxConcurrentStreams),
+                ("testFailsPromisesForBufferedWrites", testFailsPromisesForBufferedWrites),
            ]
    }
 }
