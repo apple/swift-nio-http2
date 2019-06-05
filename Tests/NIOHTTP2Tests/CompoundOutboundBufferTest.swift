@@ -281,6 +281,47 @@ final class CompoundOutboundBufferTest: XCTestCase {
         }
         thirdUnbufferedFrame.assertFrameMatches(this: secondData)
     }
+
+    func testFailingAllPromisesOnClose() {
+        var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1)
+
+        var results: [Bool?] = Array(repeating: nil as Bool?, count: 4)
+        var futures: [EventLoopFuture<Void>] = []
+
+        // Write in a bunch of frames, which will get buffered.
+        for streamID in [HTTP2StreamID(1), HTTP2StreamID(3)] {
+            let startFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders([]))))
+            let dataFrame = self.createDataFrame(streamID, byteBufferSize: 50)
+
+            let startPromise = self.loop.makePromise(of: Void.self)
+            let dataPromise = self.loop.makePromise(of: Void.self)
+            if streamID == 1 {
+                XCTAssertNoThrow(try buffer.processOutboundFrame(startFrame, promise: startPromise).assertForward())
+                startPromise.succeed(())
+                buffer.streamCreated(streamID, initialWindowSize: 65535)
+            } else {
+                XCTAssertNoThrow(try buffer.processOutboundFrame(startFrame, promise: startPromise).assertNothing())
+            }
+
+            XCTAssertNoThrow(try buffer.processOutboundFrame(dataFrame, promise: dataPromise).assertNothing())
+            futures.append(contentsOf: [startPromise.futureResult, dataPromise.futureResult])
+        }
+
+        for (idx, future) in futures.enumerated() {
+            future.map {
+                results[idx] = false
+            }.whenFailure { error in
+                XCTAssertEqual(error as? ChannelError, ChannelError.ioOnClosedChannel)
+                results[idx] = true
+            }
+        }
+
+        XCTAssertEqual(results, [false, nil, nil, nil])
+
+        // Now, invalidate the buffer.
+        buffer.invalidateBuffer()
+        XCTAssertEqual(results, [false, true, true, true])
+    }
 }
 
 

@@ -176,6 +176,11 @@ extension CompoundOutboundBuffer {
         return droppedPromises
     }
 
+    func invalidateBuffer() {
+        self.concurrentStreamsBuffer.invalidateBuffer(reason: ChannelError.ioOnClosedChannel)
+        self.flowControlBuffer.invalidateBuffer(reason: ChannelError.ioOnClosedChannel)
+    }
+
     mutating func updateStreamWindow(_ streamID: HTTP2StreamID, newSize: Int32) {
         self.flowControlBuffer.updateWindowOfStream(streamID, newSize: newSize)
     }
