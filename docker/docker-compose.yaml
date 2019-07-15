@@ -31,6 +31,10 @@ services:
     <<: *common
     command: /bin/bash -cl "./scripts/integration_tests.sh"
 
+  performance-test:
+    <<: *common
+    command: /bin/bash -cl "swift build -c release && ./.build/release/NIOHTTP2PerformanceTester"
+
   h2spec:
     <<: *common
     command: /bin/bash -cl "./scripts/test_h2spec.sh"
@@ -38,3 +42,9 @@ services:
   test:
     <<: *common
     command: /bin/bash -cl "swift test -Xswiftc -warnings-as-errors && ./scripts/integration_tests.sh && ./scripts/test_h2spec.sh"
+
+  # util
+
+  shell:
+    <<: *common
+    entrypoint: /bin/bash
