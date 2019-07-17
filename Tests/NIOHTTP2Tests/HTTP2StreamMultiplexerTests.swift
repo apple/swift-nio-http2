@@ -1624,4 +1624,153 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(frameRecorder.receivedFrames.count, 4)
         XCTAssertEqual(readCompleteCounter.readCompleteCount, 4)
     }
+
+    func testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokens() throws {
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
+                                                 channel: self.channel,
+                                                 outboundBufferSizeHighWatermark: 100,
+                                                 outboundBufferSizeLowWatermark: 50) { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.makeFailedFuture(MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        // Now we want to create a new child stream.
+        let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: childChannelPromise) { childChannel, _ in
+            return childChannel.eventLoop.makeSucceededFuture(())
+        }
+        self.channel.embeddedEventLoop.run()
+
+        let childChannel = try assertNoThrowWithValue(childChannelPromise.futureResult.wait())
+        XCTAssertTrue(childChannel.isWritable)
+
+        // We're going to write a HEADERS frame (9 bytes) and an 81 byte DATA frame (90 bytes). This will not flip the
+        // writability state.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers, endStream: false)))
+
+        var dataBuffer = childChannel.allocator.buffer(capacity: 81)
+        dataBuffer.writeBytes(repeatElement(0, count: 81))
+        let dataFrame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(dataBuffer), endStream: false)))
+
+        childChannel.write(headersFrame, promise: nil)
+        childChannel.write(dataFrame, promise: nil)
+        XCTAssertTrue(childChannel.isWritable)
+
+        // Now we're going to send another HEADERS frame (for trailers). This should flip the channel writability.
+        let trailers = HPACKHeaders([])
+        let trailersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: trailers, endStream: true)))
+        childChannel.write(trailersFrame, promise: nil)
+        XCTAssertFalse(childChannel.isWritable)
+
+        // Now we flush the writes. This flips the writability again.
+        childChannel.flush()
+        XCTAssertTrue(childChannel.isWritable)
+    }
+
+    func testMultiplexerModifiesStreamChannelWritabilityBasedOnParentChannelWritability() throws {
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.channel) { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.makeFailedFuture(MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        // Now we want to create a few new child streams.
+        let promises = (0..<5).map { _ in self.channel.eventLoop.makePromise(of: Channel.self) }
+        for promise in promises {
+            multiplexer.createStreamChannel(promise: promise) { childChannel, _ in
+                return childChannel.eventLoop.makeSucceededFuture(())
+            }
+        }
+        self.channel.embeddedEventLoop.run()
+
+        let channels = try assertNoThrowWithValue(promises.map { promise in try promise.futureResult.wait() })
+
+        // These are all writable.
+        XCTAssertEqual(channels.map { $0.isWritable }, [true, true, true, true, true])
+
+        // Mark the parent channel not writable. This currently changes nothing.
+        self.channel.isWritable = false
+        self.channel.pipeline.fireChannelWritabilityChanged()
+        XCTAssertEqual(channels.map { $0.isWritable }, [true, true, true, true, true])
+
+        // Now activate each channel. As we do, we'll see its writability state change.
+        for childChannel in channels {
+            let streamID = try assertNoThrowWithValue(childChannel.getOption(HTTP2StreamChannelOptions.streamID).wait())
+            self.activateStream(streamID)
+            XCTAssertFalse(childChannel.isWritable, "Channel \(streamID) is incorrectly writable")
+        }
+
+        // All are now non-writable.
+        XCTAssertEqual(channels.map { $0.isWritable }, [false, false, false, false, false])
+
+        // And back again.
+        self.channel.isWritable = true
+        self.channel.pipeline.fireChannelWritabilityChanged()
+        XCTAssertEqual(channels.map { $0.isWritable }, [true, true, true, true, true])
+    }
+
+    func testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability() throws {
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
+                                                 channel: self.channel,
+                                                 outboundBufferSizeHighWatermark: 100,
+                                                 outboundBufferSizeLowWatermark: 50) { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.makeFailedFuture(MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        // Now we want to create a new child stream.
+        let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: childChannelPromise) { childChannel, _ in
+            return childChannel.eventLoop.makeSucceededFuture(())
+        }
+        self.channel.embeddedEventLoop.run()
+        self.activateStream(1)
+
+        let childChannel = try assertNoThrowWithValue(childChannelPromise.futureResult.wait())
+        XCTAssertTrue(childChannel.isWritable)
+
+        // We're going to write a HEADERS frame (9 bytes) and an 81 byte DATA frame (90 bytes). This will not flip the
+        // writability state.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers, endStream: false)))
+
+        var dataBuffer = childChannel.allocator.buffer(capacity: 81)
+        dataBuffer.writeBytes(repeatElement(0, count: 81))
+        let dataFrame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(dataBuffer), endStream: false)))
+
+        childChannel.write(headersFrame, promise: nil)
+        childChannel.write(dataFrame, promise: nil)
+        XCTAssertTrue(childChannel.isWritable)
+
+        // Now we're going to send another HEADERS frame (for trailers). This should flip the channel writability.
+        let trailers = HPACKHeaders([])
+        let trailersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: trailers, endStream: true)))
+        childChannel.write(trailersFrame, promise: nil)
+        XCTAssertFalse(childChannel.isWritable)
+
+        // Now mark the channel not writable.
+        self.channel.isWritable = false
+        self.channel.pipeline.fireChannelWritabilityChanged()
+
+        // Now we flush the writes. The channel remains not writable.
+        childChannel.flush()
+        XCTAssertFalse(childChannel.isWritable)
+
+        // Now we mark the parent channel writable. This flips the writability state.
+        self.channel.isWritable = true
+        self.channel.pipeline.fireChannelWritabilityChanged()
+        XCTAssertTrue(childChannel.isWritable)
+    }
 }

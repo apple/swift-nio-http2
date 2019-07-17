@@ -67,6 +67,9 @@ extension HTTP2StreamMultiplexerTests {
                 ("testMultiplexerCoalescesFlushCallsDuringChannelRead", testMultiplexerCoalescesFlushCallsDuringChannelRead),
                 ("testMultiplexerDoesntFireReadCompleteForEachFrame", testMultiplexerDoesntFireReadCompleteForEachFrame),
                 ("testMultiplexerCorrectlyTellsAllStreamsAboutReadComplete", testMultiplexerCorrectlyTellsAllStreamsAboutReadComplete),
+                ("testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokens", testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokens),
+                ("testMultiplexerModifiesStreamChannelWritabilityBasedOnParentChannelWritability", testMultiplexerModifiesStreamChannelWritabilityBasedOnParentChannelWritability),
+                ("testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability", testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability),
            ]
    }
 }

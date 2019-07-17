@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import NIO
+import NIOConcurrencyHelpers
 
 /// `StreamIDOption` allows users to query the stream ID for a given `HTTP2StreamChannel`.
 ///
@@ -110,7 +111,13 @@ private enum StreamChannelState {
 
 
 final class HTTP2StreamChannel: Channel, ChannelCore {
-    internal init(allocator: ByteBufferAllocator, parent: Channel, multiplexer: HTTP2StreamMultiplexer, streamID: HTTP2StreamID, targetWindowSize: Int32) {
+    internal init(allocator: ByteBufferAllocator,
+                  parent: Channel,
+                  multiplexer: HTTP2StreamMultiplexer,
+                  streamID: HTTP2StreamID,
+                  targetWindowSize: Int32,
+                  outboundBytesHighWatermark: Int,
+                  outboundBytesLowWatermark: Int) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.makePromise()
         self.localAddress = parent.localAddress
@@ -120,9 +127,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.streamID = streamID
         self.multiplexer = multiplexer
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
-        // FIXME: that's just wrong
-        self.isWritable = true
+        self._isWritable = Atomic(value: true)
         self.state = .idle
+        self.writabilityManager = StreamChannelFlowController(highWatermark: outboundBytesHighWatermark,
+                                                              lowWatermark: outboundBytesLowWatermark,
+                                                              parentIsWritable: parent.isWritable)
 
         // To begin with we initialize autoRead to false, but we are going to fetch it from our parent before we
         // go much further.
@@ -187,6 +196,13 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             return
         }
         self.state.networkActive()
+
+        if self.writabilityManager.isWritable != self._isWritable.load() {
+            // We have probably delayed telling the user that this channel isn't writable, but we should do
+            // it now.
+            self._isWritable.store(self.writabilityManager.isWritable)
+            self.pipeline.fireChannelWritabilityChanged()
+        }
 
         // If we got here, we may need to flush some pending reads. Notably we don't call read0 here as
         // we don't actually want to start reading before activation, which tryToRead will refuse to do.
@@ -273,7 +289,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    public let isWritable: Bool
+    public var isWritable: Bool {
+        return self._isWritable.load()
+    }
+
+    private let _isWritable: Atomic<Bool>
 
     public var isActive: Bool {
         return self.state == .active || self.state == .closing || self.state == .localActive
@@ -319,6 +339,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     /// A list node used to hold stream channels.
     internal var streamChannelListNode: StreamChannelListNode = StreamChannelListNode()
 
+    /// An object that controls whether this channel should be writable.
+    private var writabilityManager: StreamChannelFlowController
+
     public func register0(promise: EventLoopPromise<Void>?) {
         fatalError("not implemented \(#function)")
     }
@@ -338,7 +361,26 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
 
         let frame = self.unwrapData(data, as: HTTP2Frame.self)
+
+        // We need a promise to attach our flow control callback to.
+        // Regardless of whether the write succeeded or failed, we don't count
+        // the bytes any longer.
+        let promise = promise ?? self.eventLoop.makePromise()
+        let writeSize = frame.bufferBytes
+
+        // Right now we deal with this math by just attaching a callback to all promises. This is going
+        // to be annoyingly expensive, but for now it's the most straightforward approach.
+        promise.futureResult.hop(to: self.eventLoop).whenComplete { (_: Result<Void, Error>) in
+            if case .changed(newValue: let value) = self.writabilityManager.wroteBytes(writeSize) {
+                self.changeWritability(to: value)
+            }
+        }
         self.pendingWrites.append((frame, promise))
+
+        // Ok, we can make an outcall now, which means we can safely deal with the flow control.
+        if case .changed(newValue: let value) = self.writabilityManager.bufferedBytes(writeSize) {
+            self.changeWritability(to: value)
+        }
     }
 
     public func flush0() {
@@ -485,6 +527,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             self.read0()
         }
     }
+
+    private func changeWritability(to newWritability: Bool) {
+        self._isWritable.store(newWritability)
+        self.pipeline.fireChannelWritabilityChanged()
+    }
 }
 
 // MARK:- Functions used to manage pending reads and writes.
@@ -598,5 +645,62 @@ internal extension HTTP2StreamChannel {
 
     func receiveParentChannelReadComplete() {
         self.tryToRead()
+    }
+
+    func parentChannelWritabilityChanged(newValue: Bool) {
+        // There's a trick here that's worth noting: if the child channel hasn't either sent a frame
+        // or been activated on the network, we don't actually want to change the observable writability.
+        // This is because in this case we really want user code to send a frame as soon as possible to avoid
+        // issues with their stream ID becoming out of date. Once the state transitions we can update
+        // the writability if needed.
+        guard case .changed(newValue: let localValue) = self.writabilityManager.parentWritabilityChanged(newValue) else {
+            return
+        }
+
+        // Ok, the writability changed.
+        switch self.state {
+        case .idle, .localActive:
+            // Do nothing here.
+            return
+        case .remoteActive, .active, .closing, .closingNeverActivated, .closed:
+            self._isWritable.store(localValue)
+            self.pipeline.fireChannelWritabilityChanged()
+        }
+    }
+}
+
+extension HTTP2Frame {
+    /// A shorthand heuristic for how many bytes we assume a frame consumes on the wire.
+    ///
+    /// Here we concern ourselves only with per-stream frames: that is, `HEADERS`, `DATA`,
+    /// `WINDOW_UDPATE`, `RST_STREAM`, and I guess `PRIORITY`. As a simple heuristic we
+    /// hard code fixed lengths for fixed length frames, use a calculated length for
+    /// variable length frames, and just ignore encoded headers because it's not worth doing a better
+    /// job.
+    fileprivate var bufferBytes: Int {
+        let frameHeaderSize = 9
+
+        switch self.payload {
+        case .data(let d):
+            let paddingBytes = d.paddingBytes.map { $0 + 1 } ?? 0
+            return d.data.readableBytes + paddingBytes + frameHeaderSize
+        case .headers(let h):
+            let paddingBytes = h.paddingBytes.map { $0 + 1 } ?? 0
+            return paddingBytes + frameHeaderSize
+        case .priority:
+            return frameHeaderSize + 5
+        case .pushPromise(let p):
+            // Like headers, this is variably size, and we just ignore the encoded headers because
+            // it's not worth having a heuristic.
+            let paddingBytes = p.paddingBytes.map { $0 + 1 } ?? 0
+            return paddingBytes + frameHeaderSize
+        case .rstStream:
+            return frameHeaderSize + 4
+        case .windowUpdate:
+            return frameHeaderSize + 4
+        default:
+            // Unknown or unexpected control frame: say 9 bytes.
+            return frameHeaderSize
+        }
     }
 }
