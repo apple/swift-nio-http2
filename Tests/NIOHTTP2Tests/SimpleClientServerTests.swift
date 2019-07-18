@@ -1394,4 +1394,45 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertEqual(promiseResults, [false, false, false, false, false])
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testAllowPushPromiseBeforeReceivingHeadersNoBody() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
+
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers, endStream: true)))
+
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel))
+
+        // The server will push.
+        let pushFrame = HTTP2Frame(streamID: clientStreamID, payload: .pushPromise(.init(pushedStreamID: 2, headers: headers)))
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [pushFrame], sender: self.serverChannel, receiver: self.clientChannel))
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testAllowPushPromiseBeforeReceivingHeadersWithPossibleBody() throws {
+        // This is the same as the test above but we don't set END_STREAM on our initial HEADERS, leading to a different stream state.
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
+
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers, endStream: false)))
+
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel))
+
+        // The server will push.
+        let pushFrame = HTTP2Frame(streamID: clientStreamID, payload: .pushPromise(.init(pushedStreamID: 2, headers: headers)))
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [pushFrame], sender: self.serverChannel, receiver: self.clientChannel))
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
