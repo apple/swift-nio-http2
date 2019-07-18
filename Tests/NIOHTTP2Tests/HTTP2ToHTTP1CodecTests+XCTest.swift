@@ -53,6 +53,7 @@ extension HTTP2ToHTTP1CodecTests {
                 ("testReceiveResponseWithNonNumericalStatus", testReceiveResponseWithNonNumericalStatus),
                 ("testSendRequestWithoutHost", testSendRequestWithoutHost),
                 ("testSendRequestWithDuplicateHost", testSendRequestWithDuplicateHost),
+                ("testFramesWithoutHTTP1EquivalentAreIgnored", testFramesWithoutHTTP1EquivalentAreIgnored),
            ]
    }
 }
