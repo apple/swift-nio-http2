@@ -59,6 +59,8 @@ extension SimpleClientServerTests {
                 ("testClientConnectionErrorCorrectlyReported", testClientConnectionErrorCorrectlyReported),
                 ("testChangingMaxConcurrentStreams", testChangingMaxConcurrentStreams),
                 ("testFailsPromisesForBufferedWrites", testFailsPromisesForBufferedWrites),
+                ("testAllowPushPromiseBeforeReceivingHeadersNoBody", testAllowPushPromiseBeforeReceivingHeadersNoBody),
+                ("testAllowPushPromiseBeforeReceivingHeadersWithPossibleBody", testAllowPushPromiseBeforeReceivingHeadersWithPossibleBody),
            ]
    }
 }
