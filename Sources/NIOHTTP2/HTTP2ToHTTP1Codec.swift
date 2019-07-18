@@ -79,12 +79,9 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
             if content.endStream {
                 context.fireChannelRead(self.wrapInboundOut(.end(nil)))
             }
-        case .alternativeService, .rstStream, .priority, .windowUpdate:
-            // All these frames may be sent on a stream, but are ignored by the multiplexer and will be
-            // handled elsewhere.
+        case .alternativeService, .rstStream, .priority, .windowUpdate, .settings, .pushPromise, .ping, .goAway, .origin:
+            // These don't have an HTTP/1 equivalent, so let's drop them.
             return
-        default:
-            fatalError("unimplemented frame \(frame)")
         }
     }
 
