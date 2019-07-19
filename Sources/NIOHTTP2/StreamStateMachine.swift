@@ -673,6 +673,8 @@ extension HTTP2StreamStateMachine {
         // We can send PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a server. In this case we assert that the stream was initiated by the client.
+        // - halfOpenRemoteLocalIdle, which only servers can enter on streams initiated by clients.
+        // - halfClosedRemoteLocalIdle, which only servers can enter on streams initiated by clients.
         // - halfClosedRemoteLocalActive, when we are a server, and when the stream was initiated by the client.
         //
         // RFC 7540 § 6.6 forbids sending PUSH_PROMISE frames on locally-initiated streams.
@@ -680,13 +682,15 @@ extension HTTP2StreamStateMachine {
         // PUSH_PROMISE frames never have stream effects: they cannot create or close streams, or affect flow control state.
         switch self.state {
         case .fullyOpen(localRole: .server, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
+             .halfOpenRemoteLocalIdle(localWindow: _, remoteContentLength: _, remoteWindow: _),
+             .halfClosedRemoteLocalIdle(localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localContentLength: _, localWindow: _):
             return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
 
         // Sending a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
         case .idle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive,
-             .halfClosedRemoteLocalIdle, .halfOpenLocalPeerIdle, .halfOpenRemoteLocalIdle, .closed,
+             .halfOpenLocalPeerIdle, .closed,
              .fullyOpen(localRole: .client, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
              .halfClosedRemoteLocalActive(localRole: .client, initiatedBy: _, localContentLength: _, localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localContentLength: _, localWindow: _):
@@ -698,18 +702,22 @@ extension HTTP2StreamStateMachine {
         // We can receive PUSH_PROMISE frames in the following states:
         //
         // - fullyOpen when we are a client. In this case we assert that the stream was initiated by us.
+        // - halfOpenLocalPeerIdle, which only clients can enter on streams they initiated.
+        // - halfClosedLocalPeerIdle, which only clients can enter on streams they initiated.
         // - halfClosedLocalPeerActive, when we are a client, and when the stream was initiated by us.
         //
         // RFC 7540 § 6.6 forbids receiving PUSH_PROMISE frames on remotely-initiated streams.
         switch self.state {
         case .fullyOpen(localRole: .client, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
+             .halfOpenLocalPeerIdle(localWindow: _, localContentLength: _, remoteWindow: _),
+             .halfClosedLocalPeerIdle(remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteContentLength: _, remoteWindow: _):
             return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
 
         // Receiving a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
-        case .idle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle, .halfClosedRemoteLocalIdle,
-             .halfClosedRemoteLocalActive, .halfOpenLocalPeerIdle, .halfOpenRemoteLocalIdle, .closed,
+        case .idle, .reservedLocal, .reservedRemote, .halfClosedRemoteLocalIdle,
+             .halfClosedRemoteLocalActive, .halfOpenRemoteLocalIdle, .closed,
              .fullyOpen(localRole: .server, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .server, initiatedBy: _, remoteContentLength: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteContentLength: _, remoteWindow: _):

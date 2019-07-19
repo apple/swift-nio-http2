@@ -640,4 +640,26 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
             XCTAssertEqual(error as? NIOHTTP2Errors.DuplicateHostHeader, NIOHTTP2Errors.DuplicateHostHeader())
         }
     }
+
+    func testFramesWithoutHTTP1EquivalentAreIgnored() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID,
+                                                                                      httpProtocol: .https)).wait())
+
+        let headers = HPACKHeaders([(":method", "GET"), (":scheme", "https"), (":path", "/x")])
+        let frames: [HTTP2Frame.FramePayload] = [.alternativeService(origin: nil, field: nil),
+                                                 .rstStream(.init(networkCode: 1)),
+                                                 .priority(.init(exclusive: true, dependency: streamID, weight: 1)),
+                                                 .windowUpdate(windowSizeIncrement: 1),
+                                                 .settings(.ack),
+                                                 .pushPromise(.init(pushedStreamID: HTTP2StreamID(2), headers: headers)),
+                                                 .ping(.init(withInteger: 123), ack: true),
+                                                 .goAway(lastStreamID: streamID, errorCode: .init(networkCode: 1), opaqueData: nil),
+                                                 .origin([])]
+        for payload in frames {
+            let frame = HTTP2Frame(streamID: streamID, payload: payload)
+            XCTAssertNoThrow(try self.channel.writeInbound(frame), "error on \(frame)")
+        }
+        XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
+    }
 }

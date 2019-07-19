@@ -308,36 +308,38 @@ class ConnectionStateMachineTests: XCTestCase {
         let streamTwo = HTTP2StreamID(2)
         let streamThree = HTTP2StreamID(3)
         let streamFour = HTTP2StreamID(4)
+        let streamSix = HTTP2StreamID(6)
 
         self.exchangePreamble()
 
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
-        // Server cannot push right away
-        assertStreamError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
-        var tempClient = self.client!
-        assertStreamError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        // Server can push right away
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
 
         // Server sends its headers
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
 
         // Server pushes, suceeeds, and completes the pushed response.
-        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
-        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
 
         // Server attempts to push with invalid stream ID, fails. Client rejects it too.
         assertConnectionError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders))
-        tempClient = self.client!
+        var tempClient = self.client!
         assertConnectionError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders))
 
         // Server attempts to push on stream two, fails. Client rejects it too.
-        assertStreamError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamTwo, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        assertStreamError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamTwo, childStreamID: streamSix, headers: ConnectionStateMachineTests.requestHeaders))
         tempClient = self.client!
-        assertStreamError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamTwo, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
+        assertStreamError(type: .protocolError, tempClient.receivePushPromise(originalStreamID: streamTwo, childStreamID: streamSix, headers: ConnectionStateMachineTests.requestHeaders))
 
-        // Server completes both streams.
+        // Server completes all streams.
+        assertSucceeds(self.server.sendHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamFour, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
         assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.trailers, isEndStreamSet: true))
