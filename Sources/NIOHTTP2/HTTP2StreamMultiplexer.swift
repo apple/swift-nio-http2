@@ -35,6 +35,8 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private var connectionFlowControlManager: InboundWindowManager
     private var flushState: FlushState = .notReading
     private var didReadChannels: StreamChannelList = StreamChannelList()
+    private let streamChannelOutboundBytesHighWatermark: Int
+    private let streamChannelOutboundBytesLowWatermark: Int
 
     public func handlerAdded(context: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
@@ -76,7 +78,9 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                                              parent: self.channel,
                                              multiplexer: self,
                                              streamID: streamID,
-                                             targetWindowSize: 65535)
+                                             targetWindowSize: 65535,
+                                             outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
+                                             outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark)
             self.streams[streamID] = channel
             channel.configure(initializer: self.inboundStreamStateInitializer, userPromise: nil)
             channel.receiveInboundFrame(frame)
@@ -172,6 +176,14 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         context.fireUserInboundEventTriggered(event)
     }
 
+    public func channelWritabilityChanged(context: ChannelHandlerContext) {
+        for channel in self.streams.values {
+            channel.parentChannelWritabilityChanged(newValue: context.channel.isWritable)
+        }
+
+        context.fireChannelWritabilityChanged()
+    }
+
     private func newConnectionWindowSize(newSize: Int, context: ChannelHandlerContext) {
         guard let increment = self.connectionFlowControlManager.newWindowSize(newSize) else {
             return
@@ -193,10 +205,43 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
     ///         `createStreamChannel`.
-    public init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, targetWindowSize: Int = 65535, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
+    public convenience init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, targetWindowSize: Int = 65535, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
+        // We default to an 8kB outbound buffer size: this is a good trade off for avoiding excessive buffering while ensuring that decent
+        // throughput can be maintained. We use 4kB as the low water mark.
+        self.init(mode: mode,
+                  channel: channel,
+                  targetWindowSize: targetWindowSize,
+                  outboundBufferSizeHighWatermark: 8192,
+                  outboundBufferSizeLowWatermark: 4096,
+                  inboundStreamStateInitializer: inboundStreamStateInitializer)
+    }
+
+    /// Create a new `HTTP2StreamMultiplexer`.
+    ///
+    /// - parameters:
+    ///     - mode: The mode of the HTTP/2 connection being used: server or client.
+    ///     - channel: The Channel to which this `HTTP2StreamMultiplexer` belongs.
+    ///     - targetWindowSize: The target inbound connection and stream window size. Defaults to 65535 bytes.
+    ///     - outboundBufferSizeHighWatermark: The high watermark for the number of bytes of writes that are
+    ///         allowed to be un-sent on any child stream. This is broadly analogous to a regular socket send buffer.
+    ///     - outboundBufferSizeLowWatermark: The low watermark for the number of bytes of writes that are
+    ///         allowed to be un-sent on any child stream. This is broadly analogous to a regular socket send buffer.
+    ///     - inboundStreamStateInitializer: A block that will be invoked to configure each new child stream
+    ///         channel that is created by the remote peer. For servers, these are channels created by
+    ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
+    ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
+    ///         `createStreamChannel`.
+    public init(mode: NIOHTTP2Handler.ParserMode,
+                channel: Channel,
+                targetWindowSize: Int = 65535,
+                outboundBufferSizeHighWatermark: Int,
+                outboundBufferSizeLowWatermark: Int,
+                inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
         self.inboundStreamStateInitializer = inboundStreamStateInitializer
         self.channel = channel
         self.connectionFlowControlManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
+        self.streamChannelOutboundBytesHighWatermark = outboundBufferSizeHighWatermark
+        self.streamChannelOutboundBytesLowWatermark = outboundBufferSizeLowWatermark
 
         switch mode {
         case .client:
@@ -256,7 +301,9 @@ extension HTTP2StreamMultiplexer {
                                              parent: self.channel,
                                              multiplexer: self,
                                              streamID: streamID,
-                                             targetWindowSize: 65535)  // TODO: make configurable
+                                             targetWindowSize: 65535,  // TODO: make configurable
+                                             outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
+                                             outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark)
             self.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
         }
