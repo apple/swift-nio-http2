@@ -35,6 +35,7 @@ extension HTTP2StreamMultiplexerTests {
                 ("testFramesForClosedStreamsAreReported", testFramesForClosedStreamsAreReported),
                 ("testClosingIdleChannels", testClosingIdleChannels),
                 ("testClosingActiveChannels", testClosingActiveChannels),
+                ("testClosingChannelAlsoClosesChildChannels", testClosingChannelAlsoClosesChildChannels),
                 ("testClosePromiseIsSatisfiedWithTheEvent", testClosePromiseIsSatisfiedWithTheEvent),
                 ("testMultipleClosePromisesAreSatisfied", testMultipleClosePromisesAreSatisfied),
                 ("testClosePromiseFailsWithError", testClosePromiseFailsWithError),
