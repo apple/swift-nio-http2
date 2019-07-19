@@ -9,9 +9,9 @@ RUN echo "#!/bin/sh\nexit 0" > /usr/sbin/policy-rc.d
 
 # basic dependencies
 RUN apt-get update
-RUN apt-get install -y wget git build-essential software-properties-common pkg-config locales
-RUN apt-get install -y libicu-dev libblocksruntime0
-RUN apt-get install -y lsof dnsutils netcat-openbsd # used by integration tests
+RUN apt-get update && apt-get install -y wget git build-essential software-properties-common pkg-config locales
+RUN apt-get update && apt-get install -y libicu-dev libblocksruntime0
+RUN apt-get update && apt-get install -y lsof dnsutils netcat-openbsd # used by integration tests
 
 # local
 RUN locale-gen en_US.UTF-8
@@ -27,7 +27,7 @@ RUN touch $HOME/.ssh/known_hosts
 RUN ssh-keyscan github.com 2> /dev/null >> $HOME/.ssh/known_hosts
 
 # clang
-RUN apt-get install -y clang-3.9
+RUN apt-get update && apt-get install -y clang-3.9
 RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-3.9 100
 RUN update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-3.9 100
 
@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y ruby
 
 # nghttp2
 ARG install_nghttp2_from_source
-RUN [ ! -z $install_nghttp2_from_source ] || apt-get install -y nghttp2 libnghttp2-dev
+RUN [ ! -z $install_nghttp2_from_source ] || { apt-get update && apt-get install -y nghttp2 libnghttp2-dev; }
 RUN [ -z $install_nghttp2_from_source ] || mkdir $HOME/.nghttp2
 RUN [ -z $install_nghttp2_from_source ] || wget -q https://github.com/nghttp2/nghttp2/releases/download/v1.32.0/nghttp2-1.32.0.tar.gz -O $HOME/nghttp2.tar.gz
 RUN [ -z $install_nghttp2_from_source ] || tar xzf $HOME/nghttp2.tar.gz --directory $HOME/.nghttp2 --strip-components=1
