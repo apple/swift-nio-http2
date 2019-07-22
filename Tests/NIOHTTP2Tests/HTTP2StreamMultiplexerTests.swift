@@ -390,6 +390,31 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+    
+    func testClosingChannelAlsoClosesChildChannels() throws {
+        let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.newPromise()
+        let multiplexer = HTTP2StreamMultiplexer { (channel, _) in
+            channelPromise.succeed(result: channel)
+            return channel.eventLoop.newSucceededFuture(result: ())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.add(handler: multiplexer).wait())
+        
+        
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
+        
+        // Let's send a headers frame to open the stream.
+        let streamID = HTTP2StreamID(knownID: 1)
+        let frame = HTTP2Frame(streamID: streamID, payload: .headers(HTTPHeaders()))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+        
+        // The channel should now be active.
+        let childChannel = try channelPromise.futureResult.wait()
+        XCTAssertTrue(childChannel.isActive)
+        
+        // Now we close the connection. This should also close the child channel.
+        XCTAssertNoThrow(try self.channel.finish())
+        XCTAssertFalse(childChannel.isActive)
+    }
 
     func testClosePromiseIsSatisfiedWithTheEvent() throws {
         let frameReceiver = FrameWriteRecorder()

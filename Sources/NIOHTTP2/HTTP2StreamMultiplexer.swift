@@ -85,6 +85,12 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             }
         }
     }
+    
+    public func channelInactive(ctx: ChannelHandlerContext) {
+        for channel in self.streams.values {
+            channel.receiveStreamClosed(nil)
+        }
+    }
 
     public func userInboundEventTriggered(ctx: ChannelHandlerContext, event: Any) {
         // The only event we care about right now is StreamClosedEvent, and in particular
