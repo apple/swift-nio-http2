@@ -143,6 +143,7 @@ internal struct OutboundFlowControlBuffer {
     }
 
     internal mutating func nextFlushedWritableFrame() -> (HTTP2Frame, EventLoopPromise<Void>?)? {
+        // If the channel isn't writable, we don't want to send anything.
         guard let nextStreamID = self.nextStreamToSend(), self.connectionWindowSize > 0 else {
             return nil
         }

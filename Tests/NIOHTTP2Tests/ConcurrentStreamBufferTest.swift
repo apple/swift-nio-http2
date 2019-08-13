@@ -76,7 +76,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // Write frames for three streams.
         let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(.init(headers: HPACKHeaders([])))) }
         let results: [OutboundFrameAction] = try assertNoThrowWithValue(frames.map {
-            let result = try manager.processOutboundFrame($0, promise: nil)
+            let result = try manager.processOutboundFrame($0, promise: nil, channelWritable: true)
             if case .forward = result {
                 manager.streamCreated($0.streamID)
             }
@@ -113,7 +113,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // Write frames for three streams and flush them.
         let frames = stride(from: 1, through: 5, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(.init(headers: HPACKHeaders([])))) }
         let results: [OutboundFrameAction] = try assertNoThrowWithValue(frames.map {
-            let result = try manager.processOutboundFrame($0, promise: nil)
+            let result = try manager.processOutboundFrame($0, promise: nil, channelWritable: true)
             if case .forward = result {
                 manager.streamCreated($0.streamID)
             }
@@ -137,7 +137,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
 
         // Write a new stream. This should be buffered.
         let newStreamFrame = HTTP2Frame(streamID: 7, payload: .headers(.init(headers: HPACKHeaders([]), endStream: true)))
-        XCTAssertNoThrow(try manager.processOutboundFrame(newStreamFrame, promise: nil).assertNothing())
+        XCTAssertNoThrow(try manager.processOutboundFrame(newStreamFrame, promise: nil, channelWritable: true).assertNothing())
         XCTAssertNil(manager.nextFlushedWritableFrame())
 
         // Complete stream 1. Nothing should happen, as only one stream is allowed through.
@@ -169,10 +169,10 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         }
 
         // Write the first frame, and all the subsequent frames, and flush them. This will lead to one flushed frame.
-        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
         for frame in subsequentFrames {
-            XCTAssertNoThrow(try manager.processOutboundFrame(frame, promise: nil).assertNothing())
+            XCTAssertNoThrow(try manager.processOutboundFrame(frame, promise: nil, channelWritable: true).assertNothing())
         }
         manager.flushReceived()
         XCTAssertNil(manager.nextFlushedWritableFrame())
@@ -197,12 +197,12 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We'll flush some, but not all of them
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
         let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
 
-        XCTAssertNoThrow(try (0..<15).forEach { _ in XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: nil).assertNothing()) })
+        XCTAssertNoThrow(try (0..<15).forEach { _ in XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: nil, channelWritable: true).assertNothing()) })
         manager.flushReceived()
-        XCTAssertNoThrow(try (0..<15).forEach { _ in XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: nil).assertNothing()) })
+        XCTAssertNoThrow(try (0..<15).forEach { _ in XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: nil, channelWritable: true).assertNothing()) })
 
         XCTAssertNil(manager.nextFlushedWritableFrame())
 
@@ -232,20 +232,20 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We'll flush some, but not all of them
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
         let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
 
         var writeStatus: [Bool?] = Array(repeating: nil, count: 30)
 
         var writePromises: [EventLoopFuture<Void>] = try assertNoThrowWithValue((0..<15).map { _ in
             let p = self.loop.makePromise(of: Void.self)
-            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p).assertNothing())
+            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p, channelWritable: true).assertNothing())
             return p.futureResult
         })
         manager.flushReceived()
         XCTAssertNoThrow(try writePromises.append(contentsOf: (0..<15).map { _ in
             let p = self.loop.makePromise(of: Void.self)
-            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p).assertNothing())
+            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p, channelWritable: true).assertNothing())
             return p.futureResult
         }))
 
@@ -277,7 +277,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
 
         // Now we're going to write a RST_STREAM frame on stream 3
         let rstStreamFrame = HTTP2Frame(streamID: 3, payload: .rstStream(.cancel))
-        let (droppedWrites, error) = try assertNoThrowWithValue(manager.processOutboundFrame(rstStreamFrame, promise: nil).assertForwardAndDrop())
+        let (droppedWrites, error) = try assertNoThrowWithValue(manager.processOutboundFrame(rstStreamFrame, promise: nil, channelWritable: true).assertForwardAndDrop())
 
         // Fail all these writes.
         for write in droppedWrites {
@@ -294,14 +294,14 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3. We won't flush stream 3.
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
         let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
 
         var writeStatus: [Bool?] = Array(repeating: nil, count: 15)
 
         let writePromises: [EventLoopFuture<Void>] = try assertNoThrowWithValue((0..<15).map { _ in
             let p = self.loop.makePromise(of: Void.self)
-            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p).assertNothing())
+            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p, channelWritable: true).assertNothing())
             return p.futureResult
         })
 
@@ -320,7 +320,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
 
         // Now we're going to send RST_STREAM on 3. All writes should fail, and we should be asked to drop the RST_STREAM frame.
         let rstStreamFrame = HTTP2Frame(streamID: 3, payload: .rstStream(.cancel))
-        let (droppedWrites, error) = try assertNoThrowWithValue(manager.processOutboundFrame(rstStreamFrame, promise: nil).assertSucceedAndDrop())
+        let (droppedWrites, error) = try assertNoThrowWithValue(manager.processOutboundFrame(rstStreamFrame, promise: nil, channelWritable: true).assertSucceedAndDrop())
 
         // Fail all these writes.
         for write in droppedWrites {
@@ -340,15 +340,15 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // We're going to create stream 1 and stream 11. Stream 1 will be passed through, stream 11 will have to wait.
         let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
         let elevenFrame = HTTP2Frame(streamID: 11, payload: .headers(.init(headers: HPACKHeaders([]))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(oneFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(oneFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
-        XCTAssertNoThrow(try manager.processOutboundFrame(elevenFrame, promise: nil).assertNothing())
+        XCTAssertNoThrow(try manager.processOutboundFrame(elevenFrame, promise: nil, channelWritable: true).assertNothing())
 
         // Now we're going to try to write a frame for stream 5. This will fail.
         let fiveFrame = HTTP2Frame(streamID: 5, payload: .headers(.init(headers: HPACKHeaders([]))))
 
         do {
-            _ = try manager.processOutboundFrame(fiveFrame, promise: nil)
+            _ = try manager.processOutboundFrame(fiveFrame, promise: nil, channelWritable: true)
             XCTFail("Did not throw")
         } catch is NIOHTTP2Errors.StreamIDTooSmall {
             // Ok
@@ -363,13 +363,13 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // We're going to create stream 1 and stream 3, which will be buffered.
         let oneFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
         let threeFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders([]))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(oneFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(oneFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
-        XCTAssertNoThrow(try manager.processOutboundFrame(threeFrame, promise: nil).assertNothing())
+        XCTAssertNoThrow(try manager.processOutboundFrame(threeFrame, promise: nil, channelWritable: true).assertNothing())
 
         // Now we're going to try to write a frame for stream 4, a server-initiated stream. This will be passed through safely.
         let fourFrame = HTTP2Frame(streamID: 4, payload: .headers(.init(headers: HPACKHeaders([]))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(fourFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(fourFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(4)
 
         XCTAssertEqual(manager.currentOutboundStreams, 1)
@@ -383,19 +383,19 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // > Streams in either of the "reserved" states do not count toward the stream limit.
         let twoFramePromise = HTTP2Frame(streamID: 1, payload: .pushPromise(.init(pushedStreamID: 2, headers: HPACKHeaders([]))))
         let fourFramePromise = HTTP2Frame(streamID: 1, payload: .pushPromise(.init(pushedStreamID: 4, headers: HPACKHeaders([]))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(twoFramePromise, promise: nil).assertForward())
-        XCTAssertNoThrow(try manager.processOutboundFrame(fourFramePromise, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(twoFramePromise, promise: nil, channelWritable: true).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(fourFramePromise, promise: nil, channelWritable: true).assertForward())
 
         // Now we're going to try to initiate these by sending HEADERS frames. This will buffer the second one.
         let twoFrame = HTTP2Frame(streamID: 2, payload: .headers(.init(headers: HPACKHeaders([]))))
         let fourFrame = HTTP2Frame(streamID: 4, payload: .headers(.init(headers: HPACKHeaders([]))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(twoFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(twoFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(2)
-        XCTAssertNoThrow(try manager.processOutboundFrame(fourFrame, promise: nil).assertNothing())
+        XCTAssertNoThrow(try manager.processOutboundFrame(fourFrame, promise: nil, channelWritable: true).assertNothing())
 
         // Now we're going to try to write a frame for stream 3, a client-initiated stream. This will be passed through safely.
         let threeFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders([]))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(threeFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(threeFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(3)
 
         XCTAssertEqual(manager.currentOutboundStreams, 1)
@@ -408,13 +408,13 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // We're going to start stream 1, and then arrange a buffer of a bunch of frames in stream 3.
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
         let subsequentFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
-        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil).assertForward())
+        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
 
         var writeStatus: [Bool?] = Array(repeating: nil, count: 15)
         let writePromises: [EventLoopFuture<Void>] = try assertNoThrowWithValue((0..<15).map { _ in
             let p = self.loop.makePromise(of: Void.self)
-            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p).assertNothing())
+            XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p, channelWritable: true).assertNothing())
             return p.futureResult
         })
         for (idx, promise) in writePromises.enumerated() {
@@ -444,5 +444,51 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         }
 
         XCTAssertEqual(writeStatus, Array(repeating: false, count: 15))
+    }
+
+    func testBufferingWithBlockedChannel() throws {
+        var manager = ConcurrentStreamBuffer(mode: .client, initialMaxOutboundStreams: 100)
+
+        // Write a frame for the first stream. This will be buffered, as the connection isn't writable.
+        let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders())))
+        XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: false).assertNothing())
+
+        // Write a frame for the second stream. This should also be buffered, as the connection still isn't writable.
+        let secondFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders())))
+        XCTAssertNoThrow(try manager.processOutboundFrame(secondFrame, promise: nil, channelWritable: false).assertNothing())
+        
+        manager.flushReceived()
+
+        // Grab a pending write, simulating the connection becoming writable.
+        guard let firstWritableFrame = manager.nextFlushedWritableFrame() else {
+            XCTFail("Did not write frame")
+            return
+        }
+        firstWritableFrame.0.assertFrameMatches(this: firstFrame)
+        manager.streamCreated(1)
+
+        // Now write a frame for stream 5. Even though the connection is writable, this should be buffered.
+        let thirdFrame = HTTP2Frame(streamID: 5, payload: .headers(.init(headers: HPACKHeaders())))
+        XCTAssertNoThrow(try manager.processOutboundFrame(thirdFrame, promise: nil, channelWritable: true).assertNothing())
+
+        // Now we're going to try to write data once to each stream, simulating the channel being blocked. Stream 1 should
+        // progress, as the stream is actually open, while the writes for stream 3 and 5 should be buffered.
+        let fourthFrame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
+        XCTAssertNoThrow(try manager.processOutboundFrame(fourthFrame, promise: nil, channelWritable: true).assertForward())
+
+        let fifthFrame = HTTP2Frame(streamID: 3, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
+        XCTAssertNoThrow(try manager.processOutboundFrame(fifthFrame, promise: nil, channelWritable: true).assertNothing())
+
+        let sixthFrame = HTTP2Frame(streamID: 5, payload: .data(.init(data: .byteBuffer(ByteBufferAllocator().buffer(capacity: 0)))))
+        XCTAssertNoThrow(try manager.processOutboundFrame(sixthFrame, promise: nil, channelWritable: true).assertNothing())
+
+        manager.flushReceived()
+
+        // Now the remaining frames should come out.
+        var frames = [HTTP2Frame]()
+        while let frame = manager.nextFlushedWritableFrame() {
+            frames.append(frame.0)
+        }
+        frames.assertFramesMatch([secondFrame, fifthFrame, thirdFrame, sixthFrame])
     }
 }

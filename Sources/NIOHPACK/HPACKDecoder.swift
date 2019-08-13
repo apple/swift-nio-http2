@@ -29,6 +29,14 @@ public struct HPACKDecoder {
     public static var maxDynamicTableSize: Int {
         return DynamicHeaderTable.defaultSize
     }
+
+    /// The default value of the maximum header list size for the decoder.
+    ///
+    /// This value is somewhat arbitrary, but 16kB should be sufficiently large to decode all reasonably
+    /// sized header lists.
+    public static var defaultMaxHeaderListSize: Int {
+        return 1<<14
+    }
     
     // private but tests
     var headerTable: IndexedHeaderTable
@@ -43,7 +51,10 @@ public struct HPACKDecoder {
         get { return self.headerTable.dynamicTableAllowedLength }
         set { self.headerTable.dynamicTableAllowedLength = newValue }
     }
-    
+
+    /// The maximum size of the header list.
+    public var maxHeaderListSize: Int
+
     /// A string value discovered in a HPACK buffer. The value can either indicate an entry
     /// in the header table index or the start of an inline literal string.
     enum HPACKString {
@@ -73,7 +84,17 @@ public struct HPACKDecoder {
     ///
     /// - Parameter maxDynamicTableSize: Maximum allowed size of the dynamic header table.
     public init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = HPACKDecoder.maxDynamicTableSize) {
+        self.init(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize, maxHeaderListSize: HPACKDecoder.defaultMaxHeaderListSize)
+    }
+
+    /// Creates a new decoder
+    ///
+    /// - Parameter maxDynamicTableSize: Maximum allowed size of the dynamic header table.
+    /// - Parameter maxHeaderListSize: Maximum allowed size of a decoded header list.
+    public init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int, maxHeaderListSize: Int) {
+        precondition(maxHeaderListSize > 0, "Max header list size must be positive!")
         self.headerTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)
+        self.maxHeaderListSize = maxHeaderListSize
     }
     
     /// Reads HPACK encoded header data from a `ByteBuffer`.
@@ -91,6 +112,8 @@ public struct HPACKDecoder {
         var headers: [HPACKHeader] = []
         headers.reserveCapacity(16)
 
+        var listSize = 0
+
         while bufCopy.readableBytes > 0 {
             switch try self.decodeHeader(from: &bufCopy) {
             case .tableSizeChange:
@@ -104,6 +127,11 @@ public struct HPACKDecoder {
                     throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
                 }
             case .header(let header):
+                listSize += header.size
+                guard listSize <= self.maxHeaderListSize else {
+                    throw NIOHPACKErrors.MaxHeaderListSizeViolation()
+                }
+
                 headers.append(header)
             }
         }
@@ -191,6 +219,10 @@ public struct HPACKDecoder {
             (name, _) = try self.headerTable.header(at: idx)
         case .literal:
             name = try self.readEncodedString(from: &buffer)
+            guard name.utf8.count > 0 else {
+                // This isn't explicitly forbidden by RFC 7541, but it *is* forbidden by RFC 7230.
+                throw NIOHPACKErrors.EmptyLiteralHeaderFieldName()
+            }
         }
         
         let value = try self.readEncodedString(from: &buffer)

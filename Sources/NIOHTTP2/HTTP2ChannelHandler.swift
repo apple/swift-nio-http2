@@ -12,11 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import NIO
-
-// Things that don't work yet:
-//
-// - We don't account for padding in flow control.
-// - We don't process settings changes that affect HPACK or max frame size.
+import NIOHPACK
 
 
 /// NIO's default settings used for initial settings values on HTTP/2 streams, when the user hasn't
@@ -24,7 +20,7 @@ import NIO
 /// size to 16kB, to avoid trivial resource exhaustion on NIO HTTP/2 users.
 public let nioDefaultSettings = [
     HTTP2Setting(parameter: .maxConcurrentStreams, value: 100),
-    HTTP2Setting(parameter: .maxHeaderListSize, value: 1<<16)
+    HTTP2Setting(parameter: .maxHeaderListSize, value: HPACKDecoder.defaultMaxHeaderListSize),
 ]
 
 
@@ -63,10 +59,12 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// sending, if sending them would trigger a protocol violation. Those buffered frames live here.
     private var outboundBuffer: CompoundOutboundBuffer
 
-    /// This flag is set to false each time we get a channelReadComplete or flush, and set to true
-    /// each time we write a frame automatically from this handler. If set to true in channelReadComplete,
-    /// we will choose to flush automatically ourselves.
-    private var wroteAutomaticFrame: Bool = false
+    /// This flag is set to false each time we issue a flush, and set to true
+    /// each time we write a frame. This allows us to avoid flushing unnecessarily.
+    private var wroteFrame: Bool = false
+
+    /// This object deploys heuristics to attempt to detect denial of service attacks.
+    private var denialOfServiceValidator: DOSHeuristics
 
     /// The mode this handler is operating in.
     private let mode: ParserMode
@@ -78,6 +76,10 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     // possible, but I'm not doing that right now.
     /// Whether the channel has closed. If it has, we abort the decode loop, as we don't delay channelInactive.
     private var channelClosed: Bool = false
+
+    /// A cached copy of the channel writability state. Updated in channelWritabilityChanged notifications, and used
+    /// to determine buffering strategies.
+    private var channelWritable: Bool = true
 
     /// The mode for this parser to operate in: client or server.
     public enum ParserMode {
@@ -95,11 +97,29 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         case disabled
     }
 
-    public init(mode: ParserMode, initialSettings: HTTP2Settings = nioDefaultSettings, headerBlockValidation: ValidationState = .enabled, contentLengthValidation: ValidationState = .enabled) {
+    public convenience init(mode: ParserMode,
+                            initialSettings: HTTP2Settings = nioDefaultSettings,
+                            headerBlockValidation: ValidationState = .enabled,
+                            contentLengthValidation: ValidationState = .enabled) {
+        self.init(mode: mode,
+                  initialSettings: initialSettings,
+                  headerBlockValidation: headerBlockValidation,
+                  contentLengthValidation: contentLengthValidation,
+                  maximumSequentialEmptyDataFrames: 1,
+                  maximumBufferedControlFrames: 10000)
+    }
+
+    public init(mode: ParserMode,
+                initialSettings: HTTP2Settings = nioDefaultSettings,
+                headerBlockValidation: ValidationState = .enabled,
+                contentLengthValidation: ValidationState = .enabled,
+                maximumSequentialEmptyDataFrames: Int = 1,
+                maximumBufferedControlFrames: Int = 10000) {
         self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
         self.mode = mode
         self.initialSettings = initialSettings
-        self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100)
+        self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
+        self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames)
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
@@ -140,44 +160,29 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 
     public func channelReadComplete(context: ChannelHandlerContext) {
+        self.outboundBuffer.flushReceived()
         self.unbufferAndFlushAutomaticFrames(context: context)
         context.fireChannelReadComplete()
     }
 
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let frame = self.unwrapOutboundIn(data)
-
-        do {
-            switch try self.outboundBuffer.processOutboundFrame(frame, promise: promise) {
-            case .nothing:
-                // Nothing to do, got buffered.
-                break
-            case .forward:
-                self.processOutboundFrame(context: context, frame: frame, promise: promise)
-            case .forwardAndDrop(let framesToDrop, let error):
-                // We need to forward this frame, and then fail these promises.
-                self.processOutboundFrame(context: context, frame: frame, promise: promise)
-                for (_, promise) in framesToDrop {
-                    promise?.fail(error)
-                }
-            case .succeedAndDrop(let framesToDrop, let error):
-                // We need to succeed this frame promise and fail the others. We fail the others first to keep the
-                // promises in order.
-                for (_, promise) in framesToDrop {
-                    promise?.fail(error)
-                }
-                promise?.succeed(())
-            }
-        } catch {
-            promise?.fail(error)
-        }
+        self.writeBufferedFrame(context: context, frame: frame, promise: promise)
     }
 
     public func flush(context: ChannelHandlerContext) {
         // We need to always flush here, so we'll pretend we wrote an automatic frame even if we didn't.
-        self.wroteAutomaticFrame = true
         self.outboundBuffer.flushReceived()
         self.unbufferAndFlushAutomaticFrames(context: context)
+    }
+
+    public func channelWritabilityChanged(context: ChannelHandlerContext) {
+        // Update the writability status. If the channel has become writeable, we can also attempt to unbuffer some frames here.
+        self.channelWritable = context.channel.isWritable
+        if self.channelWritable {
+            self.unbufferAndFlushAutomaticFrames(context: context)
+        }
+        context.fireChannelWritabilityChanged()
     }
 }
 
@@ -202,6 +207,9 @@ extension NIOHTTP2Handler {
             return nil
         } catch is NIOHTTP2Errors.BadClientMagic {
             self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.BadClientMagic(), reason: .protocolError)
+            return nil
+        } catch is NIOHTTP2Errors.ExcessivelyLargeHeaderBlock {
+            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.ExcessivelyLargeHeaderBlock(), reason: .protocolError)
             return nil
         } catch {
             self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .internalError)
@@ -247,10 +255,8 @@ extension NIOHTTP2Handler {
             case .nothing:
                 break
             case .sendAck:
-                self.writeBuffer.clear()
                 let responseFrame = HTTP2Frame(streamID: frame.streamID, payload: .ping(pingData, ack: true))
-                self.encodeAndWriteFrame(context: context, frame: responseFrame, promise: nil)
-                self.wroteAutomaticFrame = true
+                self.writeBufferedFrame(context: context, frame: responseFrame, promise: nil)
             }
 
         case .priority(let priorityData):
@@ -276,15 +282,14 @@ extension NIOHTTP2Handler {
             case .nothing:
                 break
             case .sendAck:
-                self.writeBuffer.clear()
-                self.encodeAndWriteFrame(context: context, frame: HTTP2Frame(streamID: .rootStream, payload: .settings(.ack)), promise: nil)
-                self.wroteAutomaticFrame = true
+                self.writeBufferedFrame(context: context, frame: HTTP2Frame(streamID: .rootStream, payload: .settings(.ack)), promise: nil)
             }
 
         case .windowUpdate(let increment):
             result = self.stateMachine.receiveWindowUpdate(streamID: frame.streamID, windowIncrement: UInt32(increment))
         }
 
+        self.processDoSRisk(frame, result: &result)
         self.processStateChange(result.effect)
 
         let returnValue: FrameProcessResult
@@ -320,7 +325,7 @@ extension NIOHTTP2Handler {
         // Because we don't know what data the user handled before we got this, we propose that they may have seen all of it.
         // The user may choose to fire a more specific error if they wish.
         let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: reason, opaqueData: nil))
-        self.processOutboundFrame(context: context, frame: goAwayFrame, promise: nil)
+        self.writeUnbufferedFrame(context: context, frame: goAwayFrame)
         context.flush()
         context.fireErrorCaught(underlyingError)
     }
@@ -331,7 +336,7 @@ extension NIOHTTP2Handler {
         // the error. It's possible that we'll be unable to write this, which will likely escalate this error, but that's
         // the user's issue.
         let rstStreamFrame = HTTP2Frame(streamID: streamID, payload: .rstStream(reason))
-        self.processOutboundFrame(context: context, frame: rstStreamFrame, promise: nil)
+        self.writeBufferedFrame(context: context, frame: rstStreamFrame, promise: nil)
         context.flush()
         context.fireErrorCaught(underlyingError)
     }
@@ -340,6 +345,15 @@ extension NIOHTTP2Handler {
     private func processPendingUserEvents(context: ChannelHandlerContext) {
         for event in self.inboundEventBuffer {
             context.fireUserInboundEventTriggered(event)
+        }
+    }
+
+    private func processDoSRisk(_ frame: HTTP2Frame, result: inout StateMachineResultWithEffect) {
+        do {
+            try self.denialOfServiceValidator.process(frame)
+        } catch {
+            result.result = StateMachineResult.connectionError(underlyingError: error, type: .enhanceYourCalm)
+            result.effect = nil
         }
     }
 }
@@ -360,8 +374,44 @@ extension NIOHTTP2Handler {
         }
 
         let initialSettingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(self.initialSettings)))
-        self.processOutboundFrame(context: context, frame: initialSettingsFrame, promise: nil)
+        self.writeUnbufferedFrame(context: context, frame: initialSettingsFrame)
         context.flush()
+    }
+
+    /// Write a frame that is allowed to be buffered (that is, that participates in the outbound frame buffer).
+    private func writeBufferedFrame(context: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+        do {
+            switch try self.outboundBuffer.processOutboundFrame(frame, promise: promise, channelWritable: self.channelWritable) {
+            case .nothing:
+                // Nothing to do, got buffered.
+                break
+            case .forward:
+                self.processOutboundFrame(context: context, frame: frame, promise: promise)
+            case .forwardAndDrop(let framesToDrop, let error):
+                // We need to forward this frame, and then fail these promises.
+                self.processOutboundFrame(context: context, frame: frame, promise: promise)
+                for (_, promise) in framesToDrop {
+                    promise?.fail(error)
+                }
+            case .succeedAndDrop(let framesToDrop, let error):
+                // We need to succeed this frame promise and fail the others. We fail the others first to keep the
+                // promises in order.
+                for (_, promise) in framesToDrop {
+                    promise?.fail(error)
+                }
+                promise?.succeed(())
+            }
+        } catch let error where error is NIOHTTP2Errors.ExcessiveOutboundFrameBuffering {
+            self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .enhanceYourCalm)
+        } catch {
+            promise?.fail(error)
+        }
+    }
+
+    /// Write a frame that is not allowed to be buffered. These are usually GOAWAY frames, which must be urgently emitted as the connection
+    /// is about to be lost. These frames may not have associated promises.
+    private func writeUnbufferedFrame(context: ChannelHandlerContext, frame: HTTP2Frame) {
+        self.processOutboundFrame(context: context, frame: frame, promise: nil)
     }
 
     private func processOutboundFrame(context: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
@@ -389,9 +439,9 @@ extension NIOHTTP2Handler {
         case .settings(.settings(let newSettings)):
             result = self.stateMachine.sendSettings(newSettings)
         case .settings(.ack):
-            // We do not allow sending SETTINGS ACK frames.
-            promise?.fail(NIOHTTP2Errors.Unsupported(info: "Users may not send SETTINGS ACK frames"))
-            return
+            // We do not allow sending SETTINGS ACK frames. However, we emit them automatically ourselves, so we
+            // choose to tolerate it, even if users do the wrong thing.
+            result = .init(result: .succeed, effect: nil)
         case .windowUpdate(let increment):
             result = self.stateMachine.sendWindowUpdate(streamID: frame.streamID, windowIncrement: UInt32(increment))
         }
@@ -429,6 +479,7 @@ extension NIOHTTP2Handler {
 
         // Ok, if we got here we're good to send data. We want to attach the promise to the latest write, not
         // always the frame header.
+        self.wroteFrame = true
         if let extraFrameData = extraFrameData {
             context.write(self.wrapOutboundOut(.byteBuffer(self.writeBuffer)), promise: nil)
             context.write(self.wrapOutboundOut(extraFrameData), promise: promise)
@@ -508,25 +559,25 @@ extension NIOHTTP2Handler {
             if let newMaxFrameSize = settingsChange.newMaxFrameSize {
                 self.frameDecoder.maxFrameSize = newMaxFrameSize
             }
+            if let newMaxHeaderListSize = settingsChange.newMaxHeaderListSize {
+                self.frameDecoder.headerDecoder.maxHeaderListSize = Int(newMaxHeaderListSize)
+            }
         }
     }
 
     private func unbufferAndFlushAutomaticFrames(context: ChannelHandlerContext) {
-        // Two jobs: we have to unbuffer any buffered frames that can be written, and also potentially flush.
         loop: while true {
-            switch self.outboundBuffer.nextFlushedWritableFrame() {
+            switch self.outboundBuffer.nextFlushedWritableFrame(channelWritable: self.channelWritable) {
             case .noFrame:
                 break loop
             case .error(let promise, let error):
                 promise?.fail(error)
             case .frame(let frame, let promise):
                 self.processOutboundFrame(context: context, frame: frame, promise: promise)
-                self.wroteAutomaticFrame = true
             }
         }
 
-        if self.wroteAutomaticFrame {
-            self.wroteAutomaticFrame = false
+        if self.wroteFrame {
             context.flush()
         }
     }

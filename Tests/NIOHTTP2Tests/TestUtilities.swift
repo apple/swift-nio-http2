@@ -205,9 +205,9 @@ extension HTTP2Frame {
 
         switch payload {
         case .ack:
-            self.assertSettingsFrame(expectedSettings: [], ack: true)
+            self.assertSettingsFrame(expectedSettings: [], ack: true, file: file, line: line)
         case .settings(let expectedSettings):
-            self.assertSettingsFrame(expectedSettings: expectedSettings, ack: false)
+            self.assertSettingsFrame(expectedSettings: expectedSettings, ack: false, file: file, line: line)
         }
     }
 
@@ -232,8 +232,10 @@ extension HTTP2Frame {
             self.assertPushPromiseFrameMatches(this: frame, file: file, line: line)
         case .windowUpdate:
             self.assertWindowUpdateFrameMatches(this: frame, file: file, line: line)
-        default:
-            XCTFail("No frame matching method for \(frame.payload)", file: file, line: line)
+        case .alternativeService:
+            self.assertAlternativeServiceFrameMatches(this: frame, file: file, line: line)
+        case .origin:
+            self.assertOriginFrameMatches(this: frame, file: file, line: line)
         }
     }
 
@@ -458,6 +460,47 @@ extension HTTP2Frame {
         XCTAssertEqual(streamID, self.streamID, "Non matching stream IDs: expected \(streamID), got \(self.streamID)!", file: file, line: line)
         XCTAssertEqual(pushedStreamID, actualPayload.pushedStreamID, "Non matching pushed stream IDs: expected \(pushedStreamID), got \(actualPayload.pushedStreamID)", file: file, line: line)
         XCTAssertEqual(headers, actualPayload.headers, "Non matching pushed headers: expected \(headers), got \(actualPayload.headers)", file: file, line: line)
+    }
+
+    func assertAlternativeServiceFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .alternativeService(let payload) = frame.payload else {
+            preconditionFailure("AltSvc frames can never match non-AltSvc frames.")
+        }
+        self.assertAlternativeServiceFrame(origin: payload.origin, field: payload.field, file: file, line: line)
+    }
+
+    func assertAlternativeServiceFrame(origin: String?, field: ByteBuffer?, file: StaticString = #file, line: UInt = #line) {
+        guard case .alternativeService(let actualPayload) = self.payload else {
+            XCTFail("Expected ALTSVC frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(.rootStream, self.streamID, "ALTSVC frame must be on the root stream!, got \(self.streamID)!", file: file, line: line)
+        XCTAssertEqual(origin,
+                       actualPayload.origin,
+                       "Non matching origins: expected \(String(describing: origin)), got \(String(describing: actualPayload.origin))",
+                       file: file, line: line)
+        XCTAssertEqual(field,
+                       actualPayload.field,
+                       "Non matching field: expected \(String(describing: field)), got \(String(describing: actualPayload.field))",
+                       file: file, line: line)
+    }
+
+    func assertOriginFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+        guard case .origin(let payload) = frame.payload else {
+            preconditionFailure("ORIGIN frames can never match non-ORIGIN frames.")
+        }
+        self.assertOriginFrame(streamID: frame.streamID, origins: payload, file: file, line: line)
+    }
+
+    func assertOriginFrame(streamID: HTTP2StreamID, origins: [String], file: StaticString = #file, line: UInt = #line) {
+        guard case .origin(let actualPayload) = self.payload else {
+            XCTFail("Expected ORIGIN frame, got \(self.payload) instead", file: file, line: line)
+            return
+        }
+
+        XCTAssertEqual(.rootStream, self.streamID, "ORIGIN frame must be on the root stream!, got \(self.streamID)!", file: file, line: line)
+        XCTAssertEqual(origins, actualPayload, "Non matching origins: expected \(origins), got \(actualPayload)", file: file, line: line)
     }
 }
 

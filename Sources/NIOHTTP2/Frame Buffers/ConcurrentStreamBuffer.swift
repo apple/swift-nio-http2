@@ -105,8 +105,9 @@ struct ConcurrentStreamBuffer {
         self.bufferedFrames.markFlushPoint()
     }
 
-    mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) throws -> OutboundFrameAction {
-        // If this frame is not for a locally initiated stream, then that's fine, just pass it on.
+    mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?, channelWritable: Bool) throws -> OutboundFrameAction {
+        // If this frame is not for a locally initiated stream, then that's fine, just pass it on. Even if the channel isn't
+        // writable, one of the other two buffers should catch this.
         guard frame.streamID != .rootStream && frame.streamID.mayBeInitiatedBy(self.mode) else {
             return .forward
         }
@@ -119,6 +120,8 @@ struct ConcurrentStreamBuffer {
         //
         // Before we search our buffers for this stream we do a quick sanity check: if its stream ID is lower than the first element in the
         // array, it won't be there.
+        //
+        // Again, we choose to ignore channel writability here because one of the other buffers should catch this frame.
         if let firstElement = self.bufferedFrames.first,
             frame.streamID >= firstElement.streamID,
             let bufferIndex = self.bufferedFrames.binarySearch(key: { $0.streamID }, needle: frame.streamID) {
@@ -126,19 +129,32 @@ struct ConcurrentStreamBuffer {
         }
 
         // Ok, we're not currently buffering frames for this stream.
+        //
         // Now we need to check if this is for a stream that has already been opened. If it is, and we aren't buffering it, pass
-        // the frame through.
+        // the frame through. Again, we ignore channel writability here because we don't need to delay state changes: one of the
+        // other buffers will catch this and it'll be fine.
         if frame.streamID <= self.lastOutboundStream {
             return .forward
         }
 
         // Now we want to see whether we're allowed to initiate a new stream. If we aren't, then we will buffer this stream.
-        if self.currentOutboundStreams >= self.maxOutboundStreams {
-            // Ok, we can't create a new stream. In this case we need to buffer this. We can only have gotten this far if either this stream ID is lower
-            // than the first stream ID, or if it's higher but doesn't match something in the buffer. As a result, it is an error for this frame to have
-            // a stream ID lower than or equal to the highest stream ID in the buffer: if it did, we should have found it when we searched above. If that
-            // constraint is breached, fail the write.
+        if self.currentOutboundStreams >= self.maxOutboundStreams || !channelWritable {
+            // Ok, we can't create a new stream, either due to MAX_CONCURRENT_STREAMS limits or because the channel isn't writable. In this case we
+            // need to buffer this. We can only have gotten this far if either this stream ID is lower than the first stream ID, or if it's higher
+            // but doesn't match something in the buffer. As a result, it is an error for this frame to have a stream ID lower than or equal to the
+            // highest stream ID in the buffer: if it did, we should have found it when we searched above. If that constraint is breached, fail the write.
             if let lastElement = self.bufferedFrames.last, frame.streamID <= lastElement.streamID {
+                throw NIOHTTP2Errors.StreamIDTooSmall()
+            }
+
+            // Ok, the stream ID is fine: buffer this frame.
+            self.bufferFrameForNewStream(frame, promise: promise)
+            return .nothing
+        } else if let lastElement = self.bufferedFrames.last, !lastElement.currentlyUnblocking {
+            // In principle we can create a new stream, and the channel is writable. However, we have at least one stream that is currently buffered and not unblocking.
+            // This buffer probably has a HEADERS frame in it, and we really don't want to violate the ordering requirements that implies, so we'll buffer this anyway.
+            // We still want StreamIDTooSmall protection here.
+            if frame.streamID <= lastElement.streamID {
                 throw NIOHTTP2Errors.StreamIDTooSmall()
             }
 

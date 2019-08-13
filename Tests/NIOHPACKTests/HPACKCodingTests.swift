@@ -589,4 +589,23 @@ class HPACKCodingTests: XCTestCase {
             XCTAssertEqual(error as? NIOHPACKErrors.ZeroHeaderIndex, NIOHPACKErrors.ZeroHeaderIndex())
         }
     }
+
+    func testHPACKDecoderRespectsMaxHeaderListSize() throws {
+        // We're just going to spam out a hilariously large header block by spamming lots of ":method: GET" headers. Each of these
+        // consumes 42 bytes of the max header list size, so if we repeat it 1000 times we'll create an 42kB header field block while consuming only
+        // 1kB. This should be rejected by the decoder.
+        var request = buffer(wrapping: repeatElement(0x82, count: 1000))
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
+        XCTAssertEqual(decoder.maxHeaderListSize, 16 * 1024)
+
+        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request)) { error in
+            XCTAssertEqual(error as? NIOHPACKErrors.MaxHeaderListSizeViolation, NIOHPACKErrors.MaxHeaderListSizeViolation())
+        }
+
+        // Decoding a header block that is smaller than the max header list size is fine.
+        decoder = HPACKDecoder(allocator: ByteBufferAllocator())
+        decoder.maxHeaderListSize = 42 * 1000
+        let decoded = try decoder.decodeHeaders(from: &request)
+        XCTAssertEqual(decoded, HPACKHeaders(Array(repeatElement((":method", "GET"), count: 1000))))
+    }
 }

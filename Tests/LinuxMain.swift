@@ -31,6 +31,7 @@ import XCTest
          testCase(ConcurrentStreamBufferTests.allTests),
          testCase(ConfiguringPipelineTests.allTests),
          testCase(ConnectionStateMachineTests.allTests),
+         testCase(ControlFrameBufferTests.allTests),
          testCase(HPACKCodingTests.allTests),
          testCase(HPACKIntegrationTests.allTests),
          testCase(HPACKRegressionTests.allTests),

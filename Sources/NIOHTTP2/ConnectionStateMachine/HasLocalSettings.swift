@@ -63,7 +63,9 @@ extension HasLocalSettings {
                     // respect that possibility.
                     effect.streamWindowSizeChange += Int(delta)
                 case .maxFrameSize:
-                   effect.newMaxFrameSize = newValue
+                    effect.newMaxFrameSize = newValue
+                case .maxHeaderListSize:
+                    effect.newMaxHeaderListSize = newValue
                 default:
                     // No operation required
                     return

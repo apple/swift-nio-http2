@@ -107,4 +107,15 @@ public enum NIOHPACKErrors {
     public struct ZeroHeaderIndex: NIOHPACKError {
         public init() { }
     }
+
+    /// HPACK decoder asked to decode a header list that would violate the configured
+    /// max header list size.
+    public struct MaxHeaderListSizeViolation: NIOHPACKError {
+        public init() { }
+    }
+
+    /// HPACK decoder asked to decode a header field name that was empty.
+    public struct EmptyLiteralHeaderFieldName: NIOHPACKError {
+        public init() { }
+    }
 }

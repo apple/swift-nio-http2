@@ -35,6 +35,7 @@ extension HPACKCodingTests {
                 ("testHPACKHeadersDescription", testHPACKHeadersDescription),
                 ("testHPACKHeadersSubscript", testHPACKHeadersSubscript),
                 ("testHPACKHeadersWithZeroIndex", testHPACKHeadersWithZeroIndex),
+                ("testHPACKDecoderRespectsMaxHeaderListSize", testHPACKDecoderRespectsMaxHeaderListSize),
            ]
    }
 }

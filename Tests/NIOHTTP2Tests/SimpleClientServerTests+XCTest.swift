@@ -61,6 +61,14 @@ extension SimpleClientServerTests {
                 ("testFailsPromisesForBufferedWrites", testFailsPromisesForBufferedWrites),
                 ("testAllowPushPromiseBeforeReceivingHeadersNoBody", testAllowPushPromiseBeforeReceivingHeadersNoBody),
                 ("testAllowPushPromiseBeforeReceivingHeadersWithPossibleBody", testAllowPushPromiseBeforeReceivingHeadersWithPossibleBody),
+                ("testSequentialEmptyDataFramesIsForbidden", testSequentialEmptyDataFramesIsForbidden),
+                ("testSequentialEmptyDataFramesLimitIsConfigurable", testSequentialEmptyDataFramesLimitIsConfigurable),
+                ("testDenialOfServiceViaPing", testDenialOfServiceViaPing),
+                ("testDenialOfServiceViaSettings", testDenialOfServiceViaSettings),
+                ("testFramesArentWrittenWhenChannelIsntWritable", testFramesArentWrittenWhenChannelIsntWritable),
+                ("testEnforcingMaxHeaderListSize", testEnforcingMaxHeaderListSize),
+                ("testForbidsExceedingMaxHeaderListSizeBeforeDecoding", testForbidsExceedingMaxHeaderListSizeBeforeDecoding),
+                ("testForbidsExceedingMaxHeaderListSizeBeforeDecodingSingleFrame", testForbidsExceedingMaxHeaderListSizeBeforeDecodingSingleFrame),
            ]
    }
 }

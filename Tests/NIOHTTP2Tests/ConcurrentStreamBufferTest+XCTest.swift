@@ -36,6 +36,7 @@ extension ConcurrentStreamBufferTests {
                 ("testFramesForNonLocalStreamIDsAreIgnoredClient", testFramesForNonLocalStreamIDsAreIgnoredClient),
                 ("testFramesForNonLocalStreamIDsAreIgnoredServer", testFramesForNonLocalStreamIDsAreIgnoredServer),
                 ("testDropsFramesOnStreamClosure", testDropsFramesOnStreamClosure),
+                ("testBufferingWithBlockedChannel", testBufferingWithBlockedChannel),
            ]
    }
 }

@@ -280,6 +280,20 @@ internal struct HPACKHeader {
 }
 
 
+extension HPACKHeader {
+    internal var size: Int {
+        // RFC 7541 § 4.1:
+        //
+        //      The size of an entry is the sum of its name's length in octets (as defined in
+        //      Section 5.2), its value's length in octets, and 32.
+        //
+        //      The size of an entry is calculated using the length of its name and value
+        //      without any Huffman encoding applied.
+        return name.utf8.count + value.utf8.count + 32
+    }
+}
+
+
 internal extension UInt8 {
     var isASCII: Bool {
         return self <= 127

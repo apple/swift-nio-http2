@@ -1016,7 +1016,7 @@ class SimpleClientServerTests: XCTestCase {
         // The client will get two frames: a SETTINGS frame, and a GOAWAY frame. We don't want to decode these, so we
         // just check their bytes match the expected payloads.
         if var settingsFrame: ByteBuffer = try assertNoThrowWithValue(self.clientChannel.readInbound()) {
-            let settingsBytes: [UInt8] = [0, 0, 12, 4, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 100, 0, 6, 0, 1, 0, 0]
+            let settingsBytes: [UInt8] = [0, 0, 12, 4, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 100, 0, 6, 0, 0, 64, 0]
             XCTAssertEqual(settingsFrame.readBytes(length: settingsFrame.readableBytes), settingsBytes)
         } else {
             XCTFail("No settings frame")
@@ -1434,5 +1434,352 @@ class SimpleClientServerTests: XCTestCase {
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testSequentialEmptyDataFramesIsForbidden() throws {
+        try self.basicHTTP2Connection()
+
+        // We're going to open a few streams.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let streamIDs = [HTTP2StreamID(1), HTTP2StreamID(3)]
+        let headersFrames = streamIDs.map { HTTP2Frame(streamID: $0, payload: .headers(.init(headers: headers, endStream: false))) }
+
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: headersFrames, sender: self.clientChannel, receiver: self.serverChannel))
+
+        // Now we're going to send 2 empty data frames.
+        let emptyBuffer = self.clientChannel.allocator.buffer(capacity: 2)
+        let dataFrames = streamIDs.map { HTTP2Frame(streamID: $0, payload: .data(.init(data: .byteBuffer(emptyBuffer), endStream: false))) }
+
+        // First we send 1 without drama.
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [dataFrames.first!], sender: self.clientChannel, receiver: self.serverChannel))
+
+        // Now we try to send the second.
+        self.clientChannel.writeAndFlush(dataFrames.last!, promise: nil)
+        guard let bytes = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not write client bytes")
+            return
+        }
+
+        // The server should have errored.
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(bytes)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveEmptyDataFrames, NIOHTTP2Errors.ExcessiveEmptyDataFrames())
+        }
+
+        guard let serverBytes = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not write server bytes")
+            return
+        }
+        XCTAssertNoThrow(XCTAssertNil(try self.serverChannel.readOutbound(as: ByteBuffer.self)))
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(serverBytes))
+
+        // The client should have seen a GOAWAY.
+        guard let goaway = try assertNoThrowWithValue(self.clientChannel.readInbound(as: HTTP2Frame.self)) else {
+            XCTFail("Did not receive server GOAWAY frame")
+            return
+        }
+        goaway.assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(HTTP2ErrorCode.enhanceYourCalm.networkCode), opaqueData: nil)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+    }
+
+    func testSequentialEmptyDataFramesLimitIsConfigurable() throws {
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server, maximumSequentialEmptyDataFrames: 5)).wait())
+        XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        // We're going to open a few streams.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let streamIDs = [HTTP2StreamID(1), HTTP2StreamID(3)]
+        let headersFrames = streamIDs.map { HTTP2Frame(streamID: $0, payload: .headers(.init(headers: headers, endStream: false))) }
+
+        XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: headersFrames, sender: self.clientChannel, receiver: self.serverChannel))
+
+        // Now we're going to send 6 empty data frames.
+        let emptyBuffer = self.clientChannel.allocator.buffer(capacity: 2)
+        let twoDataFrames = streamIDs.map { HTTP2Frame(streamID: $0, payload: .data(.init(data: .byteBuffer(emptyBuffer), endStream: false))) }
+        let dataFrames = repeatElement(twoDataFrames, count: 3).flatMap { $0 }
+        XCTAssertEqual(dataFrames.count, 6)
+
+        // First we send 5 without drama.
+        for frame in dataFrames.prefix(5) {
+            XCTAssertNoThrow(try self.assertFramesRoundTrip(frames: [frame], sender: self.clientChannel, receiver: self.serverChannel))
+        }
+
+        // Now we try to send the sixth.
+        self.clientChannel.writeAndFlush(dataFrames.last!, promise: nil)
+        guard let bytes = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not write client bytes")
+            return
+        }
+
+        // The server should have errored.
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(bytes)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveEmptyDataFrames, NIOHTTP2Errors.ExcessiveEmptyDataFrames())
+        }
+
+        guard let serverBytes = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not write server bytes")
+            return
+        }
+        XCTAssertNoThrow(XCTAssertNil(try self.serverChannel.readOutbound(as: ByteBuffer.self)))
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(serverBytes))
+
+        // The client should have seen a GOAWAY.
+        guard let goaway = try assertNoThrowWithValue(self.clientChannel.readInbound(as: HTTP2Frame.self)) else {
+            XCTFail("Did not receive server GOAWAY frame")
+            return
+        }
+        goaway.assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(HTTP2ErrorCode.enhanceYourCalm.networkCode), opaqueData: nil)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+    }
+
+    func testDenialOfServiceViaPing() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now mark the server's channel as non-writable.
+        self.serverChannel.isWritable = false
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+
+        // Now we want to send many PING frames. The server should not be writing any out,
+        // as the channel isn't writable.
+        let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 0), ack: false))
+        let frames = Array(repeatElement(pingFrame, count: 10000))
+        try self.assertFramesRoundTrip(frames: frames, sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Ok, now send one more ping frame. This should cause an error
+        XCTAssertNoThrow(try XCTAssertTrue(self.clientChannel.writeOutbound(pingFrame).isFull))
+        guard let pingBytes = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive PING frame bytes")
+            return
+        }
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(pingBytes)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.ExcessiveOutboundFrameBuffering())
+        }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+    }
+
+    func testDenialOfServiceViaSettings() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // Now mark the server's channel as non-writable.
+        self.serverChannel.isWritable = false
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+
+        // Now we want to send many empty SETTINGS frames. The server should not be writing any out,
+        // as the channel isn't writable.
+        let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings([])))
+        let frames = Array(repeatElement(settingsFrame, count: 10000))
+        try self.assertFramesRoundTrip(frames: frames, sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Ok, now send one more settings frame. This should cause connection teardown.
+        XCTAssertNoThrow(try XCTAssertTrue(self.clientChannel.writeOutbound(settingsFrame).isFull))
+        guard let settingsBytes = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive SETTINGS frame bytes")
+            return
+        }
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(settingsBytes)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.ExcessiveOutboundFrameBuffering())
+        }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+    }
+
+    func testFramesArentWrittenWhenChannelIsntWritable() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.writeStaticString("A simple HTTP/2 request.")
+
+        // The client opens a streeam
+        try self.assertFramesRoundTrip(frames: [HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers, endStream: false)))], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Now the client loses writability.
+        self.clientChannel.isWritable = false
+        self.clientChannel.pipeline.fireChannelWritabilityChanged()
+
+        // Now the client is going to try to write a bunch of data on stream 1.
+        let dataFrames = Array(repeatElement(HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(requestBody), endStream: false))), count: 100))
+        for frame in dataFrames {
+            self.clientChannel.writeAndFlush(frame, promise: nil)
+        }
+        XCTAssertNoThrow(try self.clientChannel.throwIfErrorCaught())
+
+        // Also the client is going to try to initiate 100 more streams. This would normally violate SETTINGS_MAX_CONCURRENT_STREAMS, but in this case they should all
+        // be buffered locally.
+        let bonusStreams = stride(from: HTTP2StreamID(3), to: HTTP2StreamID(203), by: 2).map { HTTP2Frame(streamID: $0, payload: .headers(.init(headers: headers, endStream: true))) }
+        for frame in bonusStreams {
+            self.clientChannel.writeAndFlush(frame, promise: nil)
+        }
+        XCTAssertNoThrow(try self.clientChannel.throwIfErrorCaught())
+
+        // The client shouldn't have written any of these.
+        XCTAssertNoThrow(try XCTAssertNil(self.clientChannel.readOutbound(as: ByteBuffer.self)))
+
+        // Now make the channel readable.
+        self.clientChannel.isWritable = true
+        self.clientChannel.pipeline.fireChannelWritabilityChanged()
+
+        // All but 1 of the HEADERS frames should now come out, followed by the DATA frames.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        var receivedFrames = Array<HTTP2Frame>()
+        while let frame = try assertNoThrowWithValue(self.serverChannel.readInbound(as: HTTP2Frame.self)) {
+            receivedFrames.append(frame)
+        }
+        receivedFrames.assertFramesMatch(Array(bonusStreams.dropLast()) + dataFrames)
+
+        // Now we close stream a stream on the server side.
+        let responseHeaders = HPACKHeaders([(":status", "200")])
+        let responseFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: responseHeaders, endStream: true)))
+        XCTAssertNoThrow(try self.serverChannel.writeOutbound(responseFrame))
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // This should get the last HEADERS frame out.
+        try self.clientChannel.readInbound(as: HTTP2Frame.self)!.assertFrameMatches(this: responseFrame)
+        try self.serverChannel.readInbound(as: HTTP2Frame.self)!.assertFrameMatches(this: bonusStreams.last!)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testEnforcingMaxHeaderListSize() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // The server is going to shrink its value for max header list size.
+        let newSettings = [HTTP2Setting(parameter: .maxHeaderListSize, value: 225)]
+        try self.assertSettingsUpdateWithAck(newSettings, sender: self.serverChannel, receiver: self.clientChannel)
+
+        // Ok, first let's send something safe. This size is calculated as 32 bytes per entry, plus the octet length
+        // of the name and value. The below block is 225 bytes, as shown below.
+        let goodHeaders = HPACKHeaders([
+            (":path", "/"),               // 32 byte overhead + 5 byte name + one byte value == 38 bytes, total is 38
+            (":method", "GET"),           // 32 byte overhead + 7 byte name + 3 byte value == 42 bytes, total is 80
+            (":authority", "localhost"),  // 32 byte overhead + 10 byte name + 9 byte value == 51 bytes, total is 131
+            (":scheme", "https"),         // 32 byte overhead + 7 byte name + 5 byte value == 44 bytes, total is 175
+            ("user-agent", "swiftnio"),   // 32 byte overhead + 10 byte name + 8 byte value == 50 bytes, total is 225
+        ])
+        let firstRequestFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: goodHeaders)))
+        try self.assertFramesRoundTrip(frames: [firstRequestFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        // Ok, we'll create some new headers that are bad by adding one byte to the last header field.
+        let badHeaders = HPACKHeaders([
+            (":path", "/"),               // 32 byte overhead + 5 byte name + one byte value == 38 bytes, total is 38
+            (":method", "GET"),           // 32 byte overhead + 7 byte name + 3 byte value == 42 bytes, total is 80
+            (":authority", "localhost"),  // 32 byte overhead + 10 byte name + 9 byte value == 51 bytes, total is 131
+            (":scheme", "https"),         // 32 byte overhead + 7 byte name + 5 byte value == 44 bytes, total is 175
+            ("user-agent", "swiftnio2"),  // 32 byte overhead + 10 byte name + 9 byte value == 51 bytes, total is 226
+        ])
+
+        // These should be forbidden. This is a connection error, as we do not promise to have decoded all the headers.
+        let secondRequestFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: badHeaders)))
+        self.clientChannel.writeAndFlush(secondRequestFrame, promise: nil)
+
+        guard let frameData = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive frame")
+            return
+        }
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.UnableToParseFrame, NIOHTTP2Errors.UnableToParseFrame())
+        }
+
+        guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(HTTP2ErrorCode.compressionError.networkCode), opaqueData: nil)
+    }
+
+    func testForbidsExceedingMaxHeaderListSizeBeforeDecoding() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // The server is going to shrink its value for max header list size.
+        let newSettings = [HTTP2Setting(parameter: .maxHeaderListSize, value: 225)]
+        try self.assertSettingsUpdateWithAck(newSettings, sender: self.serverChannel, receiver: self.clientChannel)
+
+        // This test will validate that the server will not allow the HPACK block to exceed the set max header list size
+        // even before the header block is complete. To do that, we're going to send a HEADERS frame and then a sequence of
+        // CONTINUATION frames. These will never decompress to a valid block, but we don't expect them to get that far.
+        let weirdHeadersFrame: [UInt8] = [
+            0x00, 0x00, 0x01,           // 3-byte payload length (1 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+            0x82,                       // payload
+        ]
+        let weirdContinuationFrame: [UInt8] = [
+            0x00, 0x00, 0x01,           // 3-byte payload length (1 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+            0x82,                       // payload
+        ]
+
+        // Each byte of payload is accompanied by 9 bytes of overhead, so we need to allocate enough space to send 255 bytes of payload.
+        var firstBuffer = self.serverChannel.allocator.buffer(capacity: 10 * 225)
+        firstBuffer.writeBytes(weirdHeadersFrame)
+        for _ in 0..<224 {
+            firstBuffer.writeBytes(weirdContinuationFrame)
+        }
+
+        // Sending this should not result in an error.
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(firstBuffer))
+        XCTAssertNoThrow(XCTAssertNil(try self.serverChannel.readOutbound(as: ByteBuffer.self)))
+
+        // But if we send one more frame, that will be treated as a violation of SETTINGS_MAX_HEADER_LIST_SIZE.
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(firstBuffer.getSlice(at: firstBuffer.writerIndex - 10, length: 10)!)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessivelyLargeHeaderBlock, NIOHTTP2Errors.ExcessivelyLargeHeaderBlock())
+        }
+        guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(HTTP2ErrorCode.protocolError.networkCode), opaqueData: nil)
+    }
+
+    func testForbidsExceedingMaxHeaderListSizeBeforeDecodingSingleFrame() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // The server is going to shrink its value for max header list size.
+        let newSettings = [HTTP2Setting(parameter: .maxHeaderListSize, value: 225)]
+        try self.assertSettingsUpdateWithAck(newSettings, sender: self.serverChannel, receiver: self.clientChannel)
+
+        // This test will validate that the server will not allow the HPACK block to exceed the set max header list size
+        // even before the header block is complete. To do that, we're going to send a HEADERS frame that is itself too long to expect
+        // to decode.
+        let weirdHeadersFrame: [UInt8] = [
+            0x00, 0x00, 0xE2,           // 3-byte payload length (226 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+
+        // We don't even need the body, we shouldn't get that far.
+        var buffer = self.serverChannel.allocator.buffer(capacity: 9)
+        buffer.writeBytes(weirdHeadersFrame)
+
+        // This frame will be treated as a violation of SETTINGS_MAX_HEADER_LIST_SIZE.
+        XCTAssertThrowsError(try self.serverChannel.writeInbound(buffer)) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessivelyLargeHeaderBlock, NIOHTTP2Errors.ExcessivelyLargeHeaderBlock())
+        }
+        guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(HTTP2ErrorCode.protocolError.networkCode), opaqueData: nil)
     }
 }

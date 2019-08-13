@@ -36,6 +36,7 @@ extension CompoundOutboundBufferTest {
                 ("testRejectsPrioritySelfDependency", testRejectsPrioritySelfDependency),
                 ("testBufferedFlushedFrameBufferingBehindFlowControl", testBufferedFlushedFrameBufferingBehindFlowControl),
                 ("testFailingAllPromisesOnClose", testFailingAllPromisesOnClose),
+                ("testBufferedControlFramesAreEmittedPreferentiallyToOtherFrames", testBufferedControlFramesAreEmittedPreferentiallyToOtherFrames),
            ]
    }
 }

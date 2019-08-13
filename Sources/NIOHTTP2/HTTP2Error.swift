@@ -17,6 +17,14 @@ public protocol NIOHTTP2Error: Equatable, Error { }
 
 /// Errors that NIO raises when handling HTTP/2 connections.
 public enum NIOHTTP2Errors {
+    /// The outbound frame buffers have become filled, and it is not possible to buffer
+    /// further outbound frames. This occurs when the remote peer is generating work
+    /// faster than they are consuming the result. Additional buffering runs the risk of
+    /// memory exhaustion.
+    public struct ExcessiveOutboundFrameBuffering: NIOHTTP2Error {
+        public init() { }
+    }
+
     /// NIO's upgrade handler encountered a successful upgrade to a protocol that it
     /// does not recognise.
     public struct InvalidALPNToken: NIOHTTP2Error {
@@ -267,6 +275,17 @@ public enum NIOHTTP2Errors {
 
     /// A request or response has violated the expected content length, either exceeding or falling beneath it.
     public struct ContentLengthViolated: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// The remote peer has sent an excessive number of empty DATA frames, which looks like a denial of service
+    /// attempt, so the connection has been closed.
+    public struct ExcessiveEmptyDataFrames: NIOHTTP2Error {
+        public init() { }
+    }
+
+    /// The remote peer has sent a header block so large that NIO refuses to buffer any more data than that.
+    public struct ExcessivelyLargeHeaderBlock: NIOHTTP2Error {
         public init() { }
     }
 }

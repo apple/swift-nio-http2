@@ -47,14 +47,19 @@ internal struct CompoundOutboundBuffer {
 
     /// A buffer that ensures we don't violate HTTP/2 flow control. This is the second buffer all frames pass through.
     private var flowControlBuffer: OutboundFlowControlBuffer
+
+    /// A buffer that ensures that we store outbound control frames somewhere we can keep track of htem. This is the
+    /// third buffer all frames pass through.
+    private var controlFrameBuffer: ControlFrameBuffer
 }
 
 
 // MARK: CompoundOutboundBuffer initializers
 extension CompoundOutboundBuffer {
-    internal init(mode: NIOHTTP2Handler.ParserMode, initialMaxOutboundStreams: Int) {
+    internal init(mode: NIOHTTP2Handler.ParserMode, initialMaxOutboundStreams: Int, maxBufferedControlFrames: Int) {
         self.concurrentStreamsBuffer = ConcurrentStreamBuffer(mode: mode, initialMaxOutboundStreams: initialMaxOutboundStreams)
         self.flowControlBuffer = OutboundFlowControlBuffer()
+        self.controlFrameBuffer = ControlFrameBuffer(maximumBufferSize: maxBufferedControlFrames)
     }
 }
 
@@ -63,7 +68,7 @@ extension CompoundOutboundBuffer {
 // Note that this does not quite conform to OutboundFrameBuffer. This is because the implementation of nextFlushedWritableFrame may in principle
 // cause an error that requires us to error out on a frame, and we cannot make outcalls from this structure.
 extension CompoundOutboundBuffer {
-    mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) throws -> OutboundFrameAction {
+    mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?, channelWritable: Bool) throws -> OutboundFrameAction {
         var framesToDrop: MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)> = MarkedCircularBuffer(initialCapacity: 0)
         var error: NIOHTTP2Errors.StreamClosed? = nil
 
@@ -75,7 +80,7 @@ extension CompoundOutboundBuffer {
         //        to the dropped frames.
         // 4. If a buffer returns .succeedAndDrop, return .succeedAndDrop.
         // The return value of the last buffer is the return value of the compound buffer, unless we returned early.
-        switch try self.concurrentStreamsBuffer.processOutboundFrame(frame, promise: promise) {
+        switch try self.concurrentStreamsBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable) {
         case .nothing:
             return .nothing
         case .succeedAndDrop(let framesToDrop, let error):
@@ -105,6 +110,15 @@ extension CompoundOutboundBuffer {
             break
         }
 
+        switch try self.controlFrameBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable) {
+        case .nothing:
+            return .nothing
+        case .forward:
+            break
+        case .succeedAndDrop, .forwardAndDrop:
+            preconditionFailure("Control frame buffer may never drop internal frames")
+        }
+
         // Ok, we're at the end. If we have an error, return .forwardAndDrop. Otherwise, return .forward.
         if let error = error {
             return .forwardAndDrop(framesToDrop, error)
@@ -117,6 +131,7 @@ extension CompoundOutboundBuffer {
         // Here we just tell every buffer that we have got a flush.
         self.concurrentStreamsBuffer.flushReceived()
         self.flowControlBuffer.flushReceived()
+        self.controlFrameBuffer.flushReceived()
     }
 
     enum FlushedWritableFrameResult {
@@ -125,37 +140,64 @@ extension CompoundOutboundBuffer {
         case error(EventLoopPromise<Void>?, Error)
     }
 
-    mutating func nextFlushedWritableFrame() -> FlushedWritableFrameResult {
-        // The goal here is to eagerly do as much work as possible on the concurrent streams buffer before we get to the
-        // flow control buffer. We spin over the concurrent streams buffer, unbuffering everything we can and passing it
-        // to the flow control buffer.
+    mutating func nextFlushedWritableFrame(channelWritable: Bool) -> FlushedWritableFrameResult {
+        // Before we get to the meat of this: check if the channel is writable. If it's not, we're not doing any work.
+        guard channelWritable else {
+            return .noFrame
+        }
+
+        // Ok, the channel is writable, so we may be able to unbuffer some frames. How do we do it?
+        //
+        // First, we check if we have any buffered control frames. Control frames *must* be emitted first, so we want to check that first.
+        // If there are no buffered control frames, we can then eagerly do as much work as possible on the concurrent streams buffer
+        // before we get to the flow control buffer. We spin over the concurrent streams buffer, unbuffering everything we can and passing it
+        // to the flow control buffer and then to the control frame buffer.
         //
         // We expect only two possible outcomes from this forwarding: .forward or .nothing. If we get .nothing, we continue
-        // the loop. If we get .forward we stop the loop and return the frame, as it can go on. We don't expect either of
-        // the "andDrop" results as they are a result of RST_STREAM frames, which are never buffered.
+        // the loop. If we get .forward, we pass the frame to the control frame buffer which again can only give us .forward
+        // or .nothing. If we get .nothing, we continue the loop. Otherwise, if we get .forward we return the frame, as we can
+        // send it to the network.
         //
         // If we get to the end of the loop without forwarding a frame, we mark a new flush point on the flowControlBuffer
-        // and then ask it for a frame, returning its response.
+        // and then do a smaller version of the above loop, now looping on the control frame buffer. Finally, we attempt to go to the
+        // control frame buffer once more: though in the current version of the code there is no way to have to buffer again here,
+        // we should still be careful and ensure that we follow the buffering flow.
+
+        // Let's start with the control frame buffer.
+        if let flushedFrame = self.controlFrameBuffer.nextFlushedWritableFrame() {
+            return .frame(flushedFrame.frame, flushedFrame.promise)
+        }
+
+        // Ok, now to move on to work on the concurrent streams buffer.
         while let (frame, promise) = self.concurrentStreamsBuffer.nextFlushedWritableFrame() {
             do {
-                switch try self.flowControlBuffer.processOutboundFrame(frame, promise: promise) {
-                case .nothing:
-                    continue
-                case .forward:
+                if try self.flowControlBuffer.processOutboundFrame(frame, promise: promise).shouldForward &&
+                    self.controlFrameBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable).shouldForward {
                     return .frame(frame, promise)
-                case .forwardAndDrop, .succeedAndDrop:
-                    preconditionFailure("Asked to drop frames despite that being impossible: frame: \(frame)")
                 }
             } catch {
                 return .error(promise, error)
             }
         }
 
-        // Mark the flush point, as any frame we forwarded on is by defintion flushed.
+        // Mark the flush point, as any frame we forwarded on is by definition flushed.
         self.flowControlBuffer.flushReceived()
 
-        if let (frame, promise) = self.flowControlBuffer.nextFlushedWritableFrame() {
-            return .frame(frame, promise)
+        while let (frame, promise) = self.flowControlBuffer.nextFlushedWritableFrame() {
+            do {
+                if try self.controlFrameBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable).shouldForward {
+                    return .frame(frame, promise)
+                }
+            } catch {
+                return .error(promise, error)
+            }
+        }
+
+        // Mark the flush point again. There either is or is not a frame to write here.
+        self.controlFrameBuffer.flushReceived()
+
+        if let flushedFrame = self.controlFrameBuffer.nextFlushedWritableFrame() {
+            return .frame(flushedFrame.frame, flushedFrame.promise)
         } else {
             return .noFrame
         }
@@ -179,6 +221,7 @@ extension CompoundOutboundBuffer {
     func invalidateBuffer() {
         self.concurrentStreamsBuffer.invalidateBuffer(reason: ChannelError.ioOnClosedChannel)
         self.flowControlBuffer.invalidateBuffer(reason: ChannelError.ioOnClosedChannel)
+        self.controlFrameBuffer.invalidateBuffer(reason: ChannelError.ioOnClosedChannel)
     }
 
     mutating func updateStreamWindow(_ streamID: HTTP2StreamID, newSize: Int32) {
@@ -325,5 +368,21 @@ extension CompoundOutboundBuffer.DroppedPromisesCollection: Collection {
         let droppedConcurrentStreams = self.droppedConcurrentStreamsFrames?.count ?? 0
         let droppedFlowControl = self.droppedFlowControlFrames?.count ?? 0
         return droppedConcurrentStreams + droppedFlowControl
+    }
+}
+
+
+extension OutboundFrameAction {
+    /// Whether this frame should be forwarded. Must only be used in cases where the frame
+    /// cannot lead to drops.
+    fileprivate var shouldForward: Bool {
+        switch self {
+        case .forward:
+            return true
+        case .nothing:
+            return false
+        case .forwardAndDrop, .succeedAndDrop:
+            preconditionFailure("Asked to drop frames despite that being impossible")
+        }
     }
 }

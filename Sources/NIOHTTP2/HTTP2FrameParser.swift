@@ -346,7 +346,12 @@ struct HTTP2FrameDecoder {
             }
 
             if header.type != 0 {
-                // Not a DATA frame.
+                // Not a DATA frame. Before we move on, do a quick preflight: if this frame header is for a frame that will
+                // definitely violate SETTINGS_MAX_HEADER_LIST_SIZE, quit now.
+                if header.type == 1 && header.length > self.headerDecoder.maxHeaderListSize {
+                    throw NIOHTTP2Errors.ExcessivelyLargeHeaderBlock()
+
+                }
                 self.state = .accumulatingData(AccumulatingPayloadParserState(fromIdle: state, header: header))
             } else if header.flags.contains(.padded) {
                 // DATA frame with padding
@@ -562,6 +567,12 @@ struct HTTP2FrameDecoder {
             // This must be for the stream we're buffering header block fragments for, or this is an error.
             guard header.rawStreamID == state.header.rawStreamID else {
                 throw InternalError.codecError(code: .protocolError)
+            }
+
+            // Check whether there is any possibility of this payload decompressing and fitting in max header list size.
+            // If there isn't, kill it.
+            guard state.accumulatedPayload.readableBytes + header.length <= self.headerDecoder.maxHeaderListSize else {
+                throw NIOHTTP2Errors.ExcessivelyLargeHeaderBlock()
             }
 
             self.state = .accumulatingContinuationPayload(AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: state, continuationHeader: header))
