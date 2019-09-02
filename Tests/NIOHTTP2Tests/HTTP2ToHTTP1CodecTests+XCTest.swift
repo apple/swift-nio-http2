@@ -54,6 +54,12 @@ extension HTTP2ToHTTP1CodecTests {
                 ("testSendRequestWithoutHost", testSendRequestWithoutHost),
                 ("testSendRequestWithDuplicateHost", testSendRequestWithDuplicateHost),
                 ("testFramesWithoutHTTP1EquivalentAreIgnored", testFramesWithoutHTTP1EquivalentAreIgnored),
+                ("testWeTolerateUpperCasedHTTP1HeadersForRequests", testWeTolerateUpperCasedHTTP1HeadersForRequests),
+                ("testWeTolerateUpperCasedHTTP1HeadersForResponses", testWeTolerateUpperCasedHTTP1HeadersForResponses),
+                ("testWeDoNotNormalizeHeadersIfUserAskedUsNotToForRequests", testWeDoNotNormalizeHeadersIfUserAskedUsNotToForRequests),
+                ("testWeDoNotNormalizeHeadersIfUserAskedUsNotToForResponses", testWeDoNotNormalizeHeadersIfUserAskedUsNotToForResponses),
+                ("testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForRequests", testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForRequests),
+                ("testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses", testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses),
            ]
    }
 }

@@ -38,11 +38,23 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
 
     private let streamID: HTTP2StreamID
     private let protocolString: String
+    private let normalizeHTTPHeaders: Bool
 
     private var headerStateMachine: HTTP2HeadersStateMachine = HTTP2HeadersStateMachine(mode: .client)
 
-    public init(streamID: HTTP2StreamID, httpProtocol: HTTPProtocol) {
+    /// Initializes a `HTTP2ToHTTP1ClientCodec` for the given `HTTP2StreamID`.
+    ///
+    /// - parameters:
+    ///    - streamID: The HTTP/2 stream ID this `HTTP2ToHTTP1ClientCodec` will be used for
+    ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
+    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
+    ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
+    ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
+    public init(streamID: HTTP2StreamID, httpProtocol: HTTPProtocol, normalizeHTTPHeaders: Bool) {
         self.streamID = streamID
+        self.normalizeHTTPHeaders = normalizeHTTPHeaders
 
         switch httpProtocol {
         case .http:
@@ -50,6 +62,15 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         case .https:
             self.protocolString = "https"
         }
+    }
+
+    /// Initializes a `HTTP2ToHTTP1ClientCodec` for the given `HTTP2StreamID`.
+    ///
+    /// - parameters:
+    ///    - streamID: The HTTP/2 stream ID this `HTTP2ToHTTP1ClientCodec` will be used for
+    ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
+    public convenience init(streamID: HTTP2StreamID, httpProtocol: HTTPProtocol) {
+        self.init(streamID: streamID, httpProtocol: httpProtocol, normalizeHTTPHeaders: true)
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -91,7 +112,8 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         case .head(let head):
             do {
                 let h1Headers = try HTTPHeaders(requestHead: head, protocolString: self.protocolString)
-                let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers))
+                let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers,
+                                                                                          normalizeHTTPHeaders: self.normalizeHTTPHeaders))
                 let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(headerContent))
                 context.write(self.wrapOutboundOut(frame), promise: promise)
             } catch {
@@ -105,7 +127,9 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         case .end(let trailers):
             let payload: HTTP2Frame.FramePayload
             if let trailers = trailers {
-                payload = .headers(.init(headers: HPACKHeaders(httpHeaders: trailers), endStream: true))
+                payload = .headers(.init(headers: HPACKHeaders(httpHeaders: trailers,
+                                                               normalizeHTTPHeaders: self.normalizeHTTPHeaders),
+                                         endStream: true))
             } else {
                 payload = .data(.init(data: .byteBuffer(context.channel.allocator.buffer(capacity: 0)), endStream: true))
             }
@@ -131,11 +155,26 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
     public typealias OutboundOut = HTTP2Frame
 
     private let streamID: HTTP2StreamID
+    private let normalizeHTTPHeaders: Bool
 
     private var headerStateMachine: HTTP2HeadersStateMachine = HTTP2HeadersStateMachine(mode: .server)
 
-    public init(streamID: HTTP2StreamID) {
+    /// Initializes a `HTTP2ToHTTP1ServerCodec` for the given `HTTP2StreamID`.
+    ///
+    /// - parameters:
+    ///    - streamID: The HTTP/2 stream ID this `HTTP2ToHTTP1ServerCodec` will be used for
+    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
+    ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
+    ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
+    public init(streamID: HTTP2StreamID, normalizeHTTPHeaders: Bool) {
         self.streamID = streamID
+        self.normalizeHTTPHeaders = normalizeHTTPHeaders
+    }
+
+    public convenience init(streamID: HTTP2StreamID) {
+        self.init(streamID: streamID, normalizeHTTPHeaders: true)
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -175,7 +214,8 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
         switch responsePart {
         case .head(let head):
             let h1 = HTTPHeaders(responseHead: head)
-            let payload = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1))
+            let payload = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1,
+                                                                                normalizeHTTPHeaders: self.normalizeHTTPHeaders))
             let frame = HTTP2Frame(streamID: self.streamID, payload: .headers(payload))
             context.write(self.wrapOutboundOut(frame), promise: promise)
         case .body(let body):
@@ -186,7 +226,9 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
             let payload: HTTP2Frame.FramePayload
 
             if let trailers = trailers {
-                payload = .headers(.init(headers: HPACKHeaders(httpHeaders: trailers), endStream: true))
+                payload = .headers(.init(headers: HPACKHeaders(httpHeaders: trailers,
+                                                               normalizeHTTPHeaders: self.normalizeHTTPHeaders),
+                                         endStream: true))
             } else {
                 payload = .data(.init(data: .byteBuffer(context.channel.allocator.buffer(capacity: 0)), endStream: true))
             }

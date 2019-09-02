@@ -608,4 +608,18 @@ class HPACKCodingTests: XCTestCase {
         let decoded = try decoder.decodeHeaders(from: &request)
         XCTAssertEqual(decoded, HPACKHeaders(Array(repeatElement((":method", "GET"), count: 1000))))
     }
+
+    func testDifferentlyCasedHPACKHeadersAreNotEqual() {
+        let variants: [HPACKHeaders] = [HPACKHeaders([("foo", "foox")]), HPACKHeaders([("Foo", "foo")]),
+                                        HPACKHeaders([("foo", "Foo")]), HPACKHeaders([("Foo", "Foo")])]
+
+        for v1 in variants.indices {
+            for v2 in variants.indices {
+                guard v1 != v2 else {
+                    continue
+                }
+                XCTAssertNotEqual(variants[v1], variants[v2], "indices \(v1) and \(v2)")
+            }
+        }
+    }
 }
