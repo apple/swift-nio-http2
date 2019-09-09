@@ -176,7 +176,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         writeRecorder.flushedWrites[1].assertDataFrame(endStream: false, streamID: 1, payload: bodyData)
 
         // Now trailers.
-        let trailers = HPACKHeaders([("a trailer", "yes"), ("another trailer", "still yes")])
+        let trailers = HPACKHeaders([("a-trailer", "yes"), ("another-trailer", "still yes")])
         self.channel.writeAndFlush(HTTPServerResponsePart.end(HTTPHeaders(regularHeadersFrom: trailers)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
         writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, headers: trailers)
@@ -359,7 +359,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         writeRecorder.flushedWrites[1].assertDataFrame(endStream: false, streamID: 1, payload: bodyData)
 
         // Now trailers.
-        let trailers = HPACKHeaders([("a trailer", "yes"), ("another trailer", "still yes")])
+        let trailers = HPACKHeaders([("a-trailer", "yes"), ("another-trailer", "still yes")])
         self.channel.writeAndFlush(HTTPClientRequestPart.end(HTTPHeaders(regularHeadersFrom: trailers)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
         writeRecorder.flushedWrites[2].assertHeadersFrame(endStream: true, streamID: 1, headers: trailers)
@@ -661,5 +661,125 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
             XCTAssertNoThrow(try self.channel.writeInbound(frame), "error on \(frame)")
         }
         XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
+    }
+
+    func testWeTolerateUpperCasedHTTP1HeadersForRequests() throws {
+        let streamID = HTTP2StreamID(1)
+        let writeRecorder = FrameWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+
+        // A basic request.
+        var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/post")
+        requestHead.headers = HTTPHeaders([("host", "example.org"), ("UpperCased", "Header")])
+        self.channel.writeAndFlush(HTTPClientRequestPart.head(requestHead), promise: nil)
+
+        let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"), (":authority", "example.org"), ("uppercased", "Header")])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false,
+                                                          streamID: 1,
+                                                          headers: expectedRequestHeaders,
+                                                          type: .request)
+    }
+
+    func testWeTolerateUpperCasedHTTP1HeadersForResponses() throws {
+        let streamID = HTTP2StreamID(1)
+        let writeRecorder = FrameWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        var responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
+        responseHead.headers = HTTPHeaders([("UpperCased", "Header")])
+        self.channel.writeAndFlush(HTTPServerResponsePart.head(responseHead), promise: nil)
+
+        let expectedRequestHeaders = HPACKHeaders([(":status", "200"), ("uppercased", "Header")])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false,
+                                                          streamID: 1,
+                                                          headers: expectedRequestHeaders,
+                                                          type: .response)
+    }
+
+    func testWeDoNotNormalizeHeadersIfUserAskedUsNotToForRequests() throws {
+        let streamID = HTTP2StreamID(1)
+        let writeRecorder = FrameWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID,
+                                                                                      httpProtocol: .https,
+                                                                                      normalizeHTTPHeaders: false)).wait())
+
+        // A basic request.
+        var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/post")
+        requestHead.headers = HTTPHeaders([("host", "example.org"), ("UpperCased", "Header")])
+        self.channel.writeAndFlush(HTTPClientRequestPart.head(requestHead), promise: nil)
+
+        let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"),
+                                                   (":authority", "example.org"), ("UpperCased", "Header")])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false,
+                                                          streamID: 1,
+                                                          headers: expectedRequestHeaders,
+                                                          type: .doNotValidate)
+    }
+
+    func testWeDoNotNormalizeHeadersIfUserAskedUsNotToForResponses() throws {
+        let streamID = HTTP2StreamID(1)
+        let writeRecorder = FrameWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID,
+                                                                                      normalizeHTTPHeaders: false)).wait())
+
+        var responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
+        responseHead.headers = HTTPHeaders([("UpperCased", "Header")])
+        self.channel.writeAndFlush(HTTPServerResponsePart.head(responseHead), promise: nil)
+
+        let expectedRequestHeaders = HPACKHeaders([(":status", "200"), ("UpperCased", "Header")])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false,
+                                                          streamID: 1,
+                                                          headers: expectedRequestHeaders,
+                                                          type: .doNotValidate)
+    }
+
+    func testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForRequests() throws {
+        let streamID = HTTP2StreamID(1)
+        let writeRecorder = FrameWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+
+        // A basic request.
+        var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/post")
+        requestHead.headers = HTTPHeaders([("host", "example.org"), ("connection", "keep-alive, also-to-be-removed"),
+                                           ("keep-alive", "foo"), ("also-to-be-removed", "yes"), ("should", "stay"),
+                                           ("Proxy-Connection", "bad"), ("Transfer-Encoding", "also bad")])
+        self.channel.writeAndFlush(HTTPClientRequestPart.head(requestHead), promise: nil)
+
+        let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"),
+                                                   (":authority", "example.org"), ("should", "stay")])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false,
+                                                          streamID: 1,
+                                                          headers: expectedRequestHeaders,
+                                                          type: .request)
+    }
+
+    func testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses() throws {
+        let streamID = HTTP2StreamID(1)
+        let writeRecorder = FrameWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+
+        var responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
+        responseHead.headers = HTTPHeaders([("connection", "keep-alive, also-to-be-removed"),
+                                            ("keep-alive", "foo"), ("also-to-be-removed", "yes"), ("should", "stay"),
+                                            ("Proxy-Connection", "bad"), ("Transfer-Encoding", "also bad")])
+        self.channel.writeAndFlush(HTTPServerResponsePart.head(responseHead), promise: nil)
+
+        let expectedRequestHeaders = HPACKHeaders([(":status", "200"), ("should", "stay")])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertHeadersFrame(endStream: false,
+                                                          streamID: 1,
+                                                          headers: expectedRequestHeaders,
+                                                          type: .response)
     }
 }

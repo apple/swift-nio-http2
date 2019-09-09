@@ -19,10 +19,31 @@ import NIOHTTP1
 /// information.
 public struct HPACKHeaders {
     internal var headers: [HPACKHeader]
-    
+
+    // see 8.1.2.2. Connection-Specific Header Fields in RFC 7540
+    static let illegalHeaders: [String] = ["connection", "keep-alive", "proxy-connection",
+                                           "transfer-encoding", "upgrade"]
+
+    /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
+    public init(httpHeaders: HTTPHeaders, normalizeHTTPHeaders: Bool) {
+        if normalizeHTTPHeaders {
+            self.headers = httpHeaders.map { HPACKHeader(name: $0.name.lowercased(), value: $0.value) }
+
+            let connectionHeaderValue = httpHeaders[canonicalForm: "connection"]
+            if !connectionHeaderValue.isEmpty {
+                self.headers.removeAll { header in
+                    return HPACKHeaders.illegalHeaders.contains(header.name) ||
+                        connectionHeaderValue.contains(header.name[...])
+                }
+            }
+        } else {
+            self.headers = httpHeaders.map { HPACKHeader(name: $0.name, value: $0.value) }
+        }
+    }
+
     /// Constructor that can be used to map between `HTTPHeaders` and `HPACKHeaders` types.
     public init(httpHeaders: HTTPHeaders) {
-        self.headers = httpHeaders.map { HPACKHeader(name: $0.name, value: $0.value) }
+        self.init(httpHeaders: httpHeaders, normalizeHTTPHeaders: true)
     }
     
     /// Construct a `HPACKHeaders` structure.
@@ -226,8 +247,8 @@ extension HPACKHeaders: Equatable {
         guard lhs.headers.count == rhs.headers.count else {
             return false
         }
-        let lhsNames = Set(lhs.headers.map { $0.name.lowercased() })
-        let rhsNames = Set(rhs.headers.map { $0.name.lowercased() })
+        let lhsNames = Set(lhs.headers.map { $0.name })
+        let rhsNames = Set(rhs.headers.map { $0.name })
         guard lhsNames == rhsNames else {
             return false
         }

@@ -22,7 +22,7 @@ import Glibc
 import XCTest
 import NIO
 import NIOHTTP1
-import NIOHTTP2
+@testable import NIOHTTP2
 import NIOHPACK
 
 struct NoFrameReceived: Error { }
@@ -252,9 +252,17 @@ extension HTTP2Frame {
                                 line: line)
     }
 
+    enum HeadersType {
+        case request
+        case response
+        case trailers
+        case doNotValidate
+    }
+
     /// Asserts the given frame is a HEADERS frame.
     func assertHeadersFrame(endStream: Bool, streamID: HTTP2StreamID, headers: HPACKHeaders,
                             priority: HTTP2Frame.StreamPriorityData? = nil,
+                            type: HeadersType? = nil,
                             file: StaticString = #file, line: UInt = #line) {
         guard case .headers(let actualPayload) = self.payload else {
             XCTFail("Expected HEADERS frame, got \(self.payload) instead", file: file, line: line)
@@ -267,6 +275,26 @@ extension HTTP2Frame {
                        "Unexpected streamID: expected \(streamID), got \(self.streamID)", file: file, line: line)
         XCTAssertEqual(headers, actualPayload.headers, "Non-equal headers: expected \(headers), got \(actualPayload.headers)", file: file, line: line)
         XCTAssertEqual(priority, actualPayload.priorityData, "Non-equal priorities: expected \(String(describing: priority)), got \(String(describing: actualPayload.priorityData))", file: file, line: line)
+
+        switch type {
+        case .some(.request):
+            XCTAssertNoThrow(try actualPayload.headers.validateRequestBlock(),
+                             "\(actualPayload.headers) not a valid \(type!) headers block", file: file, line: line)
+        case .some(.response):
+            XCTAssertNoThrow(try actualPayload.headers.validateResponseBlock(),
+                             "\(actualPayload.headers) not a valid \(type!) headers block", file: file, line: line)
+        case .some(.trailers):
+            XCTAssertNoThrow(try actualPayload.headers.validateTrailersBlock(),
+                             "\(actualPayload.headers) not a valid \(type!) headers block", file: file, line: line)
+        case .some(.doNotValidate):
+            () // alright, let's not validate then
+        case .none:
+            XCTAssertTrue((try? actualPayload.headers.validateRequestBlock()) != nil ||
+                (try? actualPayload.headers.validateResponseBlock()) != nil ||
+                (try? actualPayload.headers.validateTrailersBlock()) != nil,
+                          "\(actualPayload.headers) not a valid request/response/trailers header block",
+                file: file, line: line)
+        }
     }
 
     /// Asserts that a given frame is a DATA frame matching this one.
