@@ -17,7 +17,8 @@ import NIOHTTP1
 
 /// Very similar to `NIOHTTP1.HTTPHeaders`, but with extra data for storing indexing
 /// information.
-public struct HPACKHeaders {
+public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
+    @usableFromInline
     internal var headers: [HPACKHeader]
 
     // see 8.1.2.2. Connection-Specific Header Fields in RFC 7540
@@ -56,7 +57,17 @@ public struct HPACKHeaders {
     public init(_ headers: [(String, String)] = []) {
         self.headers = headers.map { HPACKHeader(name: $0.0, value: $0.1) }
     }
-    
+
+    /// Construct a `HPACKHeaders` structure.
+    ///
+    /// The indexability of all headers is assumed to be the default, i.e. indexable and
+    /// rewritable by proxies.
+    ///
+    /// - Parameter elements: name, value pairs provided by a dictionary literal.
+    public init(dictionaryLiteral elements: (String, String)...) {
+        self.init(elements)
+    }
+
     /// Construct a `HPACKHeaders` structure.
     ///
     /// The indexability of all headers is assumed to be the default, i.e. indexable and
@@ -87,12 +98,42 @@ public struct HPACKHeaders {
     /// already in the block, this will add a new entry. `add` performs case-insensitive
     /// comparisons on the header field name.
     ///
-    /// - Parameter name: The header field name. For maximum compatibility this should be an
-    ///     ASCII string. For HTTP/2 lowercase header names are strongly encouraged.
+    /// - Parameter name: The header field name. This must be an ASCII string. For HTTP/2 lowercase
+    ///     header names are strongly encouraged.
     /// - Parameter value: The header field value to add for the given name.
     public mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         precondition(!name.utf8.contains(where: { !$0.isASCII }), "name must be ASCII")
         self.headers.append(HPACKHeader(name: name, value: value, indexing: indexing))
+    }
+
+    /// Add a sequence of header name/value pairs to the block.
+    ///
+    /// This method is strictly additive: if there are other entries with the same header
+    /// name already in the block, this will add new entries.
+    ///
+    /// - Parameter contentsOf: The sequence of header name/value pairs. Header names must be ASCII
+    ///     strings. For HTTP/2 lowercase header names are strongly recommended.
+    @inlinable
+    public mutating func add<S: Sequence>(contentsOf other: S, indexing: HPACKIndexing = .indexable) where S.Element == (String, String) {
+        self.headers.reserveCapacity(self.headers.count + other.underestimatedCount)
+        for (name, value) in other {
+            self.add(name: name, value: value, indexing: indexing)
+        }
+    }
+
+    /// Add a sequence of header name/value/indexing triplet to the block.
+    ///
+    /// This method is strictly additive: if there are other entries with the same header
+    /// name already in the block, this will add new entries.
+    ///
+    /// - Parameter contentsOf: The sequence of header name/value/indexing triplets. Header names
+    ///     must be ASCII strings. For HTTP/2 lowercase header names are strongly recommended.
+    @inlinable
+    public mutating func add<S: Sequence>(contentsOf other: S) where S.Element == HPACKHeaders.Element {
+        self.headers.reserveCapacity(self.headers.count + other.underestimatedCount)
+        for (name, value, indexing) in other {
+            self.add(name: name, value: value, indexing: indexing)
+        }
     }
     
     /// Retrieve all of the values for a given header field name from the block.
@@ -288,6 +329,7 @@ public enum HPACKIndexing: CustomStringConvertible {
     }
 }
 
+@usableFromInline
 internal struct HPACKHeader {
     var indexing: HPACKIndexing
     var name: String

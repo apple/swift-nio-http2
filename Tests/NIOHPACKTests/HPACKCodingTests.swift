@@ -581,6 +581,50 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(headers[canonicalForm: "set-cookie"], ["abcdefg,hijklmn,opqrst"])
     }
 
+    func testHPACKHeadersExpressedByDictionaryLiteral() throws {
+        let headers: HPACKHeaders = [
+            ":method": "GET",
+            ":scheme": "http",
+            ":path": "/",
+            ":authority": "www.example.com",
+            "cache-control": "no-cache",
+            "custom-key": "value-1,value-2",
+            "set-cookie": "abcdefg,hijklmn,opqrst",
+            "custom-key": "value-3"
+        ]
+
+        let headers2 = HPACKHeaders([
+            (":method", "GET"),
+            (":scheme", "http"),
+            (":path", "/"),
+            (":authority", "www.example.com"),
+            ("cache-control", "no-cache"),
+            ("custom-key", "value-1,value-2"),
+            ("set-cookie", "abcdefg,hijklmn,opqrst"),
+            ("custom-key", "value-3")
+        ])
+
+        XCTAssertEqual(headers, headers2)
+    }
+
+    func testHPACKHeadersAddingSequenceOfPairs() {
+        var headers = HPACKHeaders()
+        headers.add(contentsOf: [("foo", "bar"), ("bar", "qux")])
+
+        XCTAssertEqual(["bar"], headers["foo"])
+        XCTAssertEqual(["qux"], headers["bar"])
+    }
+
+    func testHPACKHeadersAddingOtherHPACKHeaders() {
+        var headers1 = HPACKHeaders([("foo", "bar"), ("bar", "qux")])
+        let headers2 = HPACKHeaders([("bar", "baz"), ("baz", "bazzy")])
+        headers1.add(contentsOf: headers2)
+
+        XCTAssertEqual(["bar"], headers1["foo"])
+        XCTAssertEqual(["qux", "baz"], headers1["bar"])
+        XCTAssertEqual(["bazzy"], headers1["baz"])
+    }
+
     func testHPACKHeadersWithZeroIndex() throws {
         var request = buffer(wrapping: [0x80])
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
