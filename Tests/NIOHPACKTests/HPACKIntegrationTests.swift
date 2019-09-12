@@ -22,10 +22,10 @@ class HPACKIntegrationTests : XCTestCase {
         let myURL = URL(fileURLWithPath: #file, isDirectory: false)
         let result: URL
         if #available(OSX 10.11, iOS 9.0, *) {
-            result = URL(fileURLWithPath: "../../hpack-test-case", isDirectory: true, relativeTo: myURL).absoluteURL
+            result = URL(fileURLWithPath: "../hpack-test-case", isDirectory: true, relativeTo: myURL).absoluteURL
         } else {
             // Fallback on earlier versions
-            result = URL(string: "../../hpack-test-case", relativeTo: myURL)!.absoluteURL
+            result = URL(string: "../hpack-test-case", relativeTo: myURL)!.absoluteURL
         }
         return result
     }()
