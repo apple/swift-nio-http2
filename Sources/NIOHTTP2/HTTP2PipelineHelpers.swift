@@ -27,7 +27,7 @@ import NIOTLS
 ///         channel.pipeline.configureHTTP2SecureUpgrade(...)
 ///     }
 ///
-/// Configuring for servers is very similar, but is left as an example for the reader.
+/// Configuring for servers is very similar, but is left as an exercise for the reader.
 public let NIOHTTP2SupportedALPNProtocols = ["h2", "http/1.1"]
 
 public extension ChannelPipeline {
