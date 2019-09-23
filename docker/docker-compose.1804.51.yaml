@@ -1,0 +1,37 @@
+version: "3"
+
+services:
+
+  runtime-setup:
+    image: swift-nio-http2:18.04-5.1
+    build:
+      args:
+        ubuntu_version: "bionic"
+        swift_version: "5.1"
+        h2spec_version: "2.2.1"
+
+  unit-tests:
+    image: swift-nio-http2:18.04-5.1
+
+  integration-tests:
+    image: swift-nio-http2:18.04-5.1
+    environment:
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=72010
+      - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=378000
+
+  performance-test:
+    image: swift-nio-http2:18.04-5.1
+
+  h2spec:
+    image: swift-nio-http2:18.04-5.1
+
+  test:
+    image: swift-nio-http2:18.04-5.1
+    environment:
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=72010
+      - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=378000
+
+  shell:
+    image: swift-nio-http2:18.04-5.1
