@@ -15,26 +15,35 @@
 import NIO
 import NIOConcurrencyHelpers
 
-/// `StreamIDOption` allows users to query the stream ID for a given `HTTP2StreamChannel`.
-///
-/// On active `HTTP2StreamChannel`s, it is possible that a channel handler or user may need to know which
-/// stream ID the channel owns. This channel option allows that query. Please note that this channel option
-/// is *get-only*: that is, it cannot be used with `setOption`. The stream ID for a given `HTTP2StreamChannel`
-/// is immutable.
-public struct StreamIDOption: ChannelOption {
-    public typealias Value = HTTP2StreamID
-
-    public init() { }
-}
 
 /// The various channel options specific to `HTTP2StreamChannel`s.
 ///
 /// Please note that some of NIO's regular `ChannelOptions` are valid on `HTTP2StreamChannel`s.
 public struct HTTP2StreamChannelOptions {
     /// - seealso: `StreamIDOption`.
-    public static let streamID: StreamIDOption = StreamIDOption()
+    public static let streamID: HTTP2StreamChannelOptions.Types.StreamIDOption = .init()
 }
 
+extension HTTP2StreamChannelOptions {
+    public enum Types {}
+}
+
+@available(*, deprecated, renamed: "HTTP2StreamChannelOptions.Types.StreamIDOption")
+public typealias StreamIDOption = HTTP2StreamChannelOptions.Types.StreamIDOption
+
+extension HTTP2StreamChannelOptions.Types {
+    /// `StreamIDOption` allows users to query the stream ID for a given `HTTP2StreamChannel`.
+    ///
+    /// On active `HTTP2StreamChannel`s, it is possible that a channel handler or user may need to know which
+    /// stream ID the channel owns. This channel option allows that query. Please note that this channel option
+    /// is *get-only*: that is, it cannot be used with `setOption`. The stream ID for a given `HTTP2StreamChannel`
+    /// is immutable.
+    public struct StreamIDOption: ChannelOption {
+        public typealias Value = HTTP2StreamID
+
+        public init() { }
+    }
+}
 
 /// The current state of a stream channel.
 private enum StreamChannelState {
@@ -269,7 +278,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         assert(eventLoop.inEventLoop)
 
         switch option {
-        case _ as AutoReadOption:
+        case _ as ChannelOptions.Types.AutoReadOption:
             self.autoRead = value as! Bool
         default:
             fatalError("setting option \(option) on HTTP2StreamChannel not supported")
@@ -280,9 +289,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         assert(eventLoop.inEventLoop)
 
         switch option {
-        case _ as StreamIDOption:
+        case _ as HTTP2StreamChannelOptions.Types.StreamIDOption:
             return self.streamID as! Option.Value
-        case _ as AutoReadOption:
+        case _ as ChannelOptions.Types.AutoReadOption:
             return self.autoRead as! Option.Value
         default:
             fatalError("option \(option) not supported on HTTP2StreamChannel")

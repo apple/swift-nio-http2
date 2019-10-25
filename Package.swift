@@ -23,7 +23,7 @@ let package = Package(
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.3.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.9.0"),
     ],
     targets: [
         .target(name: "NIOHTTP2Server",
@@ -35,7 +35,7 @@ let package = Package(
         .target(name: "NIOHPACK",
             dependencies: ["NIO", "NIOConcurrencyHelpers", "NIOHTTP1"]),
         .testTarget(name: "NIOHTTP2Tests",
-            dependencies: ["NIO", "NIOHTTP1", "NIOHTTP2"]),
+            dependencies: ["NIO", "NIOHTTP1", "NIOHTTP2", "NIOFoundationCompat"]),
         .testTarget(name: "NIOHPACKTests",
             dependencies: ["NIOHPACK"])
     ]
