@@ -14,6 +14,7 @@
 
 import XCTest
 import NIO
+import NIOFoundationCompat
 import Foundation
 @testable import NIOHPACK
 
@@ -136,13 +137,10 @@ class HuffmanCodingTests: XCTestCase {
         }
         
         var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-        buffer.writeWithUnsafeMutableBytes { ptr in
-            let bytePtr = ptr.bindMemory(to: UInt8.self)
-            return data.copyBytes(to: bytePtr)
-        }
-        
+        buffer.writeBytes(data)
+
         // warm up the decoder
-        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
+        XCTAssertNoThrow(try buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes))
         
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
             startMeasuring()
@@ -183,13 +181,10 @@ class HuffmanCodingTests: XCTestCase {
         }
         
         var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-        buffer.writeWithUnsafeMutableBytes { ptr in
-            let bytePtr = ptr.bindMemory(to: UInt8.self)
-            return data.copyBytes(to: bytePtr)
-        }
+        buffer.writeBytes(data)
         
         // ensure the decoder table has been loaded
-        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
+        XCTAssertNoThrow(try buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes))
         
         self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
             startMeasuring()

@@ -588,7 +588,7 @@ func openTemporaryFile() -> (CInt, String) {
 extension FileRegion {
     func asByteBuffer(allocator: ByteBufferAllocator) -> ByteBuffer {
         var fileBuffer = allocator.buffer(capacity: self.readableBytes)
-        fileBuffer.writeWithUnsafeMutableBytes { ptr in
+        fileBuffer.writeWithUnsafeMutableBytes(minimumWritableBytes: self.readableBytes) { ptr in
             let rc = try! self.fileHandle.withUnsafeFileDescriptor { fd -> Int in
                 lseek(fd, off_t(self.readerIndex), SEEK_SET)
                 return read(fd, ptr.baseAddress!, self.readableBytes)
