@@ -399,11 +399,11 @@ extension Sequence where Self.Element == UInt8 {
     ///
     /// - Parameter bytes: The string constant in the form of a collection of `UInt8`
     /// - Returns: Whether the collection contains **EXACTLY** this array or no, but by ignoring case.
-    fileprivate func compareCaseInsensitiveASCIIBytes<T: Sequence>(to: T) -> Bool
+    fileprivate func compareCaseInsensitiveASCIIBytes<T: Sequence>(to other: T) -> Bool
         where T.Element == UInt8 {
             // fast path: we can get the underlying bytes of both
             let maybeMaybeResult = self.withContiguousStorageIfAvailable { lhsBuffer -> Bool? in
-                to.withContiguousStorageIfAvailable { rhsBuffer in
+                other.withContiguousStorageIfAvailable { rhsBuffer in
                     if lhsBuffer.count != rhsBuffer.count {
                         return false
                     }
@@ -421,8 +421,13 @@ extension Sequence where Self.Element == UInt8 {
             if let maybeResult = maybeMaybeResult, let result = maybeResult {
                 return result
             } else {
-                return self.elementsEqual(to, by: {return (($0 & 0xdf) == ($1 & 0xdf) && $0.isASCII)})
+                return self._compareCaseInsensitiveASCIIBytesSlowPath(to: other)
             }
+    }
+
+    @inline(never)
+    private func _compareCaseInsensitiveASCIIBytesSlowPath<T: Sequence>(to other: T) -> Bool where T.Element == UInt8 {
+        return self.elementsEqual(other, by: { return (($0 & 0xdf) == ($1 & 0xdf) && $0.isASCII) })
     }
 }
 
