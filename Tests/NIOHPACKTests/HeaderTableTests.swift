@@ -16,9 +16,9 @@ import XCTest
 import NIO
 @testable import NIOHPACK
 
-func XCTAssertEqualTuple<T1: Equatable, T2: Equatable>(_ expression1: @autoclosure () throws -> (T1, T2), _ expression2: @autoclosure () throws -> (T1, T2), _ message: @autoclosure () -> String = "", file: StaticString = #file, line: UInt = #line) {
-    let ex1: (T1, T2)
-    let ex2: (T1, T2)
+func XCTAssertEqualTuple<T1: Equatable, T2: Equatable>(_ expression1: @autoclosure () throws -> (T1, T2)?, _ expression2: @autoclosure () throws -> (T1, T2)?, _ message: @autoclosure () -> String = "", file: StaticString = #file, line: UInt = #line) {
+    let ex1: (T1, T2)?
+    let ex2: (T1, T2)?
     do {
         ex1 = try expression1()
         ex2 = try expression2()
@@ -28,8 +28,8 @@ func XCTAssertEqualTuple<T1: Equatable, T2: Equatable>(_ expression1: @autoclosu
         return
     }
     
-    XCTAssertEqual(ex1.0, ex2.0, message(), file: file, line: line)
-    XCTAssertEqual(ex1.1, ex2.1, message(), file: file, line: line)
+    XCTAssertEqual(ex1?.0, ex2?.0, message(), file: file, line: line)
+    XCTAssertEqual(ex1?.1, ex2?.1, message(), file: file, line: line)
 }
 
 class HeaderTableTests: XCTestCase {
@@ -146,4 +146,19 @@ class HeaderTableTests: XCTestCase {
         XCTAssertEqual(staticDescription, staticExpected)
     }
 
+    func testDynamicTableEntryCanBeFoundAsPartialMatch() {
+        // We're going to insert a header to the dynamic table.
+        var table = IndexedHeaderTable(allocator: ByteBufferAllocator(), maxDynamicTableSize: 1024)
+        XCTAssertNoThrow(try table.add(headerNamed: "foo", value: "bar"))
+
+        // Now we're going to attempt to find it in three ways. The first is where we care about an exact match and
+        // pass a matching value.
+        XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "foo", value: "bar"))
+
+        // Next, ask for a full match with the wrong value. We should get a partial match.
+        XCTAssertEqualTuple((62, false), table.firstHeaderMatch(for: "foo", value: "baz"))
+
+        // Next, ask for a partial match where we don't care about the value. We should still get a partial match.
+        XCTAssertEqualTuple((62, false), table.firstHeaderMatch(for: "foo", value: nil))
+    }
 }

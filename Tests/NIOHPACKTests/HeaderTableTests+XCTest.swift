@@ -30,6 +30,7 @@ extension HeaderTableTests {
                 ("testDynamicTableInsertion", testDynamicTableInsertion),
                 ("testHeaderDump", testHeaderDump),
                 ("testHeaderDescription", testHeaderDescription),
+                ("testDynamicTableEntryCanBeFoundAsPartialMatch", testDynamicTableEntryCanBeFoundAsPartialMatch),
            ]
    }
 }

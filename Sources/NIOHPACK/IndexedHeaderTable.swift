@@ -86,20 +86,26 @@ public struct IndexedHeaderTable {
     ///            whether the item at that index also contains a matching value. Returns `nil`
     ///            if no match could be found.
     public func firstHeaderMatch(for name: String, value: String?) -> (index: Int, matchesValue: Bool)? {
-        guard let value = value else {
-            // AnySequence only has `first(where:)` method, not `first` property.
-            return self.staticTable.firstIndex(matching: name).map { ($0, false) }
-        }
-        
         var firstHeaderIndex: Int? = nil
 
-        switch self.staticTable.closestMatch(name: name, value: value) {
-        case .full(let index):
-            return (index, true)
-        case .partial(let index):
-            firstHeaderIndex = index
-        case .none:
-            break
+        if let value = value {
+            // We've been asked to find a full match if we can. Begin by searching the static table. If we
+            // find a full match there, great, otherwise we only have a partial result and need to search
+            // the dynamic table too.
+            switch self.staticTable.closestMatch(name: name, value: value) {
+            case .full(let index):
+                return (index, true)
+            case .partial(let index):
+                firstHeaderIndex = index
+            case .none:
+                break
+            }
+        } else {
+            // We have not been asked for a full match. Search only the names of the static table. If we
+            // find one, we're done.
+            if let index = self.staticTable.firstIndex(matching: name) {
+                return (index, false)
+            }
         }
         
         // no complete match: search the dynamic table now
