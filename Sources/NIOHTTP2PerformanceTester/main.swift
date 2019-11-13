@@ -59,4 +59,14 @@ public func measureAndPrint(desc: String, fn: () throws -> Int) rethrows -> Void
 
 // MARK: Utilities
 
-try measureAndPrint(desc: "1_conn_10k_reqs", benchmark: Bench1Conn10kRequests.self)
+try measureAndPrint(desc: "1_conn_10k_reqs", benchmark: Bench1Conn10kRequests())
+try measureAndPrint(desc: "encode_100k_header_blocks_indexable", benchmark: HPACKHeaderEncodingBenchmark(headers: .indexable, loopCount: 100_000))
+try measureAndPrint(desc: "encode_100k_header_blocks_nonindexable", benchmark: HPACKHeaderEncodingBenchmark(headers: .nonIndexable, loopCount: 100_000))
+try measureAndPrint(desc: "encode_100k_header_blocks_neverIndexed", benchmark: HPACKHeaderEncodingBenchmark(headers: .neverIndexed, loopCount: 100_000))
+try measureAndPrint(desc: "decode_100k_header_blocks_indexable", benchmark: HPACKHeaderDecodingBenchmark(headers: .indexable, loopCount: 100_000))
+try measureAndPrint(desc: "decode_100k_header_blocks_nonindexable", benchmark: HPACKHeaderDecodingBenchmark(headers: .nonIndexable, loopCount: 100_000))
+try measureAndPrint(desc: "decode_100k_header_blocks_neverIndexed", benchmark: HPACKHeaderDecodingBenchmark(headers: .neverIndexed, loopCount: 100_000))
+try measureAndPrint(desc: "huffman_encode_basic", benchmark: HuffmanEncodingBenchmark(huffmanString: .basicHuffmanString, loopCount: 100))
+try measureAndPrint(desc: "huffman_encode_complex", benchmark: HuffmanEncodingBenchmark(huffmanString: .complexHuffmanString, loopCount: 100))
+try measureAndPrint(desc: "huffman_decode_basic", benchmark: HuffmanDecodingBenchmark(huffmanBytes: .basicHuffmanBytes, loopCount: 25))
+try measureAndPrint(desc: "huffman_decode_complex", benchmark: HuffmanDecodingBenchmark(huffmanBytes: .complexHuffmanBytes, loopCount: 10))
