@@ -168,7 +168,7 @@ struct ConnectionStreamState {
     /// - parameters:
     ///     - streamID: The ID of the stream to modify.
     ///     - ignoreRecentlyReset: Whether a recently reset stream should be ignored. Should be set to `true` when receiving frames.
-    ///     - ignoreClosed: Whether a closed stream should be ignored. Should be set to `true` when receiving window update frames.
+    ///     - ignoreClosed: Whether a closed stream should be ignored. Should be set to `true` when receiving window update or reset stream frames.
     ///     - modifier: A block that will be invoked to modify the stream state, if present.
     /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
     @inline(__always)
