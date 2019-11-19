@@ -455,7 +455,8 @@ class ConnectionStateMachineTests: XCTestCase {
         var temporaryServer = self.server!
         var temporaryClient = self.client!
         assertConnectionError(type: .streamClosed, temporaryServer.sendRstStream(streamID: streamFive, reason: .noError))
-        assertConnectionError(type: .streamClosed, temporaryClient.receiveRstStream(streamID: streamFive, reason: .noError))
+        // We ignore RST_STREAM in the closed state because the RFC does not explicitly forbid that.
+        assertIgnored(temporaryClient.receiveRstStream(streamID: streamFive, reason: .noError))
 
         temporaryServer = self.server!
         temporaryClient = self.client!
@@ -583,7 +584,8 @@ class ConnectionStateMachineTests: XCTestCase {
         temporaryServer = self.server!
         temporaryClient = self.client!
         assertConnectionError(type: .streamClosed, temporaryClient.sendRstStream(streamID: streamFour, reason: .noError))
-        assertConnectionError(type: .streamClosed, temporaryServer.receiveRstStream(streamID: streamFour, reason: .noError))
+        // We ignore RST_STREAM in the closed state because the RFC does not explicitly forbid that.
+        assertIgnored(temporaryServer.receiveRstStream(streamID: streamFour, reason: .noError))
     }
 
     func testServerMayNotInitiateNewStreamAfterClientGoaway() {
@@ -2877,6 +2879,28 @@ class ConnectionStateMachineTests: XCTestCase {
         // The server succeeds
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
         assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: true))
+    }
+
+    func testWeTolerateOneStreamBeingResetTwice() {
+        self.exchangePreamble()
+
+        let streamOne = HTTP2StreamID(1)
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server succeeds
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Let's test that we cannot emit two RST_STREAMs for the same stream.
+        assertSucceeds(self.client.sendRstStream(streamID: streamOne, reason: .cancel))
+        assertConnectionError(type: .streamClosed, self.client.sendRstStream(streamID: streamOne, reason: .streamClosed))
+
+        // But let's also verify that we're happily ignoring this should the other peer do so.
+        assertSucceeds(self.server.receiveRstStream(streamID: streamOne, reason: .cancel))
+        assertIgnored(self.server.receiveRstStream(streamID: streamOne, reason: .streamClosed))
     }
 }
 
