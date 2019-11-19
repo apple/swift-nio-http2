@@ -70,11 +70,11 @@ final class CompoundOutboundBufferTest: XCTestCase {
         var newFrames: [HTTP2Frame] = Array()
         XCTAssertEqual(buffer.streamClosed(1).count, 0)
 
-        while case .frame(let write) = buffer.nextFlushedWritableFrame(channelWritable: true) {
-            newFrames.append(write.0)
-            XCTAssertNil(write.1)
-            buffer.streamCreated(write.0.streamID, initialWindowSize: 65535)
-            XCTAssertEqual(buffer.streamClosed(write.0.streamID).count, 0)
+        while case .frame(let frame, let promise) = buffer.nextFlushedWritableFrame(channelWritable: true) {
+            newFrames.append(frame)
+            XCTAssertNil(promise)
+            buffer.streamCreated(frame.streamID, initialWindowSize: 65535)
+            XCTAssertEqual(buffer.streamClosed(frame.streamID).count, 0)
         }
 
         subsequentFrames.assertFramesMatch(newFrames)
@@ -349,17 +349,17 @@ final class CompoundOutboundBufferTest: XCTestCase {
         buffer.flushReceived()
 
         // Now attempt to unbuffer the frames.
-        guard case .frame(let firstFrame) = buffer.nextFlushedWritableFrame(channelWritable: true) else {
+        guard case .frame(let firstFrame, _) = buffer.nextFlushedWritableFrame(channelWritable: true) else {
             XCTFail("Didn't get expected frame")
             return
         }
-        firstFrame.0.assertFrameMatches(this: pingFrame)
+        firstFrame.assertFrameMatches(this: pingFrame)
 
-        guard case .frame(let secondFrame) = buffer.nextFlushedWritableFrame(channelWritable: true) else {
+        guard case .frame(let secondFrame, _) = buffer.nextFlushedWritableFrame(channelWritable: true) else {
             XCTFail("Didn't get expected frame")
             return
         }
-        secondFrame.0.assertFrameMatches(this: dataFrame)
+        secondFrame.assertFrameMatches(this: dataFrame)
     }
 }
 
