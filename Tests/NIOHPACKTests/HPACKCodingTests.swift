@@ -666,4 +666,31 @@ class HPACKCodingTests: XCTestCase {
             }
         }
     }
+
+    func testHPACKHeadersDontSearchForFullMatchesForNonIndexedHeaders() {
+        var encoder = HPACKEncoder(allocator: .init())
+        var buffer = ByteBufferAllocator().buffer(capacity: 1024)
+
+        // We're going to begin by encoding a small header block containing just a Date header.
+        // This will be placed into the header table, and will use an indexed name but a literal value.
+        let firstHeaders = HPACKHeaders([("date", "Tue, 12 Nov 2019 09:48:43 GMT")])
+        XCTAssertNoThrow(try encoder.encode(headers: firstHeaders, to: &buffer))
+        XCTAssertEqual(Array(buffer.readableBytesView),
+                       [0x61, 0x96, 0xdf, 0x69, 0x7e, 0x94, 0x08, 0x94, 0xd2, 0x7e, 0xea, 0x08, 0x01, 0x7d, 0x40, 0x3f, 0x71, 0xa7, 0xae, 0x34, 0xca, 0x98, 0xb4, 0x6f])
+
+        // Now we're going to try to send that header again. This should be indexed fully, and sent trivially.
+        buffer.clear()
+        XCTAssertNoThrow(try encoder.encode(headers: firstHeaders, to: &buffer))
+        XCTAssertEqual(Array(buffer.readableBytesView), [0xBE])
+
+        // Now we're going to try once more, but this time ask for the Date header to be non-indexed. This should
+        // give us the same results as the first time, but with a very slightly different first byte. Note that it
+        // will not get the entry from the dynamic table, but will prefer the name from the static table instead.
+        var secondHeaders = HPACKHeaders()
+        secondHeaders.add(name: "date", value: "Tue, 12 Nov 2019 09:48:43 GMT", indexing: .nonIndexable)
+        buffer.clear()
+        XCTAssertNoThrow(try encoder.encode(headers: secondHeaders, to: &buffer))
+        XCTAssertEqual(Array(buffer.readableBytesView),
+                       [0x0F, 0x12, 0x96, 0xdf, 0x69, 0x7e, 0x94, 0x08, 0x94, 0xd2, 0x7e, 0xea, 0x08, 0x01, 0x7d, 0x40, 0x3f, 0x71, 0xa7, 0xae, 0x34, 0xca, 0x98, 0xb4, 0x6f])
+    }
 }

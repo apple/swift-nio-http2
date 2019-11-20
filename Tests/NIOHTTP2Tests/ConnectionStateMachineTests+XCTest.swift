@@ -139,6 +139,7 @@ extension ConnectionStateMachineTests {
                 ("testNoPolicingMissingContentLengthForResponsesWhenValidationDisabled", testNoPolicingMissingContentLengthForResponsesWhenValidationDisabled),
                 ("testNoPolicingInvalidContentLengthForRequestsWithEndStreamWhenValidationDisabled", testNoPolicingInvalidContentLengthForRequestsWithEndStreamWhenValidationDisabled),
                 ("testNoPolicingInvalidContentLengthForResponsesWithEndStreamWhenValidationDisabled", testNoPolicingInvalidContentLengthForResponsesWithEndStreamWhenValidationDisabled),
+                ("testWeTolerateOneStreamBeingResetTwice", testWeTolerateOneStreamBeingResetTwice),
            ]
    }
 }

@@ -14,28 +14,12 @@
 
 import XCTest
 import NIO
+import NIOFoundationCompat
 import Foundation
 @testable import NIOHPACK
 
 class HuffmanCodingTests: XCTestCase {
-    /// Control timing-sensitive tests from command-line in run-time:
-    ///     ENABLE_TIMING_TESTS=false swift test
-    ///     ENABLED_SANITIZERS=true swift test -fsanitize=thread
-    /// or during compile time:
-    ///     swift test -fsanitize=thread -DENABLED_SANITIZERS
-    let timeSensitiveTestEnabled: Bool = {
-        #if ENABLED_SANITIZERS
-        return false
-        #else
-        let env = ProcessInfo.processInfo.environment
-        return ((env["ENABLED_SANITIZERS"] ?? "false") == "false")
-            && ((env["ENABLE_TIMING_TESTS"] ?? "true") == "true")
-        #endif
-    }()
-
     var scratchBuffer: ByteBuffer = ByteBufferAllocator().buffer(capacity: 4096)
-    
-    let fixtureDirURL = URL(fileURLWithPath: #file).deletingLastPathComponent().appendingPathComponent("Fixtures").absoluteURL
     
     // MARK: - Helper Methods
     
@@ -102,99 +86,4 @@ class HuffmanCodingTests: XCTestCase {
         
         try verifyHuffmanCoding(text2, Array(encoded2Data))
     }
-
-    func testBasicEncodingPerformance() {
-        guard self.timeSensitiveTestEnabled else { return }
-
-        var text = "Hello, world. I am a header value; I have Teh Texts. I am going on for quite a long time because I want to ensure that the encoded data buffer needs to be expanded to test out that code. I'll try some meta-characters too: \r\t\n ought to do it, no?"
-        while text.count < 1024 * 128 {
-            text += text
-        }
-        
-        // warm up the encoder
-        self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
-        
-        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            self.scratchBuffer.clear()
-            startMeasuring()
-            self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
-            stopMeasuring()
-        }
-    }
-    
-    func testBasicDecodingPerformance() {
-        guard self.timeSensitiveTestEnabled else { return }
-
-        let url = fixtureDirURL.appendingPathComponent("large_huffman_b64.txt")
-        guard let base64Data = try? Data(contentsOf: url) else {
-            XCTFail("Couldn't load fixture data")
-            return
-        }
-        guard let data = Data(base64Encoded: base64Data) else {
-            XCTFail("Couldn't decode base64 fixture data")
-            return
-        }
-        
-        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-        buffer.writeWithUnsafeMutableBytes { ptr in
-            let bytePtr = ptr.bindMemory(to: UInt8.self)
-            return data.copyBytes(to: bytePtr)
-        }
-        
-        // warm up the decoder
-        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
-        
-        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            startMeasuring()
-            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
-        }
-    }
-    
-    func testComplexEncodingPerformance() {
-        guard self.timeSensitiveTestEnabled else { return }
-
-        var text = "午セイ谷高ぐふあト食71入ツエヘナ津県を類及オモ曜一購ごきわ致掲ぎぐず敗文輪へけり鯖審ヘ塊米卸呪おぴ。"
-        while text.utf8.count < 128 * 1024 {
-            text += text
-        }
-        
-        // warm up the encoder
-        self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
-        
-        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            self.scratchBuffer.clear()
-            startMeasuring()
-            self.scratchBuffer.setHuffmanEncoded(bytes: text.utf8)
-            stopMeasuring()
-        }
-    }
-    
-    func testComplexDecodingPerformance() {
-        guard self.timeSensitiveTestEnabled else { return }
-
-        let url = fixtureDirURL.appendingPathComponent("large_complex_huffman_b64.txt")
-        guard let base64Data = try? Data(contentsOf: url) else {
-            XCTFail("Couldn't load fixture data")
-            return
-        }
-        guard let data = Data(base64Encoded: base64Data) else {
-            XCTFail("Couldn't decode base64 fixture data")
-            return
-        }
-        
-        var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-        buffer.writeWithUnsafeMutableBytes { ptr in
-            let bytePtr = ptr.bindMemory(to: UInt8.self)
-            return data.copyBytes(to: bytePtr)
-        }
-        
-        // ensure the decoder table has been loaded
-        _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
-        
-        self.measureMetrics(HuffmanCodingTests.defaultPerformanceMetrics, automaticallyStartMeasuring: false) {
-            startMeasuring()
-            _ = try! buffer.getHuffmanEncodedString(at: buffer.readerIndex, length: buffer.readableBytes)
-        }
-    }
-
 }

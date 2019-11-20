@@ -28,10 +28,6 @@ extension HuffmanCodingTests {
       return [
                 ("testBasicCoding", testBasicCoding),
                 ("testComplexCoding", testComplexCoding),
-                ("testBasicEncodingPerformance", testBasicEncodingPerformance),
-                ("testBasicDecodingPerformance", testBasicDecodingPerformance),
-                ("testComplexEncodingPerformance", testComplexEncodingPerformance),
-                ("testComplexDecodingPerformance", testComplexDecodingPerformance),
            ]
    }
 }

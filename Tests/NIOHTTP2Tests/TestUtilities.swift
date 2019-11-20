@@ -491,26 +491,26 @@ extension HTTP2Frame {
     }
 
     func assertAlternativeServiceFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
-        guard case .alternativeService(let payload) = frame.payload else {
+        guard case .alternativeService(let origin, let field) = frame.payload else {
             preconditionFailure("AltSvc frames can never match non-AltSvc frames.")
         }
-        self.assertAlternativeServiceFrame(origin: payload.origin, field: payload.field, file: file, line: line)
+        self.assertAlternativeServiceFrame(origin: origin, field: field, file: file, line: line)
     }
 
     func assertAlternativeServiceFrame(origin: String?, field: ByteBuffer?, file: StaticString = #file, line: UInt = #line) {
-        guard case .alternativeService(let actualPayload) = self.payload else {
+        guard case .alternativeService(let actualOrigin, let actualField) = self.payload else {
             XCTFail("Expected ALTSVC frame, got \(self.payload) instead", file: file, line: line)
             return
         }
 
         XCTAssertEqual(.rootStream, self.streamID, "ALTSVC frame must be on the root stream!, got \(self.streamID)!", file: file, line: line)
         XCTAssertEqual(origin,
-                       actualPayload.origin,
-                       "Non matching origins: expected \(String(describing: origin)), got \(String(describing: actualPayload.origin))",
+                       actualOrigin,
+                       "Non matching origins: expected \(String(describing: origin)), got \(String(describing: actualOrigin))",
                        file: file, line: line)
         XCTAssertEqual(field,
-                       actualPayload.field,
-                       "Non matching field: expected \(String(describing: field)), got \(String(describing: actualPayload.field))",
+                       actualField,
+                       "Non matching field: expected \(String(describing: field)), got \(String(describing: actualField))",
                        file: file, line: line)
     }
 
@@ -588,7 +588,7 @@ func openTemporaryFile() -> (CInt, String) {
 extension FileRegion {
     func asByteBuffer(allocator: ByteBufferAllocator) -> ByteBuffer {
         var fileBuffer = allocator.buffer(capacity: self.readableBytes)
-        fileBuffer.writeWithUnsafeMutableBytes { ptr in
+        fileBuffer.writeWithUnsafeMutableBytes(minimumWritableBytes: self.readableBytes) { ptr in
             let rc = try! self.fileHandle.withUnsafeFileDescriptor { fd -> Int in
                 lseek(fd, off_t(self.readerIndex), SEEK_SET)
                 return read(fd, ptr.baseAddress!, self.readableBytes)

@@ -295,7 +295,7 @@ public struct HPACKEncoder {
     }
     
     private mutating func _appendNonIndexed(header: String, value: String) {
-        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: value) {
+        if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: nil) {
             // we actually don't care if it has a value in this instance; we're only indexing the
             // name.
             self.buffer.write(encodedInteger: UInt(index), prefix: 4, prefixBits: 0)
