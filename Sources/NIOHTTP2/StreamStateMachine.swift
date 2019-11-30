@@ -96,7 +96,7 @@ import NIOHPACK
 /// Operations on the state machine are performed by calling specific functions corresponding to
 /// the operation that is about to occur.
 struct HTTP2StreamStateMachine {
-    private enum State {
+    fileprivate enum State {
         // TODO(cory): Can we remove the idle state? Streams shouldn't sit in idle for long periods
         // of time, they should immediately transition out, so can we avoid it entirely?
         /// In the idle state, the stream has not been opened by either peer.
@@ -190,7 +190,6 @@ struct HTTP2StreamStateMachine {
         /// may be exchanged.
         case closed(reason: HTTP2ErrorCode?)
     }
-
 
     /// The possible roles an endpoint may play in a given stream.
     enum StreamRole {
@@ -384,9 +383,9 @@ extension HTTP2StreamStateMachine {
             // seems reasonable to me: specifically, if we have a stream to fail, fail it, otherwise treat
             // the error as connection scoped.)
             case .idle(.server, _, _), .closed:
-                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
             case .reservedRemote, .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.ContentLengthViolated {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
@@ -515,9 +514,9 @@ extension HTTP2StreamStateMachine {
             // seems reasonable to me: specifically, if we have a stream to fail, fail it, otherwise treat
             // the error as connection scoped.)
             case .idle(.client, _, _), .closed:
-                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
             case .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.ContentLengthViolated {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
@@ -587,7 +586,7 @@ extension HTTP2StreamStateMachine {
             // Sending a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenRemoteLocalIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedLocalPeerActive, .halfClosedRemoteLocalIdle, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .streamClosed), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -658,7 +657,7 @@ extension HTTP2StreamStateMachine {
             // Receiving a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenLocalPeerIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedRemoteLocalActive, .halfClosedRemoteLocalIdle, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .streamClosed), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .streamClosed), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -694,7 +693,7 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .client, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
              .halfClosedRemoteLocalActive(localRole: .client, initiatedBy: _, localContentLength: _, localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localContentLength: _, localWindow: _):
-            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
         }
     }
 
@@ -721,7 +720,7 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .server, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .server, initiatedBy: _, remoteContentLength: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteContentLength: _, remoteWindow: _):
-            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
         }
     }
 
@@ -770,7 +769,7 @@ extension HTTP2StreamStateMachine {
                 windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .idle, .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -834,7 +833,7 @@ extension HTTP2StreamStateMachine {
                 windowEffect = nil
 
             case .idle, .reservedRemote, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -857,7 +856,7 @@ extension HTTP2StreamStateMachine {
     mutating func receiveRstStream(reason: HTTP2ErrorCode) -> StateMachineResultWithStreamEffect {
         // We can receive RST_STREAM frames in any state but idle.
         if case .idle = self.state {
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState(self.state)), type: .protocolError), effect: nil)
         }
 
         self.state = .closed(reason: reason)
@@ -1021,5 +1020,37 @@ private extension HPACKHeaders {
     /// is not present, this will return "false"
     var isInformationalResponse: Bool {
         return self.first { $0.name == ":status" }?.value.first == "1"
+    }
+}
+
+
+/// State of a HTTP2 Stream.
+public enum NIOHTTP2StreamState {
+    case idle
+    case reservedRemote
+    case reservedLocal
+    case halfOpenLocalPeerIdle
+    case halfOpenRemoteLocalIdle
+    case fullyOpen
+    case halfClosedLocalPeerIdle
+    case halfClosedLocalPeerActive
+    case halfClosedRemoteLocalIdle
+    case halfClosedRemoteLocalActive
+    case closed
+
+    fileprivate init(_ state: HTTP2StreamStateMachine.State) {
+        switch state {
+        case .idle: self = .idle
+        case .reservedRemote: self = .reservedRemote
+        case .reservedLocal: self = .reservedLocal
+        case .halfOpenLocalPeerIdle: self = .halfOpenLocalPeerIdle
+        case .halfOpenRemoteLocalIdle: self = .halfOpenRemoteLocalIdle
+        case .fullyOpen: self = .fullyOpen
+        case .halfClosedLocalPeerIdle: self = .halfClosedLocalPeerIdle
+        case .halfClosedLocalPeerActive: self = .halfClosedLocalPeerActive
+        case .halfClosedRemoteLocalIdle: self = .halfClosedRemoteLocalIdle
+        case .halfClosedRemoteLocalActive: self = .halfClosedRemoteLocalActive
+        case .closed: self = .closed
+        }
     }
 }

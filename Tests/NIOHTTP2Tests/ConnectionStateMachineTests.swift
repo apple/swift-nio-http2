@@ -27,22 +27,42 @@ func assertSucceeds(_ body: @autoclosure () -> StateMachineResult, file: StaticS
     }
 }
 
-func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
+@discardableResult
+func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) -> Error? {
     switch body() {
-    case .connectionError(underlyingError: _, type: type):
-        return
+    case .connectionError(underlyingError: let error, type: type):
+        return error
     case let result:
         XCTFail("Expected connection error type \(type), got \(result)", file: file, line: line)
+        return nil
     }
 }
 
-func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
+@discardableResult
+func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) -> Error? {
     switch body() {
-    case .streamError(streamID: _, underlyingError: _, type: type):
-        return
+    case .streamError(streamID: _, underlyingError: let error, type: type):
+        return error
     case let result:
         XCTFail("Expected stream error type \(type), got \(result)", file: file, line: line)
+        return nil
     }
+}
+
+func assertBadStreamStateTransition(type: NIOHTTP2StreamState, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
+    let error: NIOHTTP2Errors.BadStreamStateTransition
+
+    switch body().result {
+    case .streamError(_, let underlyingError as NIOHTTP2Errors.BadStreamStateTransition, _):
+        error = underlyingError
+    case .connectionError(let underlyingError as NIOHTTP2Errors.BadStreamStateTransition, _):
+        error = underlyingError
+    default:
+        XCTFail("Unexpected result \(body().result)", file: file, line: line)
+        return
+    }
+
+    XCTAssertEqual(error.fromState, type, file: file, line: line)
 }
 
 func assertIgnored(_ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
@@ -59,23 +79,25 @@ func assertSucceeds(_ body: @autoclosure () -> (StateMachineResultWithEffect, Po
 }
 
 func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResultWithEffect, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
-    return assertConnectionError(type: type, body().0, file: file, line: line)
+    assertConnectionError(type: type, body().0, file: file, line: line)
 }
 
 func assertSucceeds(_ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
     return assertSucceeds(body().result, file: file, line: line)
 }
 
-func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
+@discardableResult
+func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) -> Error? {
     // Errors must always lead to noChange.
     let result = body()
-    assertConnectionError(type: type, result.result, file: file, line: line)
+    return assertConnectionError(type: type, result.result, file: file, line: line)
 }
 
-func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
+@discardableResult
+func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) -> Error? {
     // Errors must always lead to noChange.
     let result = body()
-    assertStreamError(type: type, result.result, file: file, line: line)
+    return assertStreamError(type: type, result.result, file: file, line: line)
 }
 
 func assertIgnored(_ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
@@ -193,6 +215,50 @@ class ConnectionStateMachineTests: XCTestCase {
 
         XCTAssertTrue(self.client.fullyQuiesced)
         XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    func testSimpleRequestResponseErrorFlow() {
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+
+        self.exchangePreamble()
+
+        // Create the stream but leave the state in idle by not passing in the required headers
+        let _ = self.server.receiveHeaders(streamID: streamOne, headers: .init(), isEndStreamSet: false)
+        var savedServerState = self.server
+            
+        // Change the state to halfOpenRemoteLocalIdle
+        let testHeaders: HPACKHeaders = [":method": "test", ":path": "test", ":scheme": "test"]
+        let _ = self.server.receiveHeaders(streamID: streamOne, headers: testHeaders, isEndStreamSet: false)
+        savedServerState = self.server
+
+        assertBadStreamStateTransition(type: .halfOpenRemoteLocalIdle, self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: false))
+        self.server = savedServerState
+        
+        assertBadStreamStateTransition(type: .halfOpenRemoteLocalIdle, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testHeaders))
+        self.server = savedServerState
+
+        // Move state to fullyOpen
+        let testSendHeaders: HPACKHeaders = [":status": "y"]
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: testSendHeaders, isEndStreamSet: false))
+        savedServerState = self.server
+
+        let testPushPromiseHeaders: HPACKHeaders = ["test": "value"]
+        assertBadStreamStateTransition(type: .fullyOpen, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testPushPromiseHeaders))
+        self.server = savedServerState
+
+        // Move state to halfClosedLocalPeerActive
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+        savedServerState = self.server
+
+        assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+        self.server = savedServerState
+        assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testPushPromiseHeaders))
+        self.server = savedServerState
+        assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testPushPromiseHeaders))
+        self.server = savedServerState
+        assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendHeaders(streamID: streamOne, headers: testPushPromiseHeaders, isEndStreamSet: false))
+        self.server = savedServerState
     }
 
     func testOpeningConnectionWhileServerPreambleMissing() {

@@ -61,7 +61,11 @@ public enum NIOHTTP2Errors {
 
     /// A stream state transition was attempted that was not valid.
     public struct BadStreamStateTransition: NIOHTTP2Error {
-        public init() { }
+        let fromState: NIOHTTP2StreamState
+
+        init(from state: NIOHTTP2StreamState) {
+            fromState = state
+        }
     }
 
     /// An attempt was made to change the flow control window size, either via
