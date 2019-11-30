@@ -27,6 +27,7 @@ extension ConnectionStateMachineTests {
    static var allTests : [(String, (ConnectionStateMachineTests) -> () throws -> Void)] {
       return [
                 ("testSimpleRequestResponseFlow", testSimpleRequestResponseFlow),
+                ("testSimpleRequestResponseErrorFlow", testSimpleRequestResponseErrorFlow),
                 ("testOpeningConnectionWhileServerPreambleMissing", testOpeningConnectionWhileServerPreambleMissing),
                 ("testServerSendsItsPreambleFirst", testServerSendsItsPreambleFirst),
                 ("testMoreComplexStreamLifecycle", testMoreComplexStreamLifecycle),
