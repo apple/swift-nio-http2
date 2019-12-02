@@ -581,6 +581,20 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(headers[canonicalForm: "set-cookie"], ["abcdefg,hijklmn,opqrst"])
     }
 
+    func testHPACKHeadersFirstSubscript() throws {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            ("foo", "bar"),
+            ("foo", "baz"),
+            ("custom-key", "value-1,value-2")
+        ])
+
+        XCTAssertEqual(headers.first(name: ":method"), "GET")
+        XCTAssertEqual(headers.first(name: "Foo"), "bar")
+        XCTAssertEqual(headers.first(name: "custom-key"), "value-1,value-2")
+        XCTAssertNil(headers.first(name: "not-present"))
+    }
+
     func testHPACKHeadersExpressedByDictionaryLiteral() throws {
         let headers: HPACKHeaders = [
             ":method": "GET",
