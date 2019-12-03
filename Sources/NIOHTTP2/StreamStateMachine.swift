@@ -1023,8 +1023,7 @@ private extension HPACKHeaders {
     }
 }
 
-
-/// State of a HTTP2 Stream.
+/// A public state of a `HTTP2StreamStateMachine`. This copy mirrors `HTTP2StreamStateMachine.state` but without associated values.
 public enum NIOHTTP2StreamState {
     case idle
     case reservedRemote
