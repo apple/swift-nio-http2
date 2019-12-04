@@ -49,7 +49,8 @@ func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMac
     }
 }
 
-func assertBadStreamStateTransition(type: NIOHTTP2StreamState, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
+@discardableResult
+func assertBadStreamStateTransition(type: NIOHTTP2StreamState, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) -> NIOHTTP2Errors.BadStreamStateTransition? {
     let error: NIOHTTP2Errors.BadStreamStateTransition
 
     switch body().result {
@@ -59,10 +60,12 @@ func assertBadStreamStateTransition(type: NIOHTTP2StreamState, _ body: @autoclos
         error = underlyingError
     default:
         XCTFail("Unexpected result \(body().result)", file: file, line: line)
-        return
+        return nil
     }
 
     XCTAssertEqual(error.fromState, type, file: file, line: line)
+    
+    return error
 }
 
 func assertIgnored(_ body: @autoclosure () -> StateMachineResult, file: StaticString = #file, line: UInt = #line) {
@@ -257,9 +260,12 @@ class ConnectionStateMachineTests: XCTestCase {
         self.server = savedServerState
         assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testPushPromiseHeaders))
         self.server = savedServerState
-        assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendHeaders(streamID: streamOne, headers: testPushPromiseHeaders, isEndStreamSet: false))
+        let lastBadStreamStateTransition = assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendHeaders(streamID: streamOne, headers: testPushPromiseHeaders, isEndStreamSet: false))
         self.server = savedServerState
-    }
+        
+        // Test that BadStreamStateTransition conforms to CustomStringConvertible
+        XCTAssertEqual(lastBadStreamStateTransition?.description, "BadStreamStateTransition in state halfClosedLocalPeerActive")
+}
 
     func testOpeningConnectionWhileServerPreambleMissing() {
         let streamOne = HTTP2StreamID(1)
