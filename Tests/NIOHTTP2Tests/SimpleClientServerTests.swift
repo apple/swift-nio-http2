@@ -207,9 +207,11 @@ class SimpleClientServerTests: XCTestCase {
     }
 
     /// Establish a basic HTTP/2 connection.
-    func basicHTTP2Connection(withMultiplexerCallback multiplexerCallback: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server)).wait())
+    func basicHTTP2Connection(clientSettings: HTTP2Settings = nioDefaultSettings,
+                              serverSettings: HTTP2Settings = nioDefaultSettings,
+                              withMultiplexerCallback multiplexerCallback: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) throws {
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, initialSettings: clientSettings)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server, initialSettings: serverSettings)).wait())
 
         if let multiplexerCallback = multiplexerCallback {
             XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .client,
@@ -220,7 +222,8 @@ class SimpleClientServerTests: XCTestCase {
                                                                                                  inboundStreamStateInitializer: multiplexerCallback)).wait())
         }
 
-        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
+        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel,
+                                   clientSettings: clientSettings, serverSettings: serverSettings)
     }
 
     /// Establish a basic HTTP/2 connection where the HTTP2Parser handler is added after the channel has been activated.
@@ -808,8 +811,8 @@ class SimpleClientServerTests: XCTestCase {
         try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // Now the streams are closed, they should have seen user events.
-        XCTAssertEqual(clientHandler.events.count, 4)
-        XCTAssertEqual(serverHandler.events.count, 4)
+        XCTAssertEqual(clientHandler.events.count, 5)
+        XCTAssertEqual(serverHandler.events.count, 5)
         XCTAssertEqual(clientHandler.events[3] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: nil))
         XCTAssertEqual(serverHandler.events[3] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: nil))
 
@@ -845,8 +848,8 @@ class SimpleClientServerTests: XCTestCase {
         try self.assertFramesRoundTrip(frames: [rstStreamFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         // Now the streams are closed, they should have seen user events.
-        XCTAssertEqual(clientHandler.events.count, 2)
-        XCTAssertEqual(serverHandler.events.count, 2)
+        XCTAssertEqual(clientHandler.events.count, 3)
+        XCTAssertEqual(serverHandler.events.count, 3)
         XCTAssertEqual(clientHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: clientStreamID, reason: .cancel))
         XCTAssertEqual(serverHandler.events[1] as? StreamClosedEvent, StreamClosedEvent(streamID: serverStreamID, reason: .cancel))
 
@@ -1781,5 +1784,108 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
 
         try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(HTTP2ErrorCode.protocolError.networkCode), opaqueData: nil)
+    }
+
+    func testNoStreamWindowUpdateOnEndStreamFrameFromServer() throws {
+        let maxFrameSize = (1 << 24) - 1  // Max value of SETTINGS_MAX_FRAME_SIZE is 2^24-1.
+        let clientSettings = nioDefaultSettings + [HTTP2Setting(parameter: .maxFrameSize, value: maxFrameSize)]
+
+        // Begin by getting the connection up.
+        // We add the stream multiplexer here because it manages automatic flow control, and because we want the server
+        // to correctly confirm we don't receive a frame for the child stream.
+        let childHandler = FrameRecorderHandler()
+        try self.basicHTTP2Connection(clientSettings: clientSettings) { channel, streamID in
+            // Here we send a large response: 65535 bytes in size.
+            let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "65535")])
+
+            var responseBody = self.clientChannel.allocator.buffer(capacity: 65535)
+            responseBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
+
+            let respFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: responseHeaders)))
+            channel.write(respFrame, promise: nil)
+
+            // Now prepare the large body.
+            let respBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(responseBody), endStream: true)))
+            channel.writeAndFlush(respBodyFrame, promise: nil)
+
+            return channel.pipeline.addHandler(childHandler)
+        }
+
+        // Now we're going to send a small request.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+
+        // We're going to open a stream and queue up the frames for that stream.
+        let handler = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
+        var reqFrame: HTTP2Frame? = nil
+
+        handler.createStreamChannel(promise: nil) { channel, streamID in
+            // We need END_STREAM set here, because that will force the stream to be closed on the response.
+            reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers, endStream: true)))
+            channel.writeAndFlush(reqFrame, promise: nil)
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        self.clientChannel.embeddedEventLoop.run()
+
+        // Ok, we now want to send this data to the server.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The server should have seen 1 window update frame for the connection only.
+        try self.serverChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 65535)
+
+        // And only the request frame frame for the child stream, as there was no need to open its stream window.
+        childHandler.receivedFrames.assertFramesMatch([reqFrame!])
+
+        // No other frames should be emitted, though the client may have many in a child stream.
+        self.serverChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
+        XCTAssertNoThrow(XCTAssertTrue(try self.serverChannel.finish().isClean))
+    }
+
+    func testNoStreamWindowUpdateOnEndStreamFrameFromClient() throws {
+        let maxFrameSize = (1 << 24) - 1  // Max value of SETTINGS_MAX_FRAME_SIZE is 2^24-1.
+        let serverSettings = nioDefaultSettings + [HTTP2Setting(parameter: .maxFrameSize, value: maxFrameSize)]
+
+        // Begin by getting the connection up.
+        // We add the stream multiplexer here because it manages automatic flow control, and because we want the server
+        // to correctly confirm we don't receive a frame for the child stream.
+        let childHandler = FrameRecorderHandler()
+        try self.basicHTTP2Connection(serverSettings: serverSettings) { channel, streamID in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+
+        // Now we're going to send a large request: 65535 bytes in size
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+
+        // We're going to open a stream and queue up the frames for that stream.
+        let handler = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
+
+        handler.createStreamChannel(promise: nil) { channel, streamID in
+            let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
+            channel.write(reqFrame, promise: nil)
+
+            var requestBody = self.clientChannel.allocator.buffer(capacity: 65535)
+            requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
+
+            // Now prepare the large body. We need END_STREAM set.
+            let reqBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(requestBody), endStream: true)))
+            channel.writeAndFlush(reqBodyFrame, promise: nil)
+
+            return channel.pipeline.addHandler(childHandler)
+        }
+        self.clientChannel.embeddedEventLoop.run()
+
+        // Ok, we now want to send this data to the server.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The client should have seen a window update on the connection.
+        try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 65535)
+
+        // And nothing for the child stream, as there was no need to open its stream window.
+        childHandler.receivedFrames.assertFramesMatch([])
+
+        // No other frames should be emitted, though the server may have many in a child stream.
+        self.clientChannel.assertNoFramesReceived()
+        XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
+        XCTAssertNoThrow(XCTAssertTrue(try self.serverChannel.finish().isClean))
     }
 }
