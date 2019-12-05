@@ -61,14 +61,19 @@ public enum NIOHTTP2Errors {
 
     /// A stream state transition was attempted that was not valid.
     public struct BadStreamStateTransition: NIOHTTP2Error, CustomStringConvertible {
-        let fromState: NIOHTTP2StreamState
-        
+        public let fromState: NIOHTTP2StreamState?
+
         public var description: String {
-            return "BadStreamStateTransition in state \(fromState)"
+            let stateName = fromState != nil ? "\(fromState!)" : "unknown state"
+            return "BadStreamStateTransition in state \(stateName)"
         }
 
         init(from state: NIOHTTP2StreamState) {
             fromState = state
+        }
+
+        public init() {
+            self.fromState = nil
         }
     }
 
