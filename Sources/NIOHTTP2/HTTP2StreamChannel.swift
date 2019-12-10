@@ -136,7 +136,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.streamID = streamID
         self.multiplexer = multiplexer
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
-        self._isWritable = Atomic(value: true)
+        self._isWritable = .makeAtomic(value: true)
         self.state = .idle
         self.writabilityManager = StreamChannelFlowController(highWatermark: outboundBytesHighWatermark,
                                                               lowWatermark: outboundBytesLowWatermark,
@@ -302,7 +302,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         return self._isWritable.load()
     }
 
-    private let _isWritable: Atomic<Bool>
+    private let _isWritable: NIOAtomic<Bool>
 
     public var isActive: Bool {
         return self.state == .active || self.state == .closing || self.state == .localActive

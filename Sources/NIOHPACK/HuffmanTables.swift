@@ -209,7 +209,7 @@ internal struct HuffmanDecoderFlags : OptionSet
 {
     var rawValue: UInt8
     
-    static let none     = HuffmanDecoderFlags(rawValue: 0b000)
+    static let none     = HuffmanDecoderFlags([])
     static let accepted = HuffmanDecoderFlags(rawValue: 0b001)
     static let symbol   = HuffmanDecoderFlags(rawValue: 0b010)
     static let failure  = HuffmanDecoderFlags(rawValue: 0b100)

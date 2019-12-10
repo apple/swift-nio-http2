@@ -309,8 +309,8 @@ struct HTTP2FrameDecoder {
         switch (try self.processNextState()) {
         case .needMoreData:
             return nil
-        case .frame(let frame):
-            return frame
+        case .frame(let frame, let flowControlledLength):
+            return (frame, flowControlledLength)
         case .continue:
             // tail-call ourselves
             return try nextFrame()
