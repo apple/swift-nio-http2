@@ -169,10 +169,13 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
 
         f.whenFailure { (error: Error) in
-            if self.state != .idle {
-                self.closedWhileOpen()
-            } else {
+            switch self.state {
+            case .idle, .localActive, .closed:
+                // The stream isn't open on the network, nothing to close.
                 self.errorEncountered(error: error)
+            case .remoteActive, .active, .closing, .closingNeverActivated:
+                // In all of these states the stream is still on the network and we may need to take action.
+                self.closedWhileOpen()
             }
 
             promise?.fail(error)

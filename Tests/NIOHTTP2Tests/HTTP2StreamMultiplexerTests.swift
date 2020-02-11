@@ -1773,4 +1773,29 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         self.channel.pipeline.fireChannelWritabilityChanged()
         XCTAssertTrue(childChannel.isWritable)
     }
+
+    func testStreamChannelToleratesFailingInitialier() {
+        struct DummyError: Error {}
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
+                                                 channel: self.channel,
+                                                 outboundBufferSizeHighWatermark: 100,
+                                                 outboundBufferSizeLowWatermark: 50) { (_, _) in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.makeFailedFuture(MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5)).wait())
+
+        // Now we want to create a new child stream.
+        let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: childChannelPromise) { childChannel, _ in
+            childChannel.close().flatMap {
+                childChannel.eventLoop.makeFailedFuture(DummyError())
+            }
+        }
+        self.channel.embeddedEventLoop.run()
+    }
+
 }
