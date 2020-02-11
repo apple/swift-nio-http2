@@ -70,6 +70,7 @@ extension HTTP2StreamMultiplexerTests {
                 ("testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokens", testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokens),
                 ("testMultiplexerModifiesStreamChannelWritabilityBasedOnParentChannelWritability", testMultiplexerModifiesStreamChannelWritabilityBasedOnParentChannelWritability),
                 ("testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability", testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability),
+                ("testStreamChannelToleratesFailingInitialier", testStreamChannelToleratesFailingInitialier),
            ]
    }
 }
