@@ -57,8 +57,7 @@ tmpdir=$(mktemp -d /tmp/.build_podspecsXXXXXX)
 
 echo "Building podspec in $tmpdir"
 
-# We only want to generate Podspec files for the two targets
-targets=( "SwiftNIOHPACK" "SwiftNIOHTTP2" )
+targets=( $("${here}/list_topsorted_dependencies.sh" -l -r | sed 's/^NIO/SwiftNIO/') )
 
 for target in "${targets[@]}"; do
 
