@@ -40,6 +40,7 @@ import XCTest
          testCase(HTTP2ToHTTP1CodecTests.allTests),
          testCase(HeaderTableTests.allTests),
          testCase(HuffmanCodingTests.allTests),
+         testCase(InboundWindowManagerTests.allTests),
          testCase(IntegerCodingTests.allTests),
          testCase(OutboundFlowControlBufferTests.allTests),
          testCase(ReentrancyTests.allTests),
