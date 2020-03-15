@@ -69,13 +69,9 @@ class ConfiguringPipelineTests: XCTestCase {
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
-        do {
-            try requestPromise.futureResult.wait()
-            XCTFail("Did not throw")
-        } catch is NIOHTTP2Errors.StreamClosed {
-            // ok
-        } catch {
-            XCTFail("Unexpected error: \(error)")
+
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
         }
 
         // We should have received a HEADERS and a RST_STREAM frame.
