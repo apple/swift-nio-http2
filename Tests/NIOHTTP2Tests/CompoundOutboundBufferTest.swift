@@ -112,14 +112,8 @@ final class CompoundOutboundBufferTest: XCTestCase {
 
         // Now we're going to try to write a frame for stream 5. This will fail.
         let fiveFrame = HTTP2Frame(streamID: 5, payload: .headers(.init(headers: HPACKHeaders([]))))
-
-        do {
-            _ = try buffer.processOutboundFrame(fiveFrame, promise: nil, channelWritable: true)
-            XCTFail("Did not throw")
-        } catch is NIOHTTP2Errors.StreamIDTooSmall {
-            // Ok
-        } catch {
-            XCTFail("Unexpected error: \(error)")
+        XCTAssertThrowsError(try buffer.processOutboundFrame(fiveFrame, promise: nil, channelWritable: true)) {error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamIDTooSmall)
         }
     }
 
