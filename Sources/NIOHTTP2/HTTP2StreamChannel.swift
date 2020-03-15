@@ -554,11 +554,27 @@ private extension HTTP2StreamChannel {
         self.pendingReads = CircularBuffer(initialCapacity: 0)
     }
 
-    /// DinitialCapacityreads to the channel.
+    /// Deliver all pending reads to the channel.
     private func deliverPendingReads() {
         assert(self.isActive)
         while self.pendingReads.count > 0 {
-            self.pipeline.fireChannelRead(NIOAny(self.pendingReads.removeFirst()))
+            let frame = self.pendingReads.removeFirst()
+
+            let dataLength: Int?
+            if case .data(let data) = frame.payload {
+                dataLength = data.data.readableBytes
+            } else {
+                dataLength = nil
+            }
+
+            self.pipeline.fireChannelRead(NIOAny(frame))
+
+            if let size = dataLength, let increment = self.windowManager.bufferedFrameEmitted(size: size) {
+                let frame = HTTP2Frame(streamID: self.streamID, payload: .windowUpdate(windowSizeIncrement: increment))
+                self.receiveOutboundFrame(frame, promise: nil)
+                // This flush should really go away, but we need it for now until we sort out window management.
+                self.multiplexer.childChannelFlush()
+            }
         }
         self.pipeline.fireChannelReadComplete()
     }
@@ -599,8 +615,16 @@ internal extension HTTP2StreamChannel {
         }
 
         if self.unsatisfiedRead {
+            // We don't need to account for this frame in the window manager: it's being delivered
+            // straight into the pipeline.
             self.pipeline.fireChannelRead(NIOAny(frame))
         } else {
+            // Record the size of the frame so that when we receive a window update event our
+            // calculation on whether we emit a WINDOW_UPDATE frame is based on the bytes we have
+            // actually delivered into the pipeline.
+            if case .data(let dataPayload) = frame.payload {
+                self.windowManager.bufferedFrameReceived(size: dataPayload.data.readableBytes)
+            }
             self.pendingReads.append(frame)
         }
     }
