@@ -56,6 +56,7 @@ public extension ChannelPipeline {
     ///         negotiated, or if no protocol was negotiated. Must return a future that completes when the
     ///         pipeline has been fully mutated.
     /// - returns: An `EventLoopFuture<Void>` that completes when the pipeline is ready to negotiate.
+    @available(*, deprecated, message: "Please use Channel.configureHTTP2SecureUpgrade(h2ChannelConfigurator, http1ChannelConfigurator)")
     func configureHTTP2SecureUpgrade(h2PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>,
                                      http1PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let alpnHandler = ApplicationProtocolNegotiationHandler { result in
@@ -74,6 +75,14 @@ public extension ChannelPipeline {
         }
 
         return self.addHandler(alpnHandler)
+    }
+}
+
+private final class ErrorHandler: ChannelInboundHandler {
+    typealias InboundIn = Never
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        context.close(promise: nil)
     }
 }
 
@@ -103,5 +112,85 @@ extension Channel {
         handlers.append(multiplexer)
 
         return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
+    }
+
+    /// Configures a channel to perform a HTTP/2 secure upgrade.
+    ///
+    /// HTTP/2 secure upgrade uses the Application Layer Protocol Negotiation TLS extension to
+    /// negotiate the inner protocol as part of the TLS handshake. For this reason, until the TLS
+    /// handshake is complete, the ultimate configuration of the channel pipeline cannot be known.
+    ///
+    /// This function configures the channel with a pair of callbacks that will handle the result
+    /// of the negotiation. It explicitly **does not** configure a TLS handler to actually attempt
+    /// to negotiate ALPN. The supported ALPN protocols are provided in
+    /// `NIOHTTP2SupportedALPNProtocols`: please ensure that the TLS handler you are using for your
+    /// pipeline is appropriately configured to perform this protocol negotiation.
+    ///
+    /// If negotiation results in an unexpected protocol, the pipeline will close the connection
+    /// and no callback will fire.
+    ///
+    /// This configuration is acceptable for use on both client and server channel pipelines.
+    ///
+    /// - parameters:
+    ///     - h2ChannelConfigurator: A callback that will be invoked if HTTP/2 has been negogiated, and that
+    ///         should configure the channel for HTTP/2 use. Must return a future that completes when the
+    ///         channel has been fully mutated.
+    ///     - http1ChannelConfigurator: A callback that will be invoked if HTTP/1.1 has been explicitly
+    ///         negotiated, or if no protocol was negotiated. Must return a future that completes when the
+    ///         channel has been fully mutated.
+    /// - returns: An `EventLoopFuture<Void>` that completes when the channel is ready to negotiate.
+    func configureHTTP2SecureUpgrade(h2ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>,
+                                     http1ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+        let alpnHandler = ApplicationProtocolNegotiationHandler { result in
+            switch result {
+            case .negotiated("h2"):
+                // Successful upgrade to HTTP/2. Let the user configure the pipeline.
+                return h2ChannelConfigurator(self)
+            case .negotiated("http/1.1"), .fallback:
+                // Explicit or implicit HTTP/1.1 choice.
+                return http1ChannelConfigurator(self)
+            case .negotiated:
+                // We negotiated something that isn't HTTP/1.1. This is a bad scene, and is a good indication
+                // of a user configuration error. We're going to close the connection directly.
+                return self.close().flatMap { self.eventLoop.makeFailedFuture(NIOHTTP2Errors.InvalidALPNToken()) }
+            }
+        }
+
+        return self.pipeline.addHandler(alpnHandler)
+    }
+
+    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 accordingly to what can be negotiated with the client.
+    ///
+    /// This helper takes care of configuring the server pipeline such that it negotiates whether to
+    /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotitated, the
+    /// provided callback will configure the application-specific handlers in a protocol-agnostic way.
+    ///
+    /// This function does't configure the TLS handler. Callers of this function need to add a TLS
+    /// handler appropriately configured to perform protocol negotiation.
+    ///
+    /// - parameters:
+    ///     - configurator: A callback that will be invoked after a protocol has been negotiated.
+    ///         The callback only needs to add application-specific handlers and must return a future
+    ///         that completes when the channel has been fully mutated.
+    /// - returns: `EventLoopFuture<Void>` that completes when the channel is ready.
+    public func configureCommonHTTPServerPipeline(_ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+            channel.configureHTTP2Pipeline(mode: .server) { (streamChannel, streamID) -> EventLoopFuture<Void> in
+                streamChannel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
+                    configurator(streamChannel)
+                }.flatMap { () -> EventLoopFuture<Void> in
+                    streamChannel.pipeline.addHandler(ErrorHandler())
+                }
+            }.flatMap { (_: HTTP2StreamMultiplexer) in
+                return channel.pipeline.addHandler(ErrorHandler())
+            }
+        }
+        let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
+                configurator(channel)
+            }
+        }
+        return self.configureHTTP2SecureUpgrade(h2ChannelConfigurator: h2ChannelConfigurator,
+                                                http1ChannelConfigurator: http1ChannelConfigurator)
     }
 }
