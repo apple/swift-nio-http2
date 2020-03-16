@@ -71,13 +71,8 @@ class ConfiguringPipelineTests: XCTestCase {
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
-        do {
-            try requestPromise.futureResult.wait()
-            XCTFail("Did not throw")
-        } catch is NIOHTTP2Errors.StreamClosed {
-            // ok
-        } catch {
-            XCTFail("Unexpected error: \(error)")
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
         }
 
         // We should have received a HEADERS and a RST_STREAM frame.
@@ -196,9 +191,18 @@ class ConfiguringPipelineTests: XCTestCase {
     }
 
     func testNegotiatedHTTP2BasicPipelineCommunicates() throws {
+        final class ErrorHandler: ChannelInboundHandler {
+            typealias InboundIn = Never
+
+            func errorCaught(context: ChannelHandlerContext, error: Error) {
+                context.close(promise: nil)
+            }
+        }
+
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline { channel in
+
+        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 
@@ -222,13 +226,8 @@ class ConfiguringPipelineTests: XCTestCase {
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
-        do {
-            try requestPromise.futureResult.wait()
-            XCTFail("Did not throw")
-        } catch is NIOHTTP2Errors.StreamClosed {
-            // ok
-        } catch {
-            XCTFail("Unexpected error: \(error)")
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
         }
 
         // Assert that the user-provided handler received the
@@ -254,10 +253,17 @@ class ConfiguringPipelineTests: XCTestCase {
     }
 
     func testNegotiatedHTTP1BasicPipelineCommunicates() throws {
+        final class ErrorHandler: ChannelInboundHandler {
+            typealias InboundIn = Never
+
+            func errorCaught(context: ChannelHandlerContext, error: Error) {
+                context.close(promise: nil)
+            }
+        }
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHTTPClientHandlers().wait())
-
-        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline { channel in
+        
+        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 

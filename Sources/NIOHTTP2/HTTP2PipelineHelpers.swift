@@ -78,14 +78,6 @@ public extension ChannelPipeline {
     }
 }
 
-private final class ErrorHandler: ChannelInboundHandler {
-    typealias InboundIn = Never
-
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        context.close(promise: nil)
-    }
-}
-
 extension Channel {
     /// Configures a `ChannelPipeline` to speak HTTP/2.
     ///
@@ -169,20 +161,22 @@ extension Channel {
     /// handler appropriately configured to perform protocol negotiation.
     ///
     /// - parameters:
+    ///     - h2ConnectionChannelConfigurator: A callback that will be invoked only
+    ///         when the negotiated protocol is H2 to configure the connection channel.
     ///     - configurator: A callback that will be invoked after a protocol has been negotiated.
     ///         The callback only needs to add application-specific handlers and must return a future
     ///         that completes when the channel has been fully mutated.
     /// - returns: `EventLoopFuture<Void>` that completes when the channel is ready.
-    public func configureCommonHTTPServerPipeline(_ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+    public func configureCommonHTTPServerPipeline(
+        h2ConnectionChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>,
+        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
             channel.configureHTTP2Pipeline(mode: .server) { (streamChannel, streamID) -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
                     configurator(streamChannel)
-                }.flatMap { () -> EventLoopFuture<Void> in
-                    streamChannel.pipeline.addHandler(ErrorHandler())
                 }
             }.flatMap { (_: HTTP2StreamMultiplexer) in
-                return channel.pipeline.addHandler(ErrorHandler())
+                h2ConnectionChannelConfigurator(channel)
             }
         }
         let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
