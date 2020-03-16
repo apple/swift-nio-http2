@@ -56,7 +56,7 @@ public extension ChannelPipeline {
     ///         negotiated, or if no protocol was negotiated. Must return a future that completes when the
     ///         pipeline has been fully mutated.
     /// - returns: An `EventLoopFuture<Void>` that completes when the pipeline is ready to negotiate.
-    @available(*, deprecated, message: "Please use Channel.configureHTTP2SecureUpgrade(h2ChannelConfigurator, http1ChannelConfigurator)")
+    @available(*, deprecated, renamed: "Channel.configureHTTP2SecureUpgrade(h2ChannelConfigurator:http1ChannelConfigurator:)")
     func configureHTTP2SecureUpgrade(h2PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>,
                                      http1PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let alpnHandler = ApplicationProtocolNegotiationHandler { result in
