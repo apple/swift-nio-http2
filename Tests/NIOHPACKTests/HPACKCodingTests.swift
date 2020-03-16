@@ -501,7 +501,7 @@ class HPACKCodingTests: XCTestCase {
         }
         
         XCTAssertThrowsError(try decoder.decodeHeaders(from: &request3)) {error in
-            XCTAssertNotNil(error as? NIOHPACKErrors.InvalidDynamicTableSize)
+            XCTAssertTrue(error is NIOHPACKErrors.InvalidDynamicTableSize)
         }
         
         // 5 - Decoder will not accept a table size update unless it appears at the start of a header block.
