@@ -151,13 +151,13 @@ extension Channel {
         return self.pipeline.addHandler(alpnHandler)
     }
 
-    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 accordingly to what can be negotiated with the client.
+    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
     ///
     /// This helper takes care of configuring the server pipeline such that it negotiates whether to
-    /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotitated, the
+    /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotiated, the
     /// provided callback will configure the application-specific handlers in a protocol-agnostic way.
     ///
-    /// This function does't configure the TLS handler. Callers of this function need to add a TLS
+    /// This function doesn't configure the TLS handler. Callers of this function need to add a TLS
     /// handler appropriately configured to perform protocol negotiation.
     ///
     /// - parameters:
