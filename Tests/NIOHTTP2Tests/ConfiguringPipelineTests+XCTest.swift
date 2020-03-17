@@ -30,6 +30,8 @@ extension ConfiguringPipelineTests {
                 ("testPipelineRespectsPositionRequest", testPipelineRespectsPositionRequest),
                 ("testPreambleGetsWrittenOnce", testPreambleGetsWrittenOnce),
                 ("testClosingParentChannelClosesStreamChannel", testClosingParentChannelClosesStreamChannel),
+                ("testNegotiatedHTTP2BasicPipelineCommunicates", testNegotiatedHTTP2BasicPipelineCommunicates),
+                ("testNegotiatedHTTP1BasicPipelineCommunicates", testNegotiatedHTTP1BasicPipelineCommunicates),
            ]
    }
 }
