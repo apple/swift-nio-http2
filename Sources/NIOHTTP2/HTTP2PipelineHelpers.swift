@@ -161,14 +161,14 @@ extension Channel {
     /// handler appropriately configured to perform protocol negotiation.
     ///
     /// - parameters:
-    ///     - h2ConnectionChannelConfigurator: A callback that will be invoked only
+    ///     - h2ConnectionChannelConfigurator: An optional callback that will be invoked only
     ///         when the negotiated protocol is H2 to configure the connection channel.
     ///     - configurator: A callback that will be invoked after a protocol has been negotiated.
     ///         The callback only needs to add application-specific handlers and must return a future
     ///         that completes when the channel has been fully mutated.
     /// - returns: `EventLoopFuture<Void>` that completes when the channel is ready.
     public func configureCommonHTTPServerPipeline(
-        h2ConnectionChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>,
+        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
         _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
             channel.configureHTTP2Pipeline(mode: .server) { (streamChannel, streamID) -> EventLoopFuture<Void> in
@@ -176,7 +176,11 @@ extension Channel {
                     configurator(streamChannel)
                 }
             }.flatMap { (_: HTTP2StreamMultiplexer) in
-                h2ConnectionChannelConfigurator(channel)
+                if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
+                    return h2ConnectionChannelConfigurator(channel)
+                } else {
+                    return channel.eventLoop.makeSucceededFuture(())
+                }
             }
         }
         let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
