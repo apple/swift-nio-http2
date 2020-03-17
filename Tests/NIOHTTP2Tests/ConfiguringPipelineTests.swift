@@ -233,7 +233,7 @@ class ConfiguringPipelineTests: XCTestCase {
         // Assert that the user-provided handler received the
         // HTTP1 parts corresponding to the H2 message sent
         XCTAssertEqual(2, serverRecorder.receivedParts.count)
-        if case .head(let head) = serverRecorder.receivedParts.first {
+        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
             XCTAssertEqual(1, head.headers["host"].count)
             XCTAssertEqual("localhost", head.headers["host"].first)
             XCTAssertEqual(.GET, head.method)
@@ -241,7 +241,7 @@ class ConfiguringPipelineTests: XCTestCase {
         } else {
             XCTFail("Expected head")
         }
-        if case .end(_) = serverRecorder.receivedParts.last {
+        if case .some(.end(_)) = serverRecorder.receivedParts.last {
         } else {
             XCTFail("Expected end")
         }
@@ -283,13 +283,13 @@ class ConfiguringPipelineTests: XCTestCase {
         // Assert that the user-provided handler received the
         // HTTP1 parts corresponding to the H2 message sent
         XCTAssertEqual(2, serverRecorder.receivedParts.count)
-        if case .head(let head) = serverRecorder.receivedParts.first {
+        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
             XCTAssertEqual(.GET, head.method)
             XCTAssertEqual("/testHTTP1", head.uri)
         } else {
             XCTFail("Expected head")
         }
-        if case .end(_) = serverRecorder.receivedParts.last {
+        if case .some(.end(_)) = serverRecorder.receivedParts.last {
         } else {
             XCTFail("Expected end")
         }
