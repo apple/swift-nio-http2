@@ -508,7 +508,7 @@ class HPACKCodingTests: XCTestCase {
         decoder.headerTable.dynamicTable.clear()
 
         XCTAssertThrowsError(try decoder.decodeHeaders(from: &request4)) {error in
-            XCTAssertEqual(NIOHPACKErrors.IllegalDynamicTableSizeChange(), error as? NIOHPACKErrors.IllegalDynamicTableSizeChange)
+            XCTAssertTrue(error is NIOHPACKErrors.IllegalDynamicTableSizeChange)
         }
     }
     
