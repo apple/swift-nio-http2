@@ -71,6 +71,7 @@ class ConfiguringPipelineTests: XCTestCase {
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+
         XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
             XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
         }

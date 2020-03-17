@@ -352,12 +352,10 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         let streamID = HTTP2StreamID(5)
         let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(buffer))))
 
-        do {
-            try self.channel.writeInbound(dataFrame)
-            XCTFail("Did not throw")
-        } catch let error as NIOHTTP2Errors.NoSuchStream {
-            XCTAssertEqual(error.streamID, streamID)
+        XCTAssertThrowsError(try self.channel.writeInbound(dataFrame)) { error in
+            XCTAssertEqual(streamID, (error as? NIOHTTP2Errors.NoSuchStream).map { $0.streamID })
         }
+        
         self.channel.assertNoFramesReceived()
 
         XCTAssertNoThrow(try self.channel.finish())
@@ -379,12 +377,10 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         buffer.writeStaticString("Hello, world!")
         let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(buffer))))
 
-        do {
-            try self.channel.writeInbound(dataFrame)
-            XCTFail("Did not throw")
-        } catch let error as NIOHTTP2Errors.NoSuchStream {
-            XCTAssertEqual(error.streamID, streamID)
+        XCTAssertThrowsError(try self.channel.writeInbound(dataFrame)) { error in
+            XCTAssertEqual(streamID, (error as? NIOHTTP2Errors.NoSuchStream).map { $0.streamID })
         }
+
         self.channel.assertNoFramesReceived()
 
         XCTAssertNoThrow(try self.channel.finish())
