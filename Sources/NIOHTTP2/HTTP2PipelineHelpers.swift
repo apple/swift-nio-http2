@@ -30,7 +30,7 @@ import NIOTLS
 /// Configuring for servers is very similar, but is left as an exercise for the reader.
 public let NIOHTTP2SupportedALPNProtocols = ["h2", "http/1.1"]
 
-public extension ChannelPipeline {
+extension ChannelPipeline {
     /// Configures a channel pipeline to perform a HTTP/2 secure upgrade.
     ///
     /// HTTP/2 secure upgrade uses the Application Layer Protocol Negotiation TLS extension to
@@ -57,8 +57,8 @@ public extension ChannelPipeline {
     ///         pipeline has been fully mutated.
     /// - returns: An `EventLoopFuture<Void>` that completes when the pipeline is ready to negotiate.
     @available(*, deprecated, renamed: "Channel.configureHTTP2SecureUpgrade(h2ChannelConfigurator:http1ChannelConfigurator:)")
-    func configureHTTP2SecureUpgrade(h2PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>,
-                                     http1PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+    public func configureHTTP2SecureUpgrade(h2PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>,
+                                            http1PipelineConfigurator: @escaping (ChannelPipeline) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let alpnHandler = ApplicationProtocolNegotiationHandler { result in
             switch result {
             case .negotiated("h2"):
@@ -131,8 +131,8 @@ extension Channel {
     ///         negotiated, or if no protocol was negotiated. Must return a future that completes when the
     ///         channel has been fully mutated.
     /// - returns: An `EventLoopFuture<Void>` that completes when the channel is ready to negotiate.
-    func configureHTTP2SecureUpgrade(h2ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>,
-                                     http1ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+    public func configureHTTP2SecureUpgrade(h2ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>,
+                                            http1ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let alpnHandler = ApplicationProtocolNegotiationHandler { result in
             switch result {
             case .negotiated("h2"):
