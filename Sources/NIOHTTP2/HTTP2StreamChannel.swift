@@ -722,6 +722,13 @@ extension HTTP2StreamChannel {
     }
 }
 
+// MARK: Custom String Convertible
+extension HTTP2StreamChannel {
+    public var description: String {
+        return "HTTP2StreamChannel(streamID: \(self.streamID), isActive: \(self.isActive), isWritable: \(self.isWritable))"
+    }
+}
+
 extension HTTP2Frame {
     /// A shorthand heuristic for how many bytes we assume a frame consumes on the wire.
     ///
