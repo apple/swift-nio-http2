@@ -608,3 +608,25 @@ extension HTTP2ConnectionStateMachine.ValidationState {
         }
     }
 }
+
+
+extension NIOHTTP2Handler: CustomStringConvertible {
+    public var description: String {
+        return """
+NIOHTTP2Handler(
+    stateMachine: \(String(describing: self.stateMachine)),
+    frameDecoder: \(String(describing: self.frameDecoder)),
+    frameEncoder: \(String(describing: self.frameEncoder)),
+    writeBuffer: \(String(describing: self.writeBuffer)),
+    inboundEventBuffer: \(String(describing: self.inboundEventBuffer)),
+    outboundBuffer: \(String(describing: self.outboundBuffer)),
+    wroteFrame: \(String(describing: self.wroteFrame)),
+    denialOfServiceValidator: \(String(describing: self.denialOfServiceValidator)),
+    mode: \(String(describing: self.mode)),
+    initialSettings: \(String(describing: self.initialSettings)),
+    channelClosed: \(String(describing: self.channelClosed)),
+    channelWritable: \(String(describing: self.channelWritable))
+)
+"""
+    }
+}
