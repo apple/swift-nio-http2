@@ -27,10 +27,15 @@ extension ConfiguringPipelineTests {
    static var allTests : [(String, (ConfiguringPipelineTests) -> () throws -> Void)] {
       return [
                 ("testBasicPipelineCommunicates", testBasicPipelineCommunicates),
+                ("testBasicPipelineCommunicatesWithTargetWindowSize", testBasicPipelineCommunicatesWithTargetWindowSize),
                 ("testPipelineRespectsPositionRequest", testPipelineRespectsPositionRequest),
+                ("testPipelineRespectsPositionRequestWithTargetWindowSize", testPipelineRespectsPositionRequestWithTargetWindowSize),
                 ("testPreambleGetsWrittenOnce", testPreambleGetsWrittenOnce),
+                ("testPreambleGetsWrittenOnceWithTargetWindowSize", testPreambleGetsWrittenOnceWithTargetWindowSize),
                 ("testClosingParentChannelClosesStreamChannel", testClosingParentChannelClosesStreamChannel),
+                ("testClosingParentChannelClosesStreamChannelWithTargetWindowSize", testClosingParentChannelClosesStreamChannelWithTargetWindowSize),
                 ("testNegotiatedHTTP2BasicPipelineCommunicates", testNegotiatedHTTP2BasicPipelineCommunicates),
+                ("testNegotiatedHTTP2BasicPipelineCommunicatesWithTargetWindowSize", testNegotiatedHTTP2BasicPipelineCommunicatesWithTargetWindowSize),
                 ("testNegotiatedHTTP1BasicPipelineCommunicates", testNegotiatedHTTP1BasicPipelineCommunicates),
            ]
    }
