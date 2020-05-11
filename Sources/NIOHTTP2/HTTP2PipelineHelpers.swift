@@ -97,10 +97,33 @@ extension Channel {
                                        initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
                                        position: ChannelPipeline.Position = .last,
                                        inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
+        return self.configureHTTP2Pipeline(mode: mode, initialLocalSettings: initialLocalSettings, position: position, targetWindowSize: 65535, inboundStreamStateInitializer: inboundStreamStateInitializer)
+    }
+    
+    /// Configures a `ChannelPipeline` to speak HTTP/2.
+    ///
+    /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
+    /// Instead, this simply adds the handlers required to speak HTTP/2 after negotiation has completed, or when agreed by prior knowledge.
+    /// Whenever possible use this function to setup a HTTP/2 server pipeline, as it allows that pipeline to evolve without breaking your code.
+    ///
+    /// - parameters:
+    ///     - mode: The mode this pipeline will operate in, server or client.
+    ///     - initialLocalSettings: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///     - position: The position in the pipeline into which to insert these handlers.
+    ///     - targetWindowSize: The target size of the HTTP/2 flow control window.
+    ///     - inboundStreamStateInitializer: A closure that will be called whenever the remote peer initiates a new stream. This should almost always
+    ///         be provided, especially on servers.
+    /// - returns: An `EventLoopFuture` containing the `HTTP2StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
+                                       initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
+                                       position: ChannelPipeline.Position = .last,
+                                       targetWindowSize: Int,
+                                       inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
         var handlers = [ChannelHandler]()
         handlers.reserveCapacity(2)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
         handlers.append(NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings))
-        let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, inboundStreamStateInitializer: inboundStreamStateInitializer)
+        let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, targetWindowSize: targetWindowSize, inboundStreamStateInitializer: inboundStreamStateInitializer)
         handlers.append(multiplexer)
 
         return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
@@ -170,8 +193,32 @@ extension Channel {
     public func configureCommonHTTPServerPipeline(
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
         _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+        return self.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator, targetWindowSize: 65535, configurator)
+    }
+    
+    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
+    ///
+    /// This helper takes care of configuring the server pipeline such that it negotiates whether to
+    /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotiated, the
+    /// provided callback will configure the application-specific handlers in a protocol-agnostic way.
+    ///
+    /// This function doesn't configure the TLS handler. Callers of this function need to add a TLS
+    /// handler appropriately configured to perform protocol negotiation.
+    ///
+    /// - parameters:
+    ///     - h2ConnectionChannelConfigurator: An optional callback that will be invoked only
+    ///         when the negotiated protocol is H2 to configure the connection channel.
+    ///     - targetWindowSize: The target size of the HTTP/2 flow control window.
+    ///     - configurator: A callback that will be invoked after a protocol has been negotiated.
+    ///         The callback only needs to add application-specific handlers and must return a future
+    ///         that completes when the channel has been fully mutated.
+    /// - returns: `EventLoopFuture<Void>` that completes when the channel is ready.
+    public func configureCommonHTTPServerPipeline(
+        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
+        targetWindowSize: Int,
+        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            channel.configureHTTP2Pipeline(mode: .server) { (streamChannel, streamID) -> EventLoopFuture<Void> in
+            channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { (streamChannel, streamID) -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
                     configurator(streamChannel)
                 }
@@ -191,4 +238,5 @@ extension Channel {
         return self.configureHTTP2SecureUpgrade(h2ChannelConfigurator: h2ChannelConfigurator,
                                                 http1ChannelConfigurator: http1ChannelConfigurator)
     }
+
 }

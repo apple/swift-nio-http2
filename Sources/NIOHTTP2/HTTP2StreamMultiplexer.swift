@@ -37,6 +37,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     private var didReadChannels: StreamChannelList = StreamChannelList()
     private let streamChannelOutboundBytesHighWatermark: Int
     private let streamChannelOutboundBytesLowWatermark: Int
+    private let targetWindowSize: Int
 
     public func handlerAdded(context: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
@@ -239,6 +240,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                 inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
         self.inboundStreamStateInitializer = inboundStreamStateInitializer
         self.channel = channel
+        self.targetWindowSize = max(0, min(targetWindowSize, Int(Int32.max)))
         self.connectionFlowControlManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
         self.streamChannelOutboundBytesHighWatermark = outboundBufferSizeHighWatermark
         self.streamChannelOutboundBytesLowWatermark = outboundBufferSizeLowWatermark
@@ -301,7 +303,7 @@ extension HTTP2StreamMultiplexer {
                                              parent: self.channel,
                                              multiplexer: self,
                                              streamID: streamID,
-                                             targetWindowSize: 65535,  // TODO: make configurable
+                                             targetWindowSize: Int32(self.targetWindowSize),
                                              outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
                                              outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark)
             self.streams[streamID] = channel
