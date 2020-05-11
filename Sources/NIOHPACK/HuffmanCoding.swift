@@ -249,7 +249,7 @@ extension String {
     /// As this API does not currently exist we fake it out by using a pointer and accepting the extra copy.
     init(unsafeUninitializedCapacity capacity: Int,
          initializingUTF8With initializer: (_ buffer: UnsafeMutableBufferPointer<UInt8>, _ initializedCount: inout Int) throws -> Void) rethrows {
-        var buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: capacity)
+        let buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: capacity)
         defer {
             buffer.deallocate()
         }

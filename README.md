@@ -31,5 +31,5 @@ The legacy `swift-nio-http` 0.x is part of the SwiftNIO 1 family of repositories
 
 ## Developing SwiftNIO HTTP/2
 
-For the most part, SwiftNIO development is as straightforward as any other SwiftPM project. With that said, we do have a few processes that are worth understanding before you contribute. For details, please see `CONTRIBUTING.md` in this repository.
+For the most part, SwiftNIO development is as straightforward as any other SwiftPM project. With that said, we do have a few processes that are worth understanding before you contribute. For details, please see [`CONTRIBUTING.md`](/CONTRIBUTING.md) in this repository.
 

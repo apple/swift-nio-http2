@@ -86,6 +86,46 @@ class ConfiguringPipelineTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+    
+    func testBasicPipelineCommunicatesWithTargetWindowSize() throws {
+        let serverRecorder = FrameRecorderHandler()
+        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535) { channel, streamID in
+            return channel.pipeline.addHandler(serverRecorder)
+        }.wait())
+
+        XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        // Let's try sending a request.
+        let requestPromise = self.clientChannel.eventLoop.makePromise(of: Void.self)
+        let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/")]), endStream: true)))
+
+        clientHandler.createStreamChannel(promise: nil) { channel, streamID in
+            XCTAssertEqual(streamID, HTTP2StreamID(1))
+            channel.writeAndFlush(reqFrame).whenComplete { _ in channel.close(promise: requestPromise) }
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+
+        // In addition to interacting in memory, we need two loop spins. The first is to execute `createStreamChannel`.
+        // The second is to execute the close promise callback, after the interaction is complete.
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
+        }
+
+        // We should have received a HEADERS and a RST_STREAM frame.
+        // The RST_STREAM frame is from closing an incomplete stream on the client side.
+        let rstStreamFrame = HTTP2Frame(streamID: 1, payload: .rstStream(.cancel))
+        serverRecorder.receivedFrames.assertFramesMatch([reqFrame, rstStreamFrame])
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 
     func testPipelineRespectsPositionRequest() throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(FailOnWriteHandler()).wait())
@@ -104,6 +144,23 @@ class ConfiguringPipelineTests: XCTestCase {
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
 
+    func testPipelineRespectsPositionRequestWithTargetWindowSize() throws {
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(FailOnWriteHandler()).wait())
+        XCTAssertNoThrow(try self.clientChannel.configureHTTP2Pipeline(mode: .client, position: .first, targetWindowSize: 65535).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535).wait())
+
+        XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        // It's hard to see this, but if we got this far without a failure there is no failure. It means there were no writes
+        // passing through the FailOnWriteHandler, which is what we expect, as we asked for the handlers to be inserted in
+        // front of it. Now we just clean up.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+    
     func testPreambleGetsWrittenOnce() throws {
         // This test checks that the preamble sent by NIOHTTP2Handler is only written once. There are two paths
         // to sending the preamble, in handlerAdded(context:) (if the channel is active) and in channelActive(context:),
@@ -137,6 +194,39 @@ class ConfiguringPipelineTests: XCTestCase {
         XCTAssertNil(try self.serverChannel.readOutbound(as: IOData.self))
     }
 
+    func testPreambleGetsWrittenOnceWithTargetWindowSize() throws {
+        // This test checks that the preamble sent by NIOHTTP2Handler is only written once. There are two paths
+        // to sending the preamble, in handlerAdded(context:) (if the channel is active) and in channelActive(context:),
+        // we want to hit both of these.
+        let connectionPromise: EventLoopPromise<Void> = self.serverChannel.eventLoop.makePromise()
+
+        // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
+        let handlerAdded = connectionPromise.futureResult.flatMap {
+            // Use .server to avoid sending client magic.
+            self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535)
+        }
+
+        self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
+        XCTAssertNoThrow(try handlerAdded.wait())
+
+        let initialSettingsData: IOData? = try self.serverChannel.readOutbound()
+        XCTAssertNotNil(initialSettingsData)
+
+        guard case .some(.byteBuffer(let initialSettingsBuffer)) = initialSettingsData else {
+            XCTFail("Expected ByteBuffer containing the initial SETTINGS frame")
+            return
+        }
+
+        XCTAssertGreaterThanOrEqual(initialSettingsBuffer.readableBytes, 9)
+        // The 4-th byte contains the frame type (4 for SETTINGS).
+        XCTAssertEqual(initialSettingsBuffer.getInteger(at: initialSettingsBuffer.readerIndex + 3, as: UInt8.self), 4)
+        // Bytes 6-9 contain the stream ID; this should be the root stream, 0.
+        XCTAssertEqual(initialSettingsBuffer.getInteger(at: initialSettingsBuffer.readerIndex + 6, as: UInt32.self), 0)
+
+        // We don't expect anything else at this point.
+        XCTAssertNil(try self.serverChannel.readOutbound(as: IOData.self))
+    }
+    
     func testClosingParentChannelClosesStreamChannel() throws {
         /// A channel handler that succeeds a promise when the channel becomes inactive.
         final class InactiveHandler: ChannelInboundHandler {
@@ -155,6 +245,49 @@ class ConfiguringPipelineTests: XCTestCase {
 
         let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client).wait())
         XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server).wait())
+
+        XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        let inactivePromise: EventLoopPromise<Void> = self.clientChannel.eventLoop.makePromise()
+        let streamChannelPromise: EventLoopPromise<Channel> = self.clientChannel.eventLoop.makePromise()
+
+        clientMultiplexer.createStreamChannel(promise: streamChannelPromise) { channel, _ in
+            return channel.pipeline.addHandler(InactiveHandler(inactivePromise: inactivePromise))
+        }
+
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+
+        let streamChannel = try assertNoThrowWithValue(try streamChannelPromise.futureResult.wait())
+        // Close the parent channel, not the stream channel.
+        XCTAssertNoThrow(try self.clientChannel.close().wait())
+
+        XCTAssertNoThrow(try inactivePromise.futureResult.wait())
+        XCTAssertFalse(streamChannel.isActive)
+
+        XCTAssertThrowsError(try self.clientChannel.finish()) { error in
+            XCTAssertEqual(error as? ChannelError, .alreadyClosed)
+        }
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+    
+    func testClosingParentChannelClosesStreamChannelWithTargetWindowSize() throws {
+        /// A channel handler that succeeds a promise when the channel becomes inactive.
+        final class InactiveHandler: ChannelInboundHandler {
+            typealias InboundIn = Any
+
+            let inactivePromise: EventLoopPromise<Void>
+
+            init(inactivePromise: EventLoopPromise<Void>) {
+                self.inactivePromise = inactivePromise
+            }
+
+            func channelInactive(context: ChannelHandlerContext) {
+                inactivePromise.succeed(())
+            }
+        }
+
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535).wait())
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -202,6 +335,68 @@ class ConfiguringPipelineTests: XCTestCase {
 
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client).wait())
+
+        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
+            return channel.pipeline.addHandler(serverRecorder)
+        }.wait())
+
+        // Let's pretent the TLS handler did protocol negotiation for us
+        self.serverChannel.pipeline.fireUserInboundEventTriggered (TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2"))
+
+        XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        // Let's try sending an h2 request.
+        let requestPromise = self.clientChannel.eventLoop.makePromise(of: Void.self)
+        let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/testH2toHTTP1")]), endStream: true)))
+
+        clientHandler.createStreamChannel(promise: nil) { channel, streamID in
+            XCTAssertEqual(streamID, HTTP2StreamID(1))
+            channel.writeAndFlush(reqFrame).whenComplete { _ in channel.close(promise: requestPromise) }
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+
+        // In addition to interacting in memory, we need two loop spins. The first is to execute `createStreamChannel`.
+        // The second is to execute the close promise callback, after the interaction is complete.
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
+        }
+
+        // Assert that the user-provided handler received the
+        // HTTP1 parts corresponding to the H2 message sent
+        XCTAssertEqual(2, serverRecorder.receivedParts.count)
+        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
+            XCTAssertEqual(1, head.headers["host"].count)
+            XCTAssertEqual("localhost", head.headers["host"].first)
+            XCTAssertEqual(.GET, head.method)
+            XCTAssertEqual("/testH2toHTTP1", head.uri)
+        } else {
+            XCTFail("Expected head")
+        }
+        if case .some(.end(_)) = serverRecorder.receivedParts.last {
+        } else {
+            XCTFail("Expected end")
+        }
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+    
+    func testNegotiatedHTTP2BasicPipelineCommunicatesWithTargetWindowSize() throws {
+        final class ErrorHandler: ChannelInboundHandler {
+            typealias InboundIn = Never
+
+            func errorCaught(context: ChannelHandlerContext, error: Error) {
+                context.close(promise: nil)
+            }
+        }
+
+        let serverRecorder = HTTP1ServerRequestRecorderHandler()
+        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).wait())
 
         XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
             return channel.pipeline.addHandler(serverRecorder)
