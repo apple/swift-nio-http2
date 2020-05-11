@@ -612,6 +612,13 @@ extension HTTP2ConnectionStateMachine.ValidationState {
 
 extension NIOHTTP2Handler: CustomStringConvertible {
     public var description: String {
+        return "NIOHTTP2Handler(mode: \(String(describing: self.mode)))"
+    }
+}
+
+
+extension NIOHTTP2Handler: CustomDebugStringConvertible {
+    public var debugDescription: String {
         return """
 NIOHTTP2Handler(
     stateMachine: \(String(describing: self.stateMachine)),
