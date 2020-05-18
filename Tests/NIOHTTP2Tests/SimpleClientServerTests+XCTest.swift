@@ -71,6 +71,7 @@ extension SimpleClientServerTests {
                 ("testForbidsExceedingMaxHeaderListSizeBeforeDecodingSingleFrame", testForbidsExceedingMaxHeaderListSizeBeforeDecodingSingleFrame),
                 ("testNoStreamWindowUpdateOnEndStreamFrameFromServer", testNoStreamWindowUpdateOnEndStreamFrameFromServer),
                 ("testNoStreamWindowUpdateOnEndStreamFrameFromClient", testNoStreamWindowUpdateOnEndStreamFrameFromClient),
+                ("testGreasedSettingsAreTolerated", testGreasedSettingsAreTolerated),
            ]
    }
 }

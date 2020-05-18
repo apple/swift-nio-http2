@@ -1993,4 +1993,30 @@ class HTTP2FrameParserTests: XCTestCase {
         XCTAssertEqual(result2.flowControlledLength, 0)
     }
 
+    func testIgnoreGreaseFrames() throws {
+        // We're going to start by sending a grease frame, with a different frame right behind it. The
+        // decoder should act as though the grease frame simply is not there.
+        let greaseFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x04,           // 3-byte payload length (4 bytes)
+            0x68,                       // 1-byte frame type (0x0b + 0x1f * 3)
+            0x2B,                       // 1-byte flags (random byte)
+            0x7D, 0x3F, 0x9F, 0x49,     // 4-byte stream identifier (random bytes)
+            0x97, 0xF2, 0x1D, 0x77      // 4-byte payload (random bytes)
+        ]
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x0d,           // 3-byte payload length (13 bytes)
+            0x00,                       // 1-byte frame type (DATA)
+            0x01,                       // 1-byte flags (END_STREAM)
+            0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
+        ]
+        let payload = byteBuffer(withStaticString: "Hello, World!")
+
+        var greaseBuf = byteBuffer(withBytes: greaseFrameBytes)
+        greaseBuf.writeBytes(frameBytes)
+        greaseBuf.writeBytes(payload.readableBytesView)
+
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(1),
+                                       payload: .data(.init(data: .byteBuffer(payload), endStream: true)))
+        try assertReadsFrame(from: &greaseBuf, matching: expectedFrame, expectedFlowControlledLength: 13)
+    }
 }

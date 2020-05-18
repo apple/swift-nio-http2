@@ -1888,4 +1888,9 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
         XCTAssertNoThrow(XCTAssertTrue(try self.serverChannel.finish().isClean))
     }
+
+    func testGreasedSettingsAreTolerated() throws {
+        let settings = nioDefaultSettings + [HTTP2Setting(parameter: .init(extensionSetting: 0xfafa), value: 0xf0f0f0f0)]
+        XCTAssertNoThrow(try self.basicHTTP2Connection(clientSettings: settings))
+    }
 }
