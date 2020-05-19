@@ -94,6 +94,7 @@ extension HTTP2FrameParserTests {
                 ("testPushPromiseAndContinuationsInOneBuffer", testPushPromiseAndContinuationsInOneBuffer),
                 ("testMultipleFramesInOneBuffer", testMultipleFramesInOneBuffer),
                 ("testCorrectlyAccountForFlowControlledLength", testCorrectlyAccountForFlowControlledLength),
+                ("testIgnoreGreaseFrames", testIgnoreGreaseFrames),
            ]
    }
 }

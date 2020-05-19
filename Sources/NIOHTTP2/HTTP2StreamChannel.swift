@@ -136,7 +136,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.streamID = streamID
         self.multiplexer = multiplexer
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
-        self._isWritable = Atomic(value: true)
+        self._isActiveAtomic = .makeAtomic(value: false)
+        self._isWritable = .makeAtomic(value: true)
         self.state = .idle
         self.writabilityManager = StreamChannelFlowController(highWatermark: outboundBytesHighWatermark,
                                                               lowWatermark: outboundBytesLowWatermark,
@@ -169,10 +170,13 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
 
         f.whenFailure { (error: Error) in
-            if self.state != .idle {
-                self.closedWhileOpen()
-            } else {
+            switch self.state {
+            case .idle, .localActive, .closed:
+                // The stream isn't open on the network, nothing to close.
                 self.errorEncountered(error: error)
+            case .remoteActive, .active, .closing, .closingNeverActivated:
+                // In all of these states the stream is still on the network and we may need to take action.
+                self.closedWhileOpen()
             }
 
             promise?.fail(error)
@@ -189,7 +193,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             return
         }
 
-        self.state.activate()
+        self.modifyingState { $0.activate() }
         self.pipeline.fireChannelActive()
         if self.autoRead {
             self.read0()
@@ -204,7 +208,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             self.parent?.writeAndFlush(resetFrame, promise: nil)
             return
         }
-        self.state.networkActive()
+        self.modifyingState { $0.networkActive() }
 
         if self.writabilityManager.isWritable != self._isWritable.load() {
             // We have probably delayed telling the user that this channel isn't writable, but we should do
@@ -302,11 +306,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         return self._isWritable.load()
     }
 
-    private let _isWritable: Atomic<Bool>
+    private let _isWritable: NIOAtomic<Bool>
 
-    public var isActive: Bool {
+    private var _isActive: Bool {
         return self.state == .active || self.state == .closing || self.state == .localActive
     }
+
+    public var isActive: Bool {
+        return self._isActiveAtomic.load()
+    }
+
+    private let _isActiveAtomic: NIOAtomic<Bool>
 
     public var _channelCore: ChannelCore {
         return self
@@ -395,7 +405,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     public func flush0() {
         self.pendingWrites.mark()
 
-        if self.isActive {
+        if self._isActive {
             self.deliverPendingWrites()
         }
     }
@@ -467,7 +477,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             return
         }
 
-        self.state.beginClosing()
+        self.modifyingState { $0.beginClosing() }
         let resetFrame = HTTP2Frame(streamID: self.streamID, payload: .rstStream(.cancel))
         self.receiveOutboundFrame(resetFrame, promise: nil)
         self.multiplexer.childChannelFlush()
@@ -477,7 +487,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         guard self.state != .closed else {
             return
         }
-        self.state.completeClosing()
+        self.modifyingState { $0.completeClosing() }
         self.dropPendingReads()
         self.failPendingWrites(error: ChannelError.eof)
         if let promise = self.pendingClosePromise {
@@ -497,7 +507,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         guard self.state != .closed else {
             return
         }
-        self.state.completeClosing()
+        self.modifyingState { $0.completeClosing() }
         self.dropPendingReads()
         self.failPendingWrites(error: error)
         if let promise = self.pendingClosePromise {
@@ -521,7 +531,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
 
         // If we're not active, we will hold on to these reads.
-        guard self.isActive else {
+        guard self._isActive else {
             return
         }
 
@@ -551,11 +561,27 @@ private extension HTTP2StreamChannel {
         self.pendingReads = CircularBuffer(initialCapacity: 0)
     }
 
-    /// DinitialCapacityreads to the channel.
+    /// Deliver all pending reads to the channel.
     private func deliverPendingReads() {
-        assert(self.isActive)
+        assert(self._isActive)
         while self.pendingReads.count > 0 {
-            self.pipeline.fireChannelRead(NIOAny(self.pendingReads.removeFirst()))
+            let frame = self.pendingReads.removeFirst()
+
+            let dataLength: Int?
+            if case .data(let data) = frame.payload {
+                dataLength = data.data.readableBytes
+            } else {
+                dataLength = nil
+            }
+
+            self.pipeline.fireChannelRead(NIOAny(frame))
+
+            if let size = dataLength, let increment = self.windowManager.bufferedFrameEmitted(size: size) {
+                let frame = HTTP2Frame(streamID: self.streamID, payload: .windowUpdate(windowSizeIncrement: increment))
+                self.receiveOutboundFrame(frame, promise: nil)
+                // This flush should really go away, but we need it for now until we sort out window management.
+                self.multiplexer.childChannelFlush()
+            }
         }
         self.pipeline.fireChannelReadComplete()
     }
@@ -596,8 +622,16 @@ internal extension HTTP2StreamChannel {
         }
 
         if self.unsatisfiedRead {
+            // We don't need to account for this frame in the window manager: it's being delivered
+            // straight into the pipeline.
             self.pipeline.fireChannelRead(NIOAny(frame))
         } else {
+            // Record the size of the frame so that when we receive a window update event our
+            // calculation on whether we emit a WINDOW_UPDATE frame is based on the bytes we have
+            // actually delivered into the pipeline.
+            if case .data(let dataPayload) = frame.payload {
+                self.windowManager.bufferedFrameReceived(size: dataPayload.data.readableBytes)
+            }
             self.pendingReads.append(frame)
         }
     }
@@ -675,6 +709,23 @@ internal extension HTTP2StreamChannel {
             self._isWritable.store(localValue)
             self.pipeline.fireChannelWritabilityChanged()
         }
+    }
+}
+
+extension HTTP2StreamChannel {
+    // A helper function used to ensure that state modification leads to changes in the channel active atomic.
+    private func modifyingState<ReturnType>(_ closure: (inout StreamChannelState) throws -> ReturnType) rethrows -> ReturnType {
+        defer {
+            self._isActiveAtomic.store(self._isActive)
+        }
+        return try closure(&self.state)
+    }
+}
+
+// MARK: Custom String Convertible
+extension HTTP2StreamChannel {
+    public var description: String {
+        return "HTTP2StreamChannel(streamID: \(self.streamID), isActive: \(self.isActive), isWritable: \(self.isWritable))"
     }
 }
 

@@ -500,25 +500,15 @@ class HPACKCodingTests: XCTestCase {
             XCTAssertEqual(err.allowedSize, 4096)
         }
         
-        do {
-            _ = try decoder.decodeHeaders(from: &request3)
-            XCTFail("Decode should have failed with InvalidDynamicTableSize")
-        } catch _ as NIOHPACKErrors.InvalidDynamicTableSize {
-            // this is expected
-        } catch {
-            XCTFail("Unexpected error: \(error)")
+        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request3)) {error in
+            XCTAssertTrue(error is NIOHPACKErrors.InvalidDynamicTableSize)
         }
         
         // 5 - Decoder will not accept a table size update unless it appears at the start of a header block.
         decoder.headerTable.dynamicTable.clear()
-        
-        do {
-            _ = try decoder.decodeHeaders(from: &request4)
-            XCTFail("Decode should have failed with IllegalDynamicTableSizeChange")
-        } catch _ as NIOHPACKErrors.IllegalDynamicTableSizeChange {
-            // this is expected
-        } catch {
-            XCTFail("Unexpected error: \(error)")
+
+        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request4)) {error in
+            XCTAssertTrue(error is NIOHPACKErrors.IllegalDynamicTableSizeChange)
         }
     }
     
@@ -579,6 +569,20 @@ class HPACKCodingTests: XCTestCase {
         
         XCTAssertEqual(headers["set-cookie"], ["abcdefg,hijklmn,opqrst"])
         XCTAssertEqual(headers[canonicalForm: "set-cookie"], ["abcdefg,hijklmn,opqrst"])
+    }
+
+    func testHPACKHeadersFirst() throws {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            ("foo", "bar"),
+            ("foo", "baz"),
+            ("custom-key", "value-1,value-2")
+        ])
+
+        XCTAssertEqual(headers.first(name: ":method"), "GET")
+        XCTAssertEqual(headers.first(name: "Foo"), "bar")
+        XCTAssertEqual(headers.first(name: "custom-key"), "value-1,value-2")
+        XCTAssertNil(headers.first(name: "not-present"))
     }
 
     func testHPACKHeadersExpressedByDictionaryLiteral() throws {

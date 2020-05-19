@@ -505,7 +505,9 @@ extension NIOHTTP2Handler {
 
         switch stateChange {
         case .streamClosed(let streamClosedData):
+            self.outboundBuffer.connectionWindowSize = streamClosedData.localConnectionWindowSize
             self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason))
+            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: streamClosedData.remoteConnectionWindowSize, outboundWindowSize: streamClosedData.localConnectionWindowSize))
 
             let failedWrites = self.outboundBuffer.streamClosed(streamClosedData.streamID)
             let error = NIOHTTP2Errors.StreamClosed(streamID: streamClosedData.streamID, errorCode: streamClosedData.reason ?? .cancel)
@@ -604,5 +606,34 @@ extension HTTP2ConnectionStateMachine.ValidationState {
         case .disabled:
             self = .disabled
         }
+    }
+}
+
+
+extension NIOHTTP2Handler: CustomStringConvertible {
+    public var description: String {
+        return "NIOHTTP2Handler(mode: \(String(describing: self.mode)))"
+    }
+}
+
+
+extension NIOHTTP2Handler: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        return """
+NIOHTTP2Handler(
+    stateMachine: \(String(describing: self.stateMachine)),
+    frameDecoder: \(String(describing: self.frameDecoder)),
+    frameEncoder: \(String(describing: self.frameEncoder)),
+    writeBuffer: \(String(describing: self.writeBuffer)),
+    inboundEventBuffer: \(String(describing: self.inboundEventBuffer)),
+    outboundBuffer: \(String(describing: self.outboundBuffer)),
+    wroteFrame: \(String(describing: self.wroteFrame)),
+    denialOfServiceValidator: \(String(describing: self.denialOfServiceValidator)),
+    mode: \(String(describing: self.mode)),
+    initialSettings: \(String(describing: self.initialSettings)),
+    channelClosed: \(String(describing: self.channelClosed)),
+    channelWritable: \(String(describing: self.channelWritable))
+)
+"""
     }
 }
