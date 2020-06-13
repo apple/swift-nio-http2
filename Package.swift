@@ -37,6 +37,6 @@ let package = Package(
         .testTarget(name: "NIOHTTP2Tests",
             dependencies: ["NIO", "NIOHTTP1", "NIOHTTP2", "NIOFoundationCompat"]),
         .testTarget(name: "NIOHPACKTests",
-            dependencies: ["NIOHPACK"])
+            dependencies: ["NIOHPACK", "NIO", "NIOFoundationCompat"])
     ]
 )
