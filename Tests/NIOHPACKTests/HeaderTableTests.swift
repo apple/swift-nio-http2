@@ -16,20 +16,27 @@ import XCTest
 import NIO
 @testable import NIOHPACK
 
-func XCTAssertEqualTuple<T1: Equatable, T2: Equatable>(_ expression1: @autoclosure () throws -> (T1, T2)?, _ expression2: @autoclosure () throws -> (T1, T2)?, _ message: @autoclosure () -> String = "", file: StaticString = #file, line: UInt = #line) {
+func XCTAssertEqualTuple<T1: Equatable, T2: Equatable>(_ expression1: @autoclosure () throws -> (T1, T2)?,
+                                                       _ expression2: @autoclosure () throws -> (T1, T2)?,
+                                                       _ message: @autoclosure () -> String = "",
+                                                       file: StaticString = #file, line: UInt = #line) {
     let ex1: (T1, T2)?
     let ex2: (T1, T2)?
     do {
         ex1 = try expression1()
         ex2 = try expression2()
-    }
-    catch {
+    } catch {
         XCTFail("Unexpected exception: \(error) \(message())", file: file, line: line)
         return
     }
     
-    XCTAssertEqual(ex1?.0, ex2?.0, message(), file: file, line: line)
-    XCTAssertEqual(ex1?.1, ex2?.1, message(), file: file, line: line)
+    let left1 = ex1?.0
+    let right1 = ex2?.0
+    let left2 = ex1?.1
+    let right2 = ex2?.1
+
+    XCTAssertEqual(left1, right1, message(), file: file, line: line)
+    XCTAssertEqual(left2, right2, message(), file: file, line: line)
 }
 
 class HeaderTableTests: XCTestCase {
