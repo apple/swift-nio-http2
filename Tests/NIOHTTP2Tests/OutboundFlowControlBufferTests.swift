@@ -38,7 +38,7 @@ class OutboundFlowControlBufferTests: XCTestCase {
         return self.loop.makePromise()
     }
 
-    private func receivedFrames(file: StaticString = #file, line: UInt = #line) -> [HTTP2Frame] {
+    private func receivedFrames(file: StaticString = (#file), line: UInt = #line) -> [HTTP2Frame] {
         var receivedFrames: [HTTP2Frame] = Array()
 
         while let (bufferedFrame, promise) = self.buffer.nextFlushedWritableFrame() {

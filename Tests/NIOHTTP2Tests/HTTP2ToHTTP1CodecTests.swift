@@ -21,7 +21,7 @@ import NIOHTTP1
 
 extension EmbeddedChannel {
     /// Assert that we received a request head.
-    func assertReceivedServerRequestPart(_ part: HTTPServerRequestPart, file: StaticString = #file, line: UInt = #line) {
+    func assertReceivedServerRequestPart(_ part: HTTPServerRequestPart, file: StaticString = (#file), line: UInt = #line) {
         guard let actualPart: HTTPServerRequestPart = try? assertNoThrowWithValue(self.readInbound()) else {
             XCTFail("No data received", file: file, line: line)
             return
@@ -30,7 +30,7 @@ extension EmbeddedChannel {
         XCTAssertEqual(actualPart, part, file: file, line: line)
     }
 
-    func assertReceivedClientResponsePart(_ part: HTTPClientResponsePart, file: StaticString = #file, line: UInt = #line) {
+    func assertReceivedClientResponsePart(_ part: HTTPClientResponsePart, file: StaticString = (#file), line: UInt = #line) {
         guard let actualPart: HTTPClientResponsePart = try? assertNoThrowWithValue(self.readInbound()) else {
             XCTFail("No data received", file: file, line: line)
             return

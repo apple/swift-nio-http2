@@ -32,7 +32,7 @@ struct NoFrameReceived: Error { }
 extension XCTestCase {
     /// Have two `EmbeddedChannel` objects send and receive data from each other until
     /// they make no forward progress.
-    func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) {
+    func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel, file: StaticString = (#file), line: UInt = #line) {
         var operated: Bool
 
         func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
@@ -62,7 +62,7 @@ extension XCTestCase {
     }
 
     /// Deliver all the bytes currently flushed on `sourceChannel` to `targetChannel`.
-    func deliverAllBytes(from sourceChannel: EmbeddedChannel, to targetChannel: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) {
+    func deliverAllBytes(from sourceChannel: EmbeddedChannel, to targetChannel: EmbeddedChannel, file: StaticString = (#file), line: UInt = #line) {
         // Collect the serialized data.
         var frameBuffer = sourceChannel.allocator.buffer(capacity: 1024)
         while case .some(.byteBuffer(var buf)) = try? assertNoThrowWithValue(sourceChannel.readOutbound(as: IOData.self)) {
@@ -79,7 +79,7 @@ extension XCTestCase {
     /// channel is now in an indeterminate state.
     func assertDoHandshake(client: EmbeddedChannel, server: EmbeddedChannel,
                            clientSettings: [HTTP2Setting] = nioDefaultSettings, serverSettings: [HTTP2Setting] = nioDefaultSettings,
-                           file: StaticString = #file, line: UInt = #line) throws {
+                           file: StaticString = (#file), line: UInt = #line) throws {
         // This connects are not semantically right, but are required in order to activate the
         // channels.
         //! FIXME: Replace with registerAlreadyConfigured0 once EmbeddedChannel propagates this
@@ -114,7 +114,7 @@ extension XCTestCase {
     ///
     /// Optionally returns the frames received.
     @discardableResult
-    func assertFramesRoundTrip(frames: [HTTP2Frame], sender: EmbeddedChannel, receiver: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) throws -> [HTTP2Frame] {
+    func assertFramesRoundTrip(frames: [HTTP2Frame], sender: EmbeddedChannel, receiver: EmbeddedChannel, file: StaticString = (#file), line: UInt = #line) throws -> [HTTP2Frame] {
         for frame in frames {
             sender.write(frame, promise: nil)
         }
@@ -135,7 +135,7 @@ extension XCTestCase {
 
     /// Asserts that sending new settings from `sender` to `receiver` leads to an appropriate settings ACK. Does not assert that no other frames have been
     /// received.
-    func assertSettingsUpdateWithAck(_ newSettings: HTTP2Settings, sender: EmbeddedChannel, receiver: EmbeddedChannel, file: StaticString = #file, line: UInt = #line) throws {
+    func assertSettingsUpdateWithAck(_ newSettings: HTTP2Settings, sender: EmbeddedChannel, receiver: EmbeddedChannel, file: StaticString = (#file), line: UInt = #line) throws {
         let frame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(newSettings)))
         sender.writeAndFlush(frame, promise: nil)
         self.interactInMemory(sender, receiver, file: file, line: line)
@@ -150,7 +150,7 @@ extension EmbeddedChannel {
     /// sent, as this function does not call `interactInMemory`. If no frame has been received, this
     /// will call `XCTFail` and then throw: this will ensure that the test will not proceed past
     /// this point if no frame was received.
-    func assertReceivedFrame(file: StaticString = #file, line: UInt = #line) throws -> HTTP2Frame {
+    func assertReceivedFrame(file: StaticString = (#file), line: UInt = #line) throws -> HTTP2Frame {
         guard let frame: HTTP2Frame = try assertNoThrowWithValue(self.readInbound()) else {
             XCTFail("Did not receive frame", file: file, line: line)
             throw NoFrameReceived()
@@ -160,13 +160,13 @@ extension EmbeddedChannel {
     }
 
     /// Asserts that the connection has not received a HTTP/2 frame at this time.
-    func assertNoFramesReceived(file: StaticString = #file, line: UInt = #line) {
+    func assertNoFramesReceived(file: StaticString = (#file), line: UInt = #line) {
         let content: HTTP2Frame? = try? assertNoThrowWithValue(self.readInbound())
         XCTAssertNil(content, "Received unexpected content: \(content!)", file: file, line: line)
     }
 
     /// Retrieve all sent frames.
-    func sentFrames(file: StaticString = #file, line: UInt = #line) throws -> [HTTP2Frame] {
+    func sentFrames(file: StaticString = (#file), line: UInt = #line) throws -> [HTTP2Frame] {
         var receivedFrames: [HTTP2Frame] = Array()
 
         while let frame = try assertNoThrowWithValue(self.readOutbound(as: HTTP2Frame.self), file: file, line: line) {
@@ -179,7 +179,7 @@ extension EmbeddedChannel {
 
 extension HTTP2Frame {
     /// Asserts that the given frame is a SETTINGS frame.
-    func assertSettingsFrame(expectedSettings: [HTTP2Setting], ack: Bool, file: StaticString = #file, line: UInt = #line) {
+    func assertSettingsFrame(expectedSettings: [HTTP2Setting], ack: Bool, file: StaticString = (#file), line: UInt = #line) {
         guard case .settings(let payload) = self.payload else {
             XCTFail("Expected SETTINGS frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -198,7 +198,7 @@ extension HTTP2Frame {
         }
     }
 
-    func assertSettingsFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertSettingsFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .settings(let payload) = frame.payload else {
             preconditionFailure("Settings frames can never match non-settings frames")
         }
@@ -212,7 +212,7 @@ extension HTTP2Frame {
     }
 
     /// Asserts that this frame matches a give other frame.
-    func assertFrameMatches(this frame: HTTP2Frame, dataFileRegionToByteBuffer: Bool = true, file: StaticString = #file, line: UInt = #line) {
+    func assertFrameMatches(this frame: HTTP2Frame, dataFileRegionToByteBuffer: Bool = true, file: StaticString = (#file), line: UInt = #line) {
         switch frame.payload {
         case .headers:
             self.assertHeadersFrameMatches(this: frame, file: file, line: line)
@@ -240,7 +240,7 @@ extension HTTP2Frame {
     }
 
     /// Asserts that a given frame is a HEADERS frame matching this one.
-    func assertHeadersFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertHeadersFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .headers(let payload) = frame.payload else {
             preconditionFailure("Headers frames can never match non-headers frames")
         }
@@ -263,7 +263,7 @@ extension HTTP2Frame {
     func assertHeadersFrame(endStream: Bool, streamID: HTTP2StreamID, headers: HPACKHeaders,
                             priority: HTTP2Frame.StreamPriorityData? = nil,
                             type: HeadersType? = nil,
-                            file: StaticString = #file, line: UInt = #line) {
+                            file: StaticString = (#file), line: UInt = #line) {
         guard case .headers(let actualPayload) = self.payload else {
             XCTFail("Expected HEADERS frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -300,7 +300,7 @@ extension HTTP2Frame {
     /// Asserts that a given frame is a DATA frame matching this one.
     ///
     /// This function always converts the DATA frame to a bytebuffer, for use with round-trip testing.
-    func assertDataFrameMatches(this frame: HTTP2Frame, fileRegionToByteBuffer: Bool = true, file: StaticString = #file, line: UInt = #line) {
+    func assertDataFrameMatches(this frame: HTTP2Frame, fileRegionToByteBuffer: Bool = true, file: StaticString = (#file), line: UInt = #line) {
         guard case .data(let payload) = frame.payload else {
             XCTFail("Expected DATA frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -333,7 +333,7 @@ extension HTTP2Frame {
     }
 
     /// Assert the given frame is a DATA frame with the appropriate settings.
-    func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: ByteBuffer, file: StaticString = #file, line: UInt = #line) {
+    func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: ByteBuffer, file: StaticString = (#file), line: UInt = #line) {
         guard case .data(let actualFrameBody) = self.payload else {
             XCTFail("Expected DATA frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -353,7 +353,7 @@ extension HTTP2Frame {
 
     }
 
-    func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: FileRegion, file: StaticString = #file, line: UInt = #line) {
+    func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: FileRegion, file: StaticString = (#file), line: UInt = #line) {
         guard case .data(let actualFrameBody) = self.payload else {
             XCTFail("Expected DATA frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -373,7 +373,7 @@ extension HTTP2Frame {
 
     }
 
-    func assertGoAwayFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertGoAwayFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .goAway(let lastStreamID, let errorCode, let opaqueData) = frame.payload else {
             preconditionFailure("Goaway frames can never match non-Goaway frames.")
         }
@@ -384,7 +384,7 @@ extension HTTP2Frame {
                                line: line)
     }
 
-    func assertGoAwayFrame(lastStreamID: HTTP2StreamID, errorCode: UInt32, opaqueData: [UInt8]?, file: StaticString = #file, line: UInt = #line) {
+    func assertGoAwayFrame(lastStreamID: HTTP2StreamID, errorCode: UInt32, opaqueData: [UInt8]?, file: StaticString = (#file), line: UInt = #line) {
         guard case .goAway(let actualLastStreamID, let actualErrorCode, let actualOpaqueData) = self.payload else {
             XCTFail("Expected GOAWAY frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -402,14 +402,14 @@ extension HTTP2Frame {
                        "Unexpected opaque data: expected \(String(describing: opaqueData)), got \(String(describing: byteArrayOpaqueData))", file: file, line: line)
     }
 
-    func assertPingFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertPingFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .ping(let opaqueData, let ack) = frame.payload else {
             preconditionFailure("Ping frames can never match non-Ping frames.")
         }
         self.assertPingFrame(ack: ack, opaqueData: opaqueData, file: file, line: line)
     }
 
-    func assertPingFrame(ack: Bool, opaqueData: HTTP2PingData, file: StaticString = #file, line: UInt = #line) {
+    func assertPingFrame(ack: Bool, opaqueData: HTTP2PingData, file: StaticString = (#file), line: UInt = #line) {
         guard case .ping(let actualPingData, let actualAck) = self.payload else {
             XCTFail("Expected PING frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -421,7 +421,7 @@ extension HTTP2Frame {
                        file: file, line: line)
     }
 
-    func assertWindowUpdateFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertWindowUpdateFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .windowUpdate(let increment) = frame.payload else {
             XCTFail("WINDOW_UPDATE frames can never match non-WINDOW_UPDATE frames", file: file, line: line)
             return
@@ -429,7 +429,7 @@ extension HTTP2Frame {
         self.assertWindowUpdateFrame(streamID: frame.streamID, windowIncrement: increment)
     }
 
-    func assertWindowUpdateFrame(streamID: HTTP2StreamID, windowIncrement: Int, file: StaticString = #file, line: UInt = #line) {
+    func assertWindowUpdateFrame(streamID: HTTP2StreamID, windowIncrement: Int, file: StaticString = (#file), line: UInt = #line) {
         guard case .windowUpdate(let actualWindowIncrement) = self.payload else {
             XCTFail("Expected WINDOW_UPDATE frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -439,14 +439,14 @@ extension HTTP2Frame {
         XCTAssertEqual(windowIncrement, actualWindowIncrement, "Unexpected window increment!", file: file, line: line)
     }
 
-    func assertRstStreamFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertRstStreamFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .rstStream(let errorCode) = frame.payload else {
             preconditionFailure("RstStream frames can never match non-RstStream frames.")
         }
         self.assertRstStreamFrame(streamID: frame.streamID, errorCode: errorCode, file: file, line: line)
     }
 
-    func assertRstStreamFrame(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: StaticString = #file, line: UInt = #line) {
+    func assertRstStreamFrame(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: StaticString = (#file), line: UInt = #line) {
         guard case .rstStream(let actualErrorCode) = self.payload else {
             XCTFail("Expected RST_STREAM frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -456,14 +456,14 @@ extension HTTP2Frame {
         XCTAssertEqual(actualErrorCode, errorCode, "Non-matching error-code: expected \(errorCode), got \(actualErrorCode)", file: file, line: line)
     }
 
-    func assertPriorityFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertPriorityFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .priority(let expectedPriorityData) = frame.payload else {
             preconditionFailure("Priority frames can never match non-Priority frames.")
         }
         self.assertPriorityFrame(streamPriorityData: expectedPriorityData, file: file, line: line)
     }
 
-    func assertPriorityFrame(streamPriorityData: HTTP2Frame.StreamPriorityData, file: StaticString = #file, line: UInt = #line) {
+    func assertPriorityFrame(streamPriorityData: HTTP2Frame.StreamPriorityData, file: StaticString = (#file), line: UInt = #line) {
         guard case .priority(let actualPriorityData) = self.payload else {
             XCTFail("Expected PRIORITY frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -472,14 +472,14 @@ extension HTTP2Frame {
         XCTAssertEqual(streamPriorityData, actualPriorityData, file: file, line: line)
     }
 
-    func assertPushPromiseFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertPushPromiseFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .pushPromise(let payload) = frame.payload else {
             preconditionFailure("PushPromise frames can never match non-PushPromise frames.")
         }
         self.assertPushPromiseFrame(streamID: frame.streamID, pushedStreamID: payload.pushedStreamID, headers: payload.headers, file: file, line: line)
     }
 
-    func assertPushPromiseFrame(streamID: HTTP2StreamID, pushedStreamID: HTTP2StreamID, headers: HPACKHeaders, file: StaticString = #file, line: UInt = #line) {
+    func assertPushPromiseFrame(streamID: HTTP2StreamID, pushedStreamID: HTTP2StreamID, headers: HPACKHeaders, file: StaticString = (#file), line: UInt = #line) {
         guard case .pushPromise(let actualPayload) = self.payload else {
             XCTFail("Expected PUSH_PROMISE frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -490,14 +490,14 @@ extension HTTP2Frame {
         XCTAssertEqual(headers, actualPayload.headers, "Non matching pushed headers: expected \(headers), got \(actualPayload.headers)", file: file, line: line)
     }
 
-    func assertAlternativeServiceFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertAlternativeServiceFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .alternativeService(let origin, let field) = frame.payload else {
             preconditionFailure("AltSvc frames can never match non-AltSvc frames.")
         }
         self.assertAlternativeServiceFrame(origin: origin, field: field, file: file, line: line)
     }
 
-    func assertAlternativeServiceFrame(origin: String?, field: ByteBuffer?, file: StaticString = #file, line: UInt = #line) {
+    func assertAlternativeServiceFrame(origin: String?, field: ByteBuffer?, file: StaticString = (#file), line: UInt = #line) {
         guard case .alternativeService(let actualOrigin, let actualField) = self.payload else {
             XCTFail("Expected ALTSVC frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -514,14 +514,14 @@ extension HTTP2Frame {
                        file: file, line: line)
     }
 
-    func assertOriginFrameMatches(this frame: HTTP2Frame, file: StaticString = #file, line: UInt = #line) {
+    func assertOriginFrameMatches(this frame: HTTP2Frame, file: StaticString = (#file), line: UInt = #line) {
         guard case .origin(let payload) = frame.payload else {
             preconditionFailure("ORIGIN frames can never match non-ORIGIN frames.")
         }
         self.assertOriginFrame(streamID: frame.streamID, origins: payload, file: file, line: line)
     }
 
-    func assertOriginFrame(streamID: HTTP2StreamID, origins: [String], file: StaticString = #file, line: UInt = #line) {
+    func assertOriginFrame(streamID: HTTP2StreamID, origins: [String], file: StaticString = (#file), line: UInt = #line) {
         guard case .origin(let actualPayload) = self.payload else {
             XCTFail("Expected ORIGIN frame, got \(self.payload) instead", file: file, line: line)
             return
@@ -533,7 +533,7 @@ extension HTTP2Frame {
 }
 
 extension Array where Element == HTTP2Frame {
-    func assertFramesMatch<Candidate: Collection>(_ target: Candidate, dataFileRegionToByteBuffer: Bool = true, file: StaticString = #file, line: UInt = #line) where Candidate.Element == HTTP2Frame {
+    func assertFramesMatch<Candidate: Collection>(_ target: Candidate, dataFileRegionToByteBuffer: Bool = true, file: StaticString = (#file), line: UInt = #line) where Candidate.Element == HTTP2Frame {
         guard self.count == target.count else {
             XCTFail("Different numbers of frames: expected \(target.count), got \(self.count)", file: file, line: line)
             return
@@ -618,7 +618,7 @@ extension NIO.NIOFileHandle {
     }
 }
 
-func assertNoThrowWithValue<T>(_ body: @autoclosure () throws -> T, defaultValue: T? = nil, message: String? = nil, file: StaticString = #file, line: UInt = #line) throws -> T {
+func assertNoThrowWithValue<T>(_ body: @autoclosure () throws -> T, defaultValue: T? = nil, message: String? = nil, file: StaticString = (#file), line: UInt = #line) throws -> T {
     do {
         return try body()
     } catch {

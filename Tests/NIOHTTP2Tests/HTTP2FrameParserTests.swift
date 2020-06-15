@@ -44,7 +44,7 @@ class HTTP2FrameParserTests: XCTestCase {
     }
     
     private func assertEqualFrames(_ frame1: HTTP2Frame, _ frame2: HTTP2Frame,
-                                   file: StaticString = #file, line: UInt = #line) {
+                                   file: StaticString = (#file), line: UInt = #line) {
         XCTAssertEqual(frame1.streamID, frame2.streamID, "StreamID mismatch: \(frame1.streamID) != \(frame2.streamID)",
             file: file, line: line)
         
@@ -113,7 +113,7 @@ class HTTP2FrameParserTests: XCTestCase {
     
     private func assertReadsFrame(from bytes: inout ByteBuffer, matching expectedFrame: HTTP2Frame,
                                   expectedFlowControlledLength: Int = 0,
-                                  file: StaticString = #file, line: UInt = #line) throws {
+                                  file: StaticString = (#file), line: UInt = #line) throws {
         let initialByteIndex = bytes.readerIndex
         let totalFrameSize = bytes.readableBytes
         
