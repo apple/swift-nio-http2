@@ -24,32 +24,32 @@ struct TestCaseError: Error { }
 // We need these to work around the fact that neither EventLoopPromise or MarkedCircularBuffer have equatable
 // conformances.
 extension OutboundFrameAction {
-    internal func assertForward(file: StaticString = (#file), line: UInt = #line) {
+    internal func assertForward(file: StaticString = #file, line: UInt = #line) {
         guard case .forward = self else {
-            XCTFail("Expected .forward, got \(self)", file: file, line: line)
+            XCTFail("Expected .forward, got \(self)", file: (file), line: line)
             return
         }
     }
 
-    internal func assertNothing(file: StaticString = (#file), line: UInt = #line) {
+    internal func assertNothing(file: StaticString = #file, line: UInt = #line) {
         guard case .nothing = self else {
-            XCTFail("Expected .nothing, got \(self)", file: file, line: line)
+            XCTFail("Expected .nothing, got \(self)", file: (file), line: line)
             return
         }
     }
 
-    internal func assertForwardAndDrop(file: StaticString = (#file), line: UInt = #line) throws -> (MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed) {
+    internal func assertForwardAndDrop(file: StaticString = #file, line: UInt = #line) throws -> (MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed) {
         guard case .forwardAndDrop(let promises, let error) = self else {
-            XCTFail("Expected .forwardAndDrop, got \(self)", file: file, line: line)
+            XCTFail("Expected .forwardAndDrop, got \(self)", file: (file), line: line)
             throw TestCaseError()
         }
 
         return (promises, error)
     }
 
-    internal func assertSucceedAndDrop(file: StaticString = (#file), line: UInt = #line) throws -> (MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed) {
+    internal func assertSucceedAndDrop(file: StaticString = #file, line: UInt = #line) throws -> (MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed) {
         guard case .succeedAndDrop(let promises, let error) = self else {
-            XCTFail("Expected .succeedAndDrop, got \(self)", file: file, line: line)
+            XCTFail("Expected .succeedAndDrop, got \(self)", file: (file), line: line)
             throw TestCaseError()
         }
 

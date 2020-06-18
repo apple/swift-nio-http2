@@ -44,76 +44,76 @@ class HTTP2FrameParserTests: XCTestCase {
     }
     
     private func assertEqualFrames(_ frame1: HTTP2Frame, _ frame2: HTTP2Frame,
-                                   file: StaticString = (#file), line: UInt = #line) {
+                                   file: StaticString = #file, line: UInt = #line) {
         XCTAssertEqual(frame1.streamID, frame2.streamID, "StreamID mismatch: \(frame1.streamID) != \(frame2.streamID)",
-            file: file, line: line)
+            file: (file), line: line)
         
         switch (frame1.payload, frame2.payload) {
         case let (.data(l), .data(r)):
             switch (l.data, r.data) {
             case let (.byteBuffer(lb), .byteBuffer(rb)):
-                XCTAssertEqual(lb, rb, "Data bytes mismatch: \(lb) != \(rb)", file: file, line: line)
+                XCTAssertEqual(lb, rb, "Data bytes mismatch: \(lb) != \(rb)", file: (file), line: line)
             default:
-                XCTFail("We're not testing with file regions!", file: file, line: line)
+                XCTFail("We're not testing with file regions!", file: (file), line: line)
             }
-            XCTAssertEqual(l.endStream, r.endStream, "endStream mismatch: \(l.endStream) != \(r.endStream)", file: file, line: line)
-            XCTAssertEqual(l.paddingBytes, r.paddingBytes, "paddingBytes mismatch: \(String(describing: l.paddingBytes)) != \(String(describing: r.paddingBytes))", file: file, line: line)
+            XCTAssertEqual(l.endStream, r.endStream, "endStream mismatch: \(l.endStream) != \(r.endStream)", file: (file), line: line)
+            XCTAssertEqual(l.paddingBytes, r.paddingBytes, "paddingBytes mismatch: \(String(describing: l.paddingBytes)) != \(String(describing: r.paddingBytes))", file: (file), line: line)
             
         case let (.headers(l), .headers(r)):
-            XCTAssertEqual(l.headers, r.headers, "Headers mismatch: \(l.headers) != \(r.headers)", file: file, line: line)
+            XCTAssertEqual(l.headers, r.headers, "Headers mismatch: \(l.headers) != \(r.headers)", file: (file), line: line)
             XCTAssertEqual(l.priorityData, r.priorityData, "Priority mismatch: \(String(describing: l.priorityData)) != \(String(describing: r.priorityData))",
-                file: file, line: line)
-            XCTAssertEqual(l.endStream, r.endStream, "endStream mismatch: \(l.endStream) != \(r.endStream)", file: file, line: line)
-            XCTAssertEqual(l.paddingBytes, r.paddingBytes, "paddingBytes mismatch: \(String(describing: l.paddingBytes)) != \(String(describing: r.paddingBytes))", file: file, line: line)
+                file: (file), line: line)
+            XCTAssertEqual(l.endStream, r.endStream, "endStream mismatch: \(l.endStream) != \(r.endStream)", file: (file), line: line)
+            XCTAssertEqual(l.paddingBytes, r.paddingBytes, "paddingBytes mismatch: \(String(describing: l.paddingBytes)) != \(String(describing: r.paddingBytes))", file: (file), line: line)
             
         case let (.priority(lp), .priority(rp)):
-            XCTAssertEqual(lp, rp, "Priority mismatch: \(lp) != \(rp)", file: file, line: line)
+            XCTAssertEqual(lp, rp, "Priority mismatch: \(lp) != \(rp)", file: (file), line: line)
             
         case let (.rstStream(le), .rstStream(re)):
-            XCTAssertEqual(le, re, "Error mismatch: \(le) != \(re)", file: file, line: line)
+            XCTAssertEqual(le, re, "Error mismatch: \(le) != \(re)", file: (file), line: line)
             
         case let (.settings(.settings(ls)), .settings(.settings(rs))):
-            XCTAssertEqual(ls, rs, "Settings mismatch: \(ls) != \(rs)", file: file, line: line)
+            XCTAssertEqual(ls, rs, "Settings mismatch: \(ls) != \(rs)", file: (file), line: line)
 
         case (.settings(.ack), .settings(.ack)):
             // Nothing specific to compare here.
             break
             
         case let (.pushPromise(l), .pushPromise(r)):
-            XCTAssertEqual(l.pushedStreamID, r.pushedStreamID, "Stream ID mismatch: \(l.pushedStreamID) != \(r.pushedStreamID)", file: file, line: line)
-            XCTAssertEqual(l.headers, r.headers, "Headers mismatch: \(l.headers) != \(r.headers)", file: file, line: line)
-            XCTAssertEqual(l.paddingBytes, r.paddingBytes, "paddingBytes mismatch: \(String(describing: l.paddingBytes)) != \(String(describing: r.paddingBytes))", file: file, line: line)
+            XCTAssertEqual(l.pushedStreamID, r.pushedStreamID, "Stream ID mismatch: \(l.pushedStreamID) != \(r.pushedStreamID)", file: (file), line: line)
+            XCTAssertEqual(l.headers, r.headers, "Headers mismatch: \(l.headers) != \(r.headers)", file: (file), line: line)
+            XCTAssertEqual(l.paddingBytes, r.paddingBytes, "paddingBytes mismatch: \(String(describing: l.paddingBytes)) != \(String(describing: r.paddingBytes))", file: (file), line: line)
             
         case let (.ping(lp, la), .ping(rp, ra)):
-            XCTAssertEqual(lp, rp, "Ping data mismatch: \(lp) != \(rp)", file: file, line: line)
-            XCTAssertEqual(la, ra, "Ping ack flag mismatch: \(la) != \(ra)", file: file, line: line)
+            XCTAssertEqual(lp, rp, "Ping data mismatch: \(lp) != \(rp)", file: (file), line: line)
+            XCTAssertEqual(la, ra, "Ping ack flag mismatch: \(la) != \(ra)", file: (file), line: line)
             
         case let (.goAway(ls, le, lo), .goAway(rs, re, ro)):
-            XCTAssertEqual(ls, rs, "Stream ID mismatch: \(ls) != \(rs)", file: file, line: line)
-            XCTAssertEqual(le, re, "Error mismatch: \(le) != \(re)", file: file, line: line)
+            XCTAssertEqual(ls, rs, "Stream ID mismatch: \(ls) != \(rs)", file: (file), line: line)
+            XCTAssertEqual(le, re, "Error mismatch: \(le) != \(re)", file: (file), line: line)
             XCTAssertEqual(lo, ro, "Opaque data mismatch: \(String(describing: lo)) != \(String(describing: ro))",
-                file: file, line: line)
+                file: (file), line: line)
             
         case let (.windowUpdate(ls), .windowUpdate(rs)):
-            XCTAssertEqual(ls, rs, "Window size mismatch: \(ls) != \(rs)", file: file, line: line)
+            XCTAssertEqual(ls, rs, "Window size mismatch: \(ls) != \(rs)", file: (file), line: line)
             
         case let (.alternativeService(lo, lf), .alternativeService(ro, rf)):
             XCTAssertEqual(lo, ro, "Origin mismatch: \(String(describing: lo)), \(String(describing: ro))",
-                file: file, line: line)
+                file: (file), line: line)
             XCTAssertEqual(lf, rf, "ALTSVC field mismatch: \(String(describing: lf)), \(String(describing: rf))",
-                file: file, line: line)
+                file: (file), line: line)
             
         case let (.origin(lo), .origin(ro)):
-            XCTAssertEqual(lo, ro, "Origins mismatch: \(lo) != \(ro)", file: file, line: line)
+            XCTAssertEqual(lo, ro, "Origins mismatch: \(lo) != \(ro)", file: (file), line: line)
             
         default:
-            XCTFail("Payload mismatch: \(frame1.payload) / \(frame2.payload)", file: file, line: line)
+            XCTFail("Payload mismatch: \(frame1.payload) / \(frame2.payload)", file: (file), line: line)
         }
     }
     
     private func assertReadsFrame(from bytes: inout ByteBuffer, matching expectedFrame: HTTP2Frame,
                                   expectedFlowControlledLength: Int = 0,
-                                  file: StaticString = (#file), line: UInt = #line) throws {
+                                  file: StaticString = #file, line: UInt = #line) throws {
         let initialByteIndex = bytes.readerIndex
         let totalFrameSize = bytes.readableBytes
         
@@ -126,8 +126,8 @@ class HTTP2FrameParserTests: XCTestCase {
         // should consume all the bytes
         XCTAssertEqual(bytes.readableBytes, 0)
 
-        self.assertEqualFrames(frame, expectedFrame, file: file, line: line)
-        XCTAssertEqual(actualLength, expectedFlowControlledLength, "Non-matching flow controlled length", file: file, line: line)
+        self.assertEqualFrames(frame, expectedFrame, file: (file), line: line)
+        XCTAssertEqual(actualLength, expectedFlowControlledLength, "Non-matching flow controlled length", file: (file), line: line)
 
         if totalFrameSize > 9 {
             // Now try again with the frame arriving in two separate chunks.
@@ -144,9 +144,9 @@ class HTTP2FrameParserTests: XCTestCase {
             let (realFrame, length) = try decoder.nextFrame()!
             XCTAssertNotNil(realFrame)
 
-            self.assertEqualFrames(realFrame, expectedFrame, file: file, line: line)
+            self.assertEqualFrames(realFrame, expectedFrame, file: (file), line: line)
             XCTAssertEqual(length, expectedFlowControlledLength, "Non-matching flow controlled length in parts",
-                           file: file, line: line)
+                           file: (file), line: line)
         }
     }
     
