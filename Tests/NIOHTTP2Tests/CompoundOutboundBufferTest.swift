@@ -367,7 +367,7 @@ extension CompoundOutboundBufferTest {
 }
 
 extension CompoundOutboundBuffer {
-    fileprivate mutating func receivedFrames(file: StaticString = (#file), line: UInt = #line) -> [HTTP2Frame] {
+    fileprivate mutating func receivedFrames(file: StaticString = #file, line: UInt = #line) -> [HTTP2Frame] {
         var receivedFrames: [HTTP2Frame] = Array()
 
         loop: while true {
@@ -379,7 +379,7 @@ extension CompoundOutboundBuffer {
                 promise?.succeed(())
             case .error(let promise, let error):
                 promise?.fail(error)
-                XCTFail("Caught error: \(error)", file: file, line: line)
+                XCTFail("Caught error: \(error)", file: (file), line: line)
             }
         }
 
@@ -388,21 +388,21 @@ extension CompoundOutboundBuffer {
 }
 
 extension CompoundOutboundBuffer.FlushedWritableFrameResult {
-    internal func assertNoFrame(file: StaticString = (#file), line: UInt = #line) {
+    internal func assertNoFrame(file: StaticString = #file, line: UInt = #line) {
         guard case .noFrame = self else {
-            XCTFail("Expected .noFrame, got \(self)", file: file, line: line)
+            XCTFail("Expected .noFrame, got \(self)", file: (file), line: line)
             return
         }
     }
 
-    internal func assertError<ErrorType: Error & Equatable>(_ error: ErrorType, file: StaticString = (#file), line: UInt = #line) {
+    internal func assertError<ErrorType: Error & Equatable>(_ error: ErrorType, file: StaticString = #file, line: UInt = #line) {
         guard case .error(let promise, let thrownError) = self else {
-            XCTFail("Expected .error, got \(self)", file: file, line: line)
+            XCTFail("Expected .error, got \(self)", file: (file), line: line)
             return
         }
 
         guard let castError = thrownError as? ErrorType, castError == error else {
-            XCTFail("Expected \(error), got \(thrownError)", file: file, line: line)
+            XCTFail("Expected \(error), got \(thrownError)", file: (file), line: line)
             return
         }
 

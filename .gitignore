@@ -6,4 +6,6 @@ Package.pins
 Package.resolved
 *.pem
 DerivedData
+.swiftpm
+Tests/hpack-test-case
 
