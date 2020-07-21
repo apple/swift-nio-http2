@@ -1794,4 +1794,38 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         self.channel.embeddedEventLoop.run()
     }
 
+    func testInboundChannelWindowSizeIsCustomisable() throws {
+        let targetWindowSize = 1 << 18
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
+                                                 channel: self.channel,
+                                                 targetWindowSize: targetWindowSize) { (channel, streamID) in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5)).wait())
+
+        // Ok, create an inbound channel.
+        let frame = HTTP2Frame(streamID: HTTP2StreamID(1), payload: .headers(.init(headers: HPACKHeaders())))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+
+        // Now claim that the window got consumed. Nothing happens.
+        XCTAssertNoThrow(try XCTAssertNil(self.channel.readOutbound(as: HTTP2Frame.self)))
+        var windowEvent = NIOHTTP2WindowUpdatedEvent(streamID: 1, inboundWindowSize: (targetWindowSize / 2) + 1, outboundWindowSize: nil)
+        channel.pipeline.fireUserInboundEventTriggered(windowEvent)
+        XCTAssertNoThrow(try XCTAssertNil(self.channel.readOutbound(as: HTTP2Frame.self)))
+
+        // Consume the last byte.
+        windowEvent = NIOHTTP2WindowUpdatedEvent(streamID: 1, inboundWindowSize: (targetWindowSize / 2), outboundWindowSize: nil)
+        channel.pipeline.fireUserInboundEventTriggered(windowEvent)
+        guard let receivedFrame = try assertNoThrowWithValue(self.channel.readOutbound(as: HTTP2Frame.self)) else {
+            XCTFail("No frame received")
+            return
+        }
+
+        receivedFrame.assertWindowUpdateFrame(streamID: 1, windowIncrement: targetWindowSize / 2)
+        XCTAssertNoThrow(try channel.finish(acceptAlreadyClosed: false))
+    }
+
 }

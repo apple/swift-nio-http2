@@ -79,7 +79,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                                              parent: self.channel,
                                              multiplexer: self,
                                              streamID: streamID,
-                                             targetWindowSize: 65535,
+                                             targetWindowSize: Int32(self.targetWindowSize),
                                              outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
                                              outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark)
             self.streams[streamID] = channel

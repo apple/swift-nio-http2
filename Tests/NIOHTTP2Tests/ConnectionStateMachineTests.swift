@@ -23,7 +23,7 @@ func assertSucceeds(_ body: @autoclosure () -> StateMachineResult, file: StaticS
     case .succeed:
         return
     case let result:
-        XCTFail("Result \(result)", file: file, line: line)
+        XCTFail("Result \(result)", file: (file), line: line)
     }
 }
 
@@ -33,7 +33,7 @@ func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> Stat
     case .connectionError(underlyingError: let error, type: type):
         return error
     case let result:
-        XCTFail("Expected connection error type \(type), got \(result)", file: file, line: line)
+        XCTFail("Expected connection error type \(type), got \(result)", file: (file), line: line)
         return nil
     }
 }
@@ -44,7 +44,7 @@ func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMac
     case .streamError(streamID: _, underlyingError: let error, type: type):
         return error
     case let result:
-        XCTFail("Expected stream error type \(type), got \(result)", file: file, line: line)
+        XCTFail("Expected stream error type \(type), got \(result)", file: (file), line: line)
         return nil
     }
 }
@@ -59,11 +59,11 @@ func assertBadStreamStateTransition(type: NIOHTTP2StreamState, _ body: @autoclos
     case .connectionError(let underlyingError as NIOHTTP2Errors.BadStreamStateTransition, _):
         error = underlyingError
     default:
-        XCTFail("Unexpected result \(body().result)", file: file, line: line)
+        XCTFail("Unexpected result \(body().result)", file: (file), line: line)
         return nil
     }
 
-    XCTAssertEqual(error.fromState, type, file: file, line: line)
+    XCTAssertEqual(error.fromState, type, file: (file), line: line)
     
     return error
 }
@@ -73,40 +73,40 @@ func assertIgnored(_ body: @autoclosure () -> StateMachineResult, file: StaticSt
     case .ignoreFrame:
         return
     case let result:
-        XCTFail("Expected to ignore frame, got \(result)", file: file, line: line)
+        XCTFail("Expected to ignore frame, got \(result)", file: (file), line: line)
     }
 }
 
 func assertSucceeds(_ body: @autoclosure () -> (StateMachineResultWithEffect, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
-    return assertSucceeds(body().0, file: file, line: line)
+    return assertSucceeds(body().0, file: (file), line: line)
 }
 
 func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> (StateMachineResultWithEffect, PostFrameOperation), file: StaticString = #file, line: UInt = #line) {
-    assertConnectionError(type: type, body().0, file: file, line: line)
+    assertConnectionError(type: type, body().0, file: (file), line: line)
 }
 
 func assertSucceeds(_ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
-    return assertSucceeds(body().result, file: file, line: line)
+    return assertSucceeds(body().result, file: (file), line: line)
 }
 
 @discardableResult
 func assertConnectionError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) -> Error? {
     // Errors must always lead to noChange.
     let result = body()
-    return assertConnectionError(type: type, result.result, file: file, line: line)
+    return assertConnectionError(type: type, result.result, file: (file), line: line)
 }
 
 @discardableResult
 func assertStreamError(type: HTTP2ErrorCode, _ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) -> Error? {
     // Errors must always lead to noChange.
     let result = body()
-    return assertStreamError(type: type, result.result, file: file, line: line)
+    return assertStreamError(type: type, result.result, file: (file), line: line)
 }
 
 func assertIgnored(_ body: @autoclosure () -> StateMachineResultWithEffect, file: StaticString = #file, line: UInt = #line) {
     // Ignored frames must always lead to noChange.
     let result = body()
-    assertIgnored(result.result, file: file, line: line)
+    assertIgnored(result.result, file: (file), line: line)
 }
 
 func assertGoawaySucceeds(_ body: @autoclosure () -> StateMachineResultWithEffect, droppingStreams: [HTTP2StreamID]?, file: StaticString = #file, line: UInt = #line) {
@@ -114,12 +114,12 @@ func assertGoawaySucceeds(_ body: @autoclosure () -> StateMachineResultWithEffec
 
     if case .some(.bulkStreamClosure(let closedStreamsEvent)) = result.effect {
         XCTAssertEqual(closedStreamsEvent.closedStreams.sorted(), droppingStreams?.sorted(),
-                       "GOAWAY closed unexpected streams: expected \(String(describing: droppingStreams)), got \(closedStreamsEvent.closedStreams)", file: file, line: line)
+                       "GOAWAY closed unexpected streams: expected \(String(describing: droppingStreams)), got \(closedStreamsEvent.closedStreams)", file: (file), line: line)
     } else {
-        XCTAssertNil(droppingStreams, "GOAWAY did not close streams, but expected \(String(describing: droppingStreams))", file: file, line: line)
+        XCTAssertNil(droppingStreams, "GOAWAY did not close streams, but expected \(String(describing: droppingStreams))", file: (file), line: line)
     }
 
-    assertSucceeds(result.result, file: file, line: line)
+    assertSucceeds(result.result, file: (file), line: line)
 }
 
 
@@ -176,8 +176,8 @@ class ConnectionStateMachineTests: XCTestCase {
         }
 
         // Server sends a reset.
-        assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose, file: file, line: line)
-        assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose, file: file, line: line)
+        assertGoawaySucceeds(self.server.sendGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose, file: (file), line: line)
+        assertGoawaySucceeds(self.client.receiveGoaway(lastStreamID: lastStreamID), droppingStreams: expectedToClose, file: (file), line: line)
     }
 
     private func setupClientGoaway(clientStreamID: HTTP2StreamID, streamsToOpen: [HTTP2StreamID], lastStreamID: HTTP2StreamID, expectedToClose: [HTTP2StreamID]?, file: StaticString = #file, line: UInt = #line) {
@@ -1327,15 +1327,15 @@ class ConnectionStateMachineTests: XCTestCase {
             var client = client
             var server = server
 
-            assertSucceeds(client.sendWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
-            assertSucceeds(server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
-            assertStreamError(type: .flowControlError, client.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
-            assertStreamError(type: .flowControlError, server.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
+            assertSucceeds(client.sendWindowUpdate(streamID: streamOne, windowIncrement: 10), file: (file), line: line)
+            assertSucceeds(server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10), file: (file), line: line)
+            assertStreamError(type: .flowControlError, client.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: (file), line: line)
+            assertStreamError(type: .flowControlError, server.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: (file), line: line)
 
-            assertSucceeds(server.sendWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
-            assertSucceeds(client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10), file: file, line: line)
-            assertStreamError(type: .flowControlError, server.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
-            assertStreamError(type: .flowControlError, client.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: file, line: line)
+            assertSucceeds(server.sendWindowUpdate(streamID: streamOne, windowIncrement: 10), file: (file), line: line)
+            assertSucceeds(client.receiveWindowUpdate(streamID: streamOne, windowIncrement: 10), file: (file), line: line)
+            assertStreamError(type: .flowControlError, server.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: (file), line: line)
+            assertStreamError(type: .flowControlError, client.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)), file: (file), line: line)
         }
 
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))

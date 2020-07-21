@@ -26,21 +26,21 @@ struct TestCaseError: Error { }
 extension OutboundFrameAction {
     internal func assertForward(file: StaticString = #file, line: UInt = #line) {
         guard case .forward = self else {
-            XCTFail("Expected .forward, got \(self)", file: file, line: line)
+            XCTFail("Expected .forward, got \(self)", file: (file), line: line)
             return
         }
     }
 
     internal func assertNothing(file: StaticString = #file, line: UInt = #line) {
         guard case .nothing = self else {
-            XCTFail("Expected .nothing, got \(self)", file: file, line: line)
+            XCTFail("Expected .nothing, got \(self)", file: (file), line: line)
             return
         }
     }
 
     internal func assertForwardAndDrop(file: StaticString = #file, line: UInt = #line) throws -> (MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed) {
         guard case .forwardAndDrop(let promises, let error) = self else {
-            XCTFail("Expected .forwardAndDrop, got \(self)", file: file, line: line)
+            XCTFail("Expected .forwardAndDrop, got \(self)", file: (file), line: line)
             throw TestCaseError()
         }
 
@@ -49,7 +49,7 @@ extension OutboundFrameAction {
 
     internal func assertSucceedAndDrop(file: StaticString = #file, line: UInt = #line) throws -> (MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>, NIOHTTP2Errors.StreamClosed) {
         guard case .succeedAndDrop(let promises, let error) = self else {
-            XCTFail("Expected .succeedAndDrop, got \(self)", file: file, line: line)
+            XCTFail("Expected .succeedAndDrop, got \(self)", file: (file), line: line)
             throw TestCaseError()
         }
 

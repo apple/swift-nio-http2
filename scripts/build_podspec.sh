@@ -41,8 +41,8 @@ while getopts ":u" opt; do
 done
 shift "$((OPTIND-1))"
 
-if [[ $# -eq 0 ]]; then
-  echo "Must provide target version"
+if [[ $# -lt 2 ]]; then
+  usage
   exit 1
 fi
 
@@ -50,6 +50,16 @@ version=$1
 
 # Current SwiftNIO Version to add as dependency in the .podspec
 nio_version=$2
+if [[ $nio_version =~ ^([0-9]+)\. ]]; then
+  # Extract and incremenet the major version to use an upper bound on the
+  # version requirement (we can't use '~>' as it means 'up to the next
+  # major' if you specify x.y and 'up to the next minor' if you specify x.y.z).
+  next_major_version=$((${BASH_REMATCH[1]} + 1))
+else
+  echo "Invalid NIO version '$nio_version'"
+  exit 1
+fi
+
 newline=$'\n'
 
 here="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -76,7 +86,7 @@ for target in "${targets[@]}"; do
     if [ "$raw_dependency" == "SwiftNIOHPACK" ]; then
       dependencies+=( "${newline}  s.dependency '$raw_dependency', s.version.to_s" )
     else
-      dependencies+=( "${newline}  s.dependency '$raw_dependency', '$nio_version'" )
+      dependencies+=( "${newline}  s.dependency '$raw_dependency', '>= $nio_version', '< $next_major_version'" )
     fi
   done < <("${here}/list_topsorted_dependencies.sh" -d "${target#Swift}" | sed 's/^NIO/SwiftNIO/')
 
@@ -106,7 +116,7 @@ EOF
   pod repo update # last chance of getting the latest versions of previous pushed pods
   if $upload; then
     echo "Uploading ${tmpdir}/${target}.podspec"
-    pod trunk push "${tmpdir}/${target}.podspec"
+    pod trunk push "${tmpdir}/${target}.podspec" --synchronous
   fi
 
 done

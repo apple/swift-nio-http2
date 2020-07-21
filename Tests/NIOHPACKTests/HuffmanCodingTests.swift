@@ -24,10 +24,10 @@ class HuffmanCodingTests: XCTestCase {
     // MARK: - Helper Methods
     
     func assertEqualContents(_ buffer: ByteBuffer, _ array: [UInt8], file: StaticString = #file, line: UInt = #line) {
-        XCTAssertEqual(buffer.readableBytes, array.count, "Buffer and array are different sizes", file: file, line: line)
+        XCTAssertEqual(buffer.readableBytes, array.count, "Buffer and array are different sizes", file: (file), line: line)
         buffer.withUnsafeReadableBytes { bufPtr in
             array.withUnsafeBytes { arrayPtr in
-                XCTAssertEqual(memcmp(bufPtr.baseAddress!, arrayPtr.baseAddress!, arrayPtr.count), 0, "Buffer contents don't match", file: file, line: line)
+                XCTAssertEqual(memcmp(bufPtr.baseAddress!, arrayPtr.baseAddress!, arrayPtr.count), 0, "Buffer contents don't match", file: (file), line: line)
             }
         }
     }
@@ -37,12 +37,12 @@ class HuffmanCodingTests: XCTestCase {
         
         let utf8 = string.utf8
         let numBytes = self.scratchBuffer.writeHuffmanEncoded(bytes: utf8)
-        XCTAssertEqual(numBytes, bytes.count, "Wrong length encoding '\(string)'", file: file, line: line)
+        XCTAssertEqual(numBytes, bytes.count, "Wrong length encoding '\(string)'", file: (file), line: line)
         
-        assertEqualContents(self.scratchBuffer, bytes, file: file, line: line)
+        assertEqualContents(self.scratchBuffer, bytes, file: (file), line: line)
 
         let decoded = try scratchBuffer.getHuffmanEncodedString(at: self.scratchBuffer.readerIndex, length: self.scratchBuffer.readableBytes)
-        XCTAssertEqual(decoded, string, "Failed to decode '\(string)'", file: file, line: line)
+        XCTAssertEqual(decoded, string, "Failed to decode '\(string)'", file: (file), line: line)
     }
 
     func testBasicCoding() throws {
