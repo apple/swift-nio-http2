@@ -24,27 +24,27 @@ services:
 
   sanity:
     <<: *common
-    command: /bin/bash -cl "./scripts/sanity.sh"
+    command: /bin/bash -xcl "./scripts/sanity.sh"
 
   unit-tests:
     <<: *common
-    command: /bin/bash -cl "swift test -Xswiftc -warnings-as-errors"
+    command: /bin/bash -xcl "swift test -Xswiftc -warnings-as-errors"
 
   integration-tests:
     <<: *common
-    command: /bin/bash -cl "./scripts/integration_tests.sh"
+    command: /bin/bash -xcl "./scripts/integration_tests.sh"
 
   performance-test:
     <<: *common
-    command: /bin/bash -cl "swift build -c release && ./.build/release/NIOHTTP2PerformanceTester"
+    command: /bin/bash -xcl "swift build -c release && ./.build/release/NIOHTTP2PerformanceTester"
 
   h2spec:
     <<: *common
-    command: /bin/bash -cl "./scripts/test_h2spec.sh"
+    command: /bin/bash -xcl "./scripts/test_h2spec.sh"
 
   test:
     <<: *common
-    command: /bin/bash -cl "swift test -Xswiftc -warnings-as-errors && ./scripts/integration_tests.sh && ./scripts/test_h2spec.sh"
+    command: /bin/bash -xcl "swift test -Xswiftc -warnings-as-errors $${SANITIZER_ARG-} && ./scripts/integration_tests.sh && ./scripts/test_h2spec.sh $${SANITIZER_ARG-}"
 
   # util
 
