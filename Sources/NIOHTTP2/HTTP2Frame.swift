@@ -253,6 +253,10 @@ public struct HTTP2Frame {
 }
 
 extension HTTP2Frame: HTTP2FrameConvertible, HTTP2FramePayloadConvertible {
+    init(http2Frame: HTTP2Frame) {
+        self = http2Frame
+    }
+
     func makeHTTP2Frame(streamID: HTTP2StreamID) -> HTTP2Frame {
         assert(self.streamID == streamID, "streamID does not match")
         return self
@@ -262,6 +266,10 @@ extension HTTP2Frame: HTTP2FrameConvertible, HTTP2FramePayloadConvertible {
 extension HTTP2Frame.FramePayload: HTTP2FrameConvertible, HTTP2FramePayloadConvertible {
     var payload: HTTP2Frame.FramePayload {
         return self
+    }
+
+    init(http2Frame: HTTP2Frame) {
+        self = http2Frame.payload
     }
 
     func makeHTTP2Frame(streamID: HTTP2StreamID) -> HTTP2Frame {

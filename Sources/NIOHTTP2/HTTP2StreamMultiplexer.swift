@@ -318,12 +318,12 @@ extension HTTP2StreamMultiplexer {
 
 // MARK:- Child to parent calls
 extension HTTP2StreamMultiplexer {
-    internal func childChannelClosed(_ channel: MultiplexerAbstractChannel) {
-        if let streamID = channel.streamID {
-            self.streams.removeValue(forKey: streamID)
-        } else {
-            preconditionFailure("Child channels always have stream IDs right now.")
-        }
+    internal func childChannelClosed(streamID: HTTP2StreamID) {
+        self.streams.removeValue(forKey: streamID)
+    }
+
+    internal func childChannelClosed(channelID: ObjectIdentifier) {
+        preconditionFailure("We don't currently support closing channels by 'channelID'")
     }
 
     internal func childChannelWrite(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
