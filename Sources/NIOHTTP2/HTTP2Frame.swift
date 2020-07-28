@@ -251,3 +251,20 @@ public struct HTTP2Frame {
         self.streamID = streamID
     }
 }
+
+extension HTTP2Frame: HTTP2FrameConvertible, HTTP2FramePayloadConvertible {
+    func makeHTTP2Frame(streamID: HTTP2StreamID) -> HTTP2Frame {
+        assert(self.streamID == streamID, "streamID does not match")
+        return self
+    }
+}
+
+extension HTTP2Frame.FramePayload: HTTP2FrameConvertible, HTTP2FramePayloadConvertible {
+    var payload: HTTP2Frame.FramePayload {
+        return self
+    }
+
+    func makeHTTP2Frame(streamID: HTTP2StreamID) -> HTTP2Frame {
+        return HTTP2Frame(streamID: streamID, payload: self)
+    }
+}
