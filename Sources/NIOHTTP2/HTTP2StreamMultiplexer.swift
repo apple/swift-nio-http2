@@ -27,7 +27,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public typealias OutboundIn = HTTP2Frame
     public typealias OutboundOut = HTTP2Frame
 
-    private var streams: [HTTP2StreamID: HTTP2StreamChannel] = [:]
+    private var streams: [HTTP2StreamID: MultiplexerAbstractChannel] = [:]
     private let inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?
     private let channel: Channel
     private var context: ChannelHandlerContext!
@@ -75,13 +75,15 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                 self.didReadChannels.append(channel)
             }
         } else if case .headers = frame.payload {
-            let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
-                                             parent: self.channel,
-                                             multiplexer: self,
-                                             streamID: streamID,
-                                             targetWindowSize: Int32(self.targetWindowSize),
-                                             outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                                             outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark)
+            let channel = MultiplexerAbstractChannel(
+                allocator: self.channel.allocator,
+                parent: self.channel,
+                multiplexer: self,
+                streamID: streamID,
+                targetWindowSize: Int32(self.targetWindowSize),
+                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
+                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark
+            )
             self.streams[streamID] = channel
             channel.configure(initializer: self.inboundStreamStateInitializer, userPromise: nil)
             channel.receiveInboundFrame(frame)
@@ -299,13 +301,15 @@ extension HTTP2StreamMultiplexer {
         self.channel.eventLoop.execute {
             let streamID = self.nextOutboundStreamID
             self.nextOutboundStreamID = HTTP2StreamID(Int32(streamID) + 2)
-            let channel = HTTP2StreamChannel(allocator: self.channel.allocator,
-                                             parent: self.channel,
-                                             multiplexer: self,
-                                             streamID: streamID,
-                                             targetWindowSize: Int32(self.targetWindowSize),
-                                             outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                                             outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark)
+            let channel = MultiplexerAbstractChannel(
+                allocator: self.channel.allocator,
+                parent: self.channel,
+                multiplexer: self,
+                streamID: streamID,
+                targetWindowSize: Int32(self.targetWindowSize),
+                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
+                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark
+            )
             self.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
         }
