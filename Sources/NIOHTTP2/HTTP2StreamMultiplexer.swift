@@ -299,8 +299,7 @@ extension HTTP2StreamMultiplexer {
     ///         `ChannelPipeline` for the newly created channel.
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
         self.channel.eventLoop.execute {
-            let streamID = self.nextOutboundStreamID
-            self.nextOutboundStreamID = HTTP2StreamID(Int32(streamID) + 2)
+            let streamID = self.requestStreamID()
             let channel = MultiplexerAbstractChannel(
                 allocator: self.channel.allocator,
                 parent: self.channel,
@@ -319,8 +318,12 @@ extension HTTP2StreamMultiplexer {
 
 // MARK:- Child to parent calls
 extension HTTP2StreamMultiplexer {
-    internal func childChannelClosed(streamID: HTTP2StreamID) {
-        self.streams.removeValue(forKey: streamID)
+    internal func childChannelClosed(_ channel: MultiplexerAbstractChannel) {
+        if let streamID = channel.streamID {
+            self.streams.removeValue(forKey: streamID)
+        } else {
+            preconditionFailure("Child channels always have stream IDs right now.")
+        }
     }
 
     internal func childChannelWrite(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
@@ -329,5 +332,11 @@ extension HTTP2StreamMultiplexer {
 
     internal func childChannelFlush() {
         self.flush(context: context)
+    }
+
+    internal func requestStreamID() -> HTTP2StreamID {
+        let streamID = self.nextOutboundStreamID
+        self.nextOutboundStreamID = HTTP2StreamID(Int32(streamID) + 2)
+        return streamID
     }
 }
