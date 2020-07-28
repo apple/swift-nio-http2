@@ -301,6 +301,11 @@ public enum NIOHTTP2Errors {
     public struct ExcessivelyLargeHeaderBlock: NIOHTTP2Error {
         public init() { }
     }
+
+    /// The channel does not yet have a stream ID, as it has not reached the network yet.
+    public struct NoStreamIDAvailable: NIOHTTP2Error {
+        public init() { }
+    }
 }
 
 

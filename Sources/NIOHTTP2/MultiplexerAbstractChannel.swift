@@ -41,6 +41,10 @@ struct MultiplexerAbstractChannel {
                                              outboundBytesHighWatermark: outboundBytesHighWatermark,
                                              outboundBytesLowWatermark: outboundBytesLowWatermark))
     }
+
+    init(_ channel: HTTP2StreamChannel) {
+        self.baseChannel = .frameBased(channel)
+    }
 }
 
 extension MultiplexerAbstractChannel {
@@ -51,6 +55,13 @@ extension MultiplexerAbstractChannel {
 
 // MARK: API for HTTP2StreamMultiplexer
 extension MultiplexerAbstractChannel {
+    var streamID: HTTP2StreamID? {
+        switch self.baseChannel {
+        case .frameBased(let base):
+            return base.streamID
+        }
+    }
+
     var inList: Bool {
         switch self.baseChannel {
         case .frameBased(let base):
