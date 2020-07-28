@@ -13,14 +13,14 @@
 //===----------------------------------------------------------------------===//
 
 
-/// A linked list for storing HTTP2StreamChannels.
+/// A linked list for storing MultiplexerAbstractChannels.
 ///
 /// Note that while this object *could* conform to `Sequence`, there is minimal value in doing
 /// that here, as it's so single-use. If we find ourselves needing to expand on this data type
 /// in future we can revisit that idea.
 struct StreamChannelList {
-    private var head: HTTP2StreamChannel?
-    private var tail: HTTP2StreamChannel?
+    private var head: MultiplexerAbstractChannel?
+    private var tail: MultiplexerAbstractChannel?
 }
 
 /// A node for objects stored in an intrusive linked list.
@@ -28,7 +28,7 @@ struct StreamChannelList {
 /// Any object that wishes to be stored in a linked list must embed one of these nodes.
 struct StreamChannelListNode {
     fileprivate enum ListState {
-        case inList(next: HTTP2StreamChannel?)
+        case inList(next: MultiplexerAbstractChannel?)
         case notInList
     }
 
@@ -40,7 +40,7 @@ struct StreamChannelListNode {
 
 extension StreamChannelList {
     /// Append an element to the linked list.
-    mutating func append(_ element: HTTP2StreamChannel) {
+    mutating func append(_ element: MultiplexerAbstractChannel) {
         precondition(!element.inList)
 
         guard case .notInList = element.streamChannelListNode.state else {
@@ -59,7 +59,7 @@ extension StreamChannelList {
         }
     }
 
-    mutating func removeFirst() -> HTTP2StreamChannel? {
+    mutating func removeFirst() -> MultiplexerAbstractChannel? {
         guard let head = self.head else {
             assert(self.tail == nil)
             return nil
@@ -71,7 +71,7 @@ extension StreamChannelList {
 
         self.head = next
         if self.head == nil {
-            assert(self.tail === head)
+            assert(self.tail == head)
             self.tail = nil
         }
 
