@@ -26,20 +26,37 @@ import NIO
 struct MultiplexerAbstractChannel {
     private var baseChannel: BaseChannel
 
+    private init(baseChannel: BaseChannel) {
+        self.baseChannel = baseChannel
+    }
+
     init(allocator: ByteBufferAllocator,
          parent: Channel,
          multiplexer: HTTP2StreamMultiplexer,
-         streamID: HTTP2StreamID,
+         streamID: HTTP2StreamID?,
          targetWindowSize: Int32,
          outboundBytesHighWatermark: Int,
-         outboundBytesLowWatermark: Int) {
-        self.baseChannel = .frameBased(.init(allocator: allocator,
-                                             parent: parent,
-                                             multiplexer: multiplexer,
-                                             streamID: streamID,
-                                             targetWindowSize: targetWindowSize,
-                                             outboundBytesHighWatermark: outboundBytesHighWatermark,
-                                             outboundBytesLowWatermark: outboundBytesLowWatermark))
+         outboundBytesLowWatermark: Int,
+         inboundStreamStateInitializer: InboundStreamStateInitializer) {
+        switch inboundStreamStateInitializer {
+        case .includesStreamID:
+            assert(streamID != nil)
+            self.init(baseChannel: .frameBased(.init(allocator: allocator,
+                                                     parent: parent,
+                                                     multiplexer: multiplexer,
+                                                     streamID: streamID,
+                                                     targetWindowSize: targetWindowSize,
+                                                     outboundBytesHighWatermark: outboundBytesHighWatermark,
+                                                     outboundBytesLowWatermark: outboundBytesLowWatermark)))
+        case .excludesStreamID:
+            self.init(baseChannel: .payloadBased(.init(allocator: allocator,
+                                                       parent: parent,
+                                                       multiplexer: multiplexer,
+                                                       streamID: streamID,
+                                                       targetWindowSize: targetWindowSize,
+                                                       outboundBytesHighWatermark: outboundBytesHighWatermark,
+                                                       outboundBytesLowWatermark: outboundBytesLowWatermark)))
+        }
     }
 }
 
@@ -47,6 +64,11 @@ extension MultiplexerAbstractChannel {
     enum BaseChannel {
         case frameBased(HTTP2FrameBasedStreamChannel)
         case payloadBased(HTTP2PayloadBasedStreamChannel)
+    }
+
+    enum InboundStreamStateInitializer {
+        case includesStreamID(((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?)
+        case excludesStreamID(((Channel) -> EventLoopFuture<Void>)?)
     }
 }
 
@@ -98,12 +120,35 @@ extension MultiplexerAbstractChannel {
         }
     }
 
+    func configureInboundStream(initializer: InboundStreamStateInitializer) {
+        switch (self.baseChannel, initializer) {
+        case (.frameBased(let base), .includesStreamID(let initializer)):
+            base.configure(initializer: initializer, userPromise: nil)
+        case (.payloadBased(let base), .excludesStreamID(let initializer)):
+            base.configure(initializer: initializer, userPromise: nil)
+        case (.frameBased, .excludesStreamID),
+             (.payloadBased, .includesStreamID):
+            // We create the base channel based on the type inbound initializer we receive
+            // in `init`, so this should never happen.
+            preconditionFailure("Invalid base channel and inbound stream state combination")
+        }
+    }
+
     func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
         switch self.baseChannel {
         case .frameBased(let base):
             base.configure(initializer: initializer, userPromise: promise)
         case .payloadBased:
             fatalError("Can't configure a payload based channel with this initializer.")
+        }
+    }
+
+    func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+        switch self.baseChannel {
+        case .frameBased:
+            fatalError("Can't configure a frame based channel with this initializer.")
+        case .payloadBased(let base):
+            base.configure(initializer: initializer, userPromise: promise)
         }
     }
 

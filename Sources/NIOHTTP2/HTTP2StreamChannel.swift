@@ -163,34 +163,66 @@ final class HTTP2StreamChannel<Message: HTTP2FramePayloadConvertible & HTTP2Fram
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        let f = self.parent!.getOption(ChannelOptions.autoRead).flatMap { autoRead -> EventLoopFuture<Void> in
+        self.getAutoReadFromParent().flatMap { autoRead in
             self.autoRead = autoRead
             // This initializer callback can only be invoked if we already have a stream ID.
             // So we force-unwrap here.
             return initializer?(self, self.streamID!) ?? self.eventLoop.makeSucceededFuture(())
         }.map {
-            // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
-            // If parent is not active, we expect to receive a channelActive later.
-            if self.parent!.isActive {
-                self.performActivation()
-            }
+            self.postInitializerActivate(promise: promise)
+        }.whenFailure { error in
+            self.configurationFailed(withError: error, promise: promise)
+        }
+    }
 
-            // We aren't using cascade here to avoid the allocations it causes.
-            promise?.succeed(self)
+    internal func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?){
+        // We need to configure this channel. This involves doing four things:
+        // 1. Setting our autoRead state from the parent
+        // 2. Calling the initializer, if provided.
+        // 3. Activating when complete.
+        // 4. Catching errors if they occur.
+        self.getAutoReadFromParent().flatMap { autoRead in
+            self.autoRead = autoRead
+            return initializer?(self) ?? self.eventLoop.makeSucceededFuture(())
+        }.map {
+            self.postInitializerActivate(promise: promise)
+        }.whenFailure { error in
+            self.configurationFailed(withError: error, promise: promise)
+        }
+    }
+
+    /// Gets the 'autoRead' option from the parent channel.
+    private func getAutoReadFromParent() -> EventLoopFuture<Bool> {
+        // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
+        // Note we also don't set the value here: the additional `map` causes an extra allocation
+        // when using a Swift 5.0 compiler.
+        return self.parent!.getOption(ChannelOptions.autoRead)
+    }
+
+    /// Activates the channel if the parent channel is active and succeeds the given `promise`.
+    private func postInitializerActivate(promise: EventLoopPromise<Channel>?) {
+        // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
+        // If parent is not active, we expect to receive a channelActive later.
+        if self.parent!.isActive {
+            self.performActivation()
         }
 
-        f.whenFailure { (error: Error) in
-            switch self.state {
-            case .idle, .localActive, .closed:
-                // The stream isn't open on the network, nothing to close.
-                self.errorEncountered(error: error)
-            case .remoteActive, .active, .closing, .closingNeverActivated:
-                // In all of these states the stream is still on the network and we may need to take action.
-                self.closedWhileOpen()
-            }
+        // We aren't using cascade here to avoid the allocations it causes.
+        promise?.succeed(self)
+    }
 
-            promise?.fail(error)
+    /// Handle any error that occurred during configuration.
+    private func configurationFailed(withError error: Error, promise: EventLoopPromise<Channel>?) {
+        switch self.state {
+        case .idle, .localActive, .closed:
+            // The stream isn't open on the network, nothing to close.
+            self.errorEncountered(error: error)
+        case .remoteActive, .active, .closing, .closingNeverActivated:
+            // In all of these states the stream is still on the network and we may need to take action.
+            self.closedWhileOpen()
         }
+
+        promise?.fail(error)
     }
 
     /// Activates this channel.
@@ -621,7 +653,7 @@ private extension HTTP2StreamChannel {
 
         // Get a streamID from the multiplexer if we haven't got one already.
         if self.streamID == nil {
-            self.streamID = self.multiplexer.requestStreamID()
+            self.streamID = self.multiplexer.requestStreamID(forChannel: self)
         }
 
         while self.pendingWrites.hasMark {
