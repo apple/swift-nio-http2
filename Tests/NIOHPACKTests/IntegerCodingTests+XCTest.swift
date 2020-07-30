@@ -24,6 +24,7 @@ import XCTest
 
 extension IntegerCodingTests {
 
+   @available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
    static var allTests : [(String, (IntegerCodingTests) -> () throws -> Void)] {
       return [
                 ("testIntegerEncoding", testIntegerEncoding),

@@ -24,6 +24,7 @@ import XCTest
 
 extension HTTP2ToHTTP1CodecTests {
 
+   @available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
    static var allTests : [(String, (HTTP2ToHTTP1CodecTests) -> () throws -> Void)] {
       return [
                 ("testBasicRequestServerSide", testBasicRequestServerSide),
