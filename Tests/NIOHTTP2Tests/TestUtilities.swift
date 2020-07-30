@@ -264,37 +264,9 @@ extension HTTP2Frame {
                             priority: HTTP2Frame.StreamPriorityData? = nil,
                             type: HeadersType? = nil,
                             file: StaticString = #file, line: UInt = #line) {
-        guard case .headers(let actualPayload) = self.payload else {
-            XCTFail("Expected HEADERS frame, got \(self.payload) instead", file: (file), line: line)
-            return
-        }
-
-        XCTAssertEqual(actualPayload.endStream, endStream,
-                       "Unexpected endStream: expected \(endStream), got \(actualPayload.endStream)", file: (file), line: line)
         XCTAssertEqual(self.streamID, streamID,
                        "Unexpected streamID: expected \(streamID), got \(self.streamID)", file: (file), line: line)
-        XCTAssertEqual(headers, actualPayload.headers, "Non-equal headers: expected \(headers), got \(actualPayload.headers)", file: (file), line: line)
-        XCTAssertEqual(priority, actualPayload.priorityData, "Non-equal priorities: expected \(String(describing: priority)), got \(String(describing: actualPayload.priorityData))", file: (file), line: line)
-
-        switch type {
-        case .some(.request):
-            XCTAssertNoThrow(try actualPayload.headers.validateRequestBlock(),
-                             "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
-        case .some(.response):
-            XCTAssertNoThrow(try actualPayload.headers.validateResponseBlock(),
-                             "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
-        case .some(.trailers):
-            XCTAssertNoThrow(try actualPayload.headers.validateTrailersBlock(),
-                             "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
-        case .some(.doNotValidate):
-            () // alright, let's not validate then
-        case .none:
-            XCTAssertTrue((try? actualPayload.headers.validateRequestBlock()) != nil ||
-                (try? actualPayload.headers.validateResponseBlock()) != nil ||
-                (try? actualPayload.headers.validateTrailersBlock()) != nil,
-                          "\(actualPayload.headers) not a valid request/response/trailers header block",
-                file: (file), line: line)
-        }
+        self.payload.assertHeadersPayload(endStream: endStream, headers: headers, priority: priority, type: type, file: file, line: line)
     }
 
     /// Asserts that a given frame is a DATA frame matching this one.
@@ -334,23 +306,9 @@ extension HTTP2Frame {
 
     /// Assert the given frame is a DATA frame with the appropriate settings.
     func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: ByteBuffer, file: StaticString = #file, line: UInt = #line) {
-        guard case .data(let actualFrameBody) = self.payload else {
-            XCTFail("Expected DATA frame, got \(self.payload) instead", file: (file), line: line)
-            return
-        }
-
-        guard case .byteBuffer(let actualPayload) = actualFrameBody.data else {
-            XCTFail("Expected ByteBuffer DATA frame, got \(actualFrameBody.data) instead", file: (file), line: line)
-            return
-        }
-
-        XCTAssertEqual(actualFrameBody.endStream, endStream,
-                       "Unexpected endStream: expected \(endStream), got \(actualFrameBody.endStream)", file: (file), line: line)
         XCTAssertEqual(self.streamID, streamID,
                        "Unexpected streamID: expected \(streamID), got \(self.streamID)", file: (file), line: line)
-        XCTAssertEqual(actualPayload, payload,
-                       "Unexpected body: expected \(payload), got \(actualPayload)", file: (file), line: line)
-
+        self.payload.assertDataPayload(endStream: endStream, payload: payload, file: file, line: line)
     }
 
     func assertDataFrame(endStream: Bool, streamID: HTTP2StreamID, payload: FileRegion, file: StaticString = #file, line: UInt = #line) {
@@ -529,6 +487,60 @@ extension HTTP2Frame {
 
         XCTAssertEqual(.rootStream, self.streamID, "ORIGIN frame must be on the root stream!, got \(self.streamID)!", file: (file), line: line)
         XCTAssertEqual(origins, actualPayload, "Non matching origins: expected \(origins), got \(actualPayload)", file: (file), line: line)
+    }
+}
+
+extension HTTP2Frame.FramePayload {
+    func assertHeadersPayload(endStream: Bool, headers: HPACKHeaders,
+                              priority: HTTP2Frame.StreamPriorityData? = nil,
+                              type: HTTP2Frame.HeadersType? = nil,
+                              file: StaticString = #file, line: UInt = #line) {
+        guard case .headers(let actualPayload) = self else {
+            XCTFail("Expected HEADERS payload, got \(self) instead", file: (file), line: line)
+            return
+        }
+
+        XCTAssertEqual(actualPayload.endStream, endStream,
+                       "Unexpected endStream: expected \(endStream), got \(actualPayload.endStream)", file: (file), line: line)
+        XCTAssertEqual(headers, actualPayload.headers, "Non-equal headers: expected \(headers), got \(actualPayload.headers)", file: (file), line: line)
+        XCTAssertEqual(priority, actualPayload.priorityData, "Non-equal priorities: expected \(String(describing: priority)), got \(String(describing: actualPayload.priorityData))", file: (file), line: line)
+
+        switch type {
+        case .some(.request):
+            XCTAssertNoThrow(try actualPayload.headers.validateRequestBlock(),
+                             "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
+        case .some(.response):
+            XCTAssertNoThrow(try actualPayload.headers.validateResponseBlock(),
+                             "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
+        case .some(.trailers):
+            XCTAssertNoThrow(try actualPayload.headers.validateTrailersBlock(),
+                             "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
+        case .some(.doNotValidate):
+            () // alright, let's not validate then
+        case .none:
+            XCTAssertTrue((try? actualPayload.headers.validateRequestBlock()) != nil ||
+                (try? actualPayload.headers.validateResponseBlock()) != nil ||
+                (try? actualPayload.headers.validateTrailersBlock()) != nil,
+                          "\(actualPayload.headers) not a valid request/response/trailers header block",
+                file: (file), line: line)
+        }
+    }
+
+    func assertDataPayload(endStream: Bool, payload: ByteBuffer, file: StaticString = #file, line: UInt = #line) {
+        guard case .data(let actualFrameBody) = self else {
+            XCTFail("Expected DATA payload, got \(self) instead", file: (file), line: line)
+            return
+        }
+
+        guard case .byteBuffer(let actualPayload) = actualFrameBody.data else {
+            XCTFail("Expected ByteBuffer DATA payload, got \(actualFrameBody.data) instead", file: (file), line: line)
+            return
+        }
+
+        XCTAssertEqual(actualFrameBody.endStream, endStream,
+                       "Unexpected endStream: expected \(endStream), got \(actualFrameBody.endStream)", file: (file), line: line)
+        XCTAssertEqual(actualPayload, payload,
+                       "Unexpected body: expected \(payload), got \(actualPayload)", file: (file), line: line)
     }
 }
 

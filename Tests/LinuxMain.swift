@@ -45,6 +45,7 @@ class LinuxMainRunnerImpl: LinuxMainRunner {
              testCase(HPACKRegressionTests.allTests),
              testCase(HTTP2FrameConvertibleTests.allTests),
              testCase(HTTP2FrameParserTests.allTests),
+             testCase(HTTP2FramePayloadToHTTP1CodecTests.allTests),
              testCase(HTTP2StreamMultiplexerTests.allTests),
              testCase(HTTP2ToHTTP1CodecTests.allTests),
              testCase(HeaderTableTests.allTests),

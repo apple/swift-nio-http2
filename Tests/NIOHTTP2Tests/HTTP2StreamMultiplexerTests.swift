@@ -65,12 +65,12 @@ final class FrameExpecter: ChannelInboundHandler {
 
 // A handler that keeps track of the writes made on a channel. Used to work around the limitations
 // in `EmbeddedChannel`.
-final class FrameWriteRecorder: ChannelOutboundHandler {
-    typealias OutboundIn = HTTP2Frame
-    typealias OutboundOut = HTTP2Frame
+final class WriteRecorder<Write>: ChannelOutboundHandler {
+    typealias OutboundIn = Write
+    typealias OutboundOut = Write
 
-    var flushedWrites: [HTTP2Frame] = []
-    private var unflushedWrites: [HTTP2Frame] = []
+    var flushedWrites: [Write] = []
+    private var unflushedWrites: [Write] = []
 
     func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         self.unflushedWrites.append(self.unwrapOutboundIn(data))
@@ -83,6 +83,9 @@ final class FrameWriteRecorder: ChannelOutboundHandler {
         context.flush()
     }
 }
+
+typealias FrameWriteRecorder = WriteRecorder<HTTP2Frame>
+typealias FramePayloadWriteRecorder = WriteRecorder<HTTP2Frame.FramePayload>
 
 
 /// A handler that keeps track of all reads made on a channel.

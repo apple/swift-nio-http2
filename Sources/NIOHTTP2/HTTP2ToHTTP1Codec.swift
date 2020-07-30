@@ -16,6 +16,7 @@ import NIO
 import NIOHTTP1
 import NIOHPACK
 
+// MARK: - Client
 
 fileprivate struct BaseClientCodec {
     private let protocolString: String
@@ -32,7 +33,7 @@ fileprivate struct BaseClientCodec {
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
     ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
-    fileprivate init(httpProtocol: HTTP2ToHTTP1ClientCodec.HTTPProtocol, normalizeHTTPHeaders: Bool) {
+    fileprivate init(httpProtocol: HTTP2FramePayloadToHTTP1ClientCodec.HTTPProtocol, normalizeHTTPHeaders: Bool) {
         self.normalizeHTTPHeaders = normalizeHTTPHeaders
 
         switch httpProtocol {
@@ -109,10 +110,7 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
     public typealias OutboundOut = HTTP2Frame
 
     /// The HTTP protocol scheme being used on this connection.
-    public enum HTTPProtocol {
-        case https
-        case http
-    }
+    public typealias HTTPProtocol = HTTP2FramePayloadToHTTP1ClientCodec.HTTPProtocol
 
     private let streamID: HTTP2StreamID
     private var baseCodec: BaseClientCodec
@@ -170,6 +168,71 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
     }
 }
 
+/// A simple channel handler that translates HTTP/2 concepts into HTTP/1 data types,
+/// and vice versa, for use on the client side.
+///
+/// This channel handler should be used alongside the `HTTP2StreamMultiplexer` to
+/// help provide a HTTP/1.1-like abstraction on top of a HTTP/2 multiplexed
+/// connection.
+///
+/// This handler uses `HTTP2Frame.FramePayload` as its HTTP/2 currency type.
+public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutboundHandler {
+    public typealias InboundIn = HTTP2Frame.FramePayload
+    public typealias InboundOut = HTTPClientResponsePart
+
+    public typealias OutboundIn = HTTPClientRequestPart
+    public typealias OutboundOut = HTTP2Frame.FramePayload
+
+    private var baseCodec: BaseClientCodec
+
+    /// The HTTP protocol scheme being used on this connection.
+    public enum HTTPProtocol {
+        case https
+        case http
+    }
+
+    /// Initializes a `HTTP2PayloadToHTTP1ClientCodec`.
+    ///
+    /// - parameters:
+    ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
+    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
+    ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
+    ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
+    public init(httpProtocol: HTTPProtocol, normalizeHTTPHeaders: Bool = true) {
+        self.baseCodec = BaseClientCodec(httpProtocol: httpProtocol, normalizeHTTPHeaders: normalizeHTTPHeaders)
+    }
+
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let payload = self.unwrapInboundIn(data)
+        do {
+            let (first, second) = try self.baseCodec.processInboundData(payload)
+            if let first = first {
+                context.fireChannelRead(self.wrapInboundOut(first))
+            }
+            if let second = second {
+                context.fireChannelRead(self.wrapInboundOut(second))
+            }
+        } catch {
+            context.fireErrorCaught(error)
+        }
+    }
+
+    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        let responsePart = self.unwrapOutboundIn(data)
+
+        do {
+            let transformedPayload = try self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
+            context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
+        } catch {
+            promise?.fail(error)
+            context.fireErrorCaught(error)
+        }
+    }
+}
+
+// MARK: - Server
 
 fileprivate struct BaseServerCodec {
     private let normalizeHTTPHeaders: Bool
@@ -297,6 +360,63 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
     }
 }
 
+/// A simple channel handler that translates HTTP/2 concepts into HTTP/1 data types,
+/// and vice versa, for use on the server side.
+///
+/// This channel handler should be used alongside the `HTTP2StreamMultiplexer` to
+/// help provide a HTTP/1.1-like abstraction on top of a HTTP/2 multiplexed
+/// connection.
+///
+/// This handler uses `HTTP2Frame.FramePayload` as its HTTP/2 currency type.
+public final class HTTP2FramePayloadToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutboundHandler {
+    public typealias InboundIn = HTTP2Frame.FramePayload
+    public typealias InboundOut = HTTPServerRequestPart
+
+    public typealias OutboundIn = HTTPServerResponsePart
+    public typealias OutboundOut = HTTP2Frame.FramePayload
+
+    private var baseCodec: BaseServerCodec
+
+    /// Initializes a `HTTP2PayloadToHTTP1ServerCodec`.
+    ///
+    /// - parameters:
+    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
+    ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
+    ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
+    public init(normalizeHTTPHeaders: Bool = true) {
+        self.baseCodec = BaseServerCodec(normalizeHTTPHeaders: normalizeHTTPHeaders)
+    }
+
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let payload = self.unwrapInboundIn(data)
+
+        do {
+            let (first, second) = try self.baseCodec.processInboundData(payload)
+            if let first = first {
+                context.fireChannelRead(self.wrapInboundOut(first))
+            }
+            if let second = second {
+                context.fireChannelRead(self.wrapInboundOut(second))
+            }
+        } catch {
+            context.fireErrorCaught(error)
+        }
+    }
+
+    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        let responsePart = self.unwrapOutboundIn(data)
+
+        do {
+            let transformedPayload = try self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
+            context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
+        } catch {
+            promise?.fail(error)
+            context.fireErrorCaught(error)
+        }
+    }
+}
 
 private extension HTTPMethod {
     /// Create a `HTTPMethod` from the string representation of that method.
