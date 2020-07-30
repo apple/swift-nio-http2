@@ -26,27 +26,38 @@ import XCTest
    @testable import NIOHPACKTests
    @testable import NIOHTTP2Tests
 
-   XCTMain([
-         testCase(CompoundOutboundBufferTest.allTests),
-         testCase(ConcurrentStreamBufferTests.allTests),
-         testCase(ConfiguringPipelineTests.allTests),
-         testCase(ConnectionStateMachineTests.allTests),
-         testCase(ControlFrameBufferTests.allTests),
-         testCase(HPACKCodingTests.allTests),
-         testCase(HPACKIntegrationTests.allTests),
-         testCase(HPACKRegressionTests.allTests),
-         testCase(HTTP2FrameConvertibleTests.allTests),
-         testCase(HTTP2FrameParserTests.allTests),
-         testCase(HTTP2StreamMultiplexerTests.allTests),
-         testCase(HTTP2ToHTTP1CodecTests.allTests),
-         testCase(HeaderTableTests.allTests),
-         testCase(HuffmanCodingTests.allTests),
-         testCase(InboundWindowManagerTests.allTests),
-         testCase(IntegerCodingTests.allTests),
-         testCase(OutboundFlowControlBufferTests.allTests),
-         testCase(ReentrancyTests.allTests),
-         testCase(SimpleClientServerTests.allTests),
-         testCase(StreamChannelFlowControllerTests.allTests),
-         testCase(StreamIDTests.allTests),
-    ])
+// This protocol is necessary to we can call the 'run' method (on an existential of this protocol)
+// without the compiler noticing that we're calling a deprecated function.
+// This hack exists so we can deprecate individual tests which test deprecated functionality without
+// getting a compiler warning...
+protocol LinuxMainRunner { func run() }
+class LinuxMainRunnerImpl: LinuxMainRunner {
+   @available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
+   func run() {
+       XCTMain([
+             testCase(CompoundOutboundBufferTest.allTests),
+             testCase(ConcurrentStreamBufferTests.allTests),
+             testCase(ConfiguringPipelineTests.allTests),
+             testCase(ConnectionStateMachineTests.allTests),
+             testCase(ControlFrameBufferTests.allTests),
+             testCase(HPACKCodingTests.allTests),
+             testCase(HPACKIntegrationTests.allTests),
+             testCase(HPACKRegressionTests.allTests),
+             testCase(HTTP2FrameConvertibleTests.allTests),
+             testCase(HTTP2FrameParserTests.allTests),
+             testCase(HTTP2StreamMultiplexerTests.allTests),
+             testCase(HTTP2ToHTTP1CodecTests.allTests),
+             testCase(HeaderTableTests.allTests),
+             testCase(HuffmanCodingTests.allTests),
+             testCase(InboundWindowManagerTests.allTests),
+             testCase(IntegerCodingTests.allTests),
+             testCase(OutboundFlowControlBufferTests.allTests),
+             testCase(ReentrancyTests.allTests),
+             testCase(SimpleClientServerTests.allTests),
+             testCase(StreamChannelFlowControllerTests.allTests),
+             testCase(StreamIDTests.allTests),
+        ])
+    }
+}
+(LinuxMainRunnerImpl() as LinuxMainRunner).run()
 #endif

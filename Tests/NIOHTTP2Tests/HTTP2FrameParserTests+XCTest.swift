@@ -24,6 +24,7 @@ import XCTest
 
 extension HTTP2FrameParserTests {
 
+   @available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
    static var allTests : [(String, (HTTP2FrameParserTests) -> () throws -> Void)] {
       return [
                 ("testPaddingIsNotAllowedByEncoder", testPaddingIsNotAllowedByEncoder),

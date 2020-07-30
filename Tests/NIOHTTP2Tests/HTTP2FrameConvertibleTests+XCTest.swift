@@ -24,6 +24,7 @@ import XCTest
 
 extension HTTP2FrameConvertibleTests {
 
+   @available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
    static var allTests : [(String, (HTTP2FrameConvertibleTests) -> () throws -> Void)] {
       return [
                 ("testHTTP2FrameConvertible", testHTTP2FrameConvertible),
