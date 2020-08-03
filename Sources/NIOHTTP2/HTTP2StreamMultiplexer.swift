@@ -72,7 +72,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             return
         }
 
-        if let channel = streams[streamID] {
+        if let channel = self.streams[streamID] {
             channel.receiveInboundFrame(frame)
             if !channel.inList {
                 self.didReadChannels.append(channel)
@@ -136,20 +136,30 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
     public func channelActive(context: ChannelHandlerContext) {
         // We just got channelActive. Any previously existing channels may be marked active.
-        for channel in self.streams.values {
+        self.activateChannels(self.streams.values, context: context)
+        self.activateChannels(self.pendingStreams.values, context: context)
+
+        context.fireChannelActive()
+    }
+
+    private func activateChannels<Channels: Sequence>(_ channels: Channels, context: ChannelHandlerContext) where Channels.Element == MultiplexerAbstractChannel {
+        for channel in channels {
             // We double-check the channel activity here, because it's possible action taken during
             // the activation of one of the child channels will cause the parent to close!
             if context.channel.isActive {
                 channel.performActivation()
             }
         }
-        context.fireChannelActive()
     }
 
     public func channelInactive(context: ChannelHandlerContext) {
         for channel in self.streams.values {
             channel.receiveStreamClosed(nil)
         }
+        for channel in self.pendingStreams.values {
+            channel.receiveStreamClosed(nil)
+        }
+
         context.fireChannelInactive()
     }
 
@@ -186,6 +196,9 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
     public func channelWritabilityChanged(context: ChannelHandlerContext) {
         for channel in self.streams.values {
+            channel.parentChannelWritabilityChanged(newValue: context.channel.isWritable)
+        }
+        for channel in self.pendingStreams.values {
             channel.parentChannelWritabilityChanged(newValue: context.channel.isWritable)
         }
 
@@ -409,7 +422,7 @@ extension HTTP2StreamMultiplexer {
     }
 
     internal func childChannelClosed(channelID: ObjectIdentifier) {
-        preconditionFailure("We don't currently support closing channels by 'channelID'")
+        self.pendingStreams.removeValue(forKey: channelID)
     }
 
     internal func childChannelWrite(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
