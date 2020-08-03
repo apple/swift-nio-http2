@@ -103,20 +103,20 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false, headers: expectedResponseHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedResponseHeaders)
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
         bodyData.writeStaticString("hello, world!")
         self.channel.writeAndFlush(HTTPServerResponsePart.body(.byteBuffer(bodyData)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
-        writeRecorder.flushedWrites[1].assertDataPayload(endStream: false, payload: bodyData)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: false, payload: bodyData)
 
         // Now trailers.
         let trailers = HPACKHeaders([("a-trailer", "yes"), ("another-trailer", "still yes")])
         self.channel.writeAndFlush(HTTPServerResponsePart.end(HTTPHeaders(regularHeadersFrom: trailers)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
-        writeRecorder.flushedWrites[2].assertHeadersPayload(endStream: true, headers: trailers)
+        writeRecorder.flushedWrites[2].assertHeadersFramePayload(endStream: true, headers: trailers)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -133,13 +133,13 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false, headers: expectedResponseHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedResponseHeaders)
 
         // No trailers, just end.
         let emptyBuffer = self.channel.allocator.buffer(capacity: 0)
         self.channel.writeAndFlush(HTTPServerResponsePart.end(nil), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
-        writeRecorder.flushedWrites[1].assertDataPayload(endStream: true, payload: emptyBuffer)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: true, payload: emptyBuffer)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -160,7 +160,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         let expectedInformationalResponseHeaders = HPACKHeaders([(":status", "103")]) + informationalResponseHeaders
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
         for idx in 0..<3 {
-            writeRecorder.flushedWrites[idx].assertHeadersPayload(endStream: false, headers: expectedInformationalResponseHeaders)
+            writeRecorder.flushedWrites[idx].assertHeadersFramePayload(endStream: false, headers: expectedInformationalResponseHeaders)
         }
 
         // Now we finish up with a basic response.
@@ -172,8 +172,8 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         let expectedResponseHeaders = HPACKHeaders([(":status", "200")]) + responseHeaders
         let emptyBuffer = self.channel.allocator.buffer(capacity: 0)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 5)
-        writeRecorder.flushedWrites[3].assertHeadersPayload(endStream: false, headers: expectedResponseHeaders)
-        writeRecorder.flushedWrites[4].assertDataPayload(endStream: true, payload: emptyBuffer)
+        writeRecorder.flushedWrites[3].assertHeadersFramePayload(endStream: false, headers: expectedResponseHeaders)
+        writeRecorder.flushedWrites[4].assertDataFramePayload(endStream: true, payload: emptyBuffer)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -279,20 +279,20 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false, headers: expectedRequestHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
 
         // Now body.
         var bodyData = self.channel.allocator.buffer(capacity: 12)
         bodyData.writeStaticString("hello, world!")
         self.channel.writeAndFlush(HTTPClientRequestPart.body(.byteBuffer(bodyData)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
-        writeRecorder.flushedWrites[1].assertDataPayload(endStream: false, payload: bodyData)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: false, payload: bodyData)
 
         // Now trailers.
         let trailers = HPACKHeaders([("a-trailer", "yes"), ("another-trailer", "still yes")])
         self.channel.writeAndFlush(HTTPClientRequestPart.end(HTTPHeaders(regularHeadersFrom: trailers)), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
-        writeRecorder.flushedWrites[2].assertHeadersPayload(endStream: true, headers: trailers)
+        writeRecorder.flushedWrites[2].assertHeadersFramePayload(endStream: true, headers: trailers)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -310,13 +310,13 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "http"), (":authority", "example.org"), ("other", "header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false, headers: expectedRequestHeaders)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
 
         // No trailers, just end.
         let emptyBuffer = self.channel.allocator.buffer(capacity: 0)
         self.channel.writeAndFlush(HTTPClientRequestPart.end(nil), promise: nil)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
-        writeRecorder.flushedWrites[1].assertDataPayload(endStream: true, payload: emptyBuffer)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: true, payload: emptyBuffer)
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -587,9 +587,9 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"), (":authority", "example.org"), ("uppercased", "Header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false,
-                                                            headers: expectedRequestHeaders,
-                                                            type: .request)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                 headers: expectedRequestHeaders,
+                                                                 type: .request)
     }
 
     func testWeTolerateUpperCasedHTTP1HeadersForResponses() throws {
@@ -603,16 +603,16 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":status", "200"), ("uppercased", "Header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false,
-                                                            headers: expectedRequestHeaders,
-                                                            type: .response)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                 headers: expectedRequestHeaders,
+                                                                 type: .response)
     }
 
     func testWeDoNotNormalizeHeadersIfUserAskedUsNotToForRequests() throws {
         let writeRecorder = FramePayloadWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https,
-                                                                                             normalizeHTTPHeaders: false)).wait())
+                                                                                                  normalizeHTTPHeaders: false)).wait())
 
         // A basic request.
         var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .POST, uri: "/post")
@@ -622,9 +622,9 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"),
                                                    (":authority", "example.org"), ("UpperCased", "Header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false,
-                                                            headers: expectedRequestHeaders,
-                                                            type: .doNotValidate)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                 headers: expectedRequestHeaders,
+                                                                 type: .doNotValidate)
     }
 
     func testWeDoNotNormalizeHeadersIfUserAskedUsNotToForResponses() throws {
@@ -638,9 +638,9 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":status", "200"), ("UpperCased", "Header")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false,
-                                                            headers: expectedRequestHeaders,
-                                                            type: .doNotValidate)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                 headers: expectedRequestHeaders,
+                                                                 type: .doNotValidate)
     }
 
     func testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForRequests() throws {
@@ -658,9 +658,9 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"),
                                                    (":authority", "example.org"), ("should", "stay")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false,
-                                                            headers: expectedRequestHeaders,
-                                                            type: .request)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                 headers: expectedRequestHeaders,
+                                                                 type: .request)
     }
 
     func testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses() throws {
@@ -676,8 +676,8 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         let expectedRequestHeaders = HPACKHeaders([(":status", "200"), ("should", "stay")])
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        writeRecorder.flushedWrites[0].assertHeadersPayload(endStream: false,
-                                                            headers: expectedRequestHeaders,
-                                                            type: .response)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                 headers: expectedRequestHeaders,
+                                                                 type: .response)
     }
 }
