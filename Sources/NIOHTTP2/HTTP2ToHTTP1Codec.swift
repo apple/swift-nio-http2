@@ -102,6 +102,7 @@ fileprivate struct BaseClientCodec {
 /// This channel handler should be used alongside the `HTTP2StreamMultiplexer` to
 /// help provide a HTTP/1.1-like abstraction on top of a HTTP/2 multiplexed
 /// connection.
+@available(*, deprecated, renamed: "HTTP2FramePayloadToHTTP1ClientCodec")
 public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias InboundOut = HTTPClientResponsePart
@@ -302,6 +303,7 @@ fileprivate struct BaseServerCodec {
 /// This channel handler should be used alongside the `HTTP2StreamMultiplexer` to
 /// help provide a HTTP/1.1-like abstraction on top of a HTTP/2 multiplexed
 /// connection.
+@available(*, deprecated, renamed: "HTTP2FramePayloadToHTTP1ServerCodec")
 public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias InboundOut = HTTPServerRequestPart
