@@ -88,6 +88,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         self.channel = nil
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testBasicRequestServerSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -111,6 +112,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testRequestWithOnlyHeadServerSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -129,6 +131,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testRequestWithTrailers() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -153,6 +156,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testSendingSimpleResponse() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -184,6 +188,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testResponseWithoutTrailers() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -208,6 +213,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testResponseWith100Blocks() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -243,6 +249,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testPassingPromisesThroughWritesOnServer() throws {
         let streamID = HTTP2StreamID(1)
         let promiseRecorder = PromiseRecorder()
@@ -273,6 +280,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testBasicResponseClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -295,6 +303,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testResponseWithOnlyHeadClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -312,6 +321,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testResponseWithTrailers() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -335,6 +345,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testSendingSimpleRequest() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -367,6 +378,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testRequestWithoutTrailers() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -392,6 +404,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testResponseWith100BlocksClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -421,6 +434,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testPassingPromisesThroughWritesOnClient() throws {
         let streamID = HTTP2StreamID(1)
         let promiseRecorder = PromiseRecorder()
@@ -452,6 +466,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutMethod() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -466,6 +481,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicateMethod() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -480,6 +496,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutPath() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -494,6 +511,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicatePath() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -508,6 +526,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutAuthority() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -522,6 +541,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicateAuthority() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -536,6 +556,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutScheme() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -550,6 +571,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicateScheme() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
@@ -564,6 +586,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveResponseWithoutStatus() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -578,6 +601,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveResponseWithDuplicateStatus() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -592,6 +616,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveResponseWithNonNumericalStatus() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -606,6 +631,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testSendRequestWithoutHost() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -622,6 +648,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         }
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testSendRequestWithDuplicateHost() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
@@ -641,6 +668,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         }
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testFramesWithoutHTTP1EquivalentAreIgnored() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID,
@@ -663,6 +691,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWeTolerateUpperCasedHTTP1HeadersForRequests() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -682,6 +711,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
                                                           type: .request)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWeTolerateUpperCasedHTTP1HeadersForResponses() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -700,6 +730,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
                                                           type: .response)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWeDoNotNormalizeHeadersIfUserAskedUsNotToForRequests() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -722,6 +753,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
                                                           type: .doNotValidate)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWeDoNotNormalizeHeadersIfUserAskedUsNotToForResponses() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -741,6 +773,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
                                                           type: .doNotValidate)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForRequests() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
@@ -763,6 +796,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
                                                           type: .request)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses() throws {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
