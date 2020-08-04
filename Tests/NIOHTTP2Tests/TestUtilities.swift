@@ -675,6 +675,19 @@ extension Array where Element == HTTP2Frame {
     }
 }
 
+extension Array where Element == HTTP2Frame.FramePayload {
+    func assertFramePayloadsMatch<Candidate: Collection>(_ target: Candidate, dataFileRegionToByteBuffer: Bool = true, file: StaticString = #file, line: UInt = #line) where Candidate.Element == HTTP2Frame.FramePayload {
+        guard self.count == target.count else {
+            XCTFail("Different numbers of frame payloads: expected \(target.count), got \(self.count)", file: (file), line: line)
+            return
+        }
+
+        for (expected, actual) in zip(target, self) {
+            expected.assertFramePayloadMatches(this: actual, dataFileRegionToByteBuffer: dataFileRegionToByteBuffer, file: (file), line: line)
+        }
+    }
+}
+
 /// Runs the body with a temporary file, optionally containing some file content.
 func withTemporaryFile<T>(content: String? = nil, _ body: (NIOFileHandle, String) throws -> T) rethrows -> T {
     let (fd, path) = openTemporaryFile()

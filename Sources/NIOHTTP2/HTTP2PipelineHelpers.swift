@@ -93,6 +93,7 @@ extension Channel {
     ///     - inboundStreamStateInitializer: A closure that will be called whenever the remote peer initiates a new stream. This should almost always
     ///         be provided, especially on servers.
     /// - returns: An `EventLoopFuture` containing the `HTTP2StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    @available(*, deprecated, renamed: "configureHTTP2Pipeline(mode:initialLocalSettings:position:targetWindowSize:inboundStreamInitializer:)")
     public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
                                        initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
                                        position: ChannelPipeline.Position = .last,
@@ -115,6 +116,7 @@ extension Channel {
     ///     - inboundStreamStateInitializer: A closure that will be called whenever the remote peer initiates a new stream. This should almost always
     ///         be provided, especially on servers.
     /// - returns: An `EventLoopFuture` containing the `HTTP2StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    @available(*, deprecated, renamed: "configureHTTP2Pipeline(mode:initialLocalSettings:position:targetWindowSize:inboundStreamInitializer:)")
     public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
                                        initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
                                        position: ChannelPipeline.Position = .last,
@@ -124,6 +126,35 @@ extension Channel {
         handlers.reserveCapacity(2)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
         handlers.append(NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings))
         let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, targetWindowSize: targetWindowSize, inboundStreamStateInitializer: inboundStreamStateInitializer)
+        handlers.append(multiplexer)
+
+        return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
+    }
+
+    /// Configures a `ChannelPipeline` to speak HTTP/2.
+    ///
+    /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
+    /// Instead, this simply adds the handlers required to speak HTTP/2 after negotiation has completed, or when agreed by prior knowledge.
+    /// Whenever possible use this function to setup a HTTP/2 server pipeline, as it allows that pipeline to evolve without breaking your code.
+    ///
+    /// - parameters:
+    ///     - mode: The mode this pipeline will operate in, server or client.
+    ///     - initialLocalSettings: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///     - position: The position in the pipeline into which to insert these handlers.
+    ///     - targetWindowSize: The target size of the HTTP/2 flow control window.
+    ///     - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream. This should almost always
+    ///         be provided, especially on servers.
+    /// - returns: An `EventLoopFuture` containing the `HTTP2StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
+                                       initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
+                                       position: ChannelPipeline.Position = .last,
+                                       targetWindowSize: Int = 65535,
+                                       inboundStreamInitializer: ((Channel) -> EventLoopFuture<Void>)?) -> EventLoopFuture<HTTP2StreamMultiplexer> {
+        var handlers = [ChannelHandler]()
+        handlers.reserveCapacity(2)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
+        handlers.append(NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings))
+        let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, targetWindowSize: targetWindowSize, inboundStreamInitializer: inboundStreamInitializer)
         handlers.append(multiplexer)
 
         return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
@@ -218,8 +249,8 @@ extension Channel {
         targetWindowSize: Int,
         _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { (streamChannel, streamID) -> EventLoopFuture<Void> in
-                streamChannel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
+            channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { streamChannel -> EventLoopFuture<Void> in
+                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
                     configurator(streamChannel)
                 }
             }.flatMap { (_: HTTP2StreamMultiplexer) in

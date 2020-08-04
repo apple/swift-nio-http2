@@ -54,8 +54,8 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
 
         // Set the handlers that are applied to the accepted Channels
         .childChannelInitializer { channel in
-            return channel.configureHTTP2Pipeline(mode: .server) { (streamChannel, streamID) -> EventLoopFuture<Void> in
-                return streamChannel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).flatMap { () -> EventLoopFuture<Void> in
+            return channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+                return streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
                     streamChannel.pipeline.addHandler(HTTP1TestServer())
                 }.flatMap { () -> EventLoopFuture<Void> in
                     streamChannel.pipeline.addHandler(ErrorHandler())
@@ -75,8 +75,8 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
 
 func sendOneRequest(channel: Channel, multiplexer: HTTP2StreamMultiplexer) throws -> Int {
     let responseReceivedPromise = channel.eventLoop.makePromise(of: Int.self)
-    func requestStreamInitializer(channel: Channel, streamID: HTTP2StreamID) -> EventLoopFuture<Void> {
-        return channel.pipeline.addHandlers([HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https),
+    func requestStreamInitializer(channel: Channel) -> EventLoopFuture<Void> {
+        return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https),
                                              SendRequestHandler(host: "127.0.0.1",
                                                                 request: .init(version: .init(major: 2, minor: 0),
                                                                                method: .GET,
@@ -99,7 +99,7 @@ func setupClient(group: EventLoopGroup, address: SocketAddress) throws -> (Chann
             channel.pipeline.addHandler(ErrorHandler())
         }
         .connect(to: address).flatMap { channel in
-            channel.configureHTTP2Pipeline(mode: .client, position: .first) { (channel, id) -> EventLoopFuture<Void> in
+            channel.configureHTTP2Pipeline(mode: .client, position: .first) { channel -> EventLoopFuture<Void> in
                 return channel.eventLoop.makeSucceededFuture(())
             }.map { (channel, $0) }
         }.wait()
