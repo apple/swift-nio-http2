@@ -20,6 +20,7 @@ import NIOHTTP1
 
 private extension Channel {
     /// Adds a simple no-op `HTTP2StreamMultiplexer` to the pipeline.
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func addNoOpMultiplexer(mode: NIOHTTP2Handler.ParserMode) {
         XCTAssertNoThrow(try self.pipeline.addHandler(HTTP2StreamMultiplexer(mode: mode, channel: self) { (channel, streamID) in
             self.eventLoop.makeSucceededFuture(())
@@ -236,6 +237,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         self.channel.pipeline.fireUserInboundEventTriggered(activated)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerIgnoresFramesOnStream0() throws {
         self.channel.addNoOpMultiplexer(mode: .server)
 
@@ -246,6 +248,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testHeadersFramesCreateNewChannels() throws {
         var channelCount = 0
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
@@ -264,6 +267,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testChannelsCloseThemselvesWhenToldTo() throws {
         var completedChannelCount = 0
         var closeFutures: [EventLoopFuture<Void>] = []
@@ -294,6 +298,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testChannelsCloseAfterResetStreamFrameFirstThenEvent() throws {
         var closeError: Error? = nil
 
@@ -330,6 +335,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testChannelsCloseAfterGoawayFrameFirstThenEvent() throws {
         var closeError: Error? = nil
 
@@ -367,6 +373,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testFramesForUnknownStreamsAreReported() throws {
         self.channel.addNoOpMultiplexer(mode: .server)
 
@@ -384,6 +391,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testFramesForClosedStreamsAreReported() throws {
         self.channel.addNoOpMultiplexer(mode: .server)
 
@@ -409,6 +417,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testClosingIdleChannels() throws {
         let frameReceiver = FrameWriteRecorder()
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
@@ -434,6 +443,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testClosingActiveChannels() throws {
         let frameReceiver = FrameWriteRecorder()
         let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
@@ -465,6 +475,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testClosePromiseIsSatisfiedWithTheEvent() throws {
         let frameReceiver = FrameWriteRecorder()
         let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
@@ -503,6 +514,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultipleClosePromisesAreSatisfied() throws {
         let frameReceiver = FrameWriteRecorder()
         let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
@@ -560,6 +572,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testClosePromiseFailsWithError() throws {
         let frameReceiver = FrameWriteRecorder()
         let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
@@ -597,6 +610,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testFramesAreNotDeliveredUntilStreamIsSetUp() throws {
         let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
         let setupCompletePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
@@ -652,6 +666,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testFramesAreNotDeliveredIfSetUpFails() throws {
         let writeRecorder = FrameWriteRecorder()
         let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
@@ -717,6 +732,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testFlushingOneChannelDoesntFlushThemAll() throws {
         let writeTracker = FrameWriteRecorder()
         var channels: [Channel] = []
@@ -759,6 +775,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testUnflushedWritesFailOnClose() throws {
         var childChannel: Channel? = nil
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
@@ -789,6 +806,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testUnflushedWritesFailOnError() throws {
         var childChannel: Channel? = nil
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
@@ -819,6 +837,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWritesFailOnClosedStreamChannels() throws {
         var childChannel: Channel? = nil
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
@@ -848,6 +867,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReadPullsInAllFrames() throws {
         var childChannel: Channel? = nil
         let frameRecorder = InboundFrameRecorder()
@@ -903,6 +923,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReadIsPerChannel() throws {
         let firstStreamID = HTTP2StreamID(1)
         let secondStreamID = HTTP2StreamID(3)
@@ -948,6 +969,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReadWillCauseAutomaticFrameDelivery() throws {
         var childChannel: Channel? = nil
         let frameRecorder = InboundFrameRecorder()
@@ -997,6 +1019,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReadWithNoPendingDataCausesReadOnParentChannel() throws {
         var childChannel: Channel? = nil
         let readCounter = ReadCounter()
@@ -1067,6 +1090,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testHandlersAreRemovedOnClosure() throws {
         var handlerRemoved = false
         let handlerRemovedPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
@@ -1097,6 +1121,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testHandlersAreRemovedOnClosureWithError() throws {
         var handlerRemoved = false
         let handlerRemovedPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
@@ -1127,6 +1152,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatingOutboundChannel() throws {
         let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         var createdChannelCount = 0
@@ -1167,6 +1193,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatingOutboundChannelClient() throws {
         let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         var createdChannelCount = 0
@@ -1207,6 +1234,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWritesOnCreatedChannelAreDelayed() throws {
         let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         let writeRecorder = FrameWriteRecorder()
@@ -1240,6 +1268,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testWritesAreCancelledOnFailingInitializer() throws {
         let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         var childChannel: Channel? = nil
@@ -1268,6 +1297,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testFailingInitializerDoesNotWrite() throws {
         let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         let writeRecorder = FrameWriteRecorder()
@@ -1289,6 +1319,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatedChildChannelDoesNotActivateEarly() throws {
         var activated = false
 
@@ -1318,6 +1349,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatedChildChannelActivatesIfParentIsActive() throws {
         var activated = false
 
@@ -1347,6 +1379,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testInitiatedChildChannelActivates() throws {
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -1376,6 +1409,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerIgnoresPriorityFrames() throws {
         self.channel.addNoOpMultiplexer(mode: .server)
 
@@ -1386,6 +1420,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerForwardsActiveToParent() throws {
         self.channel.addNoOpMultiplexer(mode: .client)
 
@@ -1402,6 +1437,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatedChildChannelCanBeClosedImmediately() throws {
         var closed = false
 
@@ -1421,6 +1457,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatedChildChannelCanBeClosedBeforeWritingHeaders() throws {
         var closed = false
 
@@ -1446,6 +1483,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatedChildChannelCanBeClosedImmediatelyWhenBaseIsActive() throws {
         var closed = false
 
@@ -1468,6 +1506,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testCreatedChildChannelCanBeClosedBeforeWritingHeadersWhenBaseIsActive() throws {
         var closed = false
 
@@ -1496,6 +1535,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.channel.finish().isClean))
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerCoalescesFlushCallsDuringChannelRead() throws {
         // We need to activate the underlying channel here.
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
@@ -1530,6 +1570,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(flushCounter.flushCount, 1)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerDoesntFireReadCompleteForEachFrame() {
         // We need to activate the underlying channel here.
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
@@ -1583,6 +1624,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(readCompleteCounter.readCompleteCount, 1)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerCorrectlyTellsAllStreamsAboutReadComplete() {
         // We need to activate the underlying channel here.
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
@@ -1644,6 +1686,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(readCompleteCounter.readCompleteCount, 4)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokens() throws {
         let multiplexer = HTTP2StreamMultiplexer(mode: .client,
                                                  channel: self.channel,
@@ -1691,6 +1734,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertTrue(childChannel.isWritable)
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerModifiesStreamChannelWritabilityBasedOnParentChannelWritability() throws {
         let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.channel) { (_, _) in
             XCTFail("Must not be called")
@@ -1736,6 +1780,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(channels.map { $0.isWritable }, [true, true, true, true, true])
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability() throws {
         let multiplexer = HTTP2StreamMultiplexer(mode: .client,
                                                  channel: self.channel,
@@ -1793,7 +1838,8 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertTrue(childChannel.isWritable)
     }
 
-    func testStreamChannelToleratesFailingInitialier() {
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    func testStreamChannelToleratesFailingInitializer() {
         struct DummyError: Error {}
         let multiplexer = HTTP2StreamMultiplexer(mode: .client,
                                                  channel: self.channel,
@@ -1817,6 +1863,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         self.channel.embeddedEventLoop.run()
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testInboundChannelWindowSizeIsCustomisable() throws {
         let targetWindowSize = 1 << 18
 
