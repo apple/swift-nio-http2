@@ -274,7 +274,7 @@ fileprivate struct BaseServerCodec {
         }
     }
 
-    mutating func processOutboundData(_ data: HTTPServerResponsePart, allocator: ByteBufferAllocator) throws -> HTTP2Frame.FramePayload {
+    mutating func processOutboundData(_ data: HTTPServerResponsePart, allocator: ByteBufferAllocator) -> HTTP2Frame.FramePayload {
         switch data {
         case .head(let head):
             let h1 = HTTPHeaders(responseHead: head)
@@ -350,15 +350,9 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
 
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let responsePart = self.unwrapOutboundIn(data)
-
-        do {
-            let transformedPayload = try self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
-            let part = HTTP2Frame(streamID: self.streamID, payload: transformedPayload)
-            context.write(self.wrapOutboundOut(part), promise: promise)
-        } catch {
-            promise?.fail(error)
-            context.fireErrorCaught(error)
-        }
+        let transformedPayload = self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
+        let part = HTTP2Frame(streamID: self.streamID, payload: transformedPayload)
+        context.write(self.wrapOutboundOut(part), promise: promise)
     }
 }
 
@@ -409,14 +403,8 @@ public final class HTTP2FramePayloadToHTTP1ServerCodec: ChannelInboundHandler, C
 
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let responsePart = self.unwrapOutboundIn(data)
-
-        do {
-            let transformedPayload = try self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
-            context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
-        } catch {
-            promise?.fail(error)
-            context.fireErrorCaught(error)
-        }
+        let transformedPayload = self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
+        context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
     }
 }
 

@@ -1716,4 +1716,50 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try channel.finish(acceptAlreadyClosed: false))
     }
 
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    func testWeCanCreateFrameAndPayloadBasedStreamsOnAMultiplexer() throws {
+        let frameRecorder = FrameWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameRecorder).wait())
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.channel, inboundStreamInitializer: nil)
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
+
+        // Create a payload based stream.
+        let streamAPromise = self.channel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamAPromise) { channel in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        self.channel.embeddedEventLoop.run()
+        let streamA = try assertNoThrowWithValue(try streamAPromise.futureResult.wait())
+        // We haven't written on the stream yet: it shouldn't have a stream ID.
+        XCTAssertThrowsError(try streamA.getOption(HTTP2StreamChannelOptions.streamID).wait()) { error in
+            XCTAssert(error is NIOHTTP2Errors.NoStreamIDAvailable)
+        }
+
+        // Create a frame based stream.
+        let streamBPromise = self.channel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamBPromise) { channel, streamID in
+            // stream A doesn't have an ID yet.
+            XCTAssertEqual(streamID, HTTP2StreamID(1))
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        self.channel.embeddedEventLoop.run()
+        let streamB = try assertNoThrowWithValue(try streamBPromise.futureResult.wait())
+
+        // Do some writes on A and B.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
+
+        // (We checked the streamID above.)
+        XCTAssertNoThrow(try streamB.writeAndFlush(HTTP2Frame(streamID: 1, payload: headersPayload)).wait())
+
+        // Write on stream A.
+        XCTAssertNoThrow(try streamA.writeAndFlush(headersPayload).wait())
+        // Stream A must have an ID now.
+        XCTAssertEqual(try streamA.getOption(HTTP2StreamChannelOptions.streamID).wait(), HTTP2StreamID(3))
+
+        frameRecorder.flushedWrites.assertFramesMatch([HTTP2Frame(streamID: 1, payload: headersPayload),
+                                                       HTTP2Frame(streamID: 3, payload: headersPayload)])
+    }
 }

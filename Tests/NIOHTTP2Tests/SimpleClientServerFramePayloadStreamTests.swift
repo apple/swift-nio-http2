@@ -1881,4 +1881,35 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         let settings = nioDefaultSettings + [HTTP2Setting(parameter: .init(extensionSetting: 0xfafa), value: 0xf0f0f0f0)]
         XCTAssertNoThrow(try self.basicHTTP2Connection(clientSettings: settings))
     }
+
+    func testStreamCreationOrder() throws {
+        try self.basicHTTP2Connection()
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.clientChannel, inboundStreamInitializer: nil)
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(multiplexer).wait())
+
+        let streamAPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamAPromise) { channel in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        self.clientChannel.embeddedEventLoop.run()
+        let streamA = try assertNoThrowWithValue(try streamAPromise.futureResult.wait())
+
+        let streamBPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamBPromise) { channel in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        self.clientChannel.embeddedEventLoop.run()
+        let streamB = try assertNoThrowWithValue(try streamBPromise.futureResult.wait())
+
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headersFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
+
+        // Write on 'B' first.
+        XCTAssertNoThrow(try streamB.writeAndFlush(headersFramePayload).wait())
+        XCTAssertEqual(try streamB.getOption(HTTP2StreamChannelOptions.streamID).wait(), HTTP2StreamID(1))
+
+        // Now write on stream 'A'. This would fail on frame-based stream channel.
+        XCTAssertNoThrow(try streamA.writeAndFlush(headersFramePayload).wait())
+        XCTAssertEqual(try streamA.getOption(HTTP2StreamChannelOptions.streamID).wait(), HTTP2StreamID(3))
+    }
 }
