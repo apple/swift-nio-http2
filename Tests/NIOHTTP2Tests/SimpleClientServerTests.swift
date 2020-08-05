@@ -319,4 +319,44 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNoThrow(XCTAssertTrue(try self.clientChannel.finish().isClean))
         XCTAssertNoThrow(XCTAssertTrue(try self.serverChannel.finish().isClean))
     }
+
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    func testStreamCreationOrder() throws {
+        try self.basicHTTP2Connection()
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.clientChannel)
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(multiplexer).wait())
+
+        let streamAPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamAPromise) { channel, _ in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        self.clientChannel.embeddedEventLoop.run()
+        let streamA = try assertNoThrowWithValue(try streamAPromise.futureResult.wait())
+
+        let streamBPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamBPromise) { channel, _ in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        self.clientChannel.embeddedEventLoop.run()
+        let streamB = try assertNoThrowWithValue(try streamBPromise.futureResult.wait())
+
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headersFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
+
+        // Write on 'B' first.
+        let streamBHeadersWritten = streamB.getOption(HTTP2StreamChannelOptions.streamID).flatMap { streamID -> EventLoopFuture<Void> in
+            let frame = HTTP2Frame(streamID: streamID, payload: headersFramePayload)
+            return streamB.writeAndFlush(frame)
+        }
+        XCTAssertNoThrow(try streamBHeadersWritten.wait())
+
+        // Now write on stream 'A', it will fail. (This failure motivated the frame-payload based stream channel.)
+        let streamAHeadersWritten = streamA.getOption(HTTP2StreamChannelOptions.streamID).flatMap { streamID -> EventLoopFuture<Void> in
+            let frame = HTTP2Frame(streamID: streamID, payload: headersFramePayload)
+            return streamA.writeAndFlush(frame)
+        }
+        XCTAssertThrowsError(try streamAHeadersWritten.wait()) { error in
+            XCTAssert(error is NIOHTTP2Errors.StreamIDTooSmall)
+        }
+    }
 }

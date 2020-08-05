@@ -73,6 +73,7 @@ extension HTTP2FramePayloadStreamMultiplexerTests {
                 ("testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability", testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability),
                 ("testStreamChannelToleratesFailingInitializer", testStreamChannelToleratesFailingInitializer),
                 ("testInboundChannelWindowSizeIsCustomisable", testInboundChannelWindowSizeIsCustomisable),
+                ("testWeCanCreateFrameAndPayloadBasedStreamsOnAMultiplexer", testWeCanCreateFrameAndPayloadBasedStreamsOnAMultiplexer),
            ]
    }
 }

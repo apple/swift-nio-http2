@@ -32,6 +32,7 @@ extension SimpleClientServerTests {
                 ("testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges", testStreamMultiplexerAcknowledgesSettingsBasedFlowControlChanges),
                 ("testNoStreamWindowUpdateOnEndStreamFrameFromServer", testNoStreamWindowUpdateOnEndStreamFrameFromServer),
                 ("testNoStreamWindowUpdateOnEndStreamFrameFromClient", testNoStreamWindowUpdateOnEndStreamFrameFromClient),
+                ("testStreamCreationOrder", testStreamCreationOrder),
            ]
    }
 }

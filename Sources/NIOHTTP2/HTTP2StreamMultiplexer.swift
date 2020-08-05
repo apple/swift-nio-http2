@@ -433,7 +433,7 @@ extension HTTP2StreamMultiplexer {
     }
 
     internal func childChannelFlush() {
-        self.flush(context: context)
+        self.flush(context: self.context)
     }
 
     /// Requests a `HTTP2StreamID` for the given `Channel`.
