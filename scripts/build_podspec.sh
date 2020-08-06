@@ -16,7 +16,7 @@
 set -eu
 
 function usage() {
-  echo "$0 [-u] version nio_version"
+  echo "$0 [-u] [-f skipUpToTarget] version nio_version"
   echo
   echo "OPTIONS:"
   echo "  -u: Additionally upload the podspec"
@@ -25,7 +25,7 @@ function usage() {
 
 upload=false
 skip_until=""
-while getopts ":u" opt; do
+while getopts ":uf:" opt; do
   case $opt in
     u)
       upload=true
