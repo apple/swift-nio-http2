@@ -19,7 +19,7 @@ function usage() {
   echo "$0 [-u] [-f skipUpToTarget] version nio_version"
   echo
   echo "OPTIONS:"
-  echo "  -u: Additionally upload the podspec"
+  echo "  -u: Additionally, upload the podspecs as they are generated"
   echo "  -f: Skip over all targets before the specified target"
 }
 
