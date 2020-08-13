@@ -74,6 +74,7 @@ extension HTTP2FramePayloadStreamMultiplexerTests {
                 ("testStreamChannelToleratesFailingInitializer", testStreamChannelToleratesFailingInitializer),
                 ("testInboundChannelWindowSizeIsCustomisable", testInboundChannelWindowSizeIsCustomisable),
                 ("testWeCanCreateFrameAndPayloadBasedStreamsOnAMultiplexer", testWeCanCreateFrameAndPayloadBasedStreamsOnAMultiplexer),
+                ("testReadWhenUsingAutoreadOnChildChannel", testReadWhenUsingAutoreadOnChildChannel),
            ]
    }
 }

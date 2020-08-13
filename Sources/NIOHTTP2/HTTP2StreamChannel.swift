@@ -237,9 +237,7 @@ final class HTTP2StreamChannel<Message: HTTP2FramePayloadConvertible & HTTP2Fram
 
         self.modifyingState { $0.activate() }
         self.pipeline.fireChannelActive()
-        if self.autoRead {
-            self.read0()
-        }
+        self.tryToAutoRead()
         self.deliverPendingWrites()
     }
 
@@ -592,21 +590,29 @@ final class HTTP2StreamChannel<Message: HTTP2FramePayloadConvertible & HTTP2Fram
             return
         }
 
+        // If there are no pending reads, do nothing.
+        guard self.pendingReads.count > 0 else {
+            return
+        }
+
         // Ok, we're satisfying a read here.
         self.unsatisfiedRead = false
         self.deliverPendingReads()
-
-        // If auto-read is turned on, recurse into read0.
-        // This cannot recurse indefinitely unless frames are being delivered
-        // by the read stacks, which is generally fairly unlikely to continue unbounded.
-        if self.autoRead {
-            self.read0()
-        }
+        self.tryToAutoRead()
     }
 
     private func changeWritability(to newWritability: Bool) {
         self._isWritable.store(newWritability)
         self.pipeline.fireChannelWritabilityChanged()
+    }
+
+    private func tryToAutoRead() {
+        if self.autoRead {
+            // If auto-read is turned on, recurse into channelPipeline.read().
+            // This cannot recurse indefinitely unless frames are being delivered
+            // by the read stacks, which is generally fairly unlikely to continue unbounded.
+            self.pipeline.read()
+        }
     }
 }
 
@@ -688,19 +694,13 @@ internal extension HTTP2StreamChannel {
 
         let message = Message(http2Frame: frame)
 
-        if self.unsatisfiedRead {
-            // We don't need to account for this frame in the window manager: it's being delivered
-            // straight into the pipeline.
-            self.pipeline.fireChannelRead(NIOAny(message))
-        } else {
-            // Record the size of the frame so that when we receive a window update event our
-            // calculation on whether we emit a WINDOW_UPDATE frame is based on the bytes we have
-            // actually delivered into the pipeline.
-            if case .data(let dataPayload) = frame.payload {
-                self.windowManager.bufferedFrameReceived(size: dataPayload.data.readableBytes)
-            }
-            self.pendingReads.append(message)
+        // Record the size of the frame so that when we receive a window update event our
+        // calculation on whether we emit a WINDOW_UPDATE frame is based on the bytes we have
+        // actually delivered into the pipeline.
+        if case .data(let dataPayload) = frame.payload {
+            self.windowManager.bufferedFrameReceived(size: dataPayload.data.readableBytes)
         }
+        self.pendingReads.append(message)
     }
 
 
