@@ -115,7 +115,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
     ///     strings. For HTTP/2 lowercase header names are strongly recommended.
     @inlinable
     public mutating func add<S: Sequence>(contentsOf other: S, indexing: HPACKIndexing = .indexable) where S.Element == (String, String) {
-        self.headers.reserveCapacity(self.headers.count + other.underestimatedCount)
+        self.reserveCapacity(self.headers.count + other.underestimatedCount)
         for (name, value) in other {
             self.add(name: name, value: value, indexing: indexing)
         }
@@ -130,9 +130,42 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
     ///     must be ASCII strings. For HTTP/2 lowercase header names are strongly recommended.
     @inlinable
     public mutating func add<S: Sequence>(contentsOf other: S) where S.Element == HPACKHeaders.Element {
-        self.headers.reserveCapacity(self.headers.count + other.underestimatedCount)
+        self.reserveCapacity(self.headers.count + other.underestimatedCount)
         for (name, value, indexing) in other {
             self.add(name: name, value: value, indexing: indexing)
+        }
+    }
+
+    /// Add a header name/value pair to the block, replacing any previous values for the
+    /// same header name that are already in the block.
+    ///
+    /// This is a supplemental method to `add` that essentially combines `remove` and `add`
+    /// in a single function. It can be used to ensure that a header block is in a
+    /// well-defined form without having to check whether the value was previously there.
+    /// Like `add`, this method performs case-insensitive comparisons of the header field
+    /// names.
+    ///
+    /// - Parameter name: The header field name. For maximum compatibility this should be an
+    ///     ASCII string. For future-proofing with HTTP/2 lowercase header names are strongly
+    ///     recommended.
+    /// - Parameter value: The header field value to add for the given name.
+    public mutating func replaceOrAdd(name: String, value: String, indexing: HPACKIndexing = .indexable) {
+        self.remove(name: name)
+        self.add(name: name, value: value, indexing: indexing)
+    }
+
+    /// Remove all values for a given header name from the block.
+    ///
+    /// This method uses case-insensitive comparisons for the header field name.
+    ///
+    /// - Parameter name: The name of the header field to remove from the block.
+    public mutating func remove(name nameToRemove: String) {
+        self.headers.removeAll { header in
+            if nameToRemove.utf8.count != header.name.utf8.count {
+                return false
+            }
+
+            return nameToRemove.utf8.compareCaseInsensitiveASCIIBytes(to: header.name.utf8)
         }
     }
     
@@ -228,6 +261,19 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
     }
 }
 
+extension HPACKHeaders {
+    /// The total number of headers that can be contained without allocating new storage.
+    public var capacity: Int {
+        return self.headers.capacity
+    }
+
+    /// Reserves enough space to store the specified number of headers.
+    ///
+    /// - Parameter minimumCapacity: The requested number of headers to store.
+    public mutating func reserveCapacity(_ minimumCapacity: Int) {
+        self.headers.reserveCapacity(minimumCapacity)
+    }
+}
 
 extension HPACKHeaders: RandomAccessCollection {
     public typealias Element = (name: String, value: String, indexable: HPACKIndexing)

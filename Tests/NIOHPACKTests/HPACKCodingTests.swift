@@ -629,6 +629,37 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(["bazzy"], headers1["baz"])
     }
 
+    func testHPACKHeadersRemove() {
+        var headers = HPACKHeaders()
+        headers.add(name: "foo", value: "bar")
+        headers.add(name: "foo", value: "baz")
+        XCTAssertEqual(headers.count, 2)
+
+        headers.remove(name: "foo")
+        XCTAssertEqual(headers.count, 0)
+        XCTAssertTrue(headers.isEmpty)
+    }
+
+    func testHPACKHeadersReplaceOrAdd() {
+        var headers = HPACKHeaders()
+
+        headers.replaceOrAdd(name: "foo", value: "bar")
+        XCTAssertEqual(headers["foo"], ["bar"])
+        XCTAssertEqual(headers.count, 1)
+
+        headers.replaceOrAdd(name: "foo", value: "baz")
+        XCTAssertEqual(headers["foo"], ["baz"])
+        XCTAssertEqual(headers.count, 1)
+    }
+
+    func testHPACKHeadersReserveCapacity() {
+        var headers = HPACKHeaders()
+        XCTAssertEqual(headers.capacity, 0)
+
+        headers.reserveCapacity(5)
+        XCTAssertGreaterThanOrEqual(headers.capacity, 5)
+    }
+
     func testHPACKHeadersWithZeroIndex() throws {
         var request = buffer(wrapping: [0x80])
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
