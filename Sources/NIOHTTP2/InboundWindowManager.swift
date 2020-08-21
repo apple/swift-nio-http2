@@ -25,6 +25,9 @@ struct InboundWindowManager {
     /// The number of bytes of buffered frames.
     private var bufferedBytes: Int = 0
 
+    /// Whether the inbound window is closed. If this is true then no window size changes will be emitted.
+    var closed = false
+
     init(targetSize: Int32) {
         assert(targetSize <= HTTP2FlowControlWindow.maxSize)
         assert(targetSize >= 0)
@@ -68,6 +71,11 @@ struct InboundWindowManager {
     }
 
     private func calculateWindowIncrement(windowSize: Int) -> Int? {
+        // No point calculating an increment if we're closed.
+        if self.closed {
+            return nil
+        }
+
         // The simplest case is where newSize >= targetWindowSize. In that case, we do nothing.
         //
         // The next simplest case is where 0 <= newSize < targetWindowSize. In that case,

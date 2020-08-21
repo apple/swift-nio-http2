@@ -75,6 +75,7 @@ extension HTTP2FramePayloadStreamMultiplexerTests {
                 ("testInboundChannelWindowSizeIsCustomisable", testInboundChannelWindowSizeIsCustomisable),
                 ("testWeCanCreateFrameAndPayloadBasedStreamsOnAMultiplexer", testWeCanCreateFrameAndPayloadBasedStreamsOnAMultiplexer),
                 ("testReadWhenUsingAutoreadOnChildChannel", testReadWhenUsingAutoreadOnChildChannel),
+                ("testWindowUpdateIsNotEmittedAfterStreamIsClosed", testWindowUpdateIsNotEmittedAfterStreamIsClosed),
            ]
    }
 }
