@@ -71,4 +71,15 @@ class InboundWindowManagerTests: XCTestCase {
         // adjusted size is 8 (new size 5, buffered 3) which is less than half the target (now 20).
         XCTAssertEqual(windowManager.newWindowSize(5), 12)
     }
+
+    func testWindowSizeWhenClosed() {
+        var windowManager = InboundWindowManager(targetSize: 10)
+        XCTAssertEqual(windowManager.newWindowSize(5), 5)
+
+        windowManager.closed = true
+        XCTAssertNil(windowManager.newWindowSize(5))
+
+        windowManager.bufferedFrameReceived(size: 5)
+        XCTAssertNil(windowManager.bufferedFrameEmitted(size: 5))
+    }
 }

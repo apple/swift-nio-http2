@@ -32,6 +32,7 @@ extension InboundWindowManagerTests {
                 ("testNewWindowSizeWhenNewSizeIsLessThanOrEqualHalfTarget", testNewWindowSizeWhenNewSizeIsLessThanOrEqualHalfTarget),
                 ("testNewWindowSizeWithBufferedBytes", testNewWindowSizeWithBufferedBytes),
                 ("testInitialWindowSizeChanged", testInitialWindowSizeChanged),
+                ("testWindowSizeWhenClosed", testWindowSizeWhenClosed),
            ]
    }
 }
