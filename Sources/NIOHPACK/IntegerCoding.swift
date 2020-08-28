@@ -64,38 +64,36 @@ func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> (UInt, Int
     assert(prefix <= 8)
     assert(prefix >= 1)
     
-    let k = (1 << prefix) - 1
-    var n: UInt = 0
-    var i = bytes.startIndex
-    
-    if n == 0 {
-        // if the available bits aren't all set, the entire value consists of those bits
-        if bytes[i] & UInt8(k) != k {
-            return (UInt(bytes[i] & UInt8(k)), 1)
-        }
-        
-        n = UInt(k)
-        i = bytes.index(after: i)
-        if i == bytes.endIndex {
-            return (n, bytes.distance(from: bytes.startIndex, to: i))
-        }
+    let mask = (1 << prefix) - 1
+    var accumulator: UInt = 0
+    var index = bytes.startIndex
+
+    // if the available bits aren't all set, the entire value consists of those bits
+    if bytes[index] & UInt8(mask) != mask {
+        return (UInt(bytes[index] & UInt8(mask)), 1)
+    }
+
+    accumulator = UInt(mask)
+    index = bytes.index(after: index)
+    if index == bytes.endIndex {
+        return (accumulator, bytes.distance(from: bytes.startIndex, to: index))
     }
     
     // for the remaining bytes, as long as the top bit is set, consume the low seven bits.
-    var m: UInt = 0
-    var b: UInt8 = 0
+    var shift: UInt = 0
+    var byte: UInt8 = 0
     repeat {
-        if i == bytes.endIndex {
+        if index == bytes.endIndex {
             throw NIOHPACKErrors.InsufficientInput()
         }
         
-        b = bytes[i]
-        n += UInt(b & 127) * (1 << m)
-        m += 7
-        i = bytes.index(after: i)
-    } while b & 128 == 128
+        byte = bytes[index]
+        accumulator += UInt(byte & 127) * (1 << shift)
+        shift += 7
+        index = bytes.index(after: index)
+    } while byte & 128 == 128
     
-    return (n, bytes.distance(from: bytes.startIndex, to: i))
+    return (accumulator, bytes.distance(from: bytes.startIndex, to: index))
 }
 
 extension ByteBuffer {
