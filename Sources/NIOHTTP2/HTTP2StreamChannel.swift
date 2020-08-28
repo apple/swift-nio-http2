@@ -630,11 +630,24 @@ private extension HTTP2StreamChannel {
         while self.pendingReads.count > 0 {
             let frame = self.pendingReads.removeFirst()
 
+            let endStream: Bool
             let dataLength: Int?
-            if case .data(let data) = frame.payload {
+
+            switch frame.payload {
+            case .data(let data):
+                endStream = data.endStream
                 dataLength = data.data.readableBytes
-            } else {
+            case .headers(let headers):
+                endStream = headers.endStream
                 dataLength = nil
+            default:
+                endStream = false
+                dataLength = nil
+            }
+
+            // We've seen end stream: close the window manager to avoid emitting extraneous WINDOW_UPDATE frames.
+            if endStream {
+                self.windowManager.closed = true
             }
 
             self.pipeline.fireChannelRead(NIOAny(frame))
@@ -724,6 +737,9 @@ internal extension HTTP2StreamChannel {
     /// - parameters:
     ///     - reason: The reason received from the network, if any.
     func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
+        // Avoid emitting any WINDOW_UPDATE frames now that we're closed.
+        self.windowManager.closed = true
+
         // The stream is closed, we should aim to deliver any read frames we have for it.
         self.tryToRead()
 
