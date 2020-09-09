@@ -630,24 +630,13 @@ private extension HTTP2StreamChannel {
         while self.pendingReads.count > 0 {
             let frame = self.pendingReads.removeFirst()
 
-            let endStream: Bool
             let dataLength: Int?
 
             switch frame.payload {
             case .data(let data):
-                endStream = data.endStream
                 dataLength = data.data.readableBytes
-            case .headers(let headers):
-                endStream = headers.endStream
-                dataLength = nil
             default:
-                endStream = false
                 dataLength = nil
-            }
-
-            // We've seen end stream: close the window manager to avoid emitting extraneous WINDOW_UPDATE frames.
-            if endStream {
-                self.windowManager.closed = true
             }
 
             self.pipeline.fireChannelRead(NIOAny(frame))
@@ -712,6 +701,14 @@ internal extension HTTP2StreamChannel {
         // actually delivered into the pipeline.
         if case .data(let dataPayload) = frame.payload {
             self.windowManager.bufferedFrameReceived(size: dataPayload.data.readableBytes)
+
+            // No further window update frames should be sent.
+            if dataPayload.endStream {
+                self.windowManager.closed = true
+            }
+        } else if case .headers(let headersPayload) = frame.payload, headersPayload.endStream {
+            // No further window update frames should be sent.
+            self.windowManager.closed = true
         }
         self.pendingReads.append(message)
     }
