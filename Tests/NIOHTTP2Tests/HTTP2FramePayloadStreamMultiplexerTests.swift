@@ -1848,4 +1848,54 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // the stream has closed we don't expect to read anything out.
         XCTAssertNil(try self.channel.readOutbound(as: HTTP2Frame.self))
     }
+
+    func testWindowUpdateIsNotEmittedAfterStreamIsClosedEvenOnLaterFrame() throws {
+        let targetWindowSize = 128
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
+                                                 channel: self.channel,
+                                                 targetWindowSize: targetWindowSize) { channel in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        // Write a headers frame.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers)))
+        self.channel.pipeline.fireChannelRead(NIOAny(headersFrame))
+
+        // Activate the stream.
+        self.activateStream(1)
+
+        // Send a window updated event.
+        var windowUpdated = NIOHTTP2WindowUpdatedEvent(streamID: 1, inboundWindowSize: 128, outboundWindowSize: nil)
+        self.channel.pipeline.fireUserInboundEventTriggered(windowUpdated)
+        self.channel.pipeline.fireChannelReadComplete()
+
+        // The inbound window size should now be our target: 128. Write enough bytes to consume the
+        // inbound window as two frames: a 127-byte frame, followed by a 1-byte with END_STREAM set.
+        let bytes = ByteBuffer(repeating: 0, count: targetWindowSize)
+        let firstData = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bytes.getSlice(at: bytes.readerIndex, length: targetWindowSize - 1)!)))
+        let secondData = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bytes.getSlice(at: bytes.readerIndex, length: 1)!), endStream: true))
+        let firstDataFrame = HTTP2Frame(streamID: 1, payload: firstData)
+        let secondDataFrame = HTTP2Frame(streamID: 1, payload: secondData)
+
+        self.channel.pipeline.fireChannelRead(NIOAny(firstDataFrame))
+        windowUpdated = NIOHTTP2WindowUpdatedEvent(streamID: 1, inboundWindowSize: 1, outboundWindowSize: nil)
+        self.channel.pipeline.fireUserInboundEventTriggered(windowUpdated)
+
+        self.channel.pipeline.fireChannelRead(NIOAny(secondDataFrame))
+        // This is nil here for a reason: it reflects what would actually be sent in the real code. Relevantly, the nil currently
+        // does not actually propagate into the handler, which matters a lot.
+        windowUpdated = NIOHTTP2WindowUpdatedEvent(streamID: 1, inboundWindowSize: nil, outboundWindowSize: nil)
+        self.channel.pipeline.fireUserInboundEventTriggered(windowUpdated)
+
+        self.channel.pipeline.fireChannelReadComplete()
+
+        // We've consumed the inbound window: normally we'd expect a WINDOW_UPDATE frame but since
+        // the stream has closed we don't expect to read anything out.
+        XCTAssertNil(try self.channel.readOutbound(as: HTTP2Frame.self))
+    }
 }
