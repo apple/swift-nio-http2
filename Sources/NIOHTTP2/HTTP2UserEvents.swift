@@ -45,10 +45,28 @@ public struct NIOHTTP2WindowUpdatedEvent {
     public let streamID: HTTP2StreamID
 
     /// The new inbound window size for this stream, if any. May be nil if this stream is half-closed.
-    public let inboundWindowSize: Int?
+    public var inboundWindowSize: Int? {
+        get {
+            return self._inboundWindowSize.map { Int($0) }
+        }
+        set {
+            self._inboundWindowSize = newValue.map { Int32($0) }
+        }
+    }
 
     /// The new outbound window size for this stream, if any. May be nil if this stream is half-closed.
-    public let outboundWindowSize: Int?
+    public var outboundWindowSize: Int? {
+        get {
+            return self._outboundWindowSize.map { Int($0) }
+        }
+        set {
+            self._outboundWindowSize = newValue.map { Int32($0) }
+        }
+    }
+
+    private var _inboundWindowSize: Int32?
+
+    private var _outboundWindowSize: Int32?
 
     public init(streamID: HTTP2StreamID, inboundWindowSize: Int?, outboundWindowSize: Int?) {
         // We use Int here instead of Int32. Nonetheless, the value must fit in the Int32 range.
@@ -58,8 +76,8 @@ public struct NIOHTTP2WindowUpdatedEvent {
         precondition(outboundWindowSize == nil || outboundWindowSize! >= Int(Int32.min))
 
         self.streamID = streamID
-        self.inboundWindowSize = inboundWindowSize
-        self.outboundWindowSize = outboundWindowSize
+        self._inboundWindowSize = inboundWindowSize.map { Int32($0) }
+        self._outboundWindowSize = outboundWindowSize.map { Int32($0) }
     }
 }
 
