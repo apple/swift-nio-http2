@@ -492,8 +492,8 @@ extension HTTP2Frame.FramePayload {
     }
 
     func assertGoAwayFramePayload(lastStreamID: HTTP2StreamID, errorCode: UInt32, opaqueData: [UInt8]?, file: StaticString = #file, line: UInt = #line) {
-        guard case .goAway(let actualLastStreamID, let actualErrorCode, let actualOpaqueData) = self.payload else {
-            XCTFail("Expected GOAWAY frame, got \(self.payload) instead", file: (file), line: line)
+        guard case .goAway(let actualLastStreamID, let actualErrorCode, let actualOpaqueData) = self else {
+            XCTFail("Expected GOAWAY frame, got \(self) instead", file: (file), line: line)
             return
         }
 
@@ -516,8 +516,8 @@ extension HTTP2Frame.FramePayload {
     }
 
     func assertPingFramePayload(ack: Bool, opaqueData: HTTP2PingData, file: StaticString = #file, line: UInt = #line) {
-        guard case .ping(let actualPingData, let actualAck) = self.payload else {
-            XCTFail("Expected PING frame, got \(self.payload) instead", file: (file), line: line)
+        guard case .ping(let actualPingData, let actualAck) = self else {
+            XCTFail("Expected PING frame, got \(self) instead", file: (file), line: line)
             return
         }
 
@@ -566,7 +566,7 @@ extension HTTP2Frame.FramePayload {
 
     func assertWindowUpdateFramePayload(windowIncrement: Int, file: StaticString = #file, line: UInt = #line) {
         guard case .windowUpdate(let actualWindowIncrement) = self else {
-            XCTFail("Expected WINDOW_UPDATE frame, got \(self.payload) instead", file: (file), line: line)
+            XCTFail("Expected WINDOW_UPDATE frame, got \(self) instead", file: (file), line: line)
             return
         }
 
@@ -631,7 +631,7 @@ extension HTTP2Frame.FramePayload {
 
     func assertAlternativeServiceFramePayload(origin: String?, field: ByteBuffer?, file: StaticString = #file, line: UInt = #line) {
         guard case .alternativeService(let actualOrigin, let actualField) = self else {
-            XCTFail("Expected ALTSVC frame, got \(self.payload) instead", file: (file), line: line)
+            XCTFail("Expected ALTSVC frame, got \(self) instead", file: (file), line: line)
             return
         }
 

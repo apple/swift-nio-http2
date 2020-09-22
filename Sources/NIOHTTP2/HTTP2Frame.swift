@@ -252,27 +252,38 @@ public struct HTTP2Frame {
     }
 }
 
-extension HTTP2Frame: HTTP2FrameConvertible, HTTP2FramePayloadConvertible {
-    init(http2Frame: HTTP2Frame) {
-        self = http2Frame
-    }
+extension HTTP2Frame.FramePayload {
+    /// A shorthand heuristic for how many bytes we assume a frame consumes on the wire.
+    ///
+    /// Here we concern ourselves only with per-stream frames: that is, `HEADERS`, `DATA`,
+    /// `WINDOW_UDPATE`, `RST_STREAM`, and I guess `PRIORITY`. As a simple heuristic we
+    /// hard code fixed lengths for fixed length frames, use a calculated length for
+    /// variable length frames, and just ignore encoded headers because it's not worth doing a better
+    /// job.
+    var estimatedFrameSize: Int {
+        let frameHeaderSize = 9
 
-    func makeHTTP2Frame(streamID: HTTP2StreamID) -> HTTP2Frame {
-        assert(self.streamID == streamID, "streamID does not match")
-        return self
-    }
-}
-
-extension HTTP2Frame.FramePayload: HTTP2FrameConvertible, HTTP2FramePayloadConvertible {
-    var payload: HTTP2Frame.FramePayload {
-        return self
-    }
-
-    init(http2Frame: HTTP2Frame) {
-        self = http2Frame.payload
-    }
-
-    func makeHTTP2Frame(streamID: HTTP2StreamID) -> HTTP2Frame {
-        return HTTP2Frame(streamID: streamID, payload: self)
+        switch self {
+        case .data(let d):
+            let paddingBytes = d.paddingBytes.map { $0 + 1 } ?? 0
+            return d.data.readableBytes + paddingBytes + frameHeaderSize
+        case .headers(let h):
+            let paddingBytes = h.paddingBytes.map { $0 + 1 } ?? 0
+            return paddingBytes + frameHeaderSize
+        case .priority:
+            return frameHeaderSize + 5
+        case .pushPromise(let p):
+            // Like headers, this is variably size, and we just ignore the encoded headers because
+            // it's not worth having a heuristic.
+            let paddingBytes = p.paddingBytes.map { $0 + 1 } ?? 0
+            return paddingBytes + frameHeaderSize
+        case .rstStream:
+            return frameHeaderSize + 4
+        case .windowUpdate:
+            return frameHeaderSize + 4
+        default:
+            // Unknown or unexpected control frame: say 9 bytes.
+            return frameHeaderSize
+        }
     }
 }
