@@ -250,6 +250,9 @@ private struct DataBuffer {
         return self.bufferedChunks.hasMark
     }
 
+    /// An empty buffer, we use this avoid an allocation in 'evacuatePendingWrites'.
+    private static let emptyBuffer = MarkedCircularBuffer<BufferElement>(initialCapacity: 0)
+
     init() {
         self.bufferedChunks = MarkedCircularBuffer(initialCapacity: 8)
         self.flushedBufferedBytes = 0
@@ -307,7 +310,7 @@ private struct DataBuffer {
 
     /// Removes all pending writes, invalidating this structure as it does so.
     mutating func evacuatePendingWrites() -> MarkedCircularBuffer<BufferElement> {
-        var buffer = MarkedCircularBuffer<BufferElement>(initialCapacity: 0)
+        var buffer = DataBuffer.emptyBuffer
         swap(&buffer, &self.bufferedChunks)
         return buffer
     }
