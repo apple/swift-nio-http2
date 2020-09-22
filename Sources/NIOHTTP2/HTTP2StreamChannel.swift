@@ -649,8 +649,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 private extension HTTP2StreamChannel {
     /// Drop all pending reads.
     private func dropPendingReads() {
-        /// To drop all the reads, as we don't need to report it, we just allocate a new buffer of 0 size.
-        self.pendingReads = CircularBuffer(initialCapacity: 0)
+        /// We don't need to report the dropped reads, just remove them all.
+        self.pendingReads.removeAll()
     }
 
     /// Deliver all pending reads to the channel.
