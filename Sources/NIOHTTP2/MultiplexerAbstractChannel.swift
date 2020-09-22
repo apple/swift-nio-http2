@@ -24,11 +24,7 @@ import NIO
 /// Note that while this is a `struct`, this `struct` has _reference semantics_.
 /// The implementation of `Equatable` & `Hashable` on this type reinforces that requirement.
 struct MultiplexerAbstractChannel {
-    private var baseChannel: BaseChannel
-
-    private init(baseChannel: BaseChannel) {
-        self.baseChannel = baseChannel
-    }
+    private var baseChannel: HTTP2StreamChannel
 
     init(allocator: ByteBufferAllocator,
          parent: Channel,
@@ -41,31 +37,29 @@ struct MultiplexerAbstractChannel {
         switch inboundStreamStateInitializer {
         case .includesStreamID:
             assert(streamID != nil)
-            self.init(baseChannel: .frameBased(.init(allocator: allocator,
-                                                     parent: parent,
-                                                     multiplexer: multiplexer,
-                                                     streamID: streamID,
-                                                     targetWindowSize: targetWindowSize,
-                                                     outboundBytesHighWatermark: outboundBytesHighWatermark,
-                                                     outboundBytesLowWatermark: outboundBytesLowWatermark)))
+            self.baseChannel = .init(allocator: allocator,
+                                     parent: parent,
+                                     multiplexer: multiplexer,
+                                     streamID: streamID,
+                                     targetWindowSize: targetWindowSize,
+                                     outboundBytesHighWatermark: outboundBytesHighWatermark,
+                                     outboundBytesLowWatermark: outboundBytesLowWatermark,
+                                     streamDataType: .frame)
+
         case .excludesStreamID:
-            self.init(baseChannel: .payloadBased(.init(allocator: allocator,
-                                                       parent: parent,
-                                                       multiplexer: multiplexer,
-                                                       streamID: streamID,
-                                                       targetWindowSize: targetWindowSize,
-                                                       outboundBytesHighWatermark: outboundBytesHighWatermark,
-                                                       outboundBytesLowWatermark: outboundBytesLowWatermark)))
+            self.baseChannel = .init(allocator: allocator,
+                                     parent: parent,
+                                     multiplexer: multiplexer,
+                                     streamID: streamID,
+                                     targetWindowSize: targetWindowSize,
+                                     outboundBytesHighWatermark: outboundBytesHighWatermark,
+                                     outboundBytesLowWatermark: outboundBytesLowWatermark,
+                                     streamDataType: .framePayload)
         }
     }
 }
 
 extension MultiplexerAbstractChannel {
-    enum BaseChannel {
-        case frameBased(HTTP2FrameBasedStreamChannel)
-        case payloadBased(HTTP2PayloadBasedStreamChannel)
-    }
-
     enum InboundStreamStateInitializer {
         case includesStreamID(((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?)
         case excludesStreamID(((Channel) -> EventLoopFuture<Void>)?)
@@ -75,176 +69,84 @@ extension MultiplexerAbstractChannel {
 // MARK: API for HTTP2StreamMultiplexer
 extension MultiplexerAbstractChannel {
     var streamID: HTTP2StreamID? {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            return base.streamID
-        case .payloadBased(let base):
-            return base.streamID
-        }
+        return self.baseChannel.streamID
     }
 
     var channelID: ObjectIdentifier {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            return ObjectIdentifier(base)
-        case .payloadBased(let base):
-            return ObjectIdentifier(base)
-        }
+        return ObjectIdentifier(self.baseChannel)
     }
 
     var inList: Bool {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            return base.inList
-        case .payloadBased(let base):
-            return base.inList
-        }
+        return self.baseChannel.inList
     }
 
     var streamChannelListNode: StreamChannelListNode {
         get {
-            switch self.baseChannel {
-            case .frameBased(let base):
-                return base.streamChannelListNode
-            case .payloadBased(let base):
-                return base.streamChannelListNode
-            }
+            return self.baseChannel.streamChannelListNode
         }
         nonmutating set {
-            switch self.baseChannel {
-            case .frameBased(let base):
-                base.streamChannelListNode = newValue
-            case .payloadBased(let base):
-                base.streamChannelListNode = newValue
-            }
+            self.baseChannel.streamChannelListNode = newValue
         }
     }
 
     func configureInboundStream(initializer: InboundStreamStateInitializer) {
-        switch (self.baseChannel, initializer) {
-        case (.frameBased(let base), .includesStreamID(let initializer)):
-            base.configure(initializer: initializer, userPromise: nil)
-        case (.payloadBased(let base), .excludesStreamID(let initializer)):
-            base.configure(initializer: initializer, userPromise: nil)
-        case (.frameBased, .excludesStreamID),
-             (.payloadBased, .includesStreamID):
-            // We create the base channel based on the type inbound initializer we receive
-            // in `init`, so this should never happen.
-            preconditionFailure("Invalid base channel and inbound stream state combination")
+        switch initializer {
+        case .includesStreamID(let initializer):
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
+        case .excludesStreamID(let initializer):
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
         }
     }
 
     func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.configure(initializer: initializer, userPromise: promise)
-        case .payloadBased:
-            fatalError("Can't configure a payload based channel with this initializer.")
-        }
+        self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
     func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
-        switch self.baseChannel {
-        case .frameBased:
-            fatalError("Can't configure a frame based channel with this initializer.")
-        case .payloadBased(let base):
-            base.configure(initializer: initializer, userPromise: promise)
-        }
+        self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
     func performActivation() {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.performActivation()
-        case .payloadBased(let base):
-            base.performActivation()
-        }
+        self.baseChannel.performActivation()
     }
 
     func networkActivationReceived() {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.networkActivationReceived()
-        case .payloadBased(let base):
-            base.networkActivationReceived()
-        }
+        self.baseChannel.networkActivationReceived()
     }
 
     func receiveInboundFrame(_ frame: HTTP2Frame) {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.receiveInboundFrame(frame)
-        case .payloadBased(let base):
-            base.receiveInboundFrame(frame)
-        }
+        self.baseChannel.receiveInboundFrame(frame)
     }
 
     func receiveParentChannelReadComplete() {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.receiveParentChannelReadComplete()
-        case .payloadBased(let base):
-            base.receiveParentChannelReadComplete()
-        }
+        self.baseChannel.receiveParentChannelReadComplete()
     }
 
     func initialWindowSizeChanged(delta: Int) {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.initialWindowSizeChanged(delta: delta)
-        case .payloadBased(let base):
-            base.initialWindowSizeChanged(delta: delta)
-        }
+        self.baseChannel.initialWindowSizeChanged(delta: delta)
     }
 
     func receiveWindowUpdatedEvent(_ windowSize: Int) {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.receiveWindowUpdatedEvent(windowSize)
-        case .payloadBased(let base):
-            base.receiveWindowUpdatedEvent(windowSize)
-        }
+        self.baseChannel.receiveWindowUpdatedEvent(windowSize)
     }
 
     func parentChannelWritabilityChanged(newValue: Bool) {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.parentChannelWritabilityChanged(newValue: newValue)
-        case .payloadBased(let base):
-            base.parentChannelWritabilityChanged(newValue: newValue)
-        }
+        self.baseChannel.parentChannelWritabilityChanged(newValue: newValue)
     }
 
     func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            base.receiveStreamClosed(reason)
-        case .payloadBased(let base):
-            base.receiveStreamClosed(reason)
-        }
+        self.baseChannel.receiveStreamClosed(reason)
     }
 }
 
 extension MultiplexerAbstractChannel: Equatable {
     static func ==(lhs: MultiplexerAbstractChannel, rhs: MultiplexerAbstractChannel) -> Bool {
-        switch (lhs.baseChannel, rhs.baseChannel) {
-        case (.frameBased(let lhs), .frameBased(let rhs)):
-            return lhs === rhs
-        case (.payloadBased(let lhs), .payloadBased(let rhs)):
-            return lhs === rhs
-        case (.frameBased, .payloadBased), (.payloadBased, .frameBased):
-            return false
-        }
+        return lhs.baseChannel === rhs.baseChannel
     }
 }
 
 extension MultiplexerAbstractChannel: Hashable {
     func hash(into hasher: inout Hasher) {
-        switch self.baseChannel {
-        case .frameBased(let base):
-            hasher.combine(ObjectIdentifier(base))
-        case .payloadBased(let base):
-            hasher.combine(ObjectIdentifier(base))
-        }
+        hasher.combine(ObjectIdentifier(self.baseChannel))
     }
 }
