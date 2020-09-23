@@ -616,14 +616,22 @@ extension HPACKHeaders {
     /// - returns: The value for this pseudo-header.
     /// - throws: If there is no such header, or multiple.
     internal func peekPseudoHeader(name: String) throws -> String {
-        let value = self[name]
-        switch value.count {
-        case 0:
+        // This could be done with .lazy.filter.map but that generates way more ARC traffic.
+        var headerValue: String? = nil
+
+        for (fieldName, fieldValue, _) in self {
+            if name == fieldName {
+                guard headerValue == nil else {
+                    throw NIOHTTP2Errors.DuplicatePseudoHeader(name)
+                }
+                headerValue = fieldValue
+            }
+        }
+
+        if let headerValue = headerValue {
+            return headerValue
+        } else {
             throw NIOHTTP2Errors.MissingPseudoHeader(name)
-        case 1:
-            return value.first!
-        default:
-            throw NIOHTTP2Errors.DuplicatePseudoHeader(name)
         }
     }
 }
