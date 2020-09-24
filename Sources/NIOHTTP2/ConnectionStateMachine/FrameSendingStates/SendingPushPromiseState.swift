@@ -45,7 +45,7 @@ extension SendingPushPromiseState {
 
         // First, however, we need to check we can push at all!
         guard self.mayPush else {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.PushInViolationOfSetting(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(), type: .protocolError), effect: nil)
         }
 
         do {

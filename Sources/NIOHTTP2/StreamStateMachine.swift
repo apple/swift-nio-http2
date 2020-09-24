@@ -383,9 +383,9 @@ extension HTTP2StreamStateMachine {
             // seems reasonable to me: specifically, if we have a stream to fail, fail it, otherwise treat
             // the error as connection scoped.)
             case .idle(.server, _, _), .closed:
-                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             case .reservedRemote, .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.ContentLengthViolated {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
@@ -514,9 +514,9 @@ extension HTTP2StreamStateMachine {
             // seems reasonable to me: specifically, if we have a stream to fail, fail it, otherwise treat
             // the error as connection scoped.)
             case .idle(.client, _, _), .closed:
-                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+                return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             case .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.ContentLengthViolated {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
@@ -586,7 +586,7 @@ extension HTTP2StreamStateMachine {
             // Sending a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenRemoteLocalIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedLocalPeerActive, .halfClosedRemoteLocalIdle, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .streamClosed), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .streamClosed), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -657,7 +657,7 @@ extension HTTP2StreamStateMachine {
             // Receiving a DATA frame outside any of these states is a stream error of type STREAM_CLOSED (RFC7540 § 6.1)
             case .idle, .halfOpenLocalPeerIdle, .reservedLocal, .reservedRemote, .halfClosedLocalPeerIdle,
                  .halfClosedRemoteLocalActive, .halfClosedRemoteLocalIdle, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .streamClosed), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .streamClosed), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -693,7 +693,7 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .client, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
              .halfClosedRemoteLocalActive(localRole: .client, initiatedBy: _, localContentLength: _, localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .server, localContentLength: _, localWindow: _):
-            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
         }
     }
 
@@ -720,7 +720,7 @@ extension HTTP2StreamStateMachine {
              .fullyOpen(localRole: .server, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .server, initiatedBy: _, remoteContentLength: _, remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .server, remoteContentLength: _, remoteWindow: _):
-            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+            return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
         }
     }
 
@@ -769,7 +769,7 @@ extension HTTP2StreamStateMachine {
                 windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: nil, remoteStreamWindowSize: Int(remoteWindow)))
 
             case .idle, .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -833,7 +833,7 @@ extension HTTP2StreamStateMachine {
                 windowEffect = nil
 
             case .idle, .reservedRemote, .closed:
-                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+                return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             }
         } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .flowControlError), effect: nil)
@@ -856,7 +856,7 @@ extension HTTP2StreamStateMachine {
     mutating func receiveRstStream(reason: HTTP2ErrorCode) -> StateMachineResultWithStreamEffect {
         // We can receive RST_STREAM frames in any state but idle.
         if case .idle = self.state {
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.BadStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
         }
 
         self.state = .closed(reason: reason)
@@ -1004,7 +1004,7 @@ extension HTTP2StreamStateMachine {
 
         // End stream must be set on trailers.
         guard endStream else {
-            return StateMachineResultWithStreamEffect(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.TrailersWithoutEndStream(streamID: self.streamID), type: .protocolError), effect: nil)
+            return StateMachineResultWithStreamEffect(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.trailersWithoutEndStream(streamID: self.streamID), type: .protocolError), effect: nil)
         }
 
         self.state = target

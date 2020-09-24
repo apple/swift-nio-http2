@@ -264,7 +264,7 @@ class ConnectionStateMachineTests: XCTestCase {
         self.server = savedServerState
         
         // Test that BadStreamStateTransition conforms to CustomStringConvertible
-        XCTAssertEqual(lastBadStreamStateTransition?.description, "BadStreamStateTransition in state halfClosedLocalPeerActive")
+        XCTAssertTrue(lastBadStreamStateTransition!.description.starts(with: "BadStreamStateTransition(fromState: halfClosedLocalPeerActive"))
 }
 
     func testOpeningConnectionWhileServerPreambleMissing() {

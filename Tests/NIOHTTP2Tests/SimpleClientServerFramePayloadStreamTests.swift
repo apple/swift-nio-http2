@@ -1001,7 +1001,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
 
         self.interactInMemory(self.clientChannel, self.serverChannel)
 
-        XCTAssertNoThrow(try XCTAssertEqual(NIOHTTP2Errors.BadClientMagic(),
+        XCTAssertNoThrow(try XCTAssertEqual(NIOHTTP2Errors.badClientMagic(),
                                             errorSeenPromise.futureResult.wait() as? NIOHTTP2Errors.BadClientMagic))
 
         // The client will get two frames: a SETTINGS frame, and a GOAWAY frame. We don't want to decode these, so we
@@ -1201,7 +1201,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             return
         }
         XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
 
         guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
@@ -1233,7 +1233,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             return
         }
         XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
 
         guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
@@ -1264,7 +1264,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             return
         }
         XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidHTTP2HeaderFieldName, NIOHTTP2Errors.InvalidHTTP2HeaderFieldName("UPPERCASE"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidHTTP2HeaderFieldName, NIOHTTP2Errors.invalidHTTP2HeaderFieldName("UPPERCASE"))
         }
 
         guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
@@ -1296,7 +1296,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         settingsBuffer.writeBytes(weirdSettingsFrame)
 
         XCTAssertThrowsError(try self.clientChannel.writeInbound(settingsBuffer)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidSetting, NIOHTTP2Errors.InvalidSetting(setting: HTTP2Setting(parameter: .enablePush, value: 3)))
+            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidSetting, NIOHTTP2Errors.invalidSetting(setting: HTTP2Setting(parameter: .enablePush, value: 3)))
         }
 
         guard let goAwayFrame = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: ByteBuffer.self)) else {
@@ -1453,7 +1453,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
 
         // The server should have errored.
         XCTAssertThrowsError(try self.serverChannel.writeInbound(bytes)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveEmptyDataFrames, NIOHTTP2Errors.ExcessiveEmptyDataFrames())
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveEmptyDataFrames, NIOHTTP2Errors.excessiveEmptyDataFrames())
         }
 
         guard let serverBytes = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
@@ -1505,7 +1505,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
 
         // The server should have errored.
         XCTAssertThrowsError(try self.serverChannel.writeInbound(bytes)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveEmptyDataFrames, NIOHTTP2Errors.ExcessiveEmptyDataFrames())
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveEmptyDataFrames, NIOHTTP2Errors.excessiveEmptyDataFrames())
         }
 
         guard let serverBytes = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
@@ -1546,7 +1546,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             return
         }
         XCTAssertThrowsError(try self.serverChannel.writeInbound(pingBytes)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.ExcessiveOutboundFrameBuffering())
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.excessiveOutboundFrameBuffering())
         }
 
         XCTAssertNoThrow(try self.clientChannel.finish())
@@ -1573,7 +1573,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             return
         }
         XCTAssertThrowsError(try self.serverChannel.writeInbound(settingsBytes)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.ExcessiveOutboundFrameBuffering())
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.excessiveOutboundFrameBuffering())
         }
 
         XCTAssertNoThrow(try self.clientChannel.finish())
@@ -1677,7 +1677,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             return
         }
         XCTAssertThrowsError(try self.serverChannel.writeInbound(frameData)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.UnableToParseFrame, NIOHTTP2Errors.UnableToParseFrame())
+            XCTAssertEqual(error as? NIOHTTP2Errors.UnableToParseFrame, NIOHTTP2Errors.unableToParseFrame())
         }
 
         guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
@@ -1728,7 +1728,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
 
         // But if we send one more frame, that will be treated as a violation of SETTINGS_MAX_HEADER_LIST_SIZE.
         XCTAssertThrowsError(try self.serverChannel.writeInbound(firstBuffer.getSlice(at: firstBuffer.writerIndex - 10, length: 10)!)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessivelyLargeHeaderBlock, NIOHTTP2Errors.ExcessivelyLargeHeaderBlock())
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessivelyLargeHeaderBlock, NIOHTTP2Errors.excessivelyLargeHeaderBlock())
         }
         guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
             XCTFail("Did not receive response frame")
@@ -1763,7 +1763,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
 
         // This frame will be treated as a violation of SETTINGS_MAX_HEADER_LIST_SIZE.
         XCTAssertThrowsError(try self.serverChannel.writeInbound(buffer)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessivelyLargeHeaderBlock, NIOHTTP2Errors.ExcessivelyLargeHeaderBlock())
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessivelyLargeHeaderBlock, NIOHTTP2Errors.excessivelyLargeHeaderBlock())
         }
         guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self)) else {
             XCTFail("Did not receive response frame")

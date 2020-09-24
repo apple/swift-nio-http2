@@ -99,7 +99,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         } else {
             // This frame is for a stream we know nothing about. We can't do much about it, so we
             // are going to fire an error and drop the frame.
-            let error = NIOHTTP2Errors.NoSuchStream(streamID: streamID)
+            let error = NIOHTTP2Errors.noSuchStream(streamID: streamID)
             context.fireErrorCaught(error)
         }
     }

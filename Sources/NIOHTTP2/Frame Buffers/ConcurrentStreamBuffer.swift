@@ -144,7 +144,7 @@ struct ConcurrentStreamBuffer {
             // but doesn't match something in the buffer. As a result, it is an error for this frame to have a stream ID lower than or equal to the
             // highest stream ID in the buffer: if it did, we should have found it when we searched above. If that constraint is breached, fail the write.
             if let lastElement = self.bufferedFrames.last, frame.streamID <= lastElement.streamID {
-                throw NIOHTTP2Errors.StreamIDTooSmall()
+                throw NIOHTTP2Errors.streamIDTooSmall()
             }
 
             // Ok, the stream ID is fine: buffer this frame.
@@ -155,7 +155,7 @@ struct ConcurrentStreamBuffer {
             // This buffer probably has a HEADERS frame in it, and we really don't want to violate the ordering requirements that implies, so we'll buffer this anyway.
             // We still want StreamIDTooSmall protection here.
             if frame.streamID <= lastElement.streamID {
-                throw NIOHTTP2Errors.StreamIDTooSmall()
+                throw NIOHTTP2Errors.streamIDTooSmall()
             }
 
             // Ok, the stream ID is fine: buffer this frame.
@@ -223,9 +223,9 @@ struct ConcurrentStreamBuffer {
             // If we're currently unbuffering this stream, we need to pass the RST_STREAM frame on for correctness. If we aren't, just
             // kill it.
             if writeBuffer.currentlyUnblocking {
-                return .forwardAndDrop(writeBuffer.frames, NIOHTTP2Errors.StreamClosed(streamID: frame.streamID, errorCode: reason))
+                return .forwardAndDrop(writeBuffer.frames, NIOHTTP2Errors.streamClosed(streamID: frame.streamID, errorCode: reason))
             } else {
-                return .succeedAndDrop(writeBuffer.frames, NIOHTTP2Errors.StreamClosed(streamID: frame.streamID, errorCode: reason))
+                return .succeedAndDrop(writeBuffer.frames, NIOHTTP2Errors.streamClosed(streamID: frame.streamID, errorCode: reason))
             }
         }
 

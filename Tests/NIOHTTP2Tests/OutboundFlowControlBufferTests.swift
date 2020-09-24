@@ -243,7 +243,7 @@ class OutboundFlowControlBufferTests: XCTestCase {
             return
         }
         for (_, promise) in droppedFrames {
-            promise?.fail(NIOHTTP2Errors.StreamClosed(streamID: streamOne, errorCode: .protocolError))
+            promise?.fail(NIOHTTP2Errors.streamClosed(streamID: streamOne, errorCode: .protocolError))
         }
 
         XCTAssertThrowsError(try dataPromise.futureResult.wait()) {
@@ -374,10 +374,10 @@ class OutboundFlowControlBufferTests: XCTestCase {
 
     func testRejectsPrioritySelfDependency() {
         XCTAssertThrowsError(try self.buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: false, dependency: 1, weight: 36))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
         XCTAssertThrowsError(try self.buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
     }
 }

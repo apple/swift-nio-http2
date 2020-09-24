@@ -54,7 +54,7 @@ extension DOSHeuristics {
         }
 
         if self.receivedEmptyDataFrames > self.maximumSequentialEmptyDataFrames {
-            throw NIOHTTP2Errors.ExcessiveEmptyDataFrames()
+            throw NIOHTTP2Errors.excessiveEmptyDataFrames()
         }
     }
 }

@@ -228,15 +228,15 @@ struct ConnectionStreamState {
     /// Adjusts the stream state to reserve a client stream ID.
     mutating func reserveClientStreamID(_ streamID: HTTP2StreamID) throws {
         guard self.clientStreamCount < self.maxClientInitiatedStreams else {
-            throw NIOHTTP2Errors.MaxStreamsViolation()
+            throw NIOHTTP2Errors.maxStreamsViolation()
         }
 
         guard streamID > self.lastClientStreamID else {
-            throw NIOHTTP2Errors.StreamIDTooSmall()
+            throw NIOHTTP2Errors.streamIDTooSmall()
         }
 
         guard streamID.mayBeInitiatedBy(.client) else {
-            throw NIOHTTP2Errors.InvalidStreamIDForPeer()
+            throw NIOHTTP2Errors.invalidStreamIDForPeer()
         }
 
         self.lastClientStreamID = streamID
@@ -246,15 +246,15 @@ struct ConnectionStreamState {
     /// Adjusts the stream state to reserve a server stream ID.
     mutating func reserveServerStreamID(_ streamID: HTTP2StreamID) throws {
         guard self.serverStreamCount < self.maxServerInitiatedStreams else {
-            throw NIOHTTP2Errors.MaxStreamsViolation()
+            throw NIOHTTP2Errors.maxStreamsViolation()
         }
 
         guard streamID > self.lastServerStreamID else {
-            throw NIOHTTP2Errors.StreamIDTooSmall()
+            throw NIOHTTP2Errors.streamIDTooSmall()
         }
 
         guard streamID.mayBeInitiatedBy(.server) else {
-            throw NIOHTTP2Errors.InvalidStreamIDForPeer()
+            throw NIOHTTP2Errors.invalidStreamIDForPeer()
         }
 
         self.lastServerStreamID = streamID
@@ -310,13 +310,13 @@ struct ConnectionStreamState {
         case true where streamID > self.lastClientStreamID,
              false where streamID > self.lastServerStreamID:
             // The stream in question is idle.
-            return .connectionError(underlyingError: NIOHTTP2Errors.NoSuchStream(streamID: streamID), type: .protocolError)
+            return .connectionError(underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID), type: .protocolError)
         default:
             // This stream must have already been closed.
             if ignoreClosed {
-              return .ignoreFrame
+                return .ignoreFrame
             } else {
-              return .connectionError(underlyingError: NIOHTTP2Errors.NoSuchStream(streamID: streamID), type: .streamClosed)
+                return .connectionError(underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID), type: .streamClosed)
             }
         }
     }
