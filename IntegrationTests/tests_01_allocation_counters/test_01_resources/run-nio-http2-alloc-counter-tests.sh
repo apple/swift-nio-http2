@@ -18,18 +18,13 @@ here="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 tmp_dir="/tmp"
 
-function die() {
-    echo >&2 "ERROR: $*"
-    exit 1
-}
-
 while getopts "t:" opt; do
     case "$opt" in
         t)
             tmp_dir="$OPTARG"
             ;;
-        \?)
-            die "unknown option $opt"
+        *)
+            exit 1
             ;;
     esac
 done
@@ -40,6 +35,14 @@ cd "$nio_checkout"
 git clone --depth 1 https://github.com/apple/swift-nio
 )
 
+shift $((OPTIND-1))
+
+tests_to_run=("$here"/test_*.swift)
+
+if [[ $# -gt 0 ]]; then
+    tests_to_run=("$@")
+fi
+
 "$nio_checkout/swift-nio/IntegrationTests/allocation-counter-tests-framework/run-allocation-counter.sh" \
     -p "$here/../../.." \
     -m NIO \
@@ -47,4 +50,4 @@ git clone --depth 1 https://github.com/apple/swift-nio
     -m NIOHTTP2 \
     -t "$tmp_dir" \
     -d <( echo '.package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),' ) \
-    "$here"/test_*.swift
+    "${tests_to_run[@]}"
