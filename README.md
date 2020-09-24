@@ -14,11 +14,11 @@ $ swift test
 ## Versions
 
 Just like the rest of the SwiftNIO family, swift-nio-http2 follows [SemVer 2.0.0](https://semver.org/#semantic-versioning-200) with a separate document
-declaring [SwiftNIO's Public API](https://github.com/apple/swift-nio/blob/master/docs/public-api.md).
+declaring [SwiftNIO's Public API](https://github.com/apple/swift-nio/blob/main/docs/public-api.md).
 
 ### `swift-nio-http2` 1.x
 
-`swift-nio-http2` versions 1.x are a pure-Swift implementation of the HTTP/2 protocol for SwiftNIO. It's part of the SwiftNIO 2 family of repositories and does not have any dependencies besides [`swift-nio`](https://github.com/apple/swift-nio) and Swift 5. As the latest version, it lives on the [`master`](https://github.com/apple/swift-nio-http2) branch.
+`swift-nio-http2` versions 1.x are a pure-Swift implementation of the HTTP/2 protocol for SwiftNIO. It's part of the SwiftNIO 2 family of repositories and does not have any dependencies besides [`swift-nio`](https://github.com/apple/swift-nio) and Swift 5. As the latest version, it lives on the [`main`](https://github.com/apple/swift-nio-http2) branch.
 
 To depend on `swift-nio-http2`, put the following in the `dependencies` of your `Package.swift`:
 
