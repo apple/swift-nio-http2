@@ -85,7 +85,7 @@ func run(identifier: String) {
             let clientChannel = EmbeddedChannel(loop: loop)
             let serverChannel = EmbeddedChannel(loop: loop)
 
-            let clientMultiplexer = try! clientChannel.configureHTTP2Pipeline(mode: .client).wait()
+            let clientMultiplexer = try! clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait()
             _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
                 return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
             }.wait()
