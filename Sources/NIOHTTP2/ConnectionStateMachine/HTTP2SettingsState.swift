@@ -91,7 +91,7 @@ struct HTTP2SettingsState {
     ///     - onValueChange: A callback that will be invoked once for each setting change.
     mutating func receiveSettingsAck(onValueChange: OnValueChangeCallback) throws {
         guard self.unacknowlegedSettingsFrames.count > 0 else {
-            throw NIOHTTP2Errors.ReceivedBadSettings()
+            throw NIOHTTP2Errors.receivedBadSettings()
         }
 
         try self.applySettings(self.unacknowlegedSettingsFrames.removeFirst(), onValueChange: onValueChange)

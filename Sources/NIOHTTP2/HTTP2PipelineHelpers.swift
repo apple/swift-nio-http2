@@ -198,7 +198,7 @@ extension Channel {
             case .negotiated:
                 // We negotiated something that isn't HTTP/1.1. This is a bad scene, and is a good indication
                 // of a user configuration error. We're going to close the connection directly.
-                return self.close().flatMap { self.eventLoop.makeFailedFuture(NIOHTTP2Errors.InvalidALPNToken()) }
+                return self.close().flatMap { self.eventLoop.makeFailedFuture(NIOHTTP2Errors.invalidALPNToken()) }
             }
         }
 

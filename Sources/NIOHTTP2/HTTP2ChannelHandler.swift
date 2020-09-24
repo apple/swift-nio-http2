@@ -203,13 +203,13 @@ extension NIOHTTP2Handler {
         do {
             return try self.frameDecoder.nextFrame()
         } catch InternalError.codecError(let code) {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.UnableToParseFrame(), reason: code)
+            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.unableToParseFrame(), reason: code)
             return nil
         } catch is NIOHTTP2Errors.BadClientMagic {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.BadClientMagic(), reason: .protocolError)
+            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.badClientMagic(), reason: .protocolError)
             return nil
         } catch is NIOHTTP2Errors.ExcessivelyLargeHeaderBlock {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.ExcessivelyLargeHeaderBlock(), reason: .protocolError)
+            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.excessivelyLargeHeaderBlock(), reason: .protocolError)
             return nil
         } catch {
             self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .internalError)
@@ -470,7 +470,7 @@ extension NIOHTTP2Handler {
         do {
             extraFrameData = try self.frameEncoder.encode(frame: frame, to: &self.writeBuffer)
         } catch InternalError.codecError {
-            self.outboundErrorTriggered(context: context, promise: promise, underlyingError: NIOHTTP2Errors.UnableToSerializeFrame())
+            self.outboundErrorTriggered(context: context, promise: promise, underlyingError: NIOHTTP2Errors.unableToSerializeFrame())
             return
         } catch {
             self.outboundErrorTriggered(context: context, promise: promise, underlyingError: error)
@@ -509,11 +509,8 @@ extension NIOHTTP2Handler {
             self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason))
             self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: streamClosedData.remoteConnectionWindowSize, outboundWindowSize: streamClosedData.localConnectionWindowSize))
 
-            let failedWrites = self.outboundBuffer.streamClosed(streamClosedData.streamID)
-            let error = NIOHTTP2Errors.StreamClosed(streamID: streamClosedData.streamID, errorCode: streamClosedData.reason ?? .cancel)
-            for promise in failedWrites {
-                promise?.fail(error)
-            }
+            let droppedPromises = self.outboundBuffer.streamClosed(streamClosedData.streamID)
+            self.failDroppedPromises(droppedPromises, streamID: streamClosedData.streamID, errorCode: streamClosedData.reason ?? .cancel)
         case .streamCreated(let streamCreatedData):
             self.outboundBuffer.streamCreated(streamCreatedData.streamID, initialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init) ?? 0)
             self.inboundEventBuffer.pendingUserEvent(NIOHTTP2StreamCreatedEvent(streamID: streamCreatedData.streamID,
@@ -523,11 +520,8 @@ extension NIOHTTP2Handler {
             for droppedStream in streamClosureData.closedStreams {
                 self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
 
-                let failedWrites = self.outboundBuffer.streamClosed(droppedStream)
-                let error = NIOHTTP2Errors.StreamClosed(streamID: droppedStream, errorCode: .cancel)
-                for promise in failedWrites {
-                    promise?.fail(error)
-                }
+                let droppedPromises = self.outboundBuffer.streamClosed(droppedStream)
+                self.failDroppedPromises(droppedPromises, streamID: droppedStream, errorCode: .cancel)
             }
         case .flowControlChange(let change):
             self.outboundBuffer.connectionWindowSize = change.localConnectionWindowSize
@@ -538,11 +532,8 @@ extension NIOHTTP2Handler {
             }
         case .streamCreatedAndClosed(let cAndCData):
             self.outboundBuffer.streamCreated(cAndCData.streamID, initialWindowSize: 0)
-            let failedWrites = self.outboundBuffer.streamClosed(cAndCData.streamID)
-            let error = NIOHTTP2Errors.StreamClosed(streamID: cAndCData.streamID, errorCode: .cancel)
-            for promise in failedWrites {
-                promise?.fail(error)
-            }
+            let droppedPromises = self.outboundBuffer.streamClosed(cAndCData.streamID)
+            self.failDroppedPromises(droppedPromises, streamID: cAndCData.streamID, errorCode: .cancel)
         case .remoteSettingsChanged(let settingsChange):
             if settingsChange.streamWindowSizeChange != 0 {
                 self.outboundBuffer.initialWindowSizeChanged(settingsChange.streamWindowSizeChange)
@@ -581,6 +572,23 @@ extension NIOHTTP2Handler {
 
         if self.wroteFrame {
             context.flush()
+        }
+    }
+
+    /// Fails any promises in the given collection with a 'StreamClosed' error.
+    private func failDroppedPromises(_ promises: CompoundOutboundBuffer.DroppedPromisesCollection,
+                                     streamID: HTTP2StreamID,
+                                     errorCode: HTTP2ErrorCode,
+                                     file: String = #file, line: UInt = #line) {
+        // 'NIOHTTP2Errors.streamClosed' always allocates, if there are no promises then there's no
+        // need to create the error.
+        guard promises.contains(where: { $0 != nil }) else {
+            return
+        }
+
+        let error = NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: errorCode, file: file, line: line)
+        for promise in promises {
+            promise?.fail(error)
         }
     }
 }

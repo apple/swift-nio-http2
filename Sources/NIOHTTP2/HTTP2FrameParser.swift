@@ -326,7 +326,7 @@ struct HTTP2FrameDecoder {
             }
 
             guard clientMagic == HTTP2FrameDecoder.clientMagicBytes else {
-                throw NIOHTTP2Errors.BadClientMagic()
+                throw NIOHTTP2Errors.badClientMagic()
             }
 
             self.state = .accumulatingFrameHeader(.init(unusedBytes: state.pendingBytes))
@@ -349,7 +349,7 @@ struct HTTP2FrameDecoder {
                 // Not a DATA frame. Before we move on, do a quick preflight: if this frame header is for a frame that will
                 // definitely violate SETTINGS_MAX_HEADER_LIST_SIZE, quit now.
                 if header.type == 1 && header.length > self.headerDecoder.maxHeaderListSize {
-                    throw NIOHTTP2Errors.ExcessivelyLargeHeaderBlock()
+                    throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
 
                 }
                 self.state = .accumulatingData(AccumulatingPayloadParserState(fromIdle: state, header: header))
@@ -572,7 +572,7 @@ struct HTTP2FrameDecoder {
             // Check whether there is any possibility of this payload decompressing and fitting in max header list size.
             // If there isn't, kill it.
             guard state.accumulatedPayload.readableBytes + header.length <= self.headerDecoder.maxHeaderListSize else {
-                throw NIOHTTP2Errors.ExcessivelyLargeHeaderBlock()
+                throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
             }
 
             self.state = .accumulatingContinuationPayload(AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: state, continuationHeader: header))
@@ -1031,7 +1031,7 @@ struct HTTP2FrameEncoder {
         case .data(let dataContent):
             if dataContent.paddingBytes != nil {
                 // we don't support sending padded frames just now
-                throw NIOHTTP2Errors.Unsupported(info: "Padding is not supported on sent frames at this time")
+                throw NIOHTTP2Errors.unsupported(info: "Padding is not supported on sent frames at this time")
             }
 
             if dataContent.endStream {
@@ -1043,7 +1043,7 @@ struct HTTP2FrameEncoder {
         case .headers(let headerData):
             if headerData.paddingBytes != nil {
                 // we don't support sending padded frames just now
-                throw NIOHTTP2Errors.Unsupported(info: "Padding is not supported on sent frames at this time")
+                throw NIOHTTP2Errors.unsupported(info: "Padding is not supported on sent frames at this time")
             }
 
             flags.insert(.endHeaders)
@@ -1099,7 +1099,7 @@ struct HTTP2FrameEncoder {
         case .pushPromise(let pushPromiseData):
             if pushPromiseData.paddingBytes != nil {
                 // we don't support sending padded frames just now
-                throw NIOHTTP2Errors.Unsupported(info: "Padding is not supported on sent frames at this time")
+                throw NIOHTTP2Errors.unsupported(info: "Padding is not supported on sent frames at this time")
             }
 
             let streamVal: UInt32 = UInt32(pushPromiseData.pushedStreamID)

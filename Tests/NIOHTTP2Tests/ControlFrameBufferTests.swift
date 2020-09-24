@@ -101,7 +101,7 @@ final class ControlFrameBufferTests: XCTestCase {
             XCTAssertNoThrow(try buffer.processOutboundFrame(.headers, promise: nil, channelWritable: false).assertNothing())
         }
         XCTAssertThrowsError(try buffer.processOutboundFrame(.headers, promise: nil, channelWritable: false)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.ExcessiveOutboundFrameBuffering())
+            XCTAssertEqual(error as? NIOHTTP2Errors.ExcessiveOutboundFrameBuffering, NIOHTTP2Errors.excessiveOutboundFrameBuffering())
         }
     }
 }

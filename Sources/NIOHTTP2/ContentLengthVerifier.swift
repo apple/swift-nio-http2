@@ -31,7 +31,7 @@ extension ContentLengthVerifier {
 
         let newContentLength = expectedContentLength - length
         if newContentLength < 0 {
-            throw NIOHTTP2Errors.ContentLengthViolated()
+            throw NIOHTTP2Errors.contentLengthViolated()
         }
         self.expectedContentLength = newContentLength
     }
@@ -42,7 +42,7 @@ extension ContentLengthVerifier {
         case .none, .some(0):
             break
         default:
-            throw NIOHTTP2Errors.ContentLengthViolated()
+            throw NIOHTTP2Errors.contentLengthViolated()
         }
     }
 }

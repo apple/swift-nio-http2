@@ -167,7 +167,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // At this stage the stream should be closed with the appropriate error code.
         XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
-                       NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
+                       NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel))
         XCTAssertNoThrow(try self.channel.finish())
     }
 
@@ -204,7 +204,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // At this stage the stream should be closed with the appropriate manufactured error code.
         XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
-                       NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .refusedStream))
+                       NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .refusedStream))
         XCTAssertNoThrow(try self.channel.finish())
     }
 
@@ -433,7 +433,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Now send the stream closed event. This will fail the close promise.
         let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
-        XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
+        XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel))
 
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -655,7 +655,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Now we're going to deliver a normal close to the stream.
         let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
-        XCTAssertEqual(writeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: streamID, errorCode: .cancel))
+        XCTAssertEqual(writeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel))
 
         XCTAssertNoThrow(try self.channel.finish())
     }

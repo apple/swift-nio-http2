@@ -149,7 +149,7 @@ final class CompoundOutboundBufferTest: XCTestCase {
 
         // Ok, now we complete stream 1. This makes the next frame elegible for emission.
         XCTAssertEqual(buffer.streamClosed(1).count, 0)
-        buffer.nextFlushedWritableFrame(channelWritable: true).assertError(NIOHTTP2Errors.NoSuchStream(streamID: 3))
+        buffer.nextFlushedWritableFrame(channelWritable: true).assertError(NIOHTTP2Errors.noSuchStream(streamID: 3))
     }
 
     func testBufferedFrameDrops() {
@@ -181,7 +181,7 @@ final class CompoundOutboundBufferTest: XCTestCase {
             future.map {
                 results[idx] = true
             }.whenFailure { error in
-                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .protocolError))
+                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
                 results[idx] = false
             }
         }
@@ -192,13 +192,13 @@ final class CompoundOutboundBufferTest: XCTestCase {
 
         // Now, fail stream one.
         for promise in buffer.streamClosed(1) {
-            promise?.fail(NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .protocolError))
+            promise?.fail(NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
         }
         XCTAssertEqual(results, [true, false, nil, nil])
 
         // Now fail stream three.
         for promise in buffer.streamClosed(3) {
-            promise?.fail(NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .protocolError))
+            promise?.fail(NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
         }
         XCTAssertEqual(results, [true, false, false, false])
     }
@@ -207,10 +207,10 @@ final class CompoundOutboundBufferTest: XCTestCase {
         var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1, maxBufferedControlFrames: 1000)
 
         XCTAssertThrowsError(try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: false, dependency: 1, weight: 36))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
         XCTAssertThrowsError(try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.PriorityCycle(streamID: 1))
+            XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
     }
 

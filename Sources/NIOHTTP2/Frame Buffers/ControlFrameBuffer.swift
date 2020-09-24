@@ -91,7 +91,7 @@ extension ControlFrameBuffer {
         guard self.pendingControlFrames.count < self.maximumBufferSize else {
             // Appending another frame would violate the maximum buffer size. We're storing too many frames here,
             // we gotta move on.
-            throw NIOHTTP2Errors.ExcessiveOutboundFrameBuffering()
+            throw NIOHTTP2Errors.excessiveOutboundFrameBuffering()
         }
         self.pendingControlFrames.append(PendingControlFrame(frame: frame, promise: promise))
     }

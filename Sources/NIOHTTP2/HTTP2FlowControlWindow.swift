@@ -87,14 +87,14 @@ struct HTTP2FlowControlWindow {
         assert(amount <= HTTP2FlowControlWindow.maxIncrement)
 
         guard amount >= 1 else {
-            throw NIOHTTP2Errors.InvalidWindowIncrementSize()
+            throw NIOHTTP2Errors.invalidWindowIncrementSize()
         }
 
         // We now need to bounds check to confirm that our window size will remain in the valid range. We use
         // subtraction to avoid integer overflow. Note that if the current window size is negative then all window
         // update increments are valid.
         guard (self.windowSize < 0) || (HTTP2FlowControlWindow.maxSize - self.windowSize >= amount) else {
-            throw NIOHTTP2Errors.InvalidFlowControlWindowSize(delta: Int(amount), currentWindowSize: Int(self.windowSize))
+            throw NIOHTTP2Errors.invalidFlowControlWindowSize(delta: Int(amount), currentWindowSize: Int(self.windowSize))
         }
 
         self.windowSize += Int32(amount)
@@ -116,7 +116,7 @@ struct HTTP2FlowControlWindow {
         assert(amount >= -(Int32.max))
 
         guard (self.windowSize < 0) || (HTTP2FlowControlWindow.maxSize - self.windowSize >= amount) else {
-            throw NIOHTTP2Errors.InvalidFlowControlWindowSize(delta: Int(amount), currentWindowSize: Int(self.windowSize))
+            throw NIOHTTP2Errors.invalidFlowControlWindowSize(delta: Int(amount), currentWindowSize: Int(self.windowSize))
         }
 
         self.windowSize += amount
@@ -134,7 +134,7 @@ struct HTTP2FlowControlWindow {
         let size = Int32(size)
 
         guard self.windowSize >= size else {
-            throw NIOHTTP2Errors.FlowControlViolation()
+            throw NIOHTTP2Errors.flowControlViolation()
         }
 
         self.windowSize -= size

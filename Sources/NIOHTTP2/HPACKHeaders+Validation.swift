@@ -58,7 +58,7 @@ fileprivate enum BlockSection {
         case (.headers, .pseudoHeaderField):
             // This is an error: it's not allowed to send a pseudo-header field once a regular
             // header field has been sent.
-            throw NIOHTTP2Errors.PseudoHeaderAfterRegularHeader(":\(field.baseName)")
+            throw NIOHTTP2Errors.pseudoHeaderAfterRegularHeader(":\(field.baseName)")
         }
     }
 }
@@ -97,7 +97,7 @@ extension HeaderBlockValidator {
         // and at least the mandatory set.
         guard validator.allowedPseudoHeaderFields.isSuperset(of: seenPseudoHeaders) &&
               validator.mandatoryPseudoHeaderFields.isSubset(of: seenPseudoHeaders) else {
-            throw NIOHTTP2Errors.InvalidPseudoHeaders(block)
+            throw NIOHTTP2Errors.invalidPseudoHeaders(block)
         }
     }
 }
@@ -153,7 +153,7 @@ extension RequestBlockValidator: HeaderBlockValidator {
             case .path:
                 // This is a path pseudo-header. It must not be empty.
                 if value.utf8.count == 0 {
-                    throw NIOHTTP2Errors.EmptyPathHeader()
+                    throw NIOHTTP2Errors.emptyPathHeader()
                 }
             default:
                 break
@@ -163,7 +163,7 @@ extension RequestBlockValidator: HeaderBlockValidator {
 
             // We want to check that if the TE header field is present, it only contains "trailers".
             if name.baseName == "te" && value != "trailers" {
-                throw NIOHTTP2Errors.ForbiddenHeaderField(name: String(name.baseName), value: value)
+                throw NIOHTTP2Errors.forbiddenHeaderField(name: String(name.baseName), value: value)
             }
         }
     }
@@ -253,7 +253,7 @@ extension HeaderFieldName {
         }
 
         guard baseNameBytes.isValidFieldName else {
-            throw NIOHTTP2Errors.InvalidHTTP2HeaderFieldName(fieldName)
+            throw NIOHTTP2Errors.invalidHTTP2HeaderFieldName(fieldName)
         }
     }
 
@@ -272,7 +272,7 @@ extension HeaderFieldName {
 
         switch self.baseName {
         case "connection", "transfer-encoding", "proxy-connection":
-            throw NIOHTTP2Errors.ForbiddenHeaderField(name: String(self.baseName), value: value)
+            throw NIOHTTP2Errors.forbiddenHeaderField(name: String(self.baseName), value: value)
         default:
             return
         }
@@ -382,11 +382,11 @@ extension PseudoHeaders {
         }
 
         guard let pseudoHeaderType = PseudoHeaders(headerFieldName: name) else {
-            throw NIOHTTP2Errors.UnknownPseudoHeader(":\(name.baseName)")
+            throw NIOHTTP2Errors.unknownPseudoHeader(":\(name.baseName)")
         }
 
         if self.contains(pseudoHeaderType) {
-            throw NIOHTTP2Errors.DuplicatePseudoHeader(":\(name.baseName)")
+            throw NIOHTTP2Errors.duplicatePseudoHeader(":\(name.baseName)")
         }
 
         self.formUnion(pseudoHeaderType)

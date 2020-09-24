@@ -385,7 +385,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/post"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":method"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.missingPseudoHeader(":method"))
         }
 
         // We already know there's an error here.
@@ -398,7 +398,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "GET"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":method"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.duplicatePseudoHeader(":method"))
         }
 
         // We already know there's an error here.
@@ -411,7 +411,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":path"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.missingPseudoHeader(":path"))
         }
 
         // We already know there's an error here.
@@ -424,7 +424,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/post"), (":path", "/post"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":path"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.duplicatePseudoHeader(":path"))
         }
 
         // We already know there's an error here.
@@ -437,7 +437,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":method", "GET"), (":scheme", "https"), (":path", "/post"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":authority"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.missingPseudoHeader(":authority"))
         }
 
         // We already know there's an error here.
@@ -450,7 +450,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org"), (":authority", "example.org"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":authority"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.duplicatePseudoHeader(":authority"))
         }
 
         // We already know there's an error here.
@@ -463,7 +463,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":method", "GET"), (":authority", "example.org"), (":path", "/post"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":scheme"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.missingPseudoHeader(":scheme"))
         }
 
         // We already know there's an error here.
@@ -476,7 +476,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "GET"), (":scheme", "https"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":scheme"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.duplicatePseudoHeader(":scheme"))
         }
 
         // We already know there's an error here.
@@ -489,7 +489,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic response.
         let requestHeaders = HPACKHeaders([("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":status"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.missingPseudoHeader(":status"))
         }
 
         // We already know there's an error here.
@@ -502,7 +502,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request.
         let requestHeaders = HPACKHeaders([(":status", "200"), (":status", "404"), ("other", "header")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.DuplicatePseudoHeader(":status"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicatePseudoHeader, NIOHTTP2Errors.duplicatePseudoHeader(":status"))
         }
 
         // We already know there's an error here.
@@ -515,7 +515,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic response.
         let requestHeaders = HPACKHeaders([(":status", "captivating")])
         XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidStatusValue, NIOHTTP2Errors.InvalidStatusValue("captivating"))
+            XCTAssertEqual(error as? NIOHTTP2Errors.InvalidStatusValue, NIOHTTP2Errors.invalidStatusValue("captivating"))
         }
 
         // We already know there's an error here.
@@ -528,12 +528,12 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         // A basic request without Host.
         let request = HTTPClientRequestPart.head(.init(version: .init(major: 1, minor: 1), method: .GET, uri: "/"))
         XCTAssertThrowsError(try self.channel.writeOutbound(request)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.MissingHostHeader, NIOHTTP2Errors.MissingHostHeader())
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingHostHeader, NIOHTTP2Errors.missingHostHeader())
         }
 
         // We check the channel for an error as the above only checks the promise.
         XCTAssertThrowsError(try self.channel.finish()) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.MissingHostHeader, NIOHTTP2Errors.MissingHostHeader())
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingHostHeader, NIOHTTP2Errors.missingHostHeader())
         }
     }
 
@@ -546,12 +546,12 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         requestHead.headers.add(name: "Host", value: "cat")
         let request = HTTPClientRequestPart.head(requestHead)
         XCTAssertThrowsError(try self.channel.writeOutbound(request)) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicateHostHeader, NIOHTTP2Errors.DuplicateHostHeader())
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicateHostHeader, NIOHTTP2Errors.duplicateHostHeader())
         }
 
         // We check the channel for an error as the above only checks the promise.
         XCTAssertThrowsError(try self.channel.finish()) { error in
-            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicateHostHeader, NIOHTTP2Errors.DuplicateHostHeader())
+            XCTAssertEqual(error as? NIOHTTP2Errors.DuplicateHostHeader, NIOHTTP2Errors.duplicateHostHeader())
         }
     }
 

@@ -618,7 +618,7 @@ extension HTTP2ConnectionStateMachine {
             }
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -677,10 +677,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // If we're still waiting for the remote preface, they are not allowed to send us a HEADERS frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -737,10 +737,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // If we're still waiting for the local preface, we are not allowed to send a HEADERS frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -797,10 +797,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // If we're still waiting for the remote preface, we are not allowed to receive a DATA frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -857,10 +857,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // If we're still waiting for the local preface, we are not allowed to send a DATA frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -876,10 +876,10 @@ extension HTTP2ConnectionStateMachine {
             return StateMachineResultWithEffect(result: .succeed, effect: nil)
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -895,10 +895,10 @@ extension HTTP2ConnectionStateMachine {
             return .init(result: .succeed, effect: nil)
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -955,10 +955,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1015,10 +1015,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the local preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1083,10 +1083,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1118,7 +1118,7 @@ extension HTTP2ConnectionStateMachine {
 
         case .remotelyQuiesced, .bothQuiescing:
             // We have been quiesced, and may not create new streams.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.CreatedStreamAfterGoaway(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.createdStreamAfterGoaway(), type: .protocolError), effect: nil)
 
         case .quiescingPrefaceSent(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -1129,10 +1129,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the local preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1150,10 +1150,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
-            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil), .nothing)
+            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil), .nothing)
 
         case .fullyQuiesced:
-            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil), .nothing)
+            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil), .nothing)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1171,10 +1171,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the local preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1240,7 +1240,7 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -1313,7 +1313,7 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -1375,10 +1375,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1432,10 +1432,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.MissingPreface(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1521,7 +1521,7 @@ extension HTTP2ConnectionStateMachine {
             }
 
         case .fullyQuiesced:
-            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil), .nothing)
+            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil), .nothing)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1561,10 +1561,10 @@ extension HTTP2ConnectionStateMachine {
             }
 
         case .idle, .prefaceSent, .prefaceReceived, .quiescingPrefaceReceived, .quiescingPrefaceSent:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ReceivedBadSettings(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.receivedBadSettings(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.IOOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1581,15 +1581,15 @@ extension HTTP2ConnectionStateMachine {
             switch setting.parameter {
             case .enablePush:
                 guard setting._value == 0 || setting._value == 1 else {
-                    return .connectionError(underlyingError: NIOHTTP2Errors.InvalidSetting(setting: setting), type: .protocolError)
+                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .protocolError)
                 }
             case .initialWindowSize:
                 guard setting._value <= HTTP2FlowControlWindow.maxSize else {
-                    return .connectionError(underlyingError: NIOHTTP2Errors.InvalidSetting(setting: setting), type: .flowControlError)
+                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .flowControlError)
                 }
             case .maxFrameSize:
                 guard setting._value >= (1 << 14) && setting._value <= ((1 << 24) - 1) else {
-                    return .connectionError(underlyingError: NIOHTTP2Errors.InvalidSetting(setting: setting), type: .protocolError)
+                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .protocolError)
                 }
             default:
                 // All other settings have unrestricted ranges.

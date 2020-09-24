@@ -253,7 +253,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
             promise.map {
                 writeStatus[idx] = true
             }.whenFailure { error in
-                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .cancel))
+                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .cancel))
                 writeStatus[idx] = false
             }
         }
@@ -284,7 +284,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
             write.1?.fail(error)
         }
 
-        XCTAssertEqual(error, NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .cancel))
+        XCTAssertEqual(error, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .cancel))
         XCTAssertEqual(writeStatus, Array(repeating: true as Bool?, count: 15) + Array(repeating: false as Bool?, count: 15))
     }
 
@@ -309,7 +309,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
             promise.map {
                 writeStatus[idx] = true
             }.whenFailure { error in
-                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .cancel))
+                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .cancel))
                 writeStatus[idx] = false
             }
         }
@@ -416,7 +416,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
             promise.map {
                 writeStatus[idx] = true
             }.whenFailure { error in
-                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .protocolError))
+                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
                 writeStatus[idx] = false
             }
         }
@@ -435,7 +435,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
             return
         }
         for (_, promise) in droppedFrames {
-            promise?.fail(NIOHTTP2Errors.StreamClosed(streamID: 3, errorCode: .protocolError))
+            promise?.fail(NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
         }
 
         XCTAssertEqual(writeStatus, Array(repeating: false, count: 15))

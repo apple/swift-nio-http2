@@ -600,7 +600,7 @@ internal extension HTTPResponseHead {
         // A response head should have only one psuedo-header. We strip it off.
         let statusHeader = try headers.peekPseudoHeader(name: ":status")
         guard let integerStatus = Int(statusHeader, radix: 10) else {
-            throw NIOHTTP2Errors.InvalidStatusValue(statusHeader)
+            throw NIOHTTP2Errors.invalidStatusValue(statusHeader)
         }
         let status = HTTPResponseStatus(statusCode: integerStatus)
         self.init(version: .init(major: 2, minor: 0), status: status, headers: HTTPHeaders(regularHeadersFrom: headers))
@@ -622,7 +622,7 @@ extension HPACKHeaders {
         for (fieldName, fieldValue, _) in self {
             if name == fieldName {
                 guard headerValue == nil else {
-                    throw NIOHTTP2Errors.DuplicatePseudoHeader(name)
+                    throw NIOHTTP2Errors.duplicatePseudoHeader(name)
                 }
                 headerValue = fieldValue
             }
@@ -631,7 +631,7 @@ extension HPACKHeaders {
         if let headerValue = headerValue {
             return headerValue
         } else {
-            throw NIOHTTP2Errors.MissingPseudoHeader(name)
+            throw NIOHTTP2Errors.missingPseudoHeader(name)
         }
     }
 }
@@ -660,7 +660,7 @@ extension HTTPHeaders {
         for header in requestHead.headers {
             if header.name.lowercased() == "host" {
                 if authorityHeader != nil {
-                    throw NIOHTTP2Errors.DuplicateHostHeader()
+                    throw NIOHTTP2Errors.duplicateHostHeader()
                 }
 
                 authorityHeader = header.value
@@ -671,7 +671,7 @@ extension HTTPHeaders {
 
         // Now we go back and fill in the authority header.
         guard let actualAuthorityHeader = authorityHeader else {
-            throw NIOHTTP2Errors.MissingHostHeader()
+            throw NIOHTTP2Errors.missingHostHeader()
         }
         newHeaders[3].1 = actualAuthorityHeader
 

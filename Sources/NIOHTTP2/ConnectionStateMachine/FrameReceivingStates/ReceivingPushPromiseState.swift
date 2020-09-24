@@ -46,7 +46,7 @@ extension ReceivingPushPromiseState {
         //
         // Before any of this, though, we need to check whether the remote peer is even allowed to push!
         guard self.peerMayPush else {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.PushInViolationOfSetting(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(), type: .protocolError), effect: nil)
         }
 
         let validateHeaderBlock = self.headerBlockValidation == .enabled
@@ -75,7 +75,7 @@ extension ReceivingPushPromiseState where Self: LocallyQuiescingState {
     mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
         // This check is duplicated here, because the protocol error of violating this setting is more important than ignoring the frame.
         guard self.peerMayPush else {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.PushInViolationOfSetting(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(), type: .protocolError), effect: nil)
         }
 
         // If we're a client, the server is forbidden from initiating new streams, as we quiesced. However, RFC 7540 wants us to ignore this.

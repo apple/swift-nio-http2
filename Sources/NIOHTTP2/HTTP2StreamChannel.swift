@@ -362,7 +362,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             if let streamID = self.streamID {
                 return streamID as! Option.Value
             } else {
-                throw NIOHTTP2Errors.NoStreamIDAvailable()
+                throw NIOHTTP2Errors.noStreamIDAvailable()
             }
         case _ as ChannelOptions.Types.AutoReadOption:
             return self.autoRead as! Option.Value
@@ -785,7 +785,7 @@ internal extension HTTP2StreamChannel {
 
         if let reason = reason {
             // To receive from the network, it must be safe to force-unwrap here.
-            let err = NIOHTTP2Errors.StreamClosed(streamID: self.streamID!, errorCode: reason)
+            let err = NIOHTTP2Errors.streamClosed(streamID: self.streamID!, errorCode: reason)
             self.errorEncountered(error: err)
         } else {
             self.closedCleanly()

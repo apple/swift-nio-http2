@@ -48,7 +48,7 @@ internal struct OutboundFlowControlBuffer {
             if !self.streamDataBuffers[frame.streamID].apply({ $0.dataBuffer.bufferWrite((.data(body), promise)) }) {
                 // We don't have this stream ID. This is an internal error, but we won't precondition on it as
                 // it can happen due to channel handler misconfiguration or other weirdness. We'll just complain.
-                throw NIOHTTP2Errors.NoSuchStream(streamID: frame.streamID)
+                throw NIOHTTP2Errors.noSuchStream(streamID: frame.streamID)
             }
             return .nothing
         case .headers(let headerContent):
@@ -191,7 +191,7 @@ extension OutboundFlowControlBuffer {
         // RFC 7540 § 5.3, where we can, so this hook is already in place for us to extend later.
         if streamID == priorityData.dependency {
             // Streams may not depend on themselves!
-            throw NIOHTTP2Errors.PriorityCycle(streamID: streamID)
+            throw NIOHTTP2Errors.priorityCycle(streamID: streamID)
         }
     }
 }

@@ -26,7 +26,7 @@ extension ReceivingGoawayState {
     mutating func receiveGoAwayFrame(lastStreamID: HTTP2StreamID) -> StateMachineResultWithEffect {
         guard lastStreamID.mayBeInitiatedBy(self.role) || lastStreamID == .rootStream || lastStreamID == .maxID else {
             // The remote peer has sent a GOAWAY with an invalid stream ID.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.invalidStreamIDForPeer(), type: .protocolError), effect: nil)
         }
 
         let droppedStreams = self.streamState.dropAllStreamsWithIDHigherThan(lastStreamID, droppedLocally: false, initiatedBy: self.role)
@@ -39,12 +39,12 @@ extension ReceivingGoawayState where Self: RemotelyQuiescingState {
     mutating func receiveGoAwayFrame(lastStreamID: HTTP2StreamID) -> StateMachineResultWithEffect {
         guard lastStreamID.mayBeInitiatedBy(self.role) || lastStreamID == .rootStream || lastStreamID == .maxID else {
             // The remote peer has sent a GOAWAY with an invalid stream ID.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.InvalidStreamIDForPeer(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.invalidStreamIDForPeer(), type: .protocolError), effect: nil)
         }
 
         if lastStreamID > self.lastLocalStreamID {
             // The remote peer has attempted to raise the lastStreamID.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.RaisedGoawayLastStreamID(), type: .protocolError), effect: nil)
+            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.raisedGoawayLastStreamID(), type: .protocolError), effect: nil)
         }
 
         let droppedStreams = self.streamState.dropAllStreamsWithIDHigherThan(lastStreamID, droppedLocally: false, initiatedBy: self.role)
