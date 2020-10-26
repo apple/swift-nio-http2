@@ -29,7 +29,7 @@ fileprivate struct BaseClientCodec {
     /// - parameters:
     ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
     ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
-    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
     ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
@@ -122,7 +122,7 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
     ///    - streamID: The HTTP/2 stream ID this `HTTP2ToHTTP1ClientCodec` will be used for
     ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
     ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
-    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
     ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
@@ -197,7 +197,7 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
     /// - parameters:
     ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
     ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
-    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
     ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
@@ -319,7 +319,7 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
     /// - parameters:
     ///    - streamID: The HTTP/2 stream ID this `HTTP2ToHTTP1ServerCodec` will be used for
     ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
-    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
     ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
@@ -377,7 +377,7 @@ public final class HTTP2FramePayloadToHTTP1ServerCodec: ChannelInboundHandler, C
     ///
     /// - parameters:
     ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
-    ///                            The normalization will for example lower-case all heder names (as required by the
+    ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
     ///                            headers conform to the HTTP/2 spec, you should leave this parameter set to `true`.
