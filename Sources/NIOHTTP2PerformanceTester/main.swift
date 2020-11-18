@@ -48,6 +48,12 @@ public func measure(_ fn: () throws -> Int) rethrows -> [TimeInterval] {
 let limitSet = CommandLine.arguments.dropFirst()
 
 public func measureAndPrint(desc: String, fn: () throws -> Int) rethrows -> Void {
+    #if CACHEGRIND
+    // When CACHEGRIND is set we only run a single requested test, and we only run it once. No printing or other mess.
+    if limitSet.contains(desc) {
+        _ = try fn()
+    }
+    #else
     if limitSet.count == 0 || limitSet.contains(desc) {
         print("measuring\(warning): \(desc): ", terminator: "")
         let measurements = try measure(fn)
@@ -55,6 +61,7 @@ public func measureAndPrint(desc: String, fn: () throws -> Int) rethrows -> Void
     } else {
         print("skipping '\(desc)', limit set = \(limitSet)")
     }
+    #endif
 }
 
 // MARK: Utilities
@@ -70,3 +77,5 @@ try measureAndPrint(desc: "huffman_encode_basic", benchmark: HuffmanEncodingBenc
 try measureAndPrint(desc: "huffman_encode_complex", benchmark: HuffmanEncodingBenchmark(huffmanString: .complexHuffmanString, loopCount: 100))
 try measureAndPrint(desc: "huffman_decode_basic", benchmark: HuffmanDecodingBenchmark(huffmanBytes: .basicHuffmanBytes, loopCount: 25))
 try measureAndPrint(desc: "huffman_decode_complex", benchmark: HuffmanDecodingBenchmark(huffmanBytes: .complexHuffmanBytes, loopCount: 10))
+try measureAndPrint(desc: "server_only_10k_requests_1_concurrent", benchmark: ServerOnly10KRequestsBenchmark(concurrentStreams: 1))
+try measureAndPrint(desc: "server_only_10k_requests_100_concurrent", benchmark: ServerOnly10KRequestsBenchmark(concurrentStreams: 100))
