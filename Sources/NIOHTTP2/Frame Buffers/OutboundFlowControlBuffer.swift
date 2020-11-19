@@ -43,21 +43,21 @@ internal struct OutboundFlowControlBuffer {
         // RST_STREAM frames will cause stream closure notifications, which will force us to drop our buffers. For this reason we can
         // simplify our code here, which helps a lot.
         switch frame.payload {
-        case .data(let body):
+        case .data:
             // We buffer DATA frames.
-            if !self.streamDataBuffers[frame.streamID].apply({ $0.dataBuffer.bufferWrite((.data(body), promise)) }) {
+            if !self.streamDataBuffers[frame.streamID].apply({ $0.dataBuffer.bufferWrite((frame.payload, promise)) }) {
                 // We don't have this stream ID. This is an internal error, but we won't precondition on it as
                 // it can happen due to channel handler misconfiguration or other weirdness. We'll just complain.
                 throw NIOHTTP2Errors.noSuchStream(streamID: frame.streamID)
             }
             return .nothing
-        case .headers(let headerContent):
+        case .headers:
             // Headers are special. If we have a data frame buffered, we buffer behind it to avoid frames
             // being reordered. However, if we don't have a data frame buffered we pass the headers frame on
             // immediately, as there is no risk of violating ordering guarantees.
             let bufferResult = self.streamDataBuffers[frame.streamID].modify { (state: inout StreamFlowControlState) -> Bool in
                 if state.dataBuffer.haveBufferedDataFrame {
-                    state.dataBuffer.bufferWrite((.headers(headerContent), promise))
+                    state.dataBuffer.bufferWrite((frame.payload, promise))
                     return true
                 } else {
                     return false
