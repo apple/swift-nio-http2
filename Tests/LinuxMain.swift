@@ -60,6 +60,7 @@ class LinuxMainRunnerImpl: LinuxMainRunner {
              testCase(SimpleClientServerTests.allTests),
              testCase(StreamChannelFlowControllerTests.allTests),
              testCase(StreamIDTests.allTests),
+             testCase(StreamMapTests.allTests),
         ])
     }
 }

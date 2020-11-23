@@ -1012,6 +1012,8 @@ extension HTTP2StreamStateMachine {
     }
 }
 
+extension HTTP2StreamStateMachine: PerStreamData { }
+
 
 private extension HPACKHeaders {
     /// Whether this `HPACKHeaders` corresponds to a final response or not.
