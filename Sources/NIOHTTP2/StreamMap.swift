@@ -231,7 +231,7 @@ extension CircularBuffer where Element == HTTP2StreamStateMachine {
     /// - parameters:
     ///     - modifier: A block that will modify the contained value in the
     ///         map, if there is one present.
-    /// - returns: The return value of the block or `nil` if the element was not in th emap..
+    /// - returns: The return value of the block or `nil` if the element was not in the map.
     mutating func autoClosingTransform<ResultType>(streamID: HTTP2StreamID, _ modifier: (inout Element) -> ResultType) -> ResultType? {
         guard let index = self.findIndexForStreamID(streamID) else {
             return nil
