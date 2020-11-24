@@ -79,3 +79,4 @@ try measureAndPrint(desc: "huffman_decode_basic", benchmark: HuffmanDecodingBenc
 try measureAndPrint(desc: "huffman_decode_complex", benchmark: HuffmanDecodingBenchmark(huffmanBytes: .complexHuffmanBytes, loopCount: 10))
 try measureAndPrint(desc: "server_only_10k_requests_1_concurrent", benchmark: ServerOnly10KRequestsBenchmark(concurrentStreams: 1))
 try measureAndPrint(desc: "server_only_10k_requests_100_concurrent", benchmark: ServerOnly10KRequestsBenchmark(concurrentStreams: 100))
+try measureAndPrint(desc: "stream_teardown_10k_requests_100_concurrent", benchmark: StreamTeardownBenchmark(concurrentStreams: 100))
