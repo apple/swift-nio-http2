@@ -22,4 +22,20 @@ final class StreamIDTests: XCTestCase {
         XCTAssertEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], Array(stride(from: HTTP2StreamID(10), through: HTTP2StreamID(1), by: -1)))
         XCTAssertEqual([1, 3, 5, 7, 9], Array(stride(from: HTTP2StreamID(1), to: HTTP2StreamID(10), by: 2)))
     }
+
+    func testIsClientInitiated() {
+        XCTAssertFalse(HTTP2StreamID(0).isClientInitiated)
+        XCTAssertTrue(HTTP2StreamID(1).isClientInitiated)
+        XCTAssertFalse(HTTP2StreamID(2).isClientInitiated)
+        XCTAssertTrue(HTTP2StreamID(3).isClientInitiated)
+        XCTAssertFalse(HTTP2StreamID(4).isClientInitiated)
+    }
+
+    func testIsServerInitiated() {
+        XCTAssertFalse(HTTP2StreamID(0).isServerInitiated)
+        XCTAssertFalse(HTTP2StreamID(1).isServerInitiated)
+        XCTAssertTrue(HTTP2StreamID(2).isServerInitiated)
+        XCTAssertFalse(HTTP2StreamID(3).isServerInitiated)
+        XCTAssertTrue(HTTP2StreamID(4).isServerInitiated)
+    }
 }

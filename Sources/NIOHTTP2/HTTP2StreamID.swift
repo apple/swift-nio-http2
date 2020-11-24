@@ -37,6 +37,17 @@ public struct HTTP2StreamID {
     /// that can be used to "quiesce" a HTTP/2 connection on a GOAWAY frame.
     public static let maxID: HTTP2StreamID = HTTP2StreamID(Int32.max)
 
+    /// Returns a boolean indicating whether this stream ID relates to a client initiated stream.
+    public var isClientInitiated: Bool {
+        return self.networkStreamID % 2 == 1
+    }
+
+    /// Returns a boolean indicating whether this stream ID relates to a server initiated stream.
+    public var isServerInitiated: Bool {
+        // Noone may initiate the root stream.
+        return self.networkStreamID % 2 == 0 && self != .rootStream
+    }
+
     /// Create a `HTTP2StreamID` for a specific integer value.
     public init(_ integerID: Int) {
         precondition(integerID >= 0 && integerID <= Int32.max, "\(integerID) is not a valid HTTP/2 stream ID value")
