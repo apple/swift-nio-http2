@@ -22,6 +22,7 @@ services:
       - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=393000
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=69000
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=68000
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=505000
 
   performance-test:
     image: swift-nio-http2:18.04-5.0
@@ -38,6 +39,7 @@ services:
       - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=393000
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=69000
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=68000
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=505000
 
   shell:
     image: swift-nio-http2:18.04-5.0
