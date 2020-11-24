@@ -28,6 +28,8 @@ extension StreamIDTests {
    static var allTests : [(String, (StreamIDTests) -> () throws -> Void)] {
       return [
                 ("testStreamIDsAreStrideable", testStreamIDsAreStrideable),
+                ("testIsClientInitiated", testIsClientInitiated),
+                ("testIsServerInitiated", testIsServerInitiated),
            ]
    }
 }

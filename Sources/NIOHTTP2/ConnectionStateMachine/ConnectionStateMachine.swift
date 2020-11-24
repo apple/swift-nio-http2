@@ -1678,10 +1678,9 @@ extension HTTP2StreamID {
     func mayBeInitiatedBy(_ role: HTTP2ConnectionStateMachine.ConnectionRole) -> Bool {
         switch role {
         case .client:
-            return self.networkStreamID % 2 == 1
+            return self.isClientInitiated
         case .server:
-            // Noone may initiate the root stream.
-            return self.networkStreamID % 2 == 0 && self != .rootStream
+            return self.isServerInitiated
         }
     }
 }
