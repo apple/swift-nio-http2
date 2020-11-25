@@ -64,6 +64,23 @@ public func measureAndPrint(desc: String, fn: () throws -> Int) rethrows -> Void
     #endif
 }
 
+func measureAndPrint<B: Benchmark>(desc: String, benchmark bench: @autoclosure () -> B) throws {
+    // Avoids running setUp/tearDown when we don't want that benchmark.
+    guard limitSet.contains(desc) else {
+        return
+    }
+
+    let bench = bench()
+
+    try bench.setUp()
+    defer {
+        bench.tearDown()
+    }
+    try measureAndPrint(desc: desc) {
+        return try bench.run()
+    }
+}
+
 // MARK: Utilities
 
 try measureAndPrint(desc: "1_conn_10k_reqs", benchmark: Bench1Conn10kRequests())
