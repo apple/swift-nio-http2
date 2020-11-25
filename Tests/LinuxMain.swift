@@ -35,6 +35,7 @@ class LinuxMainRunnerImpl: LinuxMainRunner {
    @available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
    func run() {
        XCTMain([
+             testCase(CircularBufferExtensionsTests.allTests),
              testCase(CompoundOutboundBufferTest.allTests),
              testCase(ConcurrentStreamBufferTests.allTests),
              testCase(ConfiguringPipelineTests.allTests),

@@ -34,6 +34,8 @@ extension StreamMapTests {
                 ("testCanFindElements", testCanFindElements),
                 ("testRemoval", testRemoval),
                 ("testModifySpecificValue", testModifySpecificValue),
+                ("testDroppingAllStreamIDsGreaterThanLinear", testDroppingAllStreamIDsGreaterThanLinear),
+                ("testDroppingAllStreamIDsGreaterThanBinarySearch", testDroppingAllStreamIDsGreaterThanBinarySearch),
            ]
    }
 }
