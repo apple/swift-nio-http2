@@ -21,26 +21,42 @@ import NIOHPACK
 /// way of using larger or more complex strings.
 final class HuffmanDecodingBenchmark {
     private let loopCount: Int
+    private let testType: TestType
     private var decoder: HPACKDecoder
     private var buffer: ByteBuffer
 
-    init(huffmanBytes: [UInt8], loopCount: Int) {
+    init(huffmanBytes: TestType, loopCount: Int) {
         self.loopCount = loopCount
         self.decoder = HPACKDecoder(allocator: .init(), maxDynamicTableSize: HPACKDecoder.maxDynamicTableSize, maxHeaderListSize: .max)
         self.buffer = ByteBufferAllocator().buffer(capacity: 1024)
+        self.testType = huffmanBytes
+    }
 
-        // We encode this header with both the name and value as a huffman string, never indexed.
-        self.buffer.writeInteger(UInt8(0x10))  // Never indexed, non-indexed name
-        self.buffer.encodeInteger(1, prefix: 7, prefixBits: 0x80)  // Name length, huffman encoded, 7-bit integer
-        self.buffer.writeInteger(UInt8(0x97))  // Huffman encoded "f"
-        self.buffer.encodeInteger(UInt(huffmanBytes.count), prefix: 7, prefixBits: 0x80)  // Value length, huffman encoded, 7-bit integer
-        self.buffer.writeBytes(huffmanBytes)
+    enum TestType {
+        case basicHuffmanBytes
+        case complexHuffmanBytes
+
+        var huffmanBytes: [UInt8] {
+            switch self {
+            case .basicHuffmanBytes:
+                return .basicHuffmanBytes
+            case .complexHuffmanBytes:
+                return .complexHuffmanBytes
+            }
+        }
     }
 }
 
 
 extension HuffmanDecodingBenchmark: Benchmark {
     func setUp() throws {
+        // We encode this header with both the name and value as a huffman string, never indexed.
+        self.buffer.writeInteger(UInt8(0x10))  // Never indexed, non-indexed name
+        self.buffer.encodeInteger(1, prefix: 7, prefixBits: 0x80)  // Name length, huffman encoded, 7-bit integer
+        self.buffer.writeInteger(UInt8(0x97))  // Huffman encoded "f"
+        self.buffer.encodeInteger(UInt(self.testType.huffmanBytes.count), prefix: 7, prefixBits: 0x80)  // Value length, huffman encoded, 7-bit integer
+        self.buffer.writeBytes(self.testType.huffmanBytes)
+
         // Run a single iteration of the loop. This warms up the encoder and decoder and ensures all the pages are mapped.
         try self.loopIteration()
     }
