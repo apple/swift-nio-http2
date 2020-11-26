@@ -256,27 +256,27 @@ struct ConnectionStreamState {
     mutating func dropAllStreamsWithIDHigherThan(_ streamID: HTTP2StreamID,
                                                  droppedLocally: Bool,
                                                  initiatedBy initiator: HTTP2ConnectionStateMachine.ConnectionRole) -> [HTTP2StreamID]? {
-        let idsToDrop = self.activeStreams.elements(initiatedBy: initiator).drop(while: {$0.streamID <= streamID }).map { $0.streamID }
-        guard idsToDrop.count > 0 else {
+        var droppedIDs: [HTTP2StreamID] = []
+        self.activeStreams.dropDataWithStreamIDGreaterThan(streamID, initiatedBy: initiator) { data in
+            droppedIDs = data.map { $0.streamID }
+        }
+
+        guard droppedIDs.count > 0 else {
             return nil
         }
 
-        for closingStreamID in idsToDrop {
-            self.activeStreams.removeValue(forStreamID: closingStreamID)
-
-            if droppedLocally {
-                self.recentlyResetStreams.prependWithoutExpanding(closingStreamID)
-            }
+        if droppedLocally {
+            self.recentlyResetStreams.prependWithoutExpanding(contentsOf: droppedIDs)
         }
 
         switch initiator {
         case .client:
-            self.clientStreamCount -= UInt32(idsToDrop.count)
+            self.clientStreamCount -= UInt32(droppedIDs.count)
         case .server:
-            self.serverStreamCount -= UInt32(idsToDrop.count)
+            self.serverStreamCount -= UInt32(droppedIDs.count)
         }
 
-        return idsToDrop
+        return droppedIDs
     }
 
     /// Determines the state machine result to generate when we've been asked to modify a missing stream.
@@ -317,14 +317,42 @@ struct ConnectionStreamState {
 }
 
 
-private extension CircularBuffer {
+extension CircularBuffer {
+    // CircularBuffer may never be "full": that is, capacity may never equal count.
+    var effectiveCapacity: Int {
+        return self.capacity - 1
+    }
+
     /// Prepends `element` without expanding the capacity, by dropping the
     /// element at the end if necessary.
     mutating func prependWithoutExpanding(_ element: Element) {
-        if self.capacity == self.count {
+        if self.effectiveCapacity == self.count {
             self.removeLast()
         }
         self.prepend(element)
+    }
+
+    // NOTE: this could be generic over RandomAccessCollection if we wanted, I'm just saving code size by defining
+    // it specifically for now.
+    mutating func prependWithoutExpanding(contentsOf newElements: [Element]) {
+        // We're going to need to insert these new elements _backwards_, as though they were inserted
+        // one at a time.
+        var newElements = newElements.reversed()[...]
+        let newElementCount = newElements.count
+        let freeSpace = self.effectiveCapacity - self.count
+
+        if newElementCount >= self.effectiveCapacity {
+            // We need to completely replace the storage, and then only insert `self.effectiveCapacity` elements.
+            self.removeAll(keepingCapacity: true)
+            newElements = newElements.prefix(self.effectiveCapacity)
+        } else if newElementCount > freeSpace {
+            // We need to free up enough space to store everything we need, but some of the old elements will remain.
+            let elementsToRemove = newElementCount - freeSpace
+            self.removeLast(elementsToRemove)
+        }
+
+        assert(newElements.count <= self.effectiveCapacity - self.count)
+        self.insert(contentsOf: newElements, at: self.startIndex)
     }
 }
 

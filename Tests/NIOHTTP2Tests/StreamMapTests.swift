@@ -169,6 +169,77 @@ final class StreamMapTests: XCTestCase {
         XCTAssertNil(map.modify(streamID: 101) { _ in XCTFail("must not execute") })
         XCTAssertNil(map.modify(streamID: 102) { _ in XCTFail("must not execute") })
     }
+
+    func testDroppingAllStreamIDsGreaterThanLinear() throws {
+        for streamIDToDropFrom in HTTP2StreamID(1)..<HTTP2StreamID(100) {
+            var map = StreamMap<StreamData>()
+
+            for id in 1..<100 {
+                map.insert(StreamData(id))
+            }
+
+            for id in 1..<100 {
+                XCTAssertTrue(map.contains(streamID: HTTP2StreamID(id)))
+            }
+
+            map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .client) { droppedStreams in
+                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(100)).filter { $0.mayBeInitiatedBy(.client) })
+            }
+
+            // We dropped all the client stream IDs greater than the target.
+            for id in 1..<100 {
+                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
+                               HTTP2StreamID(id) <= streamIDToDropFrom || HTTP2StreamID(id).mayBeInitiatedBy(.server))
+            }
+
+            map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .server) { droppedStreams in
+                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(100)).filter { $0.mayBeInitiatedBy(.server) })
+            }
+
+            // We dropped all the stream IDs greater than the target from anyone.
+            for id in 1..<100 {
+                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
+                               HTTP2StreamID(id) <= streamIDToDropFrom)
+            }
+        }
+    }
+
+    func testDroppingAllStreamIDsGreaterThanBinarySearch() throws {
+        var map = StreamMap<StreamData>()
+
+        for id in 1..<500 {
+            map.insert(StreamData(id))
+        }
+
+        // If we do every stream ID this test takes way too damn long. Skip a bunch by iterating in 55s (odd numbers are good for ensuring we hit things that exist in both sides).
+        for streamIDToDropFrom in stride(from: HTTP2StreamID(1), to: HTTP2StreamID(500), by: 55) {
+            var map = map
+
+            for id in 1..<500 {
+                XCTAssertTrue(map.contains(streamID: HTTP2StreamID(id)))
+            }
+
+            map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .client) { droppedStreams in
+                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(500)).filter { $0.mayBeInitiatedBy(.client) })
+            }
+
+            // We dropped all the client stream IDs greater than the target.
+            for id in 1..<500 {
+                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
+                               HTTP2StreamID(id) <= streamIDToDropFrom || HTTP2StreamID(id).mayBeInitiatedBy(.server))
+            }
+
+            map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .server) { droppedStreams in
+                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(500)).filter { $0.mayBeInitiatedBy(.server) })
+            }
+
+            // We dropped all the stream IDs greater than the target from anyone.
+            for id in 1..<500 {
+                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
+                               HTTP2StreamID(id) <= streamIDToDropFrom)
+            }
+        }
+    }
 }
 
 struct StreamData: PerStreamData {

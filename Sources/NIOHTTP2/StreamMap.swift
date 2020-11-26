@@ -130,6 +130,29 @@ struct StreamMap<Element: PerStreamData> {
             return self.serverInitiated.makeIterator()
         }
     }
+
+    /// This is a special case helper for the ConnectionStreamsState, which has to handle GOAWAY. In that case we
+    /// drop all stream state for a bunch of streams all at once. These streams are guaranteed to be sequential and based at a certain stream ID.
+    ///
+    /// It's useful to get that data back too, and helpfully CircularBuffer will let us slice it out. We can't return it though: that will cause the mutation
+    /// to trigger a CoW. Instead we pass it to the caller in a block, and then do the removal.
+    ///
+    /// This helper can turn a complex operation that involves repeated resizing of the base objects into a much faster one that also avoids
+    /// allocation.
+    mutating func dropDataWithStreamIDGreaterThan(_ streamID: HTTP2StreamID,
+                                                  initiatedBy role: HTTP2ConnectionStateMachine.ConnectionRole,
+                                                  _ block: (CircularBuffer<Element>.SubSequence) -> Void) {
+        switch role {
+        case .client:
+            let index = self.clientInitiated.findIndexForFirstStreamIDLargerThan(streamID)
+            block(self.clientInitiated[index...])
+            self.clientInitiated.removeSubrange(index...)
+        case .server:
+            let index = self.serverInitiated.findIndexForFirstStreamIDLargerThan(streamID)
+            block(self.serverInitiated[index...])
+            self.serverInitiated.removeSubrange(index...)
+        }
+    }
 }
 
 internal extension StreamMap where Element == HTTP2StreamStateMachine {
@@ -219,6 +242,50 @@ extension CircularBuffer where Element: PerStreamData {
         }
 
         return nil
+    }
+
+    fileprivate func findIndexForFirstStreamIDLargerThan(_ streamID: HTTP2StreamID) -> Index {
+        if self.count < binarySearchThreshold {
+            return self.linearScanForFirstStreamIDLargerThan(streamID)
+        } else {
+            return self.binarySearchForFirstStreamIDLargerThan(streamID)
+        }
+    }
+
+    private func linearScanForFirstStreamIDLargerThan(_ streamID: HTTP2StreamID) -> Index {
+        var index = self.startIndex
+
+        while index < self.endIndex {
+            let currentStreamID = self[index].streamID
+            if currentStreamID > streamID {
+                return index
+            }
+            self.formIndex(after: &index)
+        }
+
+        return self.endIndex
+    }
+
+    // Binary search is somewhat complex code compared to a linear scan, so we don't want to inline this code if we can avoid it.
+    @inline(never)
+    private func binarySearchForFirstStreamIDLargerThan(_ streamID: HTTP2StreamID) -> Index {
+        var left = self.startIndex
+        var right = self.endIndex
+
+        while left != right {
+            let pivot = self.index(left, offsetBy: self.distance(from: left, to: right) / 2)
+            let currentStreamID = self[pivot].streamID
+            if currentStreamID > streamID {
+                right = pivot
+            } else if currentStreamID == streamID {
+                // The stream ID is the one after.
+                return self.index(after: pivot)
+            } else {
+                left = self.index(after: pivot)
+            }
+        }
+
+        return left
     }
 }
 
