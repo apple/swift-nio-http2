@@ -17,13 +17,3 @@ protocol Benchmark: class {
     func tearDown()
     func run() throws -> Int
 }
-
-func measureAndPrint<B: Benchmark>(desc: String, benchmark bench: B) throws {
-    try bench.setUp()
-    defer {
-        bench.tearDown()
-    }
-    try measureAndPrint(desc: desc) {
-        return try bench.run()
-    }
-}
