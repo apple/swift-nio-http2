@@ -232,6 +232,8 @@ private struct DataBuffer {
 
     internal private(set) var flushedBufferedBytes: UInt
 
+    private var unflushedBufferedBytes: UInt
+
     var haveBufferedDataFrame: Bool {
         return self.bufferedChunks.count > 0
     }
@@ -254,29 +256,22 @@ private struct DataBuffer {
     init() {
         self.bufferedChunks = MarkedCircularBuffer(initialCapacity: 8)
         self.flushedBufferedBytes = 0
+        self.unflushedBufferedBytes = 0
     }
 
     mutating func bufferWrite(_ write: BufferElement) {
+        if case .data(let contents) = write.0 {
+            self.unflushedBufferedBytes += UInt(contents.data.readableBytes)
+        }
+
         self.bufferedChunks.append(write)
     }
 
     /// Marks the current point in the buffer as the place up to which we have flushed.
     mutating func markFlushPoint() {
-        if let markIndex = self.bufferedChunks.markedElementIndex {
-            for element in self.bufferedChunks.suffix(from: markIndex) {
-                if case .data(let contents) = element.0 {
-                    self.flushedBufferedBytes += UInt(contents.data.readableBytes)
-                }
-            }
-            self.bufferedChunks.mark()
-        } else if self.bufferedChunks.count > 0 {
-            for element in self.bufferedChunks {
-                if case .data(let contents) = element.0 {
-                    self.flushedBufferedBytes += UInt(contents.data.readableBytes)
-                }
-            }
-            self.bufferedChunks.mark()
-        }
+        self.flushedBufferedBytes += self.unflushedBufferedBytes
+        self.unflushedBufferedBytes = 0
+        self.bufferedChunks.mark()
     }
 
     mutating func nextWrite(maxSize: Int) -> BufferElement {
