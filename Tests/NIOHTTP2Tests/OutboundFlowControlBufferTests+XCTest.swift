@@ -41,6 +41,10 @@ extension OutboundFlowControlBufferTests {
                 ("testChangingStreamWindowSizeToZeroAndBack", testChangingStreamWindowSizeToZeroAndBack),
                 ("testStreamWindowChanges", testStreamWindowChanges),
                 ("testRejectsPrioritySelfDependency", testRejectsPrioritySelfDependency),
+                ("testFlushableStreamStopsBeingFlushableIfTheWindowGoesAway", testFlushableStreamStopsBeingFlushableIfTheWindowGoesAway),
+                ("testFlushableStreamStopsBeingFlushableIfTheWindowIsShrunkByTheRemotePeer", testFlushableStreamStopsBeingFlushableIfTheWindowIsShrunkByTheRemotePeer),
+                ("testZeroSizedWritesAreStillAllowedWhenTheWindowIsZero", testZeroSizedWritesAreStillAllowedWhenTheWindowIsZero),
+                ("testZeroSizedWritesAreStillAllowedIfTheWindowChangesSize", testZeroSizedWritesAreStillAllowedIfTheWindowChangesSize),
            ]
    }
 }

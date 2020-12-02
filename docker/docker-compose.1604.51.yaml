@@ -18,11 +18,11 @@ services:
     environment:
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=63000
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=324000
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=370000
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=328000
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=372000
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=62000
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=61000
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=434000
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=435000
 
   performance-test:
     image: swift-nio-http2:16.04-5.1
@@ -35,11 +35,11 @@ services:
     environment:
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=63000
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=324000
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=370000
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=328000
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=372000
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=62000
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=61000
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=434000
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=435000
       - SANITIZER_ARG=--sanitize=thread
 
   shell:
