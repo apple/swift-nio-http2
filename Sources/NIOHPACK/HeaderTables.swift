@@ -79,18 +79,32 @@ struct HeaderTableStorage {
     func closestMatch(name: String, value: String) -> MatchType {
         var partialIndex: Int? = nil
 
-        for (index, header) in self.headers.enumerated() {
+        // Yes, I'm manually reimplementing IndexingIterator here. This is because
+        // the excess ARC in this loop shows up in our profiles pretty substantially,
+        // and it's triggered by https://bugs.swift.org/browse/SR-13931.
+        //
+        // Working around this until the above is resolved.
+        var offset = 0
+        var index = self.headers.startIndex
+
+        while index < self.headers.endIndex {
+            defer {
+                // Unchecked arithmetic is safe here, we can't overflow as offset can never exceed count.
+                offset &+= 1
+                self.headers.formIndex(after: &index)
+            }
+
             // Check if the header name matches.
-            guard header.name.isEqualCaseInsensitiveASCIIBytes(to: name) else {
+            guard self.headers[index].name.isEqualCaseInsensitiveASCIIBytes(to: name) else {
                 continue
             }
 
             if partialIndex == nil {
-                partialIndex = index
+                partialIndex = offset
             }
 
-            if value == header.value {
-                return .full(index)
+            if value == self.headers[index].value {
+                return .full(offset)
             }
         }
 

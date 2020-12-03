@@ -456,16 +456,12 @@ private extension Substring {
 }
 
 
-extension Sequence where Self.Element == UInt8 {
-    /// Compares the collection of `UInt8`s to a case insensitive collection.
-    ///
-    /// This collection could be get from applying the `UTF8View`
-    ///   property on the string protocol.
+extension String.UTF8View {
+    /// Compares two UTF8 strings as case insensitive ASCII bytes.
     ///
     /// - Parameter bytes: The string constant in the form of a collection of `UInt8`
     /// - Returns: Whether the collection contains **EXACTLY** this array or no, but by ignoring case.
-    fileprivate func compareCaseInsensitiveASCIIBytes<T: Sequence>(to other: T) -> Bool
-        where T.Element == UInt8 {
+    fileprivate func compareCaseInsensitiveASCIIBytes(to other: String.UTF8View) -> Bool {
             // fast path: we can get the underlying bytes of both
             let maybeMaybeResult = self.withContiguousStorageIfAvailable { lhsBuffer -> Bool? in
                 other.withContiguousStorageIfAvailable { rhsBuffer in
@@ -491,7 +487,7 @@ extension Sequence where Self.Element == UInt8 {
     }
 
     @inline(never)
-    private func _compareCaseInsensitiveASCIIBytesSlowPath<T: Sequence>(to other: T) -> Bool where T.Element == UInt8 {
+    private func _compareCaseInsensitiveASCIIBytesSlowPath(to other: String.UTF8View) -> Bool {
         return self.elementsEqual(other, by: { return (($0 & 0xdf) == ($1 & 0xdf) && $0.isASCII) })
     }
 }
