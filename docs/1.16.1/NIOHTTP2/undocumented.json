@@ -1,0 +1,922 @@
+{
+  "warnings": [
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ChannelHandler.swift",
+      "line": 27,
+      "symbol": "NIOHTTP2Handler",
+      "symbol_kind": "source.lang.swift.decl.class",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ChannelHandler.swift",
+      "line": 95,
+      "symbol": "NIOHTTP2Handler.ValidationState.enabled",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ChannelHandler.swift",
+      "line": 97,
+      "symbol": "NIOHTTP2Handler.ValidationState.disabled",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ChannelHandler.swift",
+      "line": 100,
+      "symbol": "NIOHTTP2Handler.init(mode:initialSettings:headerBlockValidation:contentLengthValidation:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ChannelHandler.swift",
+      "line": 112,
+      "symbol": "NIOHTTP2Handler.init(mode:initialSettings:headerBlockValidation:contentLengthValidation:maximumSequentialEmptyDataFrames:maximumBufferedControlFrames:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ChannelHandler.swift",
+      "line": 621,
+      "symbol": "NIOHTTP2Handler",
+      "symbol_kind": "source.lang.swift.decl.extension",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ChannelHandler.swift",
+      "line": 628,
+      "symbol": "NIOHTTP2Handler",
+      "symbol_kind": "source.lang.swift.decl.extension",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 16,
+      "symbol": "NIOHTTP2Error",
+      "symbol_kind": "source.lang.swift.decl.protocol",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 20,
+      "symbol": "NIOHTTP2Errors.excessiveOutboundFrameBuffering(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 24,
+      "symbol": "NIOHTTP2Errors.invalidALPNToken(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 28,
+      "symbol": "NIOHTTP2Errors.noSuchStream(streamID:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 32,
+      "symbol": "NIOHTTP2Errors.streamClosed(streamID:errorCode:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 36,
+      "symbol": "NIOHTTP2Errors.badClientMagic(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 40,
+      "symbol": "NIOHTTP2Errors.badStreamStateTransition(from:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 44,
+      "symbol": "NIOHTTP2Errors.invalidFlowControlWindowSize(delta:currentWindowSize:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 48,
+      "symbol": "NIOHTTP2Errors.flowControlViolation(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 52,
+      "symbol": "NIOHTTP2Errors.invalidSetting(setting:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 56,
+      "symbol": "NIOHTTP2Errors.ioOnClosedConnection(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 60,
+      "symbol": "NIOHTTP2Errors.receivedBadSettings(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 64,
+      "symbol": "NIOHTTP2Errors.maxStreamsViolation(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 68,
+      "symbol": "NIOHTTP2Errors.streamIDTooSmall(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 72,
+      "symbol": "NIOHTTP2Errors.missingPreface(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 76,
+      "symbol": "NIOHTTP2Errors.createdStreamAfterGoaway(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 80,
+      "symbol": "NIOHTTP2Errors.invalidStreamIDForPeer(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 84,
+      "symbol": "NIOHTTP2Errors.raisedGoawayLastStreamID(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 88,
+      "symbol": "NIOHTTP2Errors.invalidWindowIncrementSize(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 92,
+      "symbol": "NIOHTTP2Errors.pushInViolationOfSetting(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 96,
+      "symbol": "NIOHTTP2Errors.unsupported(info:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 100,
+      "symbol": "NIOHTTP2Errors.unableToSerializeFrame(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 104,
+      "symbol": "NIOHTTP2Errors.unableToParseFrame(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 108,
+      "symbol": "NIOHTTP2Errors.missingPseudoHeader(_:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 112,
+      "symbol": "NIOHTTP2Errors.duplicatePseudoHeader(_:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 116,
+      "symbol": "NIOHTTP2Errors.pseudoHeaderAfterRegularHeader(_:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 120,
+      "symbol": "NIOHTTP2Errors.unknownPseudoHeader(_:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 124,
+      "symbol": "NIOHTTP2Errors.invalidPseudoHeaders(_:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 128,
+      "symbol": "NIOHTTP2Errors.missingHostHeader(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 132,
+      "symbol": "NIOHTTP2Errors.duplicateHostHeader(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 136,
+      "symbol": "NIOHTTP2Errors.emptyPathHeader(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 140,
+      "symbol": "NIOHTTP2Errors.invalidStatusValue(_:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 144,
+      "symbol": "NIOHTTP2Errors.priorityCycle(streamID:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 148,
+      "symbol": "NIOHTTP2Errors.trailersWithoutEndStream(streamID:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 152,
+      "symbol": "NIOHTTP2Errors.invalidHTTP2HeaderFieldName(_:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 156,
+      "symbol": "NIOHTTP2Errors.forbiddenHeaderField(name:value:file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 160,
+      "symbol": "NIOHTTP2Errors.contentLengthViolated(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 164,
+      "symbol": "NIOHTTP2Errors.excessiveEmptyDataFrames(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 168,
+      "symbol": "NIOHTTP2Errors.excessivelyLargeHeaderBlock(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 172,
+      "symbol": "NIOHTTP2Errors.noStreamIDAvailable(file:line:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 190,
+      "symbol": "NIOHTTP2Errors.ExcessiveOutboundFrameBuffering.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 216,
+      "symbol": "NIOHTTP2Errors.InvalidALPNToken.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 239,
+      "symbol": "NIOHTTP2Errors.NoSuchStream.init(streamID:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 265,
+      "symbol": "NIOHTTP2Errors.StreamClosed.init(streamID:errorCode:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 280,
+      "symbol": "NIOHTTP2Errors.BadClientMagic",
+      "symbol_kind": "source.lang.swift.decl.struct",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 290,
+      "symbol": "NIOHTTP2Errors.BadClientMagic.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 306,
+      "symbol": "NIOHTTP2Errors.BadStreamStateTransition.fromState",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 322,
+      "symbol": "NIOHTTP2Errors.BadStreamStateTransition.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 403,
+      "symbol": "NIOHTTP2Errors.InvalidFlowControlWindowSize.init(delta:currentWindowSize:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 423,
+      "symbol": "NIOHTTP2Errors.FlowControlViolation.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 446,
+      "symbol": "NIOHTTP2Errors.InvalidSetting.init(setting:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 471,
+      "symbol": "NIOHTTP2Errors.IOOnClosedConnection.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 496,
+      "symbol": "NIOHTTP2Errors.ReceivedBadSettings.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 521,
+      "symbol": "NIOHTTP2Errors.MaxStreamsViolation.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 546,
+      "symbol": "NIOHTTP2Errors.StreamIDTooSmall.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 571,
+      "symbol": "NIOHTTP2Errors.MissingPreface.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 597,
+      "symbol": "NIOHTTP2Errors.CreatedStreamAfterGoaway.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 622,
+      "symbol": "NIOHTTP2Errors.InvalidStreamIDForPeer.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 647,
+      "symbol": "NIOHTTP2Errors.RaisedGoawayLastStreamID.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 672,
+      "symbol": "NIOHTTP2Errors.InvalidWindowIncrementSize.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 697,
+      "symbol": "NIOHTTP2Errors.PushInViolationOfSetting.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 721,
+      "symbol": "NIOHTTP2Errors.Unsupported.info",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 743,
+      "symbol": "NIOHTTP2Errors.Unsupported.init(info:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 752,
+      "symbol": "NIOHTTP2Errors.UnableToSerializeFrame",
+      "symbol_kind": "source.lang.swift.decl.struct",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 762,
+      "symbol": "NIOHTTP2Errors.UnableToSerializeFrame.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 776,
+      "symbol": "NIOHTTP2Errors.UnableToParseFrame",
+      "symbol_kind": "source.lang.swift.decl.struct",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 786,
+      "symbol": "NIOHTTP2Errors.UnableToParseFrame.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 810,
+      "symbol": "NIOHTTP2Errors.MissingPseudoHeader.name",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 832,
+      "symbol": "NIOHTTP2Errors.MissingPseudoHeader.init(_:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 851,
+      "symbol": "NIOHTTP2Errors.DuplicatePseudoHeader.name",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 873,
+      "symbol": "NIOHTTP2Errors.DuplicatePseudoHeader.init(_:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 892,
+      "symbol": "NIOHTTP2Errors.PseudoHeaderAfterRegularHeader.name",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 914,
+      "symbol": "NIOHTTP2Errors.PseudoHeaderAfterRegularHeader.init(_:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 933,
+      "symbol": "NIOHTTP2Errors.UnknownPseudoHeader.name",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 955,
+      "symbol": "NIOHTTP2Errors.UnknownPseudoHeader.init(_:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 966,
+      "symbol": "NIOHTTP2Errors.InvalidPseudoHeaders.headerBlock",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 972,
+      "symbol": "NIOHTTP2Errors.InvalidPseudoHeaders.init(_:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 997,
+      "symbol": "NIOHTTP2Errors.MissingHostHeader.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1022,
+      "symbol": "NIOHTTP2Errors.DuplicateHostHeader.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1047,
+      "symbol": "NIOHTTP2Errors.EmptyPathHeader.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1071,
+      "symbol": "NIOHTTP2Errors.InvalidStatusValue.value",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1093,
+      "symbol": "NIOHTTP2Errors.InvalidStatusValue.init(_:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1111,
+      "symbol": "NIOHTTP2Errors.PriorityCycle.init(streamID:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1134,
+      "symbol": "NIOHTTP2Errors.TrailersWithoutEndStream.init(streamID:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1158,
+      "symbol": "NIOHTTP2Errors.InvalidHTTP2HeaderFieldName.fieldName",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1180,
+      "symbol": "NIOHTTP2Errors.InvalidHTTP2HeaderFieldName.init(_:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1226,
+      "symbol": "NIOHTTP2Errors.ForbiddenHeaderField.name",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1236,
+      "symbol": "NIOHTTP2Errors.ForbiddenHeaderField.value",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1258,
+      "symbol": "NIOHTTP2Errors.ForbiddenHeaderField.init(name:value:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1278,
+      "symbol": "NIOHTTP2Errors.ContentLengthViolated.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1304,
+      "symbol": "NIOHTTP2Errors.ExcessiveEmptyDataFrames.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1329,
+      "symbol": "NIOHTTP2Errors.ExcessivelyLargeHeaderBlock.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Error.swift",
+      "line": 1354,
+      "symbol": "NIOHTTP2Errors.NoStreamIDAvailable.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Frame.swift",
+      "line": 30,
+      "symbol": "HTTP2Frame.StreamPriorityData.exclusive",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Frame.swift",
+      "line": 31,
+      "symbol": "HTTP2Frame.StreamPriorityData.dependency",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Frame.swift",
+      "line": 32,
+      "symbol": "HTTP2Frame.StreamPriorityData.weight",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Frame.swift",
+      "line": 145,
+      "symbol": "HTTP2Frame.FramePayload.Data.init(data:endStream:paddingBytes:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Frame.swift",
+      "line": 181,
+      "symbol": "HTTP2Frame.FramePayload.Headers.init(headers:priorityData:endStream:paddingBytes:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Frame.swift",
+      "line": 198,
+      "symbol": "HTTP2Frame.FramePayload.PushPromise",
+      "symbol_kind": "source.lang.swift.decl.struct",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2Frame.swift",
+      "line": 223,
+      "symbol": "HTTP2Frame.FramePayload.PushPromise.init(pushedStreamID:headers:paddingBytes:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2StreamChannel.swift",
+      "line": 28,
+      "symbol": "HTTP2StreamChannelOptions.Types",
+      "symbol_kind": "source.lang.swift.decl.enum",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2StreamChannel.swift",
+      "line": 32,
+      "symbol": "StreamIDOption",
+      "symbol_kind": "source.lang.swift.decl.typealias",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2StreamChannel.swift",
+      "line": 34,
+      "symbol": "HTTP2StreamChannelOptions.Types",
+      "symbol_kind": "source.lang.swift.decl.extension",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2StreamChannel.swift",
+      "line": 47,
+      "symbol": "HTTP2StreamChannelOptions.Types.StreamIDOption.init()",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2StreamChannel.swift",
+      "line": 853,
+      "symbol": "HTTP2StreamChannel.description",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ToHTTP1Codec.swift",
+      "line": 191,
+      "symbol": "HTTP2FramePayloadToHTTP1ClientCodec.HTTPProtocol.https",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ToHTTP1Codec.swift",
+      "line": 192,
+      "symbol": "HTTP2FramePayloadToHTTP1ClientCodec.HTTPProtocol.http",
+      "symbol_kind": "source.lang.swift.decl.enumelement",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2ToHTTP1Codec.swift",
+      "line": 331,
+      "symbol": "HTTP2ToHTTP1ServerCodec.init(streamID:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2UserEvents.swift",
+      "line": 30,
+      "symbol": "StreamClosedEvent.init(streamID:reason:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2UserEvents.swift",
+      "line": 71,
+      "symbol": "NIOHTTP2WindowUpdatedEvent.init(streamID:inboundWindowSize:outboundWindowSize:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2UserEvents.swift",
+      "line": 89,
+      "symbol": "NIOHTTP2StreamCreatedEvent.streamID",
+      "symbol_kind": "source.lang.swift.decl.var.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2UserEvents.swift",
+      "line": 97,
+      "symbol": "NIOHTTP2StreamCreatedEvent.init(streamID:localInitialWindowSize:remoteInitialWindowSize:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/HTTP2UserEvents.swift",
+      "line": 114,
+      "symbol": "NIOHTTP2BulkStreamWindowChangeEvent.init(delta:)",
+      "symbol_kind": "source.lang.swift.decl.function.method.instance",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1054,
+      "symbol": "NIOHTTP2StreamState.idle",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1055,
+      "symbol": "NIOHTTP2StreamState.reservedRemote",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1056,
+      "symbol": "NIOHTTP2StreamState.reservedLocal",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1057,
+      "symbol": "NIOHTTP2StreamState.halfOpenLocalPeerIdle",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1058,
+      "symbol": "NIOHTTP2StreamState.halfOpenRemoteLocalIdle",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1059,
+      "symbol": "NIOHTTP2StreamState.fullyOpen",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1060,
+      "symbol": "NIOHTTP2StreamState.halfClosedLocalPeerIdle",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1061,
+      "symbol": "NIOHTTP2StreamState.halfClosedLocalPeerActive",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1062,
+      "symbol": "NIOHTTP2StreamState.halfClosedRemoteLocalIdle",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1063,
+      "symbol": "NIOHTTP2StreamState.halfClosedRemoteLocalActive",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    },
+    {
+      "file": "/code/Sources/NIOHTTP2/StreamStateMachine.swift",
+      "line": 1064,
+      "symbol": "NIOHTTP2StreamState.closed",
+      "symbol_kind": "source.lang.swift.decl.var.static",
+      "warning": "undocumented"
+    }
+  ],
+  "source_directory": "/code"
+}
