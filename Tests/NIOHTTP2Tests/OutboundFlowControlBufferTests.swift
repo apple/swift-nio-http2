@@ -380,6 +380,93 @@ class OutboundFlowControlBufferTests: XCTestCase {
             XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
     }
+
+    func testFlushableStreamStopsBeingFlushableIfTheWindowGoesAway() throws {
+        // This test checks that updating the window size to zero on a flushable stream makes it no longer flushable.
+        let streamOne = HTTP2StreamID(1)
+        self.buffer.streamCreated(streamOne, initialWindowSize: 15)
+
+        let dataFrame = self.createDataFrame(streamOne, byteBufferSize: 15)
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: nil).assertNothing())
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        // Flush the stream. Note that we have not yet asked for frames, so nothing has been written.
+        self.buffer.flushReceived()
+
+        // Now drop the window.
+        self.buffer.updateWindowOfStream(streamOne, newSize: 0)
+
+        // Check the stream has been marked unflushable.
+        self.buffer.flushReceived()
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        self.buffer.updateWindowOfStream(streamOne, newSize: 15)
+        self.buffer.flushReceived()
+
+        self.receivedFrames().assertFramesMatch([dataFrame], dataFileRegionToByteBuffer: false)
+    }
+
+    func testFlushableStreamStopsBeingFlushableIfTheWindowIsShrunkByTheRemotePeer() throws {
+        // This test checks that updating the window size to zero on a flushable stream makes it no longer flushable.
+        let streamOne = HTTP2StreamID(1)
+        self.buffer.streamCreated(streamOne, initialWindowSize: 15)
+
+        let dataFrame = self.createDataFrame(streamOne, byteBufferSize: 15)
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: nil).assertNothing())
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        // Flush the stream. Note that we have not yet asked for frames, so nothing has been written.
+        self.buffer.flushReceived()
+
+        // Now drop the window by way of initial stream.
+        self.buffer.initialWindowSizeChanged(-15)
+
+        // Check the stream has been marked unflushable.
+        self.buffer.flushReceived()
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        self.buffer.updateWindowOfStream(streamOne, newSize: 15)
+        self.buffer.flushReceived()
+
+        self.receivedFrames().assertFramesMatch([dataFrame], dataFileRegionToByteBuffer: false)
+    }
+
+    func testZeroSizedWritesAreStillAllowedWhenTheWindowIsZero() throws {
+        // This test checks that zero sized writes can still get through when the window is zero.
+        let streamOne = HTTP2StreamID(1)
+        self.buffer.streamCreated(streamOne, initialWindowSize: 0)
+
+        let dataFrame = self.createDataFrame(streamOne, byteBufferSize: 0)
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: nil).assertNothing())
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        // Flush the stream. Note that we have not yet asked for frames, so nothing has been written.
+        self.buffer.flushReceived()
+
+        // Check the write can still go ahead.
+        self.buffer.flushReceived()
+        self.receivedFrames().assertFramesMatch([dataFrame], dataFileRegionToByteBuffer: false)
+    }
+
+    func testZeroSizedWritesAreStillAllowedIfTheWindowChangesSize() throws {
+        // This test checks that zero sized writes can still get through when the window is changed to zero after flush.
+        let streamOne = HTTP2StreamID(1)
+        self.buffer.streamCreated(streamOne, initialWindowSize: 15)
+
+        let dataFrame = self.createDataFrame(streamOne, byteBufferSize: 0)
+        XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: nil).assertNothing())
+        XCTAssertEqual(0, self.receivedFrames().count)
+
+        // Flush the stream. Note that we have not yet asked for frames, so nothing has been written.
+        self.buffer.flushReceived()
+
+        // Now drop the window.
+        self.buffer.updateWindowOfStream(streamOne, newSize: 0)
+
+        // Check the write can still go ahead.
+        self.buffer.flushReceived()
+        self.receivedFrames().assertFramesMatch([dataFrame], dataFileRegionToByteBuffer: false)
+    }
 }
 
 

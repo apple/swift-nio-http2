@@ -198,9 +198,14 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
     /// Establish a basic HTTP/2 connection.
     func basicHTTP2Connection(clientSettings: HTTP2Settings = nioDefaultSettings,
                               serverSettings: HTTP2Settings = nioDefaultSettings,
+                              maximumBufferedControlFrames: Int = 10000,
                               withMultiplexerCallback multiplexerCallback: ((Channel) -> EventLoopFuture<Void>)? = nil) throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, initialSettings: clientSettings)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server, initialSettings: serverSettings)).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client,
+                                                                                    initialSettings: clientSettings,
+                                                                                    maximumBufferedControlFrames: maximumBufferedControlFrames)).wait())
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server,
+                                                                                    initialSettings: serverSettings,
+                                                                                    maximumBufferedControlFrames: maximumBufferedControlFrames)).wait())
 
         if let multiplexerCallback = multiplexerCallback {
             XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .client,
@@ -1526,8 +1531,10 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
     }
 
     func testDenialOfServiceViaPing() throws {
+        let maximimBufferedControlFrames = 50
+
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection()
+        try self.basicHTTP2Connection(maximumBufferedControlFrames: maximimBufferedControlFrames)
 
         // Now mark the server's channel as non-writable.
         self.serverChannel.isWritable = false
@@ -1536,7 +1543,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         // Now we want to send many PING frames. The server should not be writing any out,
         // as the channel isn't writable.
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 0), ack: false))
-        let frames = Array(repeatElement(pingFrame, count: 10000))
+        let frames = Array(repeatElement(pingFrame, count: maximimBufferedControlFrames))
         try self.assertFramesRoundTrip(frames: frames, sender: self.clientChannel, receiver: self.serverChannel)
 
         // Ok, now send one more ping frame. This should cause an error
@@ -1553,8 +1560,10 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
     }
 
     func testDenialOfServiceViaSettings() throws {
+        let maximimBufferedControlFrames = 50
+
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection()
+        try self.basicHTTP2Connection(maximumBufferedControlFrames: maximimBufferedControlFrames)
 
         // Now mark the server's channel as non-writable.
         self.serverChannel.isWritable = false
@@ -1563,7 +1572,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         // Now we want to send many empty SETTINGS frames. The server should not be writing any out,
         // as the channel isn't writable.
         let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings([])))
-        let frames = Array(repeatElement(settingsFrame, count: 10000))
+        let frames = Array(repeatElement(settingsFrame, count: maximimBufferedControlFrames))
         try self.assertFramesRoundTrip(frames: frames, sender: self.clientChannel, receiver: self.serverChannel)
 
         // Ok, now send one more settings frame. This should cause connection teardown.
