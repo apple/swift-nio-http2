@@ -189,6 +189,9 @@ extension ByteBuffer {
 
         let decoded = try String(customUnsafeUninitializedCapacity: capacity) { backingStorage in
             var state: UInt8 = 0
+
+            // We do unchecked math on offset. Offset is strictly unable to get any larger than `length * 2`,
+            // and we already did checked multiplication on that value.
             var offset = 0
             var acceptable = false
 
@@ -200,7 +203,7 @@ extension ByteBuffer {
                 }
                 if t.flags.contains(.symbol) {
                     backingStorage[offset] = t.sym
-                    offset += 1
+                    offset &+= 1
                 }
 
                 t = decoderTable[state: t.state, nybble: ch & 0xf]
@@ -209,7 +212,7 @@ extension ByteBuffer {
                 }
                 if t.flags.contains(.symbol) {
                     backingStorage[offset] = t.sym
-                    offset += 1
+                    offset &+= 1
                 }
 
                 state = t.state
