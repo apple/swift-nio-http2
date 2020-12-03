@@ -264,7 +264,11 @@ extension String {
     }
 }
 
-#if compiler(>=5.3)
+// Frustratingly, Swift 5.3 shipped before the macOS 11 SDK did, so we cannot gate the availability of
+// this declaration on having the 5.3 compiler. This has caused a number of build issues. While updating
+// to newer Xcodes does work, we can save ourselves some hassle and just wait until 5.4 to get this
+// enhancement on Apple platforms.
+#if (compiler(>=5.3) && !(os(macOS) || os(iOS) || os(tvOS) || os(watchOS))) || compiler(>=5.4)
 extension String {
     init(customUnsafeUninitializedCapacity capacity: Int,
          initializingUTF8With initializer: (_ buffer: UnsafeMutableBufferPointer<UInt8>) throws -> Int) rethrows {
