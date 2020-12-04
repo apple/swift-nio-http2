@@ -193,20 +193,20 @@ internal enum StreamStateChange: Hashable {
 
 
 internal extension NIOHTTP2ConnectionStateChange {
-    init<ConnectionState: HasFlowControlWindows>(_ streamChange: StreamStateChange, connectionState: ConnectionState) {
+    init(_ streamChange: StreamStateChange, inboundFlowControlWindow: HTTP2FlowControlWindow, outboundFlowControlWindow: HTTP2FlowControlWindow) {
         switch streamChange {
         case .streamClosed(let streamClosedState):
             self = .streamClosed(.init(streamID: streamClosedState.streamID,
-                                       localConnectionWindowSize: Int(connectionState.outboundFlowControlWindow),
-                                       remoteConnectionWindowSize: Int(connectionState.inboundFlowControlWindow),
+                                       localConnectionWindowSize: Int(outboundFlowControlWindow),
+                                       remoteConnectionWindowSize: Int(inboundFlowControlWindow),
                                        reason: streamClosedState.reason))
         case .streamCreated(let streamCreated):
             self = .streamCreated(streamCreated)
         case .streamCreatedAndClosed(let streamCreatedAndClosed):
             self = .streamCreatedAndClosed(streamCreatedAndClosed)
         case .windowSizeChange(let streamSizeChange):
-            self = .flowControlChange(.init(localConnectionWindowSize: Int(connectionState.outboundFlowControlWindow),
-                                            remoteConnectionWindowSize: Int(connectionState.inboundFlowControlWindow),
+            self = .flowControlChange(.init(localConnectionWindowSize: Int(outboundFlowControlWindow),
+                                            remoteConnectionWindowSize: Int(inboundFlowControlWindow),
                                             localStreamWindowSize: streamSizeChange))
         }
     }

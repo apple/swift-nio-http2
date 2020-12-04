@@ -58,7 +58,9 @@ extension ReceivingPushPromiseState {
             let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: true) {
                 $0.receivePushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
             }
-            return StateMachineResultWithEffect(result, connectionState: self)
+            return StateMachineResultWithEffect(result,
+                                                inboundFlowControlWindow: self.inboundFlowControlWindow,
+                                                outboundFlowControlWindow: self.outboundFlowControlWindow)
         } catch {
             return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
         }
