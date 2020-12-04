@@ -41,7 +41,9 @@ extension SendingWindowUpdateState {
             let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
                 $0.sendWindowUpdate(windowIncrement: increment)
             }
-            return StateMachineResultWithEffect(result, connectionState: self)
+            return StateMachineResultWithEffect(result,
+                                                inboundFlowControlWindow: self.inboundFlowControlWindow,
+                                                outboundFlowControlWindow: self.outboundFlowControlWindow)
         }
     }
 }

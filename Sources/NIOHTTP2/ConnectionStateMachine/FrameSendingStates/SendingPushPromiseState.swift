@@ -49,7 +49,11 @@ extension SendingPushPromiseState {
         }
 
         do {
-            let result = StateMachineResultWithEffect(self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: false, parentStateModifier), connectionState: self)
+            let result = StateMachineResultWithEffect(
+                self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: false, parentStateModifier),
+                inboundFlowControlWindow: self.inboundFlowControlWindow,
+                outboundFlowControlWindow: self.outboundFlowControlWindow
+            )
             guard case .succeed = result.result else {
                 return result
             }

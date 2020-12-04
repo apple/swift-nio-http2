@@ -57,7 +57,9 @@ extension SendingHeadersState {
             }
         }
 
-        return StateMachineResultWithEffect(result, connectionState: self)
+        return StateMachineResultWithEffect(result,
+                                            inboundFlowControlWindow: self.inboundFlowControlWindow,
+                                            outboundFlowControlWindow: self.outboundFlowControlWindow)
     }
 }
 
@@ -72,6 +74,8 @@ extension SendingHeadersState where Self: RemotelyQuiescingState {
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
             $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, isEndStreamSet: endStream)
         }
-        return StateMachineResultWithEffect(result, connectionState: self)
+        return StateMachineResultWithEffect(result,
+                                            inboundFlowControlWindow: self.inboundFlowControlWindow,
+                                            outboundFlowControlWindow: self.outboundFlowControlWindow)
     }
 }

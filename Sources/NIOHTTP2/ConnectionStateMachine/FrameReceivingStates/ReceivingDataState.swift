@@ -47,7 +47,9 @@ extension ReceivingDataState {
 private extension StateMachineResultWithEffect {
     static func withGuaranteedFlowControlEffect<ConnectionState: ReceivingDataState>(_ result: StateMachineResultWithStreamEffect, connectionState: ConnectionState) -> StateMachineResultWithEffect {
         // In most cases, this will update the underlying effect with the new flow control window info.
-        var newResult = StateMachineResultWithEffect(result, connectionState: connectionState)
+        var newResult = StateMachineResultWithEffect(result,
+                                                     inboundFlowControlWindow: connectionState.inboundFlowControlWindow,
+                                                     outboundFlowControlWindow: connectionState.outboundFlowControlWindow)
         if newResult.effect == nil {
             // But if we aren't noting it anywhere else, we note it here.
             newResult.effect = .flowControlChange(.init(localConnectionWindowSize: Int(connectionState.outboundFlowControlWindow), remoteConnectionWindowSize: Int(connectionState.inboundFlowControlWindow), localStreamWindowSize: nil))
