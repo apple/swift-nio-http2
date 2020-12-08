@@ -26,6 +26,8 @@ extension SendingRstStreamState {
         let result = self.streamState.locallyResetStreamState(streamID: streamID) {
             $0.sendRstStream(reason: reason)
         }
-        return StateMachineResultWithEffect(result, connectionState: self)
+        return StateMachineResultWithEffect(result,
+                                            inboundFlowControlWindow: self.inboundFlowControlWindow,
+                                            outboundFlowControlWindow: self.outboundFlowControlWindow)
     }
 }

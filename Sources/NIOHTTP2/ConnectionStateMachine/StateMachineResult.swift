@@ -66,9 +66,13 @@ struct StateMachineResultWithEffect {
         self.effect = effect
     }
 
-    init<ConnectionState: HasFlowControlWindows>(_ streamEffect: StateMachineResultWithStreamEffect, connectionState: ConnectionState) {
+    init(_ streamEffect: StateMachineResultWithStreamEffect,
+         inboundFlowControlWindow: HTTP2FlowControlWindow,
+         outboundFlowControlWindow: HTTP2FlowControlWindow) {
         self.result = streamEffect.result
-        self.effect = streamEffect.effect.map { NIOHTTP2ConnectionStateChange($0, connectionState: connectionState) }
+        self.effect = streamEffect.effect.map {
+            NIOHTTP2ConnectionStateChange($0, inboundFlowControlWindow: inboundFlowControlWindow, outboundFlowControlWindow: outboundFlowControlWindow)
+        }
     }
 }
 
