@@ -16,13 +16,13 @@ services:
   integration-tests:
     image: swift-nio-http2:18.04-5.3
     environment:
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=63000
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=58000
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=323000
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=368000
-      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=59000
-      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=58000
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=414000
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=303000
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=342000
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=53000
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=52000
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=364000
 
   performance-test:
     image: swift-nio-http2:18.04-5.3
@@ -33,13 +33,13 @@ services:
   test:
     image: swift-nio-http2:18.04-5.3
     environment:
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=63000
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=58000
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=323000
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=368000
-      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=59000
-      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=58000
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=414000
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=303000
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=342000
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=53000
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=52000
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=364000
 
   shell:
     image: swift-nio-http2:18.04-5.3
