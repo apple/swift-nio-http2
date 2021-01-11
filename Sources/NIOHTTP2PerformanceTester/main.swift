@@ -66,7 +66,7 @@ public func measureAndPrint(desc: String, fn: () throws -> Int) rethrows -> Void
 
 func measureAndPrint<B: Benchmark>(desc: String, benchmark bench: @autoclosure () -> B) throws {
     // Avoids running setUp/tearDown when we don't want that benchmark.
-    guard limitSet.contains(desc) else {
+    guard limitSet.count == 0 || limitSet.contains(desc) else {
         return
     }
 

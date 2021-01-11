@@ -18,10 +18,10 @@ services:
     environment:
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=67000
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=352000
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=395000
-      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=69000
-      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=68000
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=342000
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=379000
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=68000
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=67000
       - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=505000
 
   performance-test:
@@ -35,10 +35,10 @@ services:
     environment:
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=67000
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=352000
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=395000
-      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=69000
-      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=68000
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=342000
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=379000
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=68000
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=67000
       - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=505000
 
   shell:
