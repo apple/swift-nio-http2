@@ -178,39 +178,63 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self._pipeline = ChannelPipeline(channel: self)
     }
 
-    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?){
+    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
         assert(self.streamDataType == .frame)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        self.getAutoReadFromParent().flatMap { autoRead in
-            self.autoRead = autoRead
-            // This initializer callback can only be invoked if we already have a stream ID.
-            // So we force-unwrap here.
-            return initializer?(self, self.streamID!) ?? self.eventLoop.makeSucceededFuture(())
-        }.map {
-            self.postInitializerActivate(promise: promise)
-        }.whenFailure { error in
-            self.configurationFailed(withError: error, promise: promise)
+        self.getAutoReadFromParent().whenComplete { autoReadResult in
+            switch autoReadResult {
+            case .success(let autoRead):
+                self.autoRead = autoRead
+                if let initializer = initializer {
+                    // This initializer callback can only be invoked if we already have a stream ID.
+                    // So we force-unwrap here.
+                    initializer(self, self.streamID!).whenComplete { result in
+                        switch result {
+                        case .success:
+                            self.postInitializerActivate(promise: promise)
+                        case .failure(let error):
+                            self.configurationFailed(withError: error, promise: promise)
+                        }
+                    }
+                } else {
+                    self.postInitializerActivate(promise: promise)
+                }
+            case .failure(let error):
+                self.configurationFailed(withError: error, promise: promise)
+            }
         }
     }
 
-    internal func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?){
+    internal func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        self.getAutoReadFromParent().flatMap { autoRead in
-            self.autoRead = autoRead
-            return initializer?(self) ?? self.eventLoop.makeSucceededFuture(())
-        }.map {
-            self.postInitializerActivate(promise: promise)
-        }.whenFailure { error in
-            self.configurationFailed(withError: error, promise: promise)
+        self.getAutoReadFromParent().whenComplete { autoReadResult in
+            switch autoReadResult {
+            case .success(let autoRead):
+                self.autoRead = autoRead
+                if let initializer = initializer {
+                    initializer(self).whenComplete { result in
+                        switch result {
+                        case .success:
+                            self.postInitializerActivate(promise: promise)
+                        case .failure(let error):
+                            self.configurationFailed(withError: error, promise: promise)
+                        }
+                    }
+                } else {
+                    self.postInitializerActivate(promise: promise)
+                }
+            case .failure(let error):
+                self.configurationFailed(withError: error, promise: promise)
+            }
         }
     }
 
