@@ -118,7 +118,7 @@ struct ConcurrentStreamBuffer {
         // buffering frames we need to check if we're buffering for this stream. If we are, we just append to that buffer. If we're not,
         // we don't yet know whether we should be buffering.
         //
-        // Before we search our buffers for this stream we do a quick sanity check: if its stream ID is lower than the first element in the
+        // Before we search our buffers for this stream we do a quick soundness check: if its stream ID is lower than the first element in the
         // array, it won't be there.
         //
         // Again, we choose to ignore channel writability here because one of the other buffers should catch this frame.
