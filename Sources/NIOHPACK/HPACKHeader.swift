@@ -474,14 +474,6 @@ internal extension Character {
     }
 }
 
-/* private but inlinable */
-internal extension String {
-    @inlinable
-    func trimASCIIWhitespace() -> Substring {
-        return self.dropFirst(0)._trimWhitespace()
-    }
-}
-
 extension Substring {
     @inlinable
     func _trimWhitespace() -> Substring {
