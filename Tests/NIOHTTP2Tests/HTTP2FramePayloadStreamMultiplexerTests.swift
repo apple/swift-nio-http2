@@ -1898,4 +1898,30 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // the stream has closed we don't expect to read anything out.
         XCTAssertNil(try self.channel.readOutbound(as: HTTP2Frame.self))
     }
+
+    func testStreamChannelSupportsSyncOptions() throws {
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
+            XCTAssert(channel is HTTP2StreamChannel)
+            if let sync = channel.syncOptions {
+                do {
+                    let streamID = try sync.getOption(HTTP2StreamChannelOptions.streamID)
+                    XCTAssertEqual(streamID, HTTP2StreamID(1))
+
+                    let autoRead = try sync.getOption(ChannelOptions.autoRead)
+                    try sync.setOption(ChannelOptions.autoRead, value: !autoRead)
+                    XCTAssertNotEqual(autoRead, try sync.getOption(ChannelOptions.autoRead))
+                } catch {
+                    XCTFail("Missing StreamID")
+                }
+            } else {
+                XCTFail("syncOptions was nil but should be supported for HTTP2StreamChannel")
+            }
+
+            return channel.close()
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        let frame = HTTP2Frame(streamID: HTTP2StreamID(1), payload: .headers(.init(headers: HPACKHeaders())))
+        XCTAssertNoThrow(try self.channel.writeInbound(frame))
+    }
 }
