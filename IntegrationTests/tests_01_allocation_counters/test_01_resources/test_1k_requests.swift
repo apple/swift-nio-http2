@@ -197,14 +197,6 @@ fileprivate class TestServer: ChannelInboundHandler {
 }
 
 func run(identifier: String) {
-    var noninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1)
-
-    measure(identifier: identifier + "_noninterleaved") {
-        return try! noninterleaved.run()
-    }
-
-    noninterleaved.tearDown()
-
     var interleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100)
 
     measure(identifier: identifier + "_interleaved") {
@@ -212,4 +204,12 @@ func run(identifier: String) {
     }
 
     interleaved.tearDown()
+
+    var noninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1)
+
+    measure(identifier: identifier + "_noninterleaved") {
+        return try! noninterleaved.run()
+    }
+
+    noninterleaved.tearDown()
 }

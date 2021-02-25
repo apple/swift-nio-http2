@@ -185,7 +185,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        self.getAutoReadFromParent().whenComplete { autoReadResult in
+        self.getAutoReadFromParent { autoReadResult in
             switch autoReadResult {
             case .success(let autoRead):
                 self.autoRead = autoRead
@@ -216,7 +216,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // 2. Calling the initializer, if provided.
         // 3. Activating when complete.
         // 4. Catching errors if they occur.
-        self.getAutoReadFromParent().whenComplete { autoReadResult in
+        self.getAutoReadFromParent { autoReadResult in
             switch autoReadResult {
             case .success(let autoRead):
                 self.autoRead = autoRead
@@ -238,12 +238,20 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    /// Gets the 'autoRead' option from the parent channel.
-    private func getAutoReadFromParent() -> EventLoopFuture<Bool> {
+    /// Gets the 'autoRead' option from the parent channel and invokes the `body` closure with the
+    /// result. This may be done synchronously if the parent `Channel` supports synchronous options.
+    private func getAutoReadFromParent(_ body: @escaping (Result<Bool, Error>) -> Void) {
         // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
         // Note we also don't set the value here: the additional `map` causes an extra allocation
         // when using a Swift 5.0 compiler.
-        return self.parent!.getOption(ChannelOptions.autoRead)
+        if let syncOptions = self.parent!.syncOptions {
+            let autoRead = Result(catching: { try syncOptions.getOption(ChannelOptions.autoRead) })
+            body(autoRead)
+        } else {
+            self.parent!.getOption(ChannelOptions.autoRead).whenComplete { autoRead in
+                body(autoRead)
+            }
+        }
     }
 
     /// Activates the channel if the parent channel is active and succeeds the given `promise`.
