@@ -42,12 +42,12 @@ func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel) throw
 }
 
 final class ServerHandler: ChannelInboundHandler {
-    typealias InboundIn = HTTP2Frame
-    typealias OutboundOut = HTTP2Frame
+    typealias InboundIn = HTTP2Frame.FramePayload
+    typealias OutboundOut = HTTP2Frame.FramePayload
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let data = self.unwrapInboundIn(data)
-        switch data.payload {
+        let payload = self.unwrapInboundIn(data)
+        switch payload {
         case .headers(let headers) where headers.endStream:
             break
         case .data(let data) where data.endStream:
@@ -59,21 +59,15 @@ final class ServerHandler: ChannelInboundHandler {
 
         // We got END_STREAM. Let's send a response.
         let headers = HPACKHeaders([(":status", "200")])
-        let responseFrame = HTTP2Frame(streamID: data.streamID, payload: .headers(.init(headers: headers, endStream: true)))
-        context.writeAndFlush(self.wrapOutboundOut(responseFrame), promise: nil)
+        let responseFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: true))
+        context.writeAndFlush(self.wrapOutboundOut(responseFramePayload), promise: nil)
     }
 }
 
 
 final class ClientHandler: ChannelInboundHandler {
-    typealias InboundIn = HTTP2Frame
-    typealias OutboundOut = HTTP2Frame
-
-    let streamID: HTTP2StreamID
-
-    init(streamID: HTTP2StreamID) {
-        self.streamID = streamID
-    }
+    typealias InboundIn = HTTP2Frame.FramePayload
+    typealias OutboundOut = HTTP2Frame.FramePayload
 
     func channelActive(context: ChannelHandlerContext) {
         // Send a request.
@@ -81,8 +75,8 @@ final class ClientHandler: ChannelInboundHandler {
                                     (":authority", "localhost"),
                                     (":method", "GET"),
                                     (":scheme", "https")])
-        let requestFrame = HTTP2Frame(streamID: self.streamID, payload: .headers(.init(headers: headers, endStream: true)))
-        context.writeAndFlush(self.wrapOutboundOut(requestFrame), promise: nil)
+        let requestFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: true))
+        context.writeAndFlush(self.wrapOutboundOut(requestFramePayload), promise: nil)
     }
 }
 
@@ -96,16 +90,16 @@ func run(identifier: String) {
             let clientChannel = EmbeddedChannel(loop: loop)
             let serverChannel = EmbeddedChannel(loop: loop)
 
-            let clientMultiplexer = try! clientChannel.configureHTTP2Pipeline(mode: .client).wait()
-            _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { (channel, streamID) in
+            let clientMultiplexer = try! clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait()
+            _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
                 return channel.pipeline.addHandler(ServerHandler())
             }.wait()
             try! clientChannel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5678)).wait()
             try! serverChannel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5678)).wait()
 
             let promise = clientChannel.eventLoop.makePromise(of: Channel.self)
-            clientMultiplexer.createStreamChannel(promise: promise) { (channel, streamID) in
-                return channel.pipeline.addHandler(ClientHandler(streamID: streamID))
+            clientMultiplexer.createStreamChannel(promise: promise) { channel in
+                return channel.pipeline.addHandler(ClientHandler())
             }
             clientChannel.embeddedEventLoop.run()
             let child = try! promise.futureResult.wait()

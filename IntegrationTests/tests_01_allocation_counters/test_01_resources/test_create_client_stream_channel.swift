@@ -19,28 +19,27 @@ import NIOHTTP2
 
 func run(identifier: String) {
     let channel = EmbeddedChannel(handler: NIOHTTP2Handler(mode: .client))
-    let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: channel)
+    let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: channel, inboundStreamInitializer: nil)
     try! channel.pipeline.addHandler(multiplexer).wait()
     try! channel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5678)).wait()
 
     measure(identifier: identifier) {
-        var sumOfStreamIDs = 0
+        var streams = 0
 
         for _ in 0..<1000 {
             let promise = channel.eventLoop.makePromise(of: Channel.self)
-            multiplexer.createStreamChannel(promise: promise) { (channel, streamID) in
+            multiplexer.createStreamChannel(promise: promise) { channel in
+                streams += 1
                 return channel.eventLoop.makeSucceededFuture(())
             }
             channel.embeddedEventLoop.run()
             let child = try! promise.futureResult.wait()
-            let streamID = try! Int(child.getOption(HTTP2StreamChannelOptions.streamID).wait())
 
-            sumOfStreamIDs += streamID
             let closeFuture = child.close()
             channel.embeddedEventLoop.run()
             try! closeFuture.wait()
         }
 
-        return sumOfStreamIDs
+        return streams
     }
 }
