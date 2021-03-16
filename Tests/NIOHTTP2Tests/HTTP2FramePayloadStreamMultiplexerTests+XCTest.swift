@@ -77,6 +77,7 @@ extension HTTP2FramePayloadStreamMultiplexerTests {
                 ("testReadWhenUsingAutoreadOnChildChannel", testReadWhenUsingAutoreadOnChildChannel),
                 ("testWindowUpdateIsNotEmittedAfterStreamIsClosed", testWindowUpdateIsNotEmittedAfterStreamIsClosed),
                 ("testWindowUpdateIsNotEmittedAfterStreamIsClosedEvenOnLaterFrame", testWindowUpdateIsNotEmittedAfterStreamIsClosedEvenOnLaterFrame),
+                ("testStreamChannelSupportsSyncOptions", testStreamChannelSupportsSyncOptions),
            ]
    }
 }
