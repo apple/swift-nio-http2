@@ -352,31 +352,31 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     func setOption<Option: ChannelOption>(_ option: Option, value: Option.Value) -> EventLoopFuture<Void> {
-        if eventLoop.inEventLoop {
+        if self.eventLoop.inEventLoop {
             do {
-                return eventLoop.makeSucceededFuture(try setOption0(option, value: value))
+                return self.eventLoop.makeSucceededFuture(try self.setOption0(option, value: value))
             } catch {
-                return eventLoop.makeFailedFuture(error)
+                return self.eventLoop.makeFailedFuture(error)
             }
         } else {
-            return eventLoop.submit { try self.setOption0(option, value: value) }
+            return self.eventLoop.submit { try self.setOption0(option, value: value) }
         }
     }
 
     public func getOption<Option: ChannelOption>(_ option: Option) -> EventLoopFuture<Option.Value> {
-        if eventLoop.inEventLoop {
+        if self.eventLoop.inEventLoop {
             do {
-                return eventLoop.makeSucceededFuture(try getOption0(option))
+                return self.eventLoop.makeSucceededFuture(try self.getOption0(option))
             } catch {
-                return eventLoop.makeFailedFuture(error)
+                return self.eventLoop.makeFailedFuture(error)
             }
         } else {
-            return eventLoop.submit { try self.getOption0(option) }
+            return self.eventLoop.submit { try self.getOption0(option) }
         }
     }
 
     private func setOption0<Option: ChannelOption>(_ option: Option, value: Option.Value) throws {
-        assert(eventLoop.inEventLoop)
+        self.eventLoop.preconditionInEventLoop()
 
         switch option {
         case _ as ChannelOptions.Types.AutoReadOption:
@@ -387,7 +387,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     private func getOption0<Option: ChannelOption>(_ option: Option) throws -> Option.Value {
-        assert(eventLoop.inEventLoop)
+        self.eventLoop.preconditionInEventLoop()
 
         switch option {
         case _ as HTTP2StreamChannelOptions.Types.StreamIDOption:
@@ -884,5 +884,34 @@ extension HTTP2StreamChannel {
 extension HTTP2StreamChannel {
     public var description: String {
         return "HTTP2StreamChannel(streamID: \(String(describing: self.streamID)), isActive: \(self.isActive), isWritable: \(self.isWritable))"
+    }
+}
+
+extension HTTP2StreamChannel {
+    internal struct SynchronousOptions: NIOSynchronousChannelOptions {
+        private let channel: HTTP2StreamChannel
+
+        fileprivate init(channel: HTTP2StreamChannel) {
+            self.channel = channel
+        }
+
+        /// Set `option` to `value` on this `Channel`.
+        ///
+        /// - Important: Must be called on the `EventLoop` the `Channel` is running on.
+        public func setOption<Option: ChannelOption>(_ option: Option, value: Option.Value) throws {
+            try self.channel.setOption0(option, value: value)
+        }
+
+        /// Get the value of `option` for this `Channel`.
+        ///
+        /// - Important: Must be called on the `EventLoop` the `Channel` is running on.
+        public func getOption<Option: ChannelOption>(_ option: Option) throws -> Option.Value {
+            return try self.channel.getOption0(option)
+        }
+    }
+
+    /// Returns a view of the `Channel` exposing synchronous versions of `setOption` and `getOption`.
+    public var syncOptions: NIOSynchronousChannelOptions? {
+        return SynchronousOptions(channel: self)
     }
 }
