@@ -1,0 +1,37 @@
+version: "3"
+
+services:
+
+  runtime-setup:
+    image: swift-nio-http2:20.04-main
+    build:
+      args:
+        base_image: "swiftlang/swift:nightly-main-focal"
+        ubuntu_version: "focal"
+        h2spec_version: "2.2.1"
+
+  unit-tests:
+    image: swift-nio-http2:20.04-main
+
+  integration-tests:
+    image: swift-nio-http2:20.04-main
+
+  performance-test:
+    image: swift-nio-http2:20.04-main
+
+  h2spec:
+    image: swift-nio-http2:20.04-main
+
+  test:
+    image: swift-nio-http2:20.04-main
+    environment:
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=49150
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=48100
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=324000
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=288000
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=48050
+      - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=333200
+
+  shell:
+    image: swift-nio-http2:20.04-main
