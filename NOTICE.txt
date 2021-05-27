@@ -50,3 +50,12 @@ The unit tests make use of 'hpack-test-case' by jxck, summerwind, kazu-yamamoto,
     * https://opensource.org/licenses/MIT
   * HOMEPAGE:
     * https://github.com/http2jp/hpack-test-case
+
+---
+
+This product contains a fuzz testing harness derived from Swift Protobuf.
+
+  * LICENSE (Apache License 2.0):
+    * https://github.com/apple/swift-protobuf/blob/main/LICENSE.txt
+  * HOMEPAGE:
+    * https://github.com/apple/swift-protobuf
