@@ -18,8 +18,6 @@ import PackageDescription
 let package = Package(
     name: "swift-nio-http2",
     products: [
-        .executable(name: "NIOHTTP2PerformanceTester", targets: ["NIOHTTP2PerformanceTester"]),
-        .executable(name: "NIOHTTP2Server", targets: ["NIOHTTP2Server"]),
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
     ],
     dependencies: [
