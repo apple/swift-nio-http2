@@ -60,7 +60,7 @@ fi
 
 if [[ ! -z "$module_dependency" ]]; then
   swift package dump-package | jq -r ".targets |
-                                      map(select(.name == \"$module_dependency\" and .type == \"regular\") | .dependencies | map(.byName | first)) | .[] | .[]"
+                                      map(select(.name == \"$module_dependency\" and .type == \"regular\") | .dependencies | map(.byName | first) + map(.product | first) ) | del(.[][] | nulls) | .[] | .[]"
   exit 0
 fi
 
