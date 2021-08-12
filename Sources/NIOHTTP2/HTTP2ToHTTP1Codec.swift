@@ -63,10 +63,14 @@ fileprivate struct BaseClientCodec {
                 preconditionFailure("Received DATA frame with non-bytebuffer IOData")
             }
 
-            let first = HTTPClientResponsePart.body(b)
+            var first = HTTPClientResponsePart.body(b)
             var second: HTTPClientResponsePart? = nil
             if content.endStream {
-                second = .end(nil)
+                if b.readableBytes == 0 {
+                    first = .end(nil)
+                } else {
+                    second = .end(nil)
+                }
             }
             return (first: first, second: second)
         case .alternativeService, .rstStream, .priority, .windowUpdate, .settings, .pushPromise, .ping, .goAway, .origin:
@@ -262,10 +266,14 @@ fileprivate struct BaseServerCodec {
             guard case .byteBuffer(let b) = dataContent.data else {
                 preconditionFailure("Received non-byteBuffer IOData from network")
             }
-            let first = HTTPServerRequestPart.body(b)
+            var first = HTTPServerRequestPart.body(b)
             var second: HTTPServerRequestPart? = nil
             if dataContent.endStream {
-                second = .end(nil)
+                if b.readableBytes == 0 {
+                    first = .end(nil)
+                } else {
+                    second = .end(nil)
+                }
             }
             return (first: first, second: second)
         default:
