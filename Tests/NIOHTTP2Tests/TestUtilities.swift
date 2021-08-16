@@ -716,7 +716,7 @@ func withTemporaryFile<T>(content: String? = nil, _ body: (NIOFileHandle, String
 }
 
 func openTemporaryFile() -> (CInt, String) {
-    let template = "/tmp/niotestXXXXXXX"
+    let template = "\(FileManager.default.temporaryDirectory.path)/niotestXXXXXXX"
     var templateBytes = template.utf8 + [0]
     let templateBytesCount = templateBytes.count
     let fd = templateBytes.withUnsafeMutableBufferPointer { ptr in
