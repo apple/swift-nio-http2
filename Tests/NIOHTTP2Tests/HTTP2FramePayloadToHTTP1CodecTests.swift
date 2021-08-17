@@ -680,4 +680,52 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
                                                                  headers: expectedRequestHeaders,
                                                                  type: .response)
     }
+    
+    func testServerSideWithEmptyFinalPackage() throws {
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).wait())
+
+        // A basic request.
+        let requestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"), (":authority", "example.org")])
+        XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders))))
+
+        var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: .POST, uri: "/post")
+        expectedRequestHead.headers.add(name: "host", value: "example.org")
+        self.channel.assertReceivedServerRequestPart(.head(expectedRequestHead))
+
+        var bodyData = self.channel.allocator.buffer(capacity: 12)
+        bodyData.writeStaticString("hello, world!")
+        let dataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bodyData), endStream: false))
+        XCTAssertNoThrow(try self.channel.writeInbound(dataPayload))
+        self.channel.assertReceivedServerRequestPart(.body(bodyData))
+        
+        let endPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(self.channel.allocator.buffer(capacity: 0)), endStream: true))
+        XCTAssertNoThrow(try self.channel.writeInbound(endPayload))
+        self.channel.assertReceivedServerRequestPart(.end(nil))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+    
+    func testClientSideWithEmptyFinalPackage() throws {
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
+
+        // A basic response.
+        let responseHeaders = HTTPHeaders([(":status", "200")])
+        XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders)))))
+
+        let expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
+        self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
+
+        var bodyData = self.channel.allocator.buffer(capacity: 12)
+        bodyData.writeStaticString("hello, world!")
+        let dataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bodyData), endStream: true))
+        XCTAssertNoThrow(try self.channel.writeInbound(dataPayload))
+        self.channel.assertReceivedClientResponsePart(.body(bodyData))
+        
+        let endPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(self.channel.allocator.buffer(capacity: 0)), endStream: true))
+        XCTAssertNoThrow(try self.channel.writeInbound(endPayload))
+        self.channel.assertReceivedClientResponsePart(.end(nil))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
 }
