@@ -605,7 +605,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.pipeline.fireChannelInactive()
 
         self.eventLoop.execute {
-            self.removeHandlers(channel: self)
+            self.removeHandlers(pipeline: self.pipeline)
             self.closePromise.succeed(())
             if let streamID = self.streamID {
                 self.multiplexer.childChannelClosed(streamID: streamID)
@@ -630,7 +630,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.pipeline.fireChannelInactive()
 
         self.eventLoop.execute {
-            self.removeHandlers(channel: self)
+            self.removeHandlers(pipeline: self.pipeline)
             self.closePromise.fail(error)
             if let streamID = self.streamID {
                 self.multiplexer.childChannelClosed(streamID: streamID)
