@@ -3,7 +3,7 @@
 ##
 ## This source file is part of the SwiftNIO open source project
 ##
-## Copyright (c) 2019 Apple Inc. and the SwiftNIO project authors
+## Copyright (c) 2019-2021 Apple Inc. and the SwiftNIO project authors
 ## Licensed under Apache License v2.0
 ##
 ## See LICENSE.txt for license information
@@ -45,9 +45,11 @@ fi
 
 "$nio_checkout/swift-nio/IntegrationTests/allocation-counter-tests-framework/run-allocation-counter.sh" \
     -p "$here/../../.." \
-    -m NIO \
+    -m NIOCore \
+    -m NIOEmbedded \
+    -m NIOPosix \
     -m NIOHTTP1 \
     -m NIOHTTP2 \
     -t "$tmp_dir" \
-    -d <( echo '.package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),' ) \
+    -d <( echo '.package(url: "https://github.com/apple/swift-nio.git", from: "2.32.0"),' ) \
     "${tests_to_run[@]}"

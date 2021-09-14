@@ -18,7 +18,7 @@ here="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 function replace_acceptable_years() {
     # this needs to replace all acceptable forms with 'YEARS'
-    sed -e 's/2017-20[12][890]/YEARS/g' -e 's/2019/YEARS/g' -e 's/2020/YEARS/g' -e 's/2021/YEARS/g'
+    sed -e 's/20[12][78901]-20[12][8901]/YEARS/g' -e 's/2019/YEARS/g' -e 's/2020/YEARS/g' -e 's/2021/YEARS/g'
 }
 
 printf "=> Checking linux tests... "
@@ -48,6 +48,15 @@ unacceptable_terms=(
 if git grep --color=never -i "${unacceptable_terms[@]}" -- . ":(exclude)CODE_OF_CONDUCT.md" > /dev/null; then
     printf "\033[0;31mUnacceptable language found.\033[0m\n"
     git grep -i "${unacceptable_terms[@]}" -- . ":(exclude)CODE_OF_CONDUCT.md"
+    exit 1
+fi
+printf "\033[0;32mokay.\033[0m\n"
+
+# This checks for the umbrella NIO module.
+printf "=> Checking for imports of umbrella NIO module... "
+if git grep --color=never -i "^[ \t]*import \+NIO[ \t]*$" > /dev/null; then
+    printf "\033[0;31mUmbrella imports found.\033[0m\n"
+    git grep -i "^[ \t]*import \+NIO[ \t]*$"
     exit 1
 fi
 printf "\033[0;32mokay.\033[0m\n"

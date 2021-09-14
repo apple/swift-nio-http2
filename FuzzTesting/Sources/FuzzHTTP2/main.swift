@@ -22,7 +22,8 @@
 
 import Foundation
 
-import NIO
+import NIOCore
+import NIOEmbedded
 import NIOHTTP1
 import NIOHTTP2
 

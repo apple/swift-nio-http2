@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2017-2018 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2017-2021 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -20,7 +20,8 @@ import Glibc
 #endif
 
 import XCTest
-import NIO
+import NIOCore
+import NIOEmbedded
 import NIOHTTP1
 @testable import NIOHTTP2
 import NIOHPACK
@@ -744,7 +745,7 @@ extension FileRegion {
     }
 }
 
-extension NIO.NIOFileHandle {
+extension NIOCore.NIOFileHandle {
     func appendBuffer(_ buffer: ByteBuffer) {
         var written = 0
 

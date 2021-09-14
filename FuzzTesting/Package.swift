@@ -27,7 +27,8 @@ let package = Package(
             dependencies: [
                 .product(name: "NIOHTTP2", package: "swift-nio-http2"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
-                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOEmbedded", package: "swift-nio"),
             ]
         ),
     ]
