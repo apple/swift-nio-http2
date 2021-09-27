@@ -49,7 +49,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
     public init(httpHeaders: HTTPHeaders) {
         self.init(httpHeaders: httpHeaders, normalizeHTTPHeaders: true)
     }
-    
+
     /// Construct a `HPACKHeaders` structure.
     ///
     /// The indexability of all headers is assumed to be the default, i.e. indexable and
@@ -86,7 +86,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
         // We no longer use an allocator so we don't need this method anymore.
         self.init(headers)
     }
-    
+
     /// Internal initializer to make things easier for unit tests.
     @inlinable
     init(fullHeaders: [(HPACKIndexing, String, String)]) {
@@ -98,7 +98,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
     init(headers: [HPACKHeader]) {
         self.headers = headers
     }
-    
+
     /// Add a header name/value pair to the block.
     ///
     /// This method is strictly additive: if there are other values for the given header name
@@ -174,7 +174,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
             return nameToRemove.isEqualCaseInsensitiveASCIIBytes(to: header.name)
         }
     }
-    
+
     /// Retrieve all of the values for a given header field name from the block.
     ///
     /// This method uses case-insensitive comparisons for the header field name. It
@@ -198,7 +198,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
                 array.append(header.value)
             }
         }
-        
+
         return array
     }
 
@@ -240,7 +240,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
         }
         return false
     }
-    
+
     /// Retrieves the header values for the given header field in "canonical form": that is,
     /// splitting them on commas as extensively as possible such that multiple values received on the
     /// one line are returned as separate entries. Also respects the fact that Set-Cookie should not
@@ -254,15 +254,23 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
         guard result.count > 0 else {
             return []
         }
-        
+
         // It's not safe to split Set-Cookie on comma.
         guard name.lowercased() != "set-cookie" else {
             return result
         }
-        
-        return result.flatMap { $0.split(separator: ",") }.map { String($0._trimWhitespace()) }
+
+        return result.flatMap {
+            $0.split(separator: ",")
+        }.lazy.map {
+            $0._trimWhitespace()
+        }.filter { // `split(separator:)` drops empty strings, we should too.
+            !$0.isEmpty
+        }.map {
+            String($0)
+        }
     }
-    
+
     /// Special internal function for use by tests.
     internal subscript(position: Int) -> (String, String) {
         precondition(position < self.headers.endIndex, "Position \(position) is beyond bounds of \(self.headers.endIndex)")
@@ -411,7 +419,7 @@ public enum HPACKIndexing: CustomStringConvertible {
     /// Header may not be written to the dynamic index table, and proxies must
     /// pass it on as-is without rewriting.
     case neverIndexed
-    
+
     public var description: String {
         switch self {
         case .indexable:
