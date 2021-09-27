@@ -35,6 +35,7 @@ extension HPACKCodingTests {
                 ("testInlineDynamicTableResize", testInlineDynamicTableResize),
                 ("testHPACKHeadersDescription", testHPACKHeadersDescription),
                 ("testHPACKHeadersSubscript", testHPACKHeadersSubscript),
+                ("testHPACKHeadersCanonicalFormStripsWhitespace", testHPACKHeadersCanonicalFormStripsWhitespace),
                 ("testHPACKHeadersFirst", testHPACKHeadersFirst),
                 ("testHPACKHeadersExpressedByDictionaryLiteral", testHPACKHeadersExpressedByDictionaryLiteral),
                 ("testHPACKHeadersAddingSequenceOfPairs", testHPACKHeadersAddingSequenceOfPairs),

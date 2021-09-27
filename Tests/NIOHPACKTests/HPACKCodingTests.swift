@@ -571,6 +571,21 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(headers[canonicalForm: "set-cookie"], ["abcdefg,hijklmn,opqrst"])
     }
 
+    func testHPACKHeadersCanonicalFormStripsWhitespace() throws {
+        let headers: HPACKHeaders = [
+            "no-whitespace": "foo,bar",
+            "sp": " foo ,  bar  ",
+            "htab": "\tfoo\t,\t\tbar\t\t",
+            "sp-and-htab": " \t foo  \t\t,\t bar\t "
+        ]
+
+        let expected = ["foo", "bar"]
+        XCTAssertEqual(headers[canonicalForm: "no-whitespace"], expected)
+        XCTAssertEqual(headers[canonicalForm: "sp"], expected)
+        XCTAssertEqual(headers[canonicalForm: "htab"], expected)
+        XCTAssertEqual(headers[canonicalForm: "sp-and-htab"], expected)
+    }
+
     func testHPACKHeadersFirst() throws {
         let headers = HPACKHeaders([
             (":method", "GET"),
