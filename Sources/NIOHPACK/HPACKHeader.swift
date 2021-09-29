@@ -559,15 +559,11 @@ extension String.UTF8View {
 
                 if let nextSplitIndex = restSlice.firstIndex(of: self._base._separator) {
                     // The separator is present. We want to drop the separator, so we need to advance the index past this point.
-                    defer {
-                        self._lastSplitIndex = self._base._baseView.index(after: nextSplitIndex)
-                    }
+                    self._lastSplitIndex = self._base._baseView.index(after: nextSplitIndex)
                     return restSlice[..<nextSplitIndex]
                 } else {
                     // The separator isn't present, so we want the entire rest of the slice.
-                    defer {
-                        self._lastSplitIndex = self._base._baseView.endIndex
-                    }
+                    self._lastSplitIndex = self._base._baseView.endIndex
                     return restSlice
                 }
             }
