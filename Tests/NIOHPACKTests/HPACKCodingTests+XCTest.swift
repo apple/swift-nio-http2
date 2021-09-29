@@ -37,6 +37,7 @@ extension HPACKCodingTests {
                 ("testHPACKHeadersSubscript", testHPACKHeadersSubscript),
                 ("testHPACKHeadersCanonicalFormStripsWhitespace", testHPACKHeadersCanonicalFormStripsWhitespace),
                 ("testHPACKHeadersCanonicalFormDropsEmptyStrings", testHPACKHeadersCanonicalFormDropsEmptyStrings),
+                ("testHPACKHeadersCanonicalFormSetCookie", testHPACKHeadersCanonicalFormSetCookie),
                 ("testHPACKHeadersFirst", testHPACKHeadersFirst),
                 ("testHPACKHeadersExpressedByDictionaryLiteral", testHPACKHeadersExpressedByDictionaryLiteral),
                 ("testHPACKHeadersAddingSequenceOfPairs", testHPACKHeadersAddingSequenceOfPairs),
