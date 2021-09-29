@@ -256,7 +256,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
         }
 
         // It's not safe to split Set-Cookie on comma.
-        guard name.lowercased() != "set-cookie" else {
+        if name.isEqualCaseInsensitiveASCIIBytes(to: "set-cookie") {
             return result
         }
 
