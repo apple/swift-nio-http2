@@ -480,9 +480,7 @@ internal extension UTF8.CodeUnit {
     var isASCIIWhitespace: Bool {
         switch self {
         case UInt8(ascii: " "),
-             UInt8(ascii: "\t"),
-             UInt8(ascii: "\r"),
-             UInt8(ascii: "\n"):
+             UInt8(ascii: "\t"):
             return true
         default:
             return false
