@@ -260,15 +260,25 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
             return result
         }
 
-        return result.flatMap {
-            $0.split(separator: ",")
-        }.lazy.map {
-            $0._trimWhitespace()
-        }.filter { // `split(separator:)` drops empty strings, we should too.
-            !$0.isEmpty
-        }.map {
-            String($0)
+        // We slightly overcommit here to try to reduce the amount of resizing we do.
+        var trimmedResults: [String] = []
+        trimmedResults.reserveCapacity(result.count * 4)
+
+        // This loop operates entirely on the UTF-8 views. This vastly reduces the cost of this slicing and dicing.
+        for field in result {
+            for entry in field.utf8._lazySplit(separator: UInt8(ascii: ",")) {
+                let trimmed = entry._trimWhitespace()
+                if trimmed.isEmpty {
+                    continue
+                }
+
+                // This constructor pair kinda sucks, but you can't create a String from a slice of UTF8View as
+                // cheaply as you can with a Substring, so we go through that initializer instead.
+                trimmedResults.append(String(Substring(trimmed)))
+            }
         }
+
+        return trimmedResults
     }
 
     /// Special internal function for use by tests.
@@ -488,17 +498,80 @@ internal extension UTF8.CodeUnit {
     }
 }
 
-extension Substring {
+extension Substring.UTF8View {
     @inlinable
-    func _trimWhitespace() -> Substring {
-        guard let firstNonWhitespace = self.utf8.firstIndex(where: { !$0.isASCIIWhitespace }) else {
+    func _trimWhitespace() -> Substring.UTF8View {
+        guard let firstNonWhitespace = self.firstIndex(where: { !$0.isASCIIWhitespace }) else {
            // The whole substring is ASCII whitespace.
-           return Substring()
+            return Substring().utf8
         }
 
         // There must be at least one non-ascii whitespace character, so banging here is safe.
-        let lastNonWhitespace = self.utf8.lastIndex(where: { !$0.isASCIIWhitespace })!
-        return Substring(self.utf8[firstNonWhitespace...lastNonWhitespace])
+        let lastNonWhitespace = self.lastIndex(where: { !$0.isASCIIWhitespace })!
+        return self[firstNonWhitespace...lastNonWhitespace]
+    }
+}
+
+extension String.UTF8View {
+    @inlinable
+    func _lazySplit(separator: UTF8.CodeUnit) -> LazyUTF8ViewSplitSequence {
+        return LazyUTF8ViewSplitSequence(self, separator: separator)
+    }
+
+    @usableFromInline
+    struct LazyUTF8ViewSplitSequence: Sequence {
+        @usableFromInline typealias Element = Substring.UTF8View
+
+        @usableFromInline var _baseView: String.UTF8View
+        @usableFromInline var _separator: UTF8.CodeUnit
+
+        @inlinable
+        init(_ baseView: String.UTF8View, separator: UTF8.CodeUnit) {
+            self._baseView = baseView
+            self._separator = separator
+        }
+
+        @inlinable
+        func makeIterator() -> Iterator {
+            return Iterator(self)
+        }
+
+        @usableFromInline
+        struct Iterator: IteratorProtocol {
+            @usableFromInline var _base: LazyUTF8ViewSplitSequence
+            @usableFromInline var _lastSplitIndex: Substring.UTF8View.Index
+
+            @inlinable
+            init(_ base: LazyUTF8ViewSplitSequence) {
+                self._base = base
+                self._lastSplitIndex = base._baseView.startIndex
+            }
+
+            @inlinable
+            mutating func next() -> Substring.UTF8View? {
+                let endIndex = self._base._baseView.endIndex
+
+                guard self._lastSplitIndex != endIndex else {
+                    return nil
+                }
+
+                let restSlice = self._base._baseView[self._lastSplitIndex...]
+
+                if let nextSplitIndex = restSlice.firstIndex(of: self._base._separator) {
+                    // The separator is present. We want to drop the separator, so we need to advance the index past this point.
+                    defer {
+                        self._lastSplitIndex = self._base._baseView.index(after: nextSplitIndex)
+                    }
+                    return restSlice[..<nextSplitIndex]
+                } else {
+                    // The separator isn't present, so we want the entire rest of the slice.
+                    defer {
+                        self._lastSplitIndex = self._base._baseView.endIndex
+                    }
+                    return restSlice
+                }
+            }
+        }
     }
 }
 
