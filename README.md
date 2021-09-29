@@ -1,5 +1,6 @@
 # SwiftNIO HTTP/2
 
+
 This project contains HTTP/2 support for Swift projects using [SwiftNIO](https://github.com/apple/swift-nio). To get started, check the [API docs](https://apple.github.io/swift-nio-http2/docs/current/NIOHTTP2/index.html).
 
 ## Building
@@ -23,7 +24,7 @@ declaring [SwiftNIO's Public API](https://github.com/apple/swift-nio/blob/main/d
 To depend on `swift-nio-http2`, put the following in the `dependencies` of your `Package.swift`:
 
     .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.5.0"),
-    
+
 SwiftNIO HTTP2 1.18.x and later support Swift 5.2 and above. 1.17.x and earlier also support Swift 5.0 and 5.1.
 
 ### `swift-nio-http2` 0.x
