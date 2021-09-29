@@ -467,24 +467,32 @@ internal extension UInt8 {
 }
 
 /* private but inlinable */
-internal extension Character {
+internal extension UTF8.CodeUnit {
     @inlinable
     var isASCIIWhitespace: Bool {
-        return self == " " || self == "\t" || self == "\r" || self == "\n" || self == "\r\n"
+        switch self {
+        case UInt8(ascii: " "),
+             UInt8(ascii: "\t"),
+             UInt8(ascii: "\r"),
+             UInt8(ascii: "\n"):
+            return true
+        default:
+            return false
+        }
     }
 }
 
 extension Substring {
     @inlinable
     func _trimWhitespace() -> Substring {
-        var me = self
-        while me.first?.isASCIIWhitespace == .some(true) {
-            me = me.dropFirst()
+        guard let firstNonWhitespace = self.utf8.firstIndex(where: { !$0.isASCIIWhitespace }) else {
+           // The whole substring is ASCII whitespace.
+           return Substring()
         }
-        while me.last?.isASCIIWhitespace == .some(true) {
-            me = me.dropLast()
-        }
-        return me
+
+        // There must be at least one non-ascii whitespace character, so banging here is safe.
+        let lastNonWhitespace = self.utf8.lastIndex(where: { !$0.isASCIIWhitespace })!
+        return Substring(self.utf8[firstNonWhitespace...lastNonWhitespace])
     }
 }
 
