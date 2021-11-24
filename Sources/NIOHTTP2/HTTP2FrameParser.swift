@@ -1061,8 +1061,7 @@ struct HTTP2FrameEncoder {
                 if priority.exclusive {
                     dependencyRaw |= 0x8000_0000
                 }
-                buf.writeInteger(dependencyRaw)
-                buf.writeInteger(priority.weight)
+                buf.writeMultipleIntegers(dependencyRaw, priority.weight)
             }
 
             try self.headerEncoder.encode(headers: headerData.headers, to: &buf)
@@ -1074,8 +1073,7 @@ struct HTTP2FrameEncoder {
             if priorityData.exclusive {
                 raw |= 0x8000_0000
             }
-            buf.writeInteger(raw)
-            buf.writeInteger(priorityData.weight)
+            buf.writeMultipleIntegers(raw, priorityData.weight)
 
             extraFrameData = nil
             payloadSize = 5
@@ -1088,8 +1086,7 @@ struct HTTP2FrameEncoder {
 
         case .settings(.settings(let settings)):
             for setting in settings {
-                buf.writeInteger(setting.parameter.networkRepresentation)
-                buf.writeInteger(setting._value)
+                buf.writeMultipleIntegers(setting.parameter.networkRepresentation, setting._value)
             }
 
             payloadSize = settings.count * 6
@@ -1129,8 +1126,8 @@ struct HTTP2FrameEncoder {
 
         case .goAway(let lastStreamID, let errorCode, let opaqueData):
             let streamVal: UInt32 = UInt32(lastStreamID) & ~0x8000_0000
-            buf.writeInteger(streamVal)
-            buf.writeInteger(UInt32(errorCode.networkCode))
+
+            buf.writeMultipleIntegers(streamVal, UInt32(errorCode.networkCode))
 
             if let data = opaqueData {
                 payloadSize = data.readableBytes + 8
