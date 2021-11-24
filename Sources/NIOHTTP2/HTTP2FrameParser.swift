@@ -64,7 +64,12 @@ struct HTTP2FrameDecoder {
         }
 
         mutating func accumulate(bytes: inout ByteBuffer) {
-            _ = self.unusedBytes.writeBuffer(&bytes)
+            if self.unusedBytes.readableBytes == 0 {
+                self.unusedBytes = bytes
+            }
+            else {
+                _ = self.unusedBytes.writeBuffer(&bytes)
+            }
         }
     }
 
