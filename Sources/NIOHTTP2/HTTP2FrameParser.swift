@@ -686,10 +686,11 @@ struct HTTP2FrameDecoder {
 
         let priorityData: HTTP2Frame.StreamPriorityData?
         if flags.contains(.priority) {
-            let raw: UInt32 = bytes.readInteger()!
+            let values = bytes.readMultipleIntegers(as: (UInt32, UInt8).self)!
+            let raw = values.0
             priorityData = HTTP2Frame.StreamPriorityData(exclusive: (raw & 0x8000_0000 != 0),
                                                          dependency: HTTP2StreamID(networkID: raw),
-                                                         weight: bytes.readInteger()!)
+                                                         weight: values.1)
             bytesToRead -= 5
         } else {
             priorityData = nil
@@ -722,10 +723,11 @@ struct HTTP2FrameDecoder {
             throw InternalError.codecError(code: .frameSizeError)
         }
 
-        let raw: UInt32 = bytes.readInteger()!
+        let values = bytes.readMultipleIntegers(as: (UInt32, UInt8).self)!
+        let raw: UInt32 = values.0
         let priorityData = HTTP2Frame.StreamPriorityData(exclusive: raw & 0x8000_0000 != 0,
                                                          dependency: HTTP2StreamID(networkID: raw),
-                                                         weight: bytes.readInteger()!)
+                                                         weight: values.1)
         return .priority(priorityData)
     }
 
@@ -779,8 +781,9 @@ struct HTTP2FrameDecoder {
         var consumed = 0
         while consumed < length {
             // TODO: name here should be HTTP2SettingsParameter(fromNetwork:), but that's currently defined for NGHTTP2's Int32 value
-            let identifier = HTTP2SettingsParameter(fromPayload: bytes.readInteger()!)
-            let value: UInt32 = bytes.readInteger()!
+            let values = bytes.readMultipleIntegers(as: (UInt16, UInt32).self)!
+            let identifier = HTTP2SettingsParameter(fromPayload: values.0)
+            let value = values.1
 
             settings.append(HTTP2Setting(parameter: identifier, value: Int(value)))
             consumed += 6
@@ -855,8 +858,9 @@ struct HTTP2FrameDecoder {
             throw InternalError.codecError(code: .frameSizeError)
         }
 
-        let raw: UInt32 = bytes.readInteger()!
-        let errcode: UInt32 = bytes.readInteger()!
+        let values = bytes.readMultipleIntegers(as: (UInt32, UInt32).self)!
+        let raw = values.0
+        let errcode = values.1
 
         let debugData: ByteBuffer?
         let extraLen = length - 8
@@ -1197,14 +1201,17 @@ fileprivate struct FrameHeader {
 fileprivate extension ByteBuffer {
     mutating func readFrameHeader() -> FrameHeader? {
         let saveSelf = self
-        guard let lenHigh = self.readInteger(as: UInt16.self),
-            let lenLow = self.readInteger(as: UInt8.self),
-            let type = self.readInteger(as: UInt8.self),
-            let flags = self.readInteger(as: UInt8.self),
-            let rawStreamID = self.readInteger(as: UInt32.self) else {
-                self = saveSelf
-                return nil
+
+        guard let values = self.readMultipleIntegers(as: (UInt16, UInt8, UInt8, UInt8, UInt32).self) else {
+            self = saveSelf
+            return nil
         }
+
+        let lenHigh = values.0
+        let lenLow = values.1
+        let type = values.2
+        let flags = values.3
+        let rawStreamID = values.4
 
         return FrameHeader(length: Int(lenHigh) << 8 | Int(lenLow), type: type, flags: FrameFlags(rawValue: flags), rawStreamID: rawStreamID)
     }
