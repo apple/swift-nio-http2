@@ -225,10 +225,10 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
     }
 
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        let responsePart = self.unwrapOutboundIn(data)
+        let requestPart = self.unwrapOutboundIn(data)
 
         do {
-            let transformedPayload = try self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
+            let transformedPayload = try self.baseCodec.processOutboundData(requestPart, allocator: context.channel.allocator)
             context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
         } catch {
             promise?.fail(error)

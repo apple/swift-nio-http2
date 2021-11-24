@@ -33,11 +33,10 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
             self.headers = httpHeaders.map { HPACKHeader(name: $0.name.lowercased(), value: $0.value) }
 
             let connectionHeaderValue = httpHeaders[canonicalForm: "connection"]
-            if !connectionHeaderValue.isEmpty {
-                self.headers.removeAll { header in
-                    return HPACKHeaders.illegalHeaders.contains(header.name) ||
-                        connectionHeaderValue.contains(header.name[...])
-                }
+            
+            self.headers.removeAll { header in
+                connectionHeaderValue.contains(header.name[...]) ||
+                    HPACKHeaders.illegalHeaders.contains(header.name)
             }
         } else {
             self.headers = httpHeaders.map { HPACKHeader(name: $0.name, value: $0.value) }
