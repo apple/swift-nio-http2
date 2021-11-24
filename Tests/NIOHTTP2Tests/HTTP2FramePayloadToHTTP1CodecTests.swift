@@ -663,6 +663,27 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
                                                                  headers: expectedRequestHeaders,
                                                                  type: .request)
     }
+    
+    func testWeStripTransferEncodingChunkedHeader() {
+        let writeRecorder = FramePayloadWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
+
+        // A basic request.
+        var requestHead = HTTPRequestHead(version: .init(major: 1, minor: 1), method: .POST, uri: "/post")
+        requestHead.headers = HTTPHeaders([
+            ("host", "example.org"),
+            ("Transfer-Encoding", "chunked"),
+        ])
+        self.channel.writeAndFlush(HTTPClientRequestPart.head(requestHead), promise: nil)
+
+        let expectedRequestHeaders = HPACKHeaders([(":path", "/post"), (":method", "POST"), (":scheme", "https"),
+                                                   (":authority", "example.org")])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                 headers: expectedRequestHeaders,
+                                                                 type: .request)
+    }
 
     func testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses() throws {
         let writeRecorder = FramePayloadWriteRecorder()

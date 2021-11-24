@@ -60,6 +60,7 @@ extension HTTP2FramePayloadToHTTP1CodecTests {
                 ("testWeDoNotNormalizeHeadersIfUserAskedUsNotToForRequests", testWeDoNotNormalizeHeadersIfUserAskedUsNotToForRequests),
                 ("testWeDoNotNormalizeHeadersIfUserAskedUsNotToForResponses", testWeDoNotNormalizeHeadersIfUserAskedUsNotToForResponses),
                 ("testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForRequests", testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForRequests),
+                ("testWeStripTransferEncodingChunkedHeader", testWeStripTransferEncodingChunkedHeader),
                 ("testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses", testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses),
                 ("testServerSideWithEmptyFinalPackage", testServerSideWithEmptyFinalPackage),
                 ("testClientSideWithEmptyFinalPackage", testClientSideWithEmptyFinalPackage),
