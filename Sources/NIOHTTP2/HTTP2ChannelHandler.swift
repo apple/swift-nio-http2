@@ -451,8 +451,11 @@ extension NIOHTTP2Handler {
         switch result.result {
         case .ignoreFrame:
             preconditionFailure("Cannot be asked to ignore outbound frames.")
-        case .connectionError(let underlyingError, _), .streamError(_, let underlyingError, _):
-            self.outboundErrorTriggered(context: context, promise: promise, underlyingError: underlyingError)
+        case .connectionError(let underlyingError, _):
+            self.outboundConnectionErrorTriggered(context: context, promise: promise, underlyingError: underlyingError)
+            return
+        case .streamError(streamID: let streamID, underlyingError: let underlyingError, _):
+            self.outboundStreamErrorTriggered(context: context, promise: promise, streamID: streamID, underlyingError: underlyingError)
             return
         case .succeed:
             self.writeBuffer.clear()
@@ -470,10 +473,10 @@ extension NIOHTTP2Handler {
         do {
             extraFrameData = try self.frameEncoder.encode(frame: frame, to: &self.writeBuffer)
         } catch InternalError.codecError {
-            self.outboundErrorTriggered(context: context, promise: promise, underlyingError: NIOHTTP2Errors.unableToSerializeFrame())
+            self.outboundConnectionErrorTriggered(context: context, promise: promise, underlyingError: NIOHTTP2Errors.unableToSerializeFrame())
             return
         } catch {
-            self.outboundErrorTriggered(context: context, promise: promise, underlyingError: error)
+            self.outboundConnectionErrorTriggered(context: context, promise: promise, underlyingError: error)
             return
         }
 
@@ -488,10 +491,16 @@ extension NIOHTTP2Handler {
         }
     }
 
-    /// A stream or connection error was hit while attempting to send a frame.
-    private func outboundErrorTriggered(context: ChannelHandlerContext, promise: EventLoopPromise<Void>?, underlyingError: Error) {
+    /// A connection error was hit while attempting to send a frame.
+    private func outboundConnectionErrorTriggered(context: ChannelHandlerContext, promise: EventLoopPromise<Void>?, underlyingError: Error) {
         promise?.fail(underlyingError)
         context.fireErrorCaught(underlyingError)
+    }
+
+    /// A stream error was hit while attempting to send a frame.
+    private func outboundStreamErrorTriggered(context: ChannelHandlerContext, promise: EventLoopPromise<Void>?, streamID: HTTP2StreamID, underlyingError: Error) {
+        promise?.fail(underlyingError)
+        context.fireErrorCaught(NIOHTTP2Errors.streamError(streamID: streamID, baseError: underlyingError))
     }
 }
 

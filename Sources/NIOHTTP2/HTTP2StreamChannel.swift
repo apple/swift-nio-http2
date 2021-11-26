@@ -868,6 +868,11 @@ internal extension HTTP2StreamChannel {
             self.pipeline.fireChannelWritabilityChanged()
         }
     }
+
+    func receiveStreamError(_ error: NIOHTTP2Errors.StreamError) {
+        assert(error.streamID == self.streamID)
+        self.pipeline.fireErrorCaught(error.baseError)
+    }
 }
 
 extension HTTP2StreamChannel {

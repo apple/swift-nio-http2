@@ -1925,4 +1925,82 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let frame = HTTP2Frame(streamID: HTTP2StreamID(1), payload: .headers(.init(headers: HPACKHeaders())))
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
     }
+
+    func testStreamErrorIsDeliveredToChannel() throws {
+        let goodHeaders = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")
+        ])
+        var badHeaders = goodHeaders
+        badHeaders.add(name: "transfer-encoding", value: "chunked")
+
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
+                                                 channel: self.channel) { channel in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        // We need to activate the underlying channel here.
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
+
+        // Now create two child channels with error recording handlers in them. Save one, ignore the other.
+        let errorRecorder = ErrorRecorder()
+        var childChannel: Channel!
+        multiplexer.createStreamChannel(promise: nil) { channel in
+            childChannel = channel
+            return channel.pipeline.addHandler(errorRecorder)
+        }
+
+        let secondErrorRecorder = ErrorRecorder()
+        multiplexer.createStreamChannel(promise: nil) { channel in
+            // For this one we'll do a write immediately, to bring it into existence and give it a stream ID.
+            channel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: goodHeaders)), promise: nil)
+            return channel.pipeline.addHandler(secondErrorRecorder)
+        }
+        self.channel.embeddedEventLoop.run()
+
+        // On this child channel, write and flush an invalid headers frame.
+        XCTAssertEqual(errorRecorder.errors.count, 0)
+        XCTAssertEqual(secondErrorRecorder.errors.count, 0)
+
+        childChannel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: badHeaders)), promise: nil)
+
+        // Now, synthetically deliver the stream error that should have been produced.
+        self.channel.pipeline.fireErrorCaught(
+            NIOHTTP2Errors.streamError(
+                streamID: 3,
+                baseError: NIOHTTP2Errors.forbiddenHeaderField(name: "transfer-encoding", value: "chunked")
+            )
+        )
+
+        // It should come through to the channel.
+        XCTAssertEqual(
+            errorRecorder.errors.first.flatMap { $0 as? NIOHTTP2Errors.ForbiddenHeaderField },
+            NIOHTTP2Errors.forbiddenHeaderField(name: "transfer-encoding", value: "chunked")
+        )
+        XCTAssertEqual(secondErrorRecorder.errors.count, 0)
+
+        // Simulate closing the child channel in response to the error.
+        childChannel.close(promise: nil)
+        self.channel.embeddedEventLoop.run()
+
+        // Only the HEADERS frames should have been written: we closed before the other channel became active, so
+        // it should not have triggered an RST_STREAM frame.
+        let frames = try self.channel.sentFrames()
+        XCTAssertEqual(frames.count, 2)
+
+        frames[0].assertHeadersFrame(endStream: false, streamID: 1, headers: goodHeaders, priority: nil, type: .request)
+        frames[1].assertHeadersFrame(endStream: false, streamID: 3, headers: badHeaders, priority: nil, type: .doNotValidate)
+    }
+}
+
+private final class ErrorRecorder: ChannelInboundHandler {
+    typealias InboundIn = Any
+
+    var errors: [Error] = []
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        self.errors.append(error)
+        context.fireErrorCaught(error)
+    }
 }

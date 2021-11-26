@@ -173,6 +173,10 @@ public enum NIOHTTP2Errors {
         return NoStreamIDAvailable(file: file, line: line)
     }
 
+    public static func streamError(streamID: HTTP2StreamID, baseError: Error) -> StreamError {
+        return StreamError(streamID: streamID, baseError: baseError)
+    }
+
     /// The outbound frame buffers have become filled, and it is not possible to buffer
     /// further outbound frames. This occurs when the remote peer is generating work
     /// faster than they are consuming the result. Additional buffering runs the risk of
@@ -1362,6 +1366,67 @@ public enum NIOHTTP2Errors {
 
         public static func ==(lhs: NoStreamIDAvailable, rhs: NoStreamIDAvailable) -> Bool {
             return true
+        }
+    }
+
+    /// A StreamError was hit during outbound frame processing.
+    ///
+    /// Stream errors are wrappers around another error of some other kind that occurred on a specific stream.
+    /// As they are a wrapper error, they carry a "real" error in the `baseError`. Additionally, they cannot
+    /// meaningfully be `Equatable`, so they aren't. There's also no additional location information: that's
+    /// provided by the base error.
+    public struct StreamError: Error {
+        private final class Storage {
+            var streamID: HTTP2StreamID
+            var baseError: Error
+
+            init(streamID: HTTP2StreamID, baseError: Error) {
+                self.baseError = baseError
+                self.streamID = streamID
+            }
+
+            func copy() -> Storage {
+                return Storage(
+                    streamID: self.streamID,
+                    baseError: self.baseError
+                )
+            }
+        }
+
+        private var storage: Storage
+
+        private mutating func copyStorageIfNotUniquelyReferenced() {
+            if !isKnownUniquelyReferenced(&self.storage) {
+                self.storage = self.storage.copy()
+            }
+        }
+
+        public var baseError: Error {
+            get {
+                return self.storage.baseError
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.baseError = newValue
+            }
+        }
+
+        public var streamID: HTTP2StreamID {
+            get {
+                return self.storage.streamID
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.streamID = newValue
+            }
+        }
+
+        public var description: String {
+            return "StreamError(streamID: \(self.streamID), baseError: \(self.baseError))"
+        }
+
+        fileprivate init(streamID: HTTP2StreamID, baseError: Error) {
+            self.storage = .init(streamID: streamID, baseError: baseError)
         }
     }
 }

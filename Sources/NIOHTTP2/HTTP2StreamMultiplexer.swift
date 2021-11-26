@@ -205,6 +205,15 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         context.fireChannelWritabilityChanged()
     }
 
+    public func errorCaught(context: ChannelHandlerContext, error: Error) {
+        if let streamError = error as? NIOHTTP2Errors.StreamError,
+           let channel = self.streams[streamError.streamID] {
+            channel.receiveStreamError(streamError)
+        }
+
+        context.fireErrorCaught(error)
+    }
+
     private func newConnectionWindowSize(newSize: Int, context: ChannelHandlerContext) {
         guard let increment = self.connectionFlowControlManager.newWindowSize(newSize) else {
             return
