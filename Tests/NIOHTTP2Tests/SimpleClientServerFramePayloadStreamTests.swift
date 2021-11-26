@@ -1945,14 +1945,14 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try self.clientChannel.throwIfErrorCaught()) { error in
-            guard let error = error as? NIOHTTP2Errors.StreamError else {
+            guard let streamError = error as? NIOHTTP2Errors.StreamError else {
                 XCTFail("Unexpected error kind: \(error)")
                 return
             }
 
-            XCTAssertEqual(error.streamID, 1)
+            XCTAssertEqual(streamError.streamID, 1)
             XCTAssertEqual(
-                error.baseError as? NIOHTTP2Errors.ForbiddenHeaderField,
+                streamError.baseError as? NIOHTTP2Errors.ForbiddenHeaderField,
                 NIOHTTP2Errors.forbiddenHeaderField(name: "transfer-encoding", value: "chunked")
             )
         }
