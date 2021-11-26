@@ -74,6 +74,7 @@ extension SimpleClientServerFramePayloadStreamTests {
                 ("testNoStreamWindowUpdateOnEndStreamFrameFromClient", testNoStreamWindowUpdateOnEndStreamFrameFromClient),
                 ("testGreasedSettingsAreTolerated", testGreasedSettingsAreTolerated),
                 ("testStreamCreationOrder", testStreamCreationOrder),
+                ("testStreamClosedInvalidRequestHeaders", testStreamClosedInvalidRequestHeaders),
            ]
    }
 }

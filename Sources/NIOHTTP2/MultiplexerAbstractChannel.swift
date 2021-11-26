@@ -137,6 +137,10 @@ extension MultiplexerAbstractChannel {
     func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
         self.baseChannel.receiveStreamClosed(reason)
     }
+
+    func receiveStreamError(_ error: NIOHTTP2Errors.StreamError) {
+        self.baseChannel.receiveStreamError(error)
+    }
 }
 
 extension MultiplexerAbstractChannel: Equatable {

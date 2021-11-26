@@ -1922,4 +1922,42 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try streamA.writeAndFlush(headersFramePayload).wait())
         XCTAssertEqual(try streamA.getOption(HTTP2StreamChannelOptions.streamID).wait(), HTTP2StreamID(3))
     }
+
+    func testStreamClosedInvalidRequestHeaders() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        // We're now going to try to send a request from the client to the server. This request
+        // contains an invalid header ("transfer-encoding", "chunked"), which will trigger an error.
+        // We'll confirm that the error notifies that this stream was created and then closed.
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"), ("transfer-encoding", "chunked")
+        ])
+
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers)))
+
+        XCTAssertThrowsError(try self.clientChannel.writeAndFlush(reqFrame).wait()) { error in
+            XCTAssertEqual(
+                error as? NIOHTTP2Errors.ForbiddenHeaderField,
+                NIOHTTP2Errors.forbiddenHeaderField(name: "transfer-encoding", value: "chunked")
+            )
+        }
+
+        XCTAssertThrowsError(try self.clientChannel.throwIfErrorCaught()) { error in
+            guard let error = error as? NIOHTTP2Errors.StreamError else {
+                XCTFail("Unexpected error kind: \(error)")
+                return
+            }
+
+            XCTAssertEqual(error.streamID, 1)
+            XCTAssertEqual(
+                error.baseError as? NIOHTTP2Errors.ForbiddenHeaderField,
+                NIOHTTP2Errors.forbiddenHeaderField(name: "transfer-encoding", value: "chunked")
+            )
+        }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
