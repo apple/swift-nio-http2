@@ -40,6 +40,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: .POST, uri: "/post")
         expectedRequestHead.headers.add(name: "host", value: "example.org")
         expectedRequestHead.headers.add(name: "other", value: "header")
+        expectedRequestHead.headers.add(name: "transfer-encoding", value: "chunked")
         self.channel.assertReceivedServerRequestPart(.head(expectedRequestHead))
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
@@ -209,14 +210,23 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
     }
 
     func testBasicResponseClientSide() throws {
+        let writeRecorder = FramePayloadWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
 
+        // A basic request
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
+        let expectedRequestHeaders = HPACKHeaders([(":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https")])
+        writeRecorder.flushedWrites.popLast()?.assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
+        
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
         XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders)))))
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "transfer-encoding", value: "chunked")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
@@ -230,8 +240,16 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWithOnlyHeadClientSide() throws {
+        let writeRecorder = FramePayloadWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
 
+        // A basic request
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
+        let expectedRequestHeaders = HPACKHeaders([(":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https")])
+        writeRecorder.flushedWrites.popLast()?.assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
+        
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
         let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders), endStream: true))
@@ -239,6 +257,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "content-length", value: "0")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
         self.channel.assertReceivedClientResponsePart(.end(nil))
 
@@ -246,7 +265,15 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWithTrailers() throws {
+        let writeRecorder = FramePayloadWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
+
+        // A basic request
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
+        let expectedRequestHeaders = HPACKHeaders([(":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https")])
+        writeRecorder.flushedWrites.popLast()?.assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
 
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
@@ -255,6 +282,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "transfer-encoding", value: "chunked")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
 
         // Ok, we're going to send trailers.
@@ -323,7 +351,15 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
     }
 
     func testResponseWith100BlocksClientSide() throws {
+        let writeRecorder = FramePayloadWriteRecorder()
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
+        
+        // A basic request.
+        let requestHeaders = HPACKHeaders([("host", "example.org"), ("other", "header")])
+        var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .GET, uri: "/get")
+        requestHead.headers = HTTPHeaders(regularHeadersFrom: requestHeaders)
+        self.channel.writeAndFlush(HTTPClientRequestPart.head(requestHead), promise: nil)
 
         // Start with a few 100 blocks.
         let informationalResponseHeaders = HTTPHeaders([(":status", "103"), ("link", "example")])
@@ -344,6 +380,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "content-length", value: "0")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
         self.channel.assertReceivedClientResponsePart(.end(nil))
 
@@ -513,9 +550,15 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
     func testReceiveResponseWithNonNumericalStatus() throws {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
 
+        // A basis request
+        let requestHeaders = HTTPHeaders([("host", "example.org"), ("other", "header")])
+        var requestHead = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .GET, uri: "/get")
+        requestHead.headers = requestHeaders
+        XCTAssertNoThrow(try self.channel.writeAndFlush(HTTPClientRequestPart.head(requestHead)).wait())
+
         // A basic response.
-        let requestHeaders = HPACKHeaders([(":status", "captivating")])
-        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))) { error in
+        let responseHeaders = HPACKHeaders([(":status", "captivating")])
+        XCTAssertThrowsError(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: responseHeaders)))) { error in
             XCTAssertEqual(error as? NIOHTTP2Errors.InvalidStatusValue, NIOHTTP2Errors.invalidStatusValue("captivating"))
         }
 
@@ -712,6 +755,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: .POST, uri: "/post")
         expectedRequestHead.headers.add(name: "host", value: "example.org")
+        expectedRequestHead.headers.add(name: "transfer-encoding", value: "chunked")
         self.channel.assertReceivedServerRequestPart(.head(expectedRequestHead))
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
@@ -729,12 +773,18 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
     
     func testClientSideWithEmptyFinalPackage() throws {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)).wait())
+        
+        // A basic request.
+        let requestHeaders = HPACKHeaders([("host", "example.org"), ("other", "header")])
+        var requestHead = HTTPRequestHead(version: .init(major: 1, minor: 1), method: .GET, uri: "/get")
+        requestHead.headers = HTTPHeaders(regularHeadersFrom: requestHeaders)
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(requestHead)))
 
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200")])
         XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders)))))
 
-        let expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
+        let expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: ["transfer-encoding": "chunked"])
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
@@ -749,5 +799,214 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+    
+    func testRequestMethodsWithoutDefinedSemanticsForAPayloadDontGetTransferEncodingAdded() {
+        let methods: [HTTPMethod] = [.GET, .HEAD, .DELETE, .CONNECT, .TRACE]
+        for method in methods {
+            let embedded = EmbeddedChannel()
+            
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).wait())
 
+            // A basic request.
+            let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org"), ("other", "header")])
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders, endStream: false))))
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(.init()), endStream: true))))
+
+            var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: method, uri: "/")
+            expectedRequestHead.headers.add(name: "host", value: "example.org")
+            expectedRequestHead.headers.add(name: "other", value: "header")
+            embedded.assertReceivedServerRequestPart(.head(expectedRequestHead))
+            embedded.assertReceivedServerRequestPart(.end(nil))
+
+            XCTAssertNoThrow(try embedded.finish())
+        }
+    }
+    
+    func testRequestMethodsWithoutDefinedSemanticsForAPayloadDontRemoveContentLengthIfSet() {
+        let methods: [HTTPMethod] = [.GET, .HEAD, .DELETE, .CONNECT, .TRACE]
+        for method in methods {
+            let embedded = EmbeddedChannel()
+            
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).wait())
+
+            // A basic request.
+            let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org"), ("content-length", "13")])
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders, endStream: false))))
+            
+            let bodyData = embedded.allocator.buffer(string: "hello, world!")
+            let dataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bodyData), endStream: true))
+            XCTAssertNoThrow(try embedded.writeInbound(dataPayload))
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(.init()), endStream: true))))
+
+            var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: method, uri: "/")
+            expectedRequestHead.headers.add(name: "host", value: "example.org")
+            expectedRequestHead.headers.add(name: "content-length", value: "13")
+            embedded.assertReceivedServerRequestPart(.head(expectedRequestHead))
+            embedded.assertReceivedServerRequestPart(.body(bodyData))
+            embedded.assertReceivedServerRequestPart(.end(nil))
+
+            XCTAssertNoThrow(try embedded.finish())
+        }
+    }
+    
+    func testRequestMethodsWithDefinedSemanticsForAPayloadAddContentLengthHeaderIfEmpty() {
+        let methods: [HTTPMethod] = [
+            .PUT, .ACL, .POST, .COPY, .LOCK, .MOVE, .BIND, .LINK, .PATCH, .MKCOL, .MERGE, .PURGE,
+            .NOTIFY, .SEARCH, .UNLOCK, .REBIND, .UNBIND, .REPORT, .UNLINK, .MSEARCH, .OPTIONS,
+            .PROPFIND, .CHECKOUT, .PROPPATCH, .SUBSCRIBE, .MKCALENDAR, .MKACTIVITY, .UNSUBSCRIBE,
+            .SOURCE
+        ]
+
+        for method in methods {
+            let embedded = EmbeddedChannel()
+            
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).wait())
+
+            // A basic request.
+            let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org")])
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders, endStream: true))))
+
+            var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: method, uri: "/")
+            expectedRequestHead.headers.add(name: "host", value: "example.org")
+            expectedRequestHead.headers.add(name: "content-length", value: "0")
+            embedded.assertReceivedServerRequestPart(.head(expectedRequestHead))
+            embedded.assertReceivedServerRequestPart(.end(nil))
+
+            XCTAssertNoThrow(try embedded.finish())
+        }
+    }
+    
+    func testRequestMethodsWithDefinedSemanticsForAPayloadAddTransferEncodingIfNotEmpty() {
+        let methods: [HTTPMethod] = [
+            .PUT, .ACL, .POST, .COPY, .LOCK, .MOVE, .BIND, .LINK, .PATCH, .MKCOL, .MERGE, .PURGE,
+            .NOTIFY, .SEARCH, .UNLOCK, .REBIND, .UNBIND, .REPORT, .UNLINK, .MSEARCH, .OPTIONS,
+            .PROPFIND, .CHECKOUT, .PROPPATCH, .SUBSCRIBE, .MKCALENDAR, .MKACTIVITY, .UNSUBSCRIBE,
+            .SOURCE
+        ]
+
+        for method in methods {
+            let embedded = EmbeddedChannel()
+            
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).wait())
+
+            // A basic request.
+            let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org")])
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders, endStream: false))))
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(.init()), endStream: true))))
+
+            var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: method, uri: "/")
+            expectedRequestHead.headers.add(name: "host", value: "example.org")
+            expectedRequestHead.headers.add(name: "transfer-encoding", value: "chunked")
+            embedded.assertReceivedServerRequestPart(.head(expectedRequestHead))
+            embedded.assertReceivedServerRequestPart(.end(nil))
+
+            XCTAssertNoThrow(try embedded.finish())
+        }
+    }
+    
+    func testRequestContentLengthIsAlwaysPreserved() {
+        let methods: [HTTPMethod] = [
+            // methods in which a body has no defined meaning
+            .GET, .HEAD, .DELETE, .CONNECT, .TRACE,
+            
+            // methods in which a body has a defined meaning
+            .PUT, .ACL, .POST, .COPY, .LOCK, .MOVE, .BIND, .LINK, .PATCH, .MKCOL, .MERGE, .PURGE,
+            .NOTIFY, .SEARCH, .UNLOCK, .REBIND, .UNBIND, .REPORT, .UNLINK, .MSEARCH, .OPTIONS,
+            .PROPFIND, .CHECKOUT, .PROPPATCH, .SUBSCRIBE, .MKCALENDAR, .MKACTIVITY, .UNSUBSCRIBE,
+            .SOURCE
+        ]
+
+        for method in methods {
+            let embedded = EmbeddedChannel()
+            
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).wait())
+
+            // A basic request.
+            let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org"), ("content-length", "13")])
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders, endStream: false))))
+            
+            let bodyData = embedded.allocator.buffer(string: "hello, world!")
+            let dataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bodyData), endStream: true))
+            XCTAssertNoThrow(try embedded.writeInbound(dataPayload))
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(.init()), endStream: true))))
+
+            var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: method, uri: "/")
+            expectedRequestHead.headers.add(name: "host", value: "example.org")
+            expectedRequestHead.headers.add(name: "content-length", value: "13")
+            embedded.assertReceivedServerRequestPart(.head(expectedRequestHead))
+            embedded.assertReceivedServerRequestPart(.body(bodyData))
+            embedded.assertReceivedServerRequestPart(.end(nil))
+
+            XCTAssertNoThrow(try embedded.finish())
+        }
+    }
+    
+    func testResponseTransferEncodingIsNotAddedInReponseToHEADorCONNECT() {
+        let methods: [HTTPMethod] = [
+            // methods in which a body has no defined meaning
+            .HEAD, .CONNECT
+        ]
+
+        for method in methods {
+            let embedded = EmbeddedChannel()
+            
+            let writeRecorder = FramePayloadWriteRecorder()
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(writeRecorder).wait())
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https, normalizeHTTPHeaders: true)).wait())
+
+            let requestHead = HTTPRequestHead(version: .http1_1, method: method, uri: "/", headers: ["Host": "example.org"])
+            XCTAssertNoThrow(try embedded.writeOutbound(HTTPClientRequestPart.head(requestHead)))
+            XCTAssertNoThrow(try embedded.writeOutbound(HTTPClientRequestPart.end(nil)))
+            
+            let expectedRequestHeaders = HPACKHeaders([(":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org")])
+            writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                     headers: expectedRequestHeaders,
+                                                                     type: .doNotValidate)
+            writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: true, payload: ByteBuffer())
+            
+            let responseHeaders = HPACKHeaders(httpHeaders: [":status": "200"])
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: responseHeaders, endStream: true))))
+            
+            let expectedResponseHead = HTTPResponseHead(version: .http2, status: .ok)
+            embedded.assertReceivedClientResponsePart(.head(expectedResponseHead))
+            embedded.assertReceivedClientResponsePart(.end(nil))
+        }
+    }
+
+    func testResponseTransferEncodingIsNotAddedInReponseWithStatus1xxor204or304() {
+        let responseStatus: [HTTPResponseStatus] = [
+            // methods in which a body has no defined meaning
+            .continue, .switchingProtocols, .processing, .init(statusCode: 103, reasonPhrase: ""),
+            .noContent, .notModified
+        ]
+
+        for status in responseStatus {
+            let embedded = EmbeddedChannel()
+            
+            let writeRecorder = FramePayloadWriteRecorder()
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(writeRecorder).wait())
+            XCTAssertNoThrow(try embedded.pipeline.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https, normalizeHTTPHeaders: true)).wait())
+
+            let requestHead = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["Host": "example.org"])
+            XCTAssertNoThrow(try embedded.writeOutbound(HTTPClientRequestPart.head(requestHead)))
+            XCTAssertNoThrow(try embedded.writeOutbound(HTTPClientRequestPart.end(nil)))
+            
+            let expectedRequestHeaders = HPACKHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "example.org")])
+            writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false,
+                                                                     headers: expectedRequestHeaders,
+                                                                     type: .doNotValidate)
+            writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: true, payload: ByteBuffer())
+            
+            let responseHeaders = HPACKHeaders(httpHeaders: [":status": "\(status.code)"])
+            XCTAssertNoThrow(try embedded.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: responseHeaders, endStream: true))))
+            
+            let expectedResponseHead = HTTPResponseHead(version: .http2, status: status)
+            embedded.assertReceivedClientResponsePart(.head(expectedResponseHead))
+            if status.code >= 200 {
+                embedded.assertReceivedClientResponsePart(.end(nil))
+            }
+        }
+    }
+
+    
 }

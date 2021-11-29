@@ -23,6 +23,8 @@ fileprivate struct BaseClientCodec {
     private let normalizeHTTPHeaders: Bool
 
     private var headerStateMachine: HTTP2HeadersStateMachine = HTTP2HeadersStateMachine(mode: .client)
+    
+    private var outgoingHTTP1RequestHead: HTTPRequestHead?
 
     /// Initializes a `BaseClientCodec`.
     ///
@@ -47,16 +49,32 @@ fileprivate struct BaseClientCodec {
     mutating func processInboundData(_ data: HTTP2Frame.FramePayload) throws -> (first: HTTPClientResponsePart?, second: HTTPClientResponsePart?) {
         switch data {
         case .headers(let headerContent):
-            if case .trailer = try self.headerStateMachine.newHeaders(block: headerContent.headers) {
+            switch try self.headerStateMachine.newHeaders(block: headerContent.headers) {
+            case .trailer:
                 return (first: .end(HTTPHeaders(regularHeadersFrom: headerContent.headers)), second: nil)
-            } else {
-                let respHead = try HTTPResponseHead(http2HeaderBlock: headerContent.headers)
+                
+            case .informationalResponseHead:
+                return (first: .head(try HTTPResponseHead(http2HeaderBlock: headerContent.headers)), second: nil)
+
+            case .finalResponseHead:
+                guard let outgoingHTTP1RequestHead = outgoingHTTP1RequestHead else {
+                    preconditionFailure("Expected not to get a response without having sent a request")
+                }
+                self.outgoingHTTP1RequestHead = nil
+                let respHead = try HTTPResponseHead(
+                    http2HeaderBlock: headerContent.headers,
+                    requestHead: outgoingHTTP1RequestHead,
+                    endStream: headerContent.endStream
+                )
                 let first = HTTPClientResponsePart.head(respHead)
                 var second: HTTPClientResponsePart? = nil
                 if headerContent.endStream {
                     second = .end(nil)
                 }
                 return (first: first, second: second)
+                
+            case .requestHead:
+                preconditionFailure("A client can not receive request heads")
             }
         case .data(let content):
             guard case .byteBuffer(let b) = content.data else {
@@ -82,7 +100,10 @@ fileprivate struct BaseClientCodec {
     mutating func processOutboundData(_ data: HTTPClientRequestPart, allocator: ByteBufferAllocator) throws -> HTTP2Frame.FramePayload {
         switch data {
         case .head(let head):
+            #warning("How we want to deal with multiple requests on the same stream?")
+            precondition(self.outgoingHTTP1RequestHead == nil)
             let h1Headers = try HTTPHeaders(requestHead: head, protocolString: self.protocolString)
+            self.outgoingHTTP1RequestHead = head
             let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers,
                                                                                       normalizeHTTPHeaders: self.normalizeHTTPHeaders))
             return .headers(headerContent)
@@ -253,7 +274,7 @@ fileprivate struct BaseServerCodec {
             if case .trailer = try self.headerStateMachine.newHeaders(block: headerContent.headers) {
                 return (first: .end(HTTPHeaders(regularHeadersFrom: headerContent.headers)), second: nil)
             } else {
-                let reqHead = try HTTPRequestHead(http2HeaderBlock: headerContent.headers)
+                let reqHead = try HTTPRequestHead(http2HeaderBlock: headerContent.headers, isEndStream: headerContent.endStream)
 
                 let first = HTTPServerRequestPart.head(reqHead)
                 var second: HTTPServerRequestPart? = nil
@@ -492,91 +513,11 @@ private extension HTTPMethod {
     }
 }
 
-
-internal extension String {
-    /// Create a `HTTPMethod` from the string representation of that method.
-    init(httpMethod: HTTPMethod) {
-        switch httpMethod {
-        case .GET:
-            self = "GET"
-        case .PUT:
-            self = "PUT"
-        case .ACL:
-            self = "ACL"
-        case .HEAD:
-            self = "HEAD"
-        case .POST:
-            self = "POST"
-        case .COPY:
-            self = "COPY"
-        case .LOCK:
-            self = "LOCK"
-        case .MOVE:
-            self = "MOVE"
-        case .BIND:
-            self = "BIND"
-        case .LINK:
-            self = "LINK"
-        case .PATCH:
-            self = "PATCH"
-        case .TRACE:
-            self = "TRACE"
-        case .MKCOL:
-            self = "MKCOL"
-        case .MERGE:
-            self = "MERGE"
-        case .PURGE:
-            self = "PURGE"
-        case .NOTIFY:
-            self = "NOTIFY"
-        case .SEARCH:
-            self = "SEARCH"
-        case .UNLOCK:
-            self = "UNLOCK"
-        case .REBIND:
-            self = "REBIND"
-        case .UNBIND:
-            self = "UNBIND"
-        case .REPORT:
-            self = "REPORT"
-        case .DELETE:
-            self = "DELETE"
-        case .UNLINK:
-            self = "UNLINK"
-        case .CONNECT:
-            self = "CONNECT"
-        case .MSEARCH:
-            self = "MSEARCH"
-        case .OPTIONS:
-            self = "OPTIONS"
-        case .PROPFIND:
-            self = "PROPFIND"
-        case .CHECKOUT:
-            self = "CHECKOUT"
-        case .PROPPATCH:
-            self = "PROPPATCH"
-        case .SUBSCRIBE:
-            self = "SUBSCRIBE"
-        case .MKCALENDAR:
-            self = "MKCALENDAR"
-        case .MKACTIVITY:
-            self = "MKACTIVITY"
-        case .UNSUBSCRIBE:
-            self = "UNSUBSCRIBE"
-        case .SOURCE:
-            self = "SOURCE"
-        case .RAW(let v):
-            self = v
-        }
-    }
-}
-
-
 // MARK:- Methods for creating `HTTPRequestHead`/`HTTPResponseHead` objects from
 // header blocks generated by the HTTP/2 layer.
 internal extension HTTPRequestHead {
-    /// Create a `HTTPRequestHead` from the header block produced by nghttp2.
-    init(http2HeaderBlock headers: HPACKHeaders) throws {
+    /// Create a `HTTPRequestHead` from the header block.
+    init(http2HeaderBlock headers: HPACKHeaders, isEndStream: Bool) throws {
         // A request head should have only up to four psuedo-headers.
         let method = HTTPMethod(methodString: try headers.peekPseudoHeader(name: ":method"))
         let version = HTTPVersion(major: 2, minor: 0)
@@ -587,13 +528,39 @@ internal extension HTTPRequestHead {
 
         let authority = try headers.peekPseudoHeader(name: ":authority")
 
-        // We do a manual implementation of HTTPHeaders(regularHeadersFrom:) here because we may need to add an extra Host:
-        // header here, and that can cause copies if we're unlucky. We need headers.count - 3 spaces: we remove :method,
-        // :path, :scheme, and :authority, but we may add in Host.
+        // We do a manual implementation of HTTPHeaders(regularHeadersFrom:) here because we may
+        // need to add an extra Host: and Transfer-Encoding: header here, and that can cause copies
+        // if we're unlucky. We need headers.count - 2 spaces: we remove :method, :path, :scheme,
+        // and :authority, but we may add in Host and Transfer-Encoding
         var rawHeaders: [(String, String)] = []
-        rawHeaders.reserveCapacity(headers.count - 3)
+        rawHeaders.reserveCapacity(headers.count - 2)
         if !headers.contains(name: "host") {
             rawHeaders.append(("host", authority))
+        }
+        switch method {
+        case .GET, .HEAD, .DELETE, .CONNECT, .TRACE:
+            // A user agent SHOULD NOT send a Content-Length header field when the request
+            // message does not contain a payload body and the method semantics do not
+            // anticipate such a body.
+            //
+            // There is an interesting case here, in which the header frame does not have the
+            // endStream flag set, because the HTTP1 to HTTP2 translation on the client side, emits
+            // header frame and endStream in two frames. What do we want to do in those cases?
+            //
+            // The payload has no defined semantics as defined in RFC7231, but we are not sure, if
+            // we will receive a payload eventually. In most cases, there won't be a payload and
+            // therefore we should not add transfer-encoding headers. If there is a content-length
+            // header, we should keep it.
+            break
+
+        default:
+            if !headers.contains(name: "content-length") {
+                if isEndStream {
+                    rawHeaders.append(("content-length", "0"))
+                } else {
+                    rawHeaders.append(("transfer-encoding", "chunked"))
+                }
+            }
         }
         rawHeaders.appendRegularHeaders(from: headers)
 
@@ -603,7 +570,7 @@ internal extension HTTPRequestHead {
 
 
 internal extension HTTPResponseHead {
-    /// Create a `HTTPResponseHead` from the header block produced by nghttp2.
+    /// Create a `HTTPResponseHead` from the header block. Use this for informational responses
     init(http2HeaderBlock headers: HPACKHeaders) throws {
         // A response head should have only one psuedo-header. We strip it off.
         let statusHeader = try headers.peekPseudoHeader(name: ":status")
@@ -612,6 +579,35 @@ internal extension HTTPResponseHead {
         }
         let status = HTTPResponseStatus(statusCode: integerStatus)
         self.init(version: .init(major: 2, minor: 0), status: status, headers: HTTPHeaders(regularHeadersFrom: headers))
+    }
+    
+    /// Create a `HTTPResponseHead` from the header block. Use this for non-informational responses
+    init(http2HeaderBlock headers: HPACKHeaders, requestHead: HTTPRequestHead, endStream: Bool) throws {
+        // A response head should have only one psuedo-header. We strip it off.
+        let statusHeader = try headers.peekPseudoHeader(name: ":status")
+        guard let integerStatus = Int(statusHeader, radix: 10) else {
+            throw NIOHTTP2Errors.invalidStatusValue(statusHeader)
+        }
+        let status = HTTPResponseStatus(statusCode: integerStatus)
+        
+        // NOTE: We don't need to create the header array here ourselves. The HTTP/1 response
+        //       headers, will not contain a :status field, but may contain a "Transfer-Encoding"
+        //       field. For this reason the default allocation works great for us.
+        var h1Headers = HTTPHeaders(regularHeadersFrom: headers)
+        if !(100..<200).contains(integerStatus),
+            integerStatus != 204,
+            integerStatus != 304,
+            requestHead.method != .HEAD,
+            requestHead.method != .CONNECT,
+            !headers.contains(name: "content-length") // compare on h2 headers - for speed
+        {
+            if endStream {
+                h1Headers.add(name: "content-length", value: "0")
+            } else {
+                h1Headers.add(name: "transfer-encoding", value: "chunked")
+            }
+        }
+        self.init(version: .init(major: 2, minor: 0), status: status, headers: h1Headers)
     }
 }
 
@@ -656,7 +652,7 @@ extension HTTPHeaders {
 
         // TODO(cory): This is potentially wrong if the URI contains more than just a path.
         newHeaders.append((":path", requestHead.uri))
-        newHeaders.append((":method", String(httpMethod: requestHead.method)))
+        newHeaders.append((":method", requestHead.method.rawValue))
         newHeaders.append((":scheme", protocolString))
 
         // We store a place for the :authority header, even though we don't know what it is. We'll find it later and
