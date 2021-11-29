@@ -587,15 +587,13 @@ internal extension HTTPResponseHead {
         // NOTE: We don't need to create the header array here ourselves. The HTTP/1 response
         //       headers, will not contain a :status field, but may contain a "Transfer-Encoding"
         //       field. For this reason the default allocation works great for us.
-        var h1Headers = HTTPHeaders(regularHeadersFrom: headers)
         if self.shouldAddContentLengthOrTransferEncodingHeaderToResponse(hpackHeaders: headers, requestHead: requestHead) {
             if endStream {
-                h1Headers.add(name: "content-length", value: "0")
+                self.headers.add(name: "content-length", value: "0")
             } else {
-                h1Headers.add(name: "transfer-encoding", value: "chunked")
+                self.headers.add(name: "transfer-encoding", value: "chunked")
             }
         }
-        self.init(version: .init(major: 2, minor: 0), status: status, headers: h1Headers)
     }
     
     private func shouldAddContentLengthOrTransferEncodingHeaderToResponse(
@@ -607,7 +605,7 @@ internal extension HTTPResponseHead {
             && statusCode != 304
             && requestHead.method != .HEAD
             && requestHead.method != .CONNECT
-            && !headers.contains(name: "content-length") // compare on h2 headers - for speed
+            && !hpackHeaders.contains(name: "content-length") // compare on h2 headers - for speed
     }
 }
 
