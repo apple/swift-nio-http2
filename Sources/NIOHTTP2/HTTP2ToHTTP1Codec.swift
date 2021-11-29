@@ -100,8 +100,7 @@ fileprivate struct BaseClientCodec {
     mutating func processOutboundData(_ data: HTTPClientRequestPart, allocator: ByteBufferAllocator) throws -> HTTP2Frame.FramePayload {
         switch data {
         case .head(let head):
-            #warning("How we want to deal with multiple requests on the same stream?")
-            precondition(self.outgoingHTTP1RequestHead == nil)
+            precondition(self.outgoingHTTP1RequestHead == nil, "Only a single HTTP request allowed per HTTP2 stream")
             let h1Headers = try HTTPHeaders(requestHead: head, protocolString: self.protocolString)
             self.outgoingHTTP1RequestHead = head
             let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers,
@@ -583,24 +582,13 @@ internal extension HTTPResponseHead {
     
     /// Create a `HTTPResponseHead` from the header block. Use this for non-informational responses.
     init(http2HeaderBlock headers: HPACKHeaders, requestHead: HTTPRequestHead, endStream: Bool) throws {
-        // A response head should have only one psuedo-header. We strip it off.
-        let statusHeader = try headers.peekPseudoHeader(name: ":status")
-        guard let integerStatus = Int(statusHeader, radix: 10) else {
-            throw NIOHTTP2Errors.invalidStatusValue(statusHeader)
-        }
-        let status = HTTPResponseStatus(statusCode: integerStatus)
+        try self.init(http2HeaderBlock: headers)
         
         // NOTE: We don't need to create the header array here ourselves. The HTTP/1 response
         //       headers, will not contain a :status field, but may contain a "Transfer-Encoding"
         //       field. For this reason the default allocation works great for us.
         var h1Headers = HTTPHeaders(regularHeadersFrom: headers)
-        if !(100..<200).contains(integerStatus),
-            integerStatus != 204,
-            integerStatus != 304,
-            requestHead.method != .HEAD,
-            requestHead.method != .CONNECT,
-            !headers.contains(name: "content-length") // compare on h2 headers - for speed
-        {
+        if self.shouldAddContentLengthOrTransferEncodingHeaderToResponse(hpackHeaders: headers, requestHead: requestHead) {
             if endStream {
                 h1Headers.add(name: "content-length", value: "0")
             } else {
@@ -608,6 +596,18 @@ internal extension HTTPResponseHead {
             }
         }
         self.init(version: .init(major: 2, minor: 0), status: status, headers: h1Headers)
+    }
+    
+    private func shouldAddContentLengthOrTransferEncodingHeaderToResponse(
+        hpackHeaders: HPACKHeaders, requestHead: HTTPRequestHead
+    ) -> Bool {
+        let statusCode = self.status.code
+        return !(100..<200).contains(statusCode)
+            && statusCode != 204
+            && statusCode != 304
+            && requestHead.method != .HEAD
+            && requestHead.method != .CONNECT
+            && !headers.contains(name: "content-length") // compare on h2 headers - for speed
     }
 }
 

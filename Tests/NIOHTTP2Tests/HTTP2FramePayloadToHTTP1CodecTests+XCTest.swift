@@ -64,6 +64,13 @@ extension HTTP2FramePayloadToHTTP1CodecTests {
                 ("testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses", testWeStripIllegalHeadersAsWellAsTheHeadersNominatedByTheConnectionHeaderForResponses),
                 ("testServerSideWithEmptyFinalPackage", testServerSideWithEmptyFinalPackage),
                 ("testClientSideWithEmptyFinalPackage", testClientSideWithEmptyFinalPackage),
+                ("testRequestMethodsWithoutDefinedSemanticsForAPayloadDontGetTransferEncodingAdded", testRequestMethodsWithoutDefinedSemanticsForAPayloadDontGetTransferEncodingAdded),
+                ("testRequestMethodsWithoutDefinedSemanticsForAPayloadDontRemoveContentLengthIfSet", testRequestMethodsWithoutDefinedSemanticsForAPayloadDontRemoveContentLengthIfSet),
+                ("testRequestMethodsWithDefinedSemanticsForAPayloadAddContentLengthHeaderIfEmpty", testRequestMethodsWithDefinedSemanticsForAPayloadAddContentLengthHeaderIfEmpty),
+                ("testRequestMethodsWithDefinedSemanticsForAPayloadAddTransferEncodingIfNotEmpty", testRequestMethodsWithDefinedSemanticsForAPayloadAddTransferEncodingIfNotEmpty),
+                ("testRequestContentLengthIsAlwaysPreserved", testRequestContentLengthIsAlwaysPreserved),
+                ("testResponseTransferEncodingIsNotAddedInReponseToHEADorCONNECT", testResponseTransferEncodingIsNotAddedInReponseToHEADorCONNECT),
+                ("testResponseTransferEncodingIsNotAddedInReponseWithStatus1xxor204or304", testResponseTransferEncodingIsNotAddedInReponseWithStatus1xxor204or304),
            ]
    }
 }
