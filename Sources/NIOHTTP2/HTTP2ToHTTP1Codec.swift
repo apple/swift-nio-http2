@@ -570,7 +570,7 @@ internal extension HTTPRequestHead {
 
 
 internal extension HTTPResponseHead {
-    /// Create a `HTTPResponseHead` from the header block. Use this for informational responses
+    /// Create a `HTTPResponseHead` from the header block. Use this for informational responses.
     init(http2HeaderBlock headers: HPACKHeaders) throws {
         // A response head should have only one psuedo-header. We strip it off.
         let statusHeader = try headers.peekPseudoHeader(name: ":status")
@@ -581,7 +581,7 @@ internal extension HTTPResponseHead {
         self.init(version: .init(major: 2, minor: 0), status: status, headers: HTTPHeaders(regularHeadersFrom: headers))
     }
     
-    /// Create a `HTTPResponseHead` from the header block. Use this for non-informational responses
+    /// Create a `HTTPResponseHead` from the header block. Use this for non-informational responses.
     init(http2HeaderBlock headers: HPACKHeaders, requestHead: HTTPRequestHead, endStream: Bool) throws {
         // A response head should have only one psuedo-header. We strip it off.
         let statusHeader = try headers.peekPseudoHeader(name: ":status")
