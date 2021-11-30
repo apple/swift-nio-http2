@@ -815,7 +815,7 @@ internal extension HTTP2StreamChannel {
         // The stream is closed, we should force forward all pending frames, even without
         // unsatisfied read, to ensure the handlers can see all frames before receiving
         // channelInactive.
-        if self.pendingReads.count > 0, self._isActive {
+        if self.pendingReads.count > 0 && self._isActive {
             self.unsatisfiedRead = false
             self.deliverPendingReads()
         }
