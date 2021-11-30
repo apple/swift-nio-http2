@@ -812,8 +812,13 @@ internal extension HTTP2StreamChannel {
         // Avoid emitting any WINDOW_UPDATE frames now that we're closed.
         self.windowManager.closed = true
 
-        // The stream is closed, we should aim to deliver any read frames we have for it.
-        self.tryToRead()
+        // The stream is closed, we should force forward all pending frames, even without
+        // unsatisfied read, to ensure the handlers can see all frames before receiving
+        // channelInactive.
+        if self.pendingReads.count > 0 && self._isActive {
+            self.unsatisfiedRead = false
+            self.deliverPendingReads()
+        }
 
         if let reason = reason {
             // To receive from the network, it must be safe to force-unwrap here.

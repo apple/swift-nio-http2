@@ -79,6 +79,7 @@ extension HTTP2FramePayloadStreamMultiplexerTests {
                 ("testWindowUpdateIsNotEmittedAfterStreamIsClosedEvenOnLaterFrame", testWindowUpdateIsNotEmittedAfterStreamIsClosedEvenOnLaterFrame),
                 ("testStreamChannelSupportsSyncOptions", testStreamChannelSupportsSyncOptions),
                 ("testStreamErrorIsDeliveredToChannel", testStreamErrorIsDeliveredToChannel),
+                ("testPendingReadsAreFlushedEvenWithoutUnsatisfiedReadOnChannelInactive", testPendingReadsAreFlushedEvenWithoutUnsatisfiedReadOnChannelInactive),
            ]
    }
 }
