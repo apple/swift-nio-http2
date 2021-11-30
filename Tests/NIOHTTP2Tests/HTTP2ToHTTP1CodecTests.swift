@@ -100,6 +100,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         var expectedRequestHead = HTTPRequestHead(version: HTTPVersion(major: 2, minor: 0), method: .POST, uri: "/post")
         expectedRequestHead.headers.add(name: "host", value: "example.org")
+        expectedRequestHead.headers.add(name: "transfer-encoding", value: "chunked")
         expectedRequestHead.headers.add(name: "other", value: "header")
         self.channel.assertReceivedServerRequestPart(.head(expectedRequestHead))
 
@@ -286,12 +287,17 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
 
+        // A basic request.
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
+        
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
         XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders))))))
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "transfer-encoding", value: "chunked")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
 
         var bodyData = self.channel.allocator.buffer(capacity: 12)
@@ -308,6 +314,10 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testResponseWithOnlyHeadClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+        
+        // A basic request.
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
 
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
@@ -316,6 +326,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "content-length", value: "0")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
         self.channel.assertReceivedClientResponsePart(.end(nil))
 
@@ -327,6 +338,10 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
 
+        // A basic request.
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
+        
         // A basic response.
         let responseHeaders = HTTPHeaders([(":status", "200"), ("other", "header")])
         let headersFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(httpHeaders: responseHeaders))))
@@ -334,6 +349,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "transfer-encoding", value: "chunked")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
 
         // Ok, we're going to send trailers.
@@ -409,6 +425,10 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testResponseWith100BlocksClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+        
+        // A basic request.
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
 
         // Start with a few 100 blocks.
         let informationalResponseHeaders = HTTPHeaders([(":status", "103"), ("link", "example")])
@@ -429,6 +449,7 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
 
         var expectedResponseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         expectedResponseHead.headers.add(name: "other", value: "header")
+        expectedResponseHead.headers.add(name: "content-length", value: "0")
         self.channel.assertReceivedClientResponsePart(.head(expectedResponseHead))
         self.channel.assertReceivedClientResponsePart(.end(nil))
 
@@ -621,6 +642,10 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testReceiveResponseWithNonNumericalStatus() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)).wait())
+        
+        // A basic request.
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        XCTAssertNoThrow(try self.channel.writeOutbound(HTTPClientRequestPart.head(http1Head)))
 
         // A basic response.
         let requestHeaders = HPACKHeaders([(":status", "captivating")])
