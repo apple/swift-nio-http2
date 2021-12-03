@@ -81,6 +81,10 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// to determine buffering strategies.
     private var channelWritable: Bool = true
 
+    /// This variable is set to `true` when we are inside `unbufferAndFlushAutomaticFrames` and protects us from reentering the method
+    /// which can cause an infinite recursion.
+    private var isUnbufferingAndFlushingAutomaticFrames = false
+
     /// The mode for this parser to operate in: client or server.
     public enum ParserMode {
         /// Client mode
@@ -568,6 +572,13 @@ extension NIOHTTP2Handler {
     }
 
     private func unbufferAndFlushAutomaticFrames(context: ChannelHandlerContext) {
+        if self.isUnbufferingAndFlushingAutomaticFrames {
+            // Don't allow infinite recursion through this method.
+            return
+        }
+        
+        self.isUnbufferingAndFlushingAutomaticFrames = true
+    
         loop: while true {
             switch self.outboundBuffer.nextFlushedWritableFrame(channelWritable: self.channelWritable) {
             case .noFrame:
@@ -578,6 +589,8 @@ extension NIOHTTP2Handler {
                 self.processOutboundFrame(context: context, frame: frame, promise: promise)
             }
         }
+        
+        self.isUnbufferingAndFlushingAutomaticFrames = false
 
         if self.wroteFrame {
             context.flush()

@@ -17,6 +17,7 @@ import NIOCore
 import NIOEmbedded
 import NIOHTTP1
 import NIOHTTP2
+import NIOHPACK
 
 /// A `ChannelInboundHandler` that re-entrantly calls into a handler that just passed
 /// it `channelRead`.
@@ -40,6 +41,22 @@ final class ReenterOnReadHandler: ChannelInboundHandler {
         self.shouldReenter = false
         context.fireChannelRead(data)
         self.reEnterCallback(context.pipeline)
+    }
+}
+
+final class WindowUpdatedEventHandler: ChannelInboundHandler {
+    public typealias InboundIn = HTTP2Frame
+    public typealias InboundOut = HTTP2Frame
+    public typealias OutboundOut = HTTP2Frame
+
+    init() {
+    }
+    
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        guard event is NIOHTTP2WindowUpdatedEvent else { return }
+
+        let frame = HTTP2Frame(streamID: .rootStream, payload: .windowUpdate(windowSizeIncrement: 1))
+        context.writeAndFlush(self.wrapOutboundOut(frame), promise: nil)
     }
 }
 
@@ -160,6 +177,40 @@ final class ReentrancyTests: XCTestCase {
         // ok, no errors should have been hit, and the channel should now be closed.
         try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: settingsFrame)
         try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: pingFrame)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+    
+    func testReenterAutomaticFrames() throws {
+        // Start by setting up the connection.
+        try self.basicHTTP2Connection()
+        let windowUpdateFrameHandler = WindowUpdatedEventHandler()
+        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(windowUpdateFrameHandler).wait())
+        
+        // Write and flush the header from the client to open a stream
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
+        self.clientChannel.writeAndFlush(HTTP2Frame(streamID: 1, payload: reqFramePayload), promise: nil)
+        self.interactInMemory(clientChannel, serverChannel)
+        
+        // Write and flush the header from the server
+        let resHeaders = HPACKHeaders([(":status", "200")])
+        let resFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: resHeaders))
+        self.serverChannel.writeAndFlush(HTTP2Frame(streamID: 1, payload: resFramePayload), promise: nil)
+        
+        // Write lots of small data frames and flush them all at once
+        var requestBody = self.serverChannel.allocator.buffer(capacity: 1)
+        requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 1))
+        var reqBodyFramePayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(requestBody)))
+        for _ in 0..<10000 {
+            serverChannel.write(HTTP2Frame(streamID: 1, payload: reqBodyFramePayload), promise: nil)
+        }
+        reqBodyFramePayload = .data(.init(data: .byteBuffer(requestBody), endStream: true))
+        serverChannel.writeAndFlush(HTTP2Frame(streamID: 1, payload: reqBodyFramePayload), promise: nil)
+
+        // Now we can deliver these bytes.
+        self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
