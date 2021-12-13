@@ -30,6 +30,7 @@ extension ReentrancyTests {
                 ("testReEnterReadOnRead", testReEnterReadOnRead),
                 ("testReenterInactiveOnRead", testReenterInactiveOnRead),
                 ("testReenterReadEOFOnRead", testReenterReadEOFOnRead),
+                ("testReenterAutomaticFrames", testReenterAutomaticFrames),
            ]
    }
 }
