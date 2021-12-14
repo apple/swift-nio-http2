@@ -75,6 +75,7 @@ extension SimpleClientServerFramePayloadStreamTests {
                 ("testGreasedSettingsAreTolerated", testGreasedSettingsAreTolerated),
                 ("testStreamCreationOrder", testStreamCreationOrder),
                 ("testStreamClosedInvalidRequestHeaders", testStreamClosedInvalidRequestHeaders),
+                ("testHTTP2HandlerDoesNotFlushExcessively", testHTTP2HandlerDoesNotFlushExcessively),
            ]
    }
 }

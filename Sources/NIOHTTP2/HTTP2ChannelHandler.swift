@@ -330,7 +330,7 @@ extension NIOHTTP2Handler {
         // The user may choose to fire a more specific error if they wish.
         let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: reason, opaqueData: nil))
         self.writeUnbufferedFrame(context: context, frame: goAwayFrame)
-        context.flush()
+        self.flushIfNecessary(context: context)
         context.fireErrorCaught(underlyingError)
     }
 
@@ -341,7 +341,7 @@ extension NIOHTTP2Handler {
         // the user's issue.
         let rstStreamFrame = HTTP2Frame(streamID: streamID, payload: .rstStream(reason))
         self.writeBufferedFrame(context: context, frame: rstStreamFrame, promise: nil)
-        context.flush()
+        self.flushIfNecessary(context: context)
         context.fireErrorCaught(underlyingError)
     }
 
@@ -379,7 +379,7 @@ extension NIOHTTP2Handler {
 
         let initialSettingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(self.initialSettings)))
         self.writeUnbufferedFrame(context: context, frame: initialSettingsFrame)
-        context.flush()
+        self.flushIfNecessary(context: context)
     }
 
     /// Write a frame that is allowed to be buffered (that is, that participates in the outbound frame buffer).
@@ -591,8 +591,13 @@ extension NIOHTTP2Handler {
         }
         
         self.isUnbufferingAndFlushingAutomaticFrames = false
+        self.flushIfNecessary(context: context)
+    }
 
+    /// Emits a flush if a frame has been written.
+    private func flushIfNecessary(context: ChannelHandlerContext) {
         if self.wroteFrame {
+            self.wroteFrame = false
             context.flush()
         }
     }

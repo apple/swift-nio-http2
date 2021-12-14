@@ -1960,4 +1960,26 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testHTTP2HandlerDoesNotFlushExcessively() throws {
+        try self.basicHTTP2Connection()
+
+        class FlushCounter: ChannelOutboundHandler {
+            typealias OutboundIn = Never
+            var flushCount = 0
+
+            func flush(context: ChannelHandlerContext) {
+                self.flushCount += 1
+                context.flush()
+            }
+        }
+
+        let counter = FlushCounter()
+        XCTAssertNoThrow(try self.clientChannel.pipeline.syncOperations.addHandler(counter, position: .first))
+
+        // 'channelReadComplete' should cause the HTTP2Handler to emit a flush if any frames have
+        // been written. No frames have been written, so no flush should be emitted.
+        self.clientChannel.pipeline.fireChannelReadComplete()
+        XCTAssertEqual(counter.flushCount, 0)
+    }
 }
