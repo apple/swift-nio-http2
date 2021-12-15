@@ -27,15 +27,15 @@ services:
     environment:
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=46150
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=45100
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=317950
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=283850
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=317250
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=284000
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=47050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=300050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_short_string=200050
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=323150
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=323200
 
   shell:
     image: swift-nio-http2:20.04-main
