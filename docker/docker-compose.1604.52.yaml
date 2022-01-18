@@ -25,17 +25,17 @@ services:
   test:
     image: swift-nio-http2:16.04-5.2
     environment:
-      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=51150
-      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=50100
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=324900
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=288900
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=48050
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=48200
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=47100
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=311050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=275050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=42050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=300050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_short_string=200050
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=353200
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=323250
       - SANITIZER_ARG=--sanitize=thread
 
   shell:
