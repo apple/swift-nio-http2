@@ -29,6 +29,11 @@ extension IntegerCodingTests {
       return [
                 ("testIntegerEncoding", testIntegerEncoding),
                 ("testIntegerDecoding", testIntegerDecoding),
+                ("testIntegerDecodingMultiplicationDoesNotOverflow", testIntegerDecodingMultiplicationDoesNotOverflow),
+                ("testIntegerDecodingAdditionDoesNotOverflow", testIntegerDecodingAdditionDoesNotOverflow),
+                ("testIntegerDecodingShiftDoesNotOverflow", testIntegerDecodingShiftDoesNotOverflow),
+                ("testIntegerDecodingEmptyInput", testIntegerDecodingEmptyInput),
+                ("testIntegerDecodingNotEnoughBytes", testIntegerDecodingNotEnoughBytes),
            ]
    }
 }

@@ -30,11 +30,11 @@ class IntegerCodingTests : XCTestCase {
         return data
     }
     
-    private func decodeInteger(from array: [UInt8], prefix: Int) throws -> UInt {
+    private func decodeInteger(from array: [UInt8], prefix: Int) throws -> Int {
         scratchBuffer.clear()
         scratchBuffer.writeBytes(array)
-        let (r, _) = try NIOHPACK.decodeInteger(from: scratchBuffer.readableBytesView, prefix: prefix)
-        return r
+        let result = try NIOHPACK.decodeInteger(from: scratchBuffer.readableBytesView, prefix: prefix)
+        return result.value
     }
     
     // MARK: - Tests
@@ -108,7 +108,7 @@ class IntegerCodingTests : XCTestCase {
         // something carefully crafted to produce maximum number of output bytes with minimum number of
         // nonzero bits:
         data = encodeIntegerToArray(9223372036854775809, prefix: 1)
-        
+
         // calculations:
         //  subtract prefix:
         //      9223372036854775809 - 1 = 9223372036854775808 or 1000 (0000 x15)
@@ -145,21 +145,64 @@ class IntegerCodingTests : XCTestCase {
         
         XCTAssertEqual(try decodeInteger(from: [0b00011111, 154, 10], prefix: 5), 1337)
         XCTAssertEqual(try decodeInteger(from: [0b11111111, 154, 10], prefix: 5), 1337)
-        
+
         XCTAssertEqual(try decodeInteger(from: [0b00101010], prefix: 8), 42)
-        
+
         // Now some larger numbers:
         XCTAssertEqual(try decodeInteger(from: [255, 129, 254, 255, 255, 255, 255, 255, 255, 33], prefix: 8), 2449958197289549824)
         XCTAssertEqual(try decodeInteger(from: [1, 255, 255, 255, 255, 255, 255, 255, 255, 33], prefix: 1), 2449958197289549824)
-        XCTAssertEqual(try decodeInteger(from: [1, 254, 255, 255, 255, 255, 255, 255, 255, 255, 1], prefix: 1), UInt(UInt64.max))
-        
+        XCTAssertEqual(try decodeInteger(from: [1, 254, 255, 255, 255, 255, 255, 255, 255, 127, 1], prefix: 1), Int.max)
+
         // lots of zeroes: each 128 yields zero
-        XCTAssertEqual(try decodeInteger(from: [1, 128, 128, 128, 128, 128, 128, 128, 128, 128, 1], prefix: 1), 9223372036854775809)
-        
+        XCTAssertEqual(try decodeInteger(from: [1, 128, 128, 128, 128, 128, 128, 128, 128, 127, 1], prefix: 1), 9151314442816847873)
+
         // almost the same bytes, but a different prefix:
-        XCTAssertEqual(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 1], prefix: 8), 9223372036854776063)
-        
+        XCTAssertEqual(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 1], prefix: 8), 9151314442816848127)
+
         // now a silly version which should never have been encoded in so many bytes
         XCTAssertEqual(try decodeInteger(from: [255, 129, 128, 128, 128, 128, 128, 128, 128, 0], prefix: 8), 256)
+    }
+
+    func testIntegerDecodingMultiplicationDoesNotOverflow() throws {
+        // Zeros with continuation bits (e.g. 128) to increase the shift value (to 9 * 7 = 63), and then multiply by 127.
+        for `prefix` in 1...8 {
+            XCTAssertThrowsError(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 127], prefix: prefix)) { error in
+                XCTAssert(error is NIOHPACKErrors.UnrepresentableInteger)
+            }
+        }
+    }
+
+    func testIntegerDecodingAdditionDoesNotOverflow() throws {
+        // Zeros with continuation bits (e.g. 128) to increase the shift value (to 9 * 7 = 63), and then multiply by 127.
+        for `prefix` in 1...8 {
+            XCTAssertThrowsError(try decodeInteger(from: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 127], prefix: prefix)) { error in
+                XCTAssert(error is NIOHPACKErrors.UnrepresentableInteger)
+            }
+        }
+    }
+
+    func testIntegerDecodingShiftDoesNotOverflow() throws {
+        // With enough iterations we expect the shift to become greater >= 64.
+        for `prefix` in 1...8 {
+            XCTAssertThrowsError(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128], prefix: prefix)) { error in
+                XCTAssert(error is NIOHPACKErrors.UnrepresentableInteger)
+            }
+        }
+    }
+
+    func testIntegerDecodingEmptyInput() throws {
+        for `prefix` in 1...8 {
+            XCTAssertThrowsError(try decodeInteger(from: [], prefix: prefix)) { error in
+                XCTAssert(error is NIOHPACKErrors.InsufficientInput)
+            }
+        }
+    }
+
+    func testIntegerDecodingNotEnoughBytes() throws {
+        for `prefix` in 1...8 {
+            XCTAssertThrowsError(try decodeInteger(from: [255, 128], prefix: prefix)) { error in
+                XCTAssert(error is NIOHPACKErrors.InsufficientInput)
+            }
+        }
     }
 }

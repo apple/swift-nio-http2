@@ -28,24 +28,24 @@ func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
                    prefix: Int, prefixBits: UInt8 = 0) -> Int {
     assert(prefix <= 8)
     assert(prefix >= 1)
-    
+
     let start = buffer.writerIndex
-    
+
     let k = (1 << prefix) - 1
     var initialByte = prefixBits
-    
+
     if value < k {
         // it fits already!
         initialByte |= UInt8(truncatingIfNeeded: value)
         buffer.writeInteger(initialByte)
         return 1
     }
-    
+
     // if it won't fit in this byte altogether, fill in all the remaining bits and move
     // to the next byte.
     initialByte |= UInt8(truncatingIfNeeded: k)
     buffer.writeInteger(initialByte)
-    
+
     // deduct the initial [prefix] bits from the value, then encode it seven bits at a time into
     // the remaining bytes.
     var n = value - UInt(k)
@@ -54,55 +54,88 @@ func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
         buffer.writeInteger(nextByte)
         n >>= 7
     }
-    
+
     buffer.writeInteger(UInt8(n))
     return buffer.writerIndex - start
 }
 
+fileprivate let valueMask: UInt8 = 127
+fileprivate let continuationMask: UInt8 = 128
+
 /* private but tests */
-func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> (UInt, Int) {
-    assert(prefix <= 8)
-    assert(prefix >= 1)
-    
-    let mask = (1 << prefix) - 1
-    var accumulator: UInt = 0
+struct DecodedInteger {
+    var value: Int
+    var bytesRead: Int
+}
+
+/* private but tests */
+func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> DecodedInteger {
+    precondition((1...8).contains(prefix))
+    if bytes.isEmpty {
+        throw NIOHPACKErrors.InsufficientInput()
+    }
+
+    // See RFC 7541 § 5.1 for details of the encoding/decoding.
+
     var index = bytes.startIndex
+    // The shifting and arithmetic operate on 'Int' and prefix is 1...8, so these unchecked operations are
+    // fine and the result must fit in a UInt8.
+    let prefixMask = UInt8(truncatingIfNeeded: (1 &<< prefix) &- 1)
+    let prefixBits = bytes[index] & prefixMask
 
-    // if the available bits aren't all set, the entire value consists of those bits
-    if bytes[index] & UInt8(mask) != mask {
-        return (UInt(bytes[index] & UInt8(mask)), 1)
+    if prefixBits != prefixMask {
+        // The prefix bits aren't all '1', so they represent the whole value, we're done.
+        return DecodedInteger(value: Int(prefixBits), bytesRead: 1)
     }
 
-    accumulator = UInt(mask)
-    index = bytes.index(after: index)
-    if index == bytes.endIndex {
-        return (accumulator, bytes.distance(from: bytes.startIndex, to: index))
-    }
-    
+    var accumulator = Int(prefixMask)
+    bytes.formIndex(after: &index)
+
     // for the remaining bytes, as long as the top bit is set, consume the low seven bits.
-    var shift: UInt = 0
+    var shift: Int = 0
     var byte: UInt8 = 0
+
     repeat {
         if index == bytes.endIndex {
             throw NIOHPACKErrors.InsufficientInput()
         }
-        
+
         byte = bytes[index]
-        accumulator += UInt(byte & 127) * (1 << shift)
-        shift += 7
-        index = bytes.index(after: index)
-    } while byte & 128 == 128
-    
-    return (accumulator, bytes.distance(from: bytes.startIndex, to: index))
+
+        let value = Int(byte & valueMask)
+
+        // The shift cannot overflow: the value of 'shift' is strictly less than 'Int.bitWidth'.
+        let (multiplicationResult, multiplicationOverflowed) = value.multipliedReportingOverflow(by: (1 &<< shift))
+        if multiplicationOverflowed {
+            throw NIOHPACKErrors.UnrepresentableInteger()
+        }
+
+        let (additionResult, additionOverflowed) = accumulator.addingReportingOverflow(multiplicationResult)
+        if additionOverflowed {
+            throw NIOHPACKErrors.UnrepresentableInteger()
+        }
+
+        accumulator = additionResult
+
+        // Unchecked is fine, there's no chance of it overflowing given the possible values of 'Int.bitWidth'.
+        shift &+= 7
+        if shift >= Int.bitWidth {
+            throw NIOHPACKErrors.UnrepresentableInteger()
+        }
+
+        bytes.formIndex(after: &index)
+    } while byte & continuationMask == continuationMask
+
+    return DecodedInteger(value: accumulator, bytesRead: bytes.distance(from: bytes.startIndex, to: index))
 }
 
 extension ByteBuffer {
-    mutating func readEncodedInteger(withPrefix prefix: Int = 0) throws -> Int {
-        let (result, nread) = try decodeInteger(from: self.readableBytesView, prefix: prefix)
-        self.moveReaderIndex(forwardBy: nread)
-        return Int(result)
+    mutating func readEncodedInteger(withPrefix prefix: Int) throws -> Int {
+        let result = try decodeInteger(from: self.readableBytesView, prefix: prefix)
+        self.moveReaderIndex(forwardBy: result.bytesRead)
+        return result.value
     }
-    
+
     mutating func write(encodedInteger value: UInt, prefix: Int = 0, prefixBits: UInt8 = 0) {
         encodeInteger(value, to: &self, prefix: prefix, prefixBits: prefixBits)
     }
