@@ -2974,6 +2974,18 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.receiveRstStream(streamID: streamOne, reason: .cancel))
         assertIgnored(self.server.receiveRstStream(streamID: streamOne, reason: .streamClosed))
     }
+
+    func testReceivedAltServiceFramesAreIgnored() {
+        self.exchangePreamble()
+        assertIgnored(self.client.receiveAlternativeService(origin: "over-there", field: nil))
+        assertIgnored(self.server.receiveAlternativeService(origin: "over-there", field: nil))
+    }
+
+    func testReceivedOriginFramesAreIgnored() {
+        self.exchangePreamble()
+        assertIgnored(self.client.receiveOrigin(origins: ["one", "two"]))
+        assertIgnored(self.server.receiveOrigin(origins: ["one", "two"]))
+    }
 }
 
 

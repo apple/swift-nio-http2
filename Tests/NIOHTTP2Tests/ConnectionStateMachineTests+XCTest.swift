@@ -142,6 +142,8 @@ extension ConnectionStateMachineTests {
                 ("testNoPolicingInvalidContentLengthForRequestsWithEndStreamWhenValidationDisabled", testNoPolicingInvalidContentLengthForRequestsWithEndStreamWhenValidationDisabled),
                 ("testNoPolicingInvalidContentLengthForResponsesWithEndStreamWhenValidationDisabled", testNoPolicingInvalidContentLengthForResponsesWithEndStreamWhenValidationDisabled),
                 ("testWeTolerateOneStreamBeingResetTwice", testWeTolerateOneStreamBeingResetTwice),
+                ("testReceivedAltServiceFramesAreIgnored", testReceivedAltServiceFramesAreIgnored),
+                ("testReceivedOriginFramesAreIgnored", testReceivedOriginFramesAreIgnored),
            ]
    }
 }

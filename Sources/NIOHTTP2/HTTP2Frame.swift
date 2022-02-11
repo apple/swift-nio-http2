@@ -107,6 +107,9 @@ public struct HTTP2Frame {
         /// the locations at which they may be addressed.
         ///
         /// See [RFC 7838 § 4](https://tools.ietf.org/html/rfc7838#section-4).
+        ///
+        /// - Important: ALTSVC frames are not currently supported. Any received ALTSVC frames will
+        ///   be ignored. Attempting to send an ALTSVC frame will result in a fatal error.
         indirect case alternativeService(origin: String?, field: ByteBuffer?)
         
         /// An ORIGIN frame. This allows servers which allow access to multiple origins
@@ -114,6 +117,9 @@ public struct HTTP2Frame {
         /// this manner.
         ///
         /// See [RFC 8336 § 2](https://tools.ietf.org/html/rfc8336#section-2).
+        ///
+        /// - Important: ORIGIN frames are not currently supported. Any received ORIGIN frames will
+        ///   be ignored. Attempting to send an ORIGIN frame will result in a fatal error.
         case origin([String])
 
         /// The payload of a DATA frame.

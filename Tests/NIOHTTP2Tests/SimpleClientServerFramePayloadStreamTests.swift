@@ -1982,4 +1982,61 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         self.clientChannel.pipeline.fireChannelReadComplete()
         XCTAssertEqual(counter.flushCount, 0)
     }
+
+    func testHTTPHandlerIgnoresInboundAltServiceFrames() throws {
+        try self.basicHTTP2Connection()
+
+        let h2ClientHandler = try self.clientChannel.pipeline.syncOperations.handler(type: NIOHTTP2Handler.self)
+        let h2FrameRecorder = FrameRecorderHandler()
+        try self.clientChannel.pipeline.syncOperations.addHandler(h2FrameRecorder, position: .after(h2ClientHandler))
+
+        let altServiceFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x15,           // 3-byte payload length (21 bytes)
+            0x0a,                       // 1-byte frame type (ALTSVC)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier
+            0x00, 0x09,                 // 2-byte origin size ("apple.com"; 9 bytes)
+        ]
+
+        var buffer = self.clientChannel.allocator.buffer(bytes: altServiceFrameBytes)
+        buffer.writeString("apple.com")
+        buffer.writeString("h2=\":8000\"")
+        XCTAssertEqual(buffer.readableBytes, 30) // 9 (header) + 21 (origin, field)
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(buffer))
+
+        // Frame should be dropped.
+        XCTAssert(h2FrameRecorder.receivedFrames.isEmpty)
+    }
+
+    func testHTTPHandlerIgnoresInboundOriginFrames() throws {
+        try self.basicHTTP2Connection()
+
+        let h2ClientHandler = try self.clientChannel.pipeline.syncOperations.handler(type: NIOHTTP2Handler.self)
+        let h2FrameRecorder = FrameRecorderHandler()
+        try self.clientChannel.pipeline.syncOperations.addHandler(h2FrameRecorder, position: .after(h2ClientHandler))
+
+        let originFrameBytes: [UInt8] = [
+            0x00, 0x00, 0x2a,           // 3-byte payload length (42 bytes)
+            0x0c,                       // 1-byte frame type (ORIGIN)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x00      // 4-byte stream identifier,
+        ]
+
+        var buffer = self.clientChannel.allocator.buffer(bytes: originFrameBytes)
+        var originBytesWritten = 0
+
+        for origin in ["apple.com", "www.apple.com", "www2.apple.com"] {
+            originBytesWritten += try buffer.writeLengthPrefixed(as: UInt16.self) {
+                $0.writeString(origin)
+            }
+        }
+
+        XCTAssertEqual(originBytesWritten, 42)
+        XCTAssertEqual(buffer.readableBytes, 51)
+
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(buffer))
+
+        // Frame should be dropped.
+        XCTAssert(h2FrameRecorder.receivedFrames.isEmpty)
+    }
 }

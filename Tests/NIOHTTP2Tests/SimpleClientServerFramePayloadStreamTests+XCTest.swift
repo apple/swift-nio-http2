@@ -76,6 +76,8 @@ extension SimpleClientServerFramePayloadStreamTests {
                 ("testStreamCreationOrder", testStreamCreationOrder),
                 ("testStreamClosedInvalidRequestHeaders", testStreamClosedInvalidRequestHeaders),
                 ("testHTTP2HandlerDoesNotFlushExcessively", testHTTP2HandlerDoesNotFlushExcessively),
+                ("testHTTPHandlerIgnoresInboundAltServiceFrames", testHTTPHandlerIgnoresInboundAltServiceFrames),
+                ("testHTTPHandlerIgnoresInboundOriginFrames", testHTTPHandlerIgnoresInboundOriginFrames),
            ]
    }
 }

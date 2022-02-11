@@ -233,9 +233,10 @@ extension NIOHTTP2Handler {
         var result: StateMachineResultWithEffect
 
         switch frame.payload {
-        case .alternativeService, .origin:
-            // TODO(cory): Implement
-            fatalError("Currently some frames are unhandled.")
+        case .alternativeService(let origin, let field):
+            result = self.stateMachine.receiveAlternativeService(origin: origin, field: field)
+        case .origin(let origins):
+            result = self.stateMachine.receiveOrigin(origins: origins)
         case .data(let dataBody):
             result = self.stateMachine.receiveData(streamID: frame.streamID, contentLength: dataBody.data.readableBytes, flowControlledBytes: flowControlledLength, isEndStreamSet: dataBody.endStream)
         case .goAway(let lastStreamID, _, _):
@@ -422,9 +423,12 @@ extension NIOHTTP2Handler {
         let result: StateMachineResultWithEffect
 
         switch frame.payload {
-        case .alternativeService, .origin:
-            // TODO(cory): Implement
-            fatalError("Currently some frames are unhandled.")
+        case .alternativeService(let origin, let field):
+            // Returns 'Never'; alt service frames are not currently handled.
+            self.stateMachine.sendAlternativeService(origin: origin, field: field)
+        case .origin(let origins):
+            // Returns 'Never'; origin frames are not currently handled.
+            self.stateMachine.sendOrigin(origins: origins)
         case .data(let data):
             // TODO(cory): Correctly account for padding data.
             result = self.stateMachine.sendData(streamID: frame.streamID, contentLength: data.data.readableBytes, flowControlledBytes: data.data.readableBytes, isEndStreamSet: data.endStream)

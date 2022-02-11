@@ -1441,6 +1441,45 @@ extension HTTP2ConnectionStateMachine {
             preconditionFailure("Must not be left in modifying state")
         }
     }
+
+    /// Called when an ALTSVC frame has been received.
+    ///
+    /// At present the frame is unconditionally ignored.
+    mutating func receiveAlternativeService(origin: String?, field: ByteBuffer?) -> StateMachineResultWithEffect {
+        // We don't support ALTSVC frames right now so we just ignore them.
+        //
+        // From RFC 7838 § 4:
+        //   > The ALTSVC frame is a non-critical extension to HTTP/2.  Endpoints
+        //   > that do not support this frame will ignore it (as per the
+        //   > extensibility rules defined in Section 4.1 of RFC7540).
+        return .init(result: .ignoreFrame, effect: .none)
+    }
+
+    /// Called when an ALTSVC frame is sent.
+    ///
+    /// At present the frame is not handled, calling this function will trap.
+    mutating func sendAlternativeService(origin: String?, field: ByteBuffer?) -> Never {
+        fatalError("Currently ALTSVC frames are unhandled.")
+    }
+
+    /// Called when an ORIGIN frame has been received.
+    ///
+    /// At present the frame is unconditionally ignored.
+    mutating func receiveOrigin(origins: [String]) -> StateMachineResultWithEffect {
+        // We don't support ORIGIN frames right now so we just ignore them.
+        //
+        // From RFC 8336 § 2.1:
+        //   > The ORIGIN frame is a non-critical extension to HTTP/2.  Endpoints
+        //   > that do not support this frame can safely ignore it upon receipt.
+        return .init(result: .ignoreFrame, effect: .none)
+    }
+
+    /// Called when an ORIGIN frame is sent.
+    ///
+    /// At present the frame is not handled, calling this function will trap.
+    mutating func sendOrigin(origins: [String]) -> Never {
+        fatalError("Currently ORIGIN frames are unhandled.")
+    }
 }
 
 // Mark:- Private helper methods

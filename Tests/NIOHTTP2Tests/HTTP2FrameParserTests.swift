@@ -1806,7 +1806,7 @@ class HTTP2FrameParserTests: XCTestCase {
         
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x2a,           // 3-byte payload length (42 bytes)
-            0x0c,                       // 1-byte frame type (ALTSVC)
+            0x0c,                       // 1-byte frame type (ORIGIN)
             0x00,                       // 1-byte flags (none)
             0x00, 0x00, 0x00, 0x00,     // 4-byte stream identifier,
         ]
