@@ -647,6 +647,48 @@ class HTTP2FrameParserTests: XCTestCase {
             }
         })
     }
+
+    func testHeadersFrameDecodingWithPriorityAndIncorrectLength() throws {
+        for invalidLength in UInt8(0) ... UInt8(4) {
+            let frameBytes: [UInt8] = [
+                0x00, 0x00, invalidLength,  // 3-byte payload length ('invalidLength' bytes)
+                0x01,                       // 1-byte frame type (HEADERS)
+                0x24,                       // 1-byte flags (END_HEADERS, PRIORITY)
+                0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
+                0x80, 0x00, 0x00, 0x01,     // 4-byte stream dependency (top bit = exclusive)
+                0x01,                       // 1-byte weight (1)
+            ]
+
+            var buf = self.byteBuffer(withBytes: frameBytes)
+            var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+
+            decoder.append(bytes: &buf)
+            XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
+                guard let connErr = err as? InternalError, case .codecError(code: .protocolError) = connErr else {
+                    XCTFail("Should have thrown a codec error of type PROTOCOL_ERROR")
+                    return
+                }
+            })
+        }
+    }
+
+    func testHeadersFrameDecodingWithPriorityAndCorrectLength() throws {
+        let frameBytes: [UInt8] = [
+            0x00, 0x00, 0x05,           // 3-byte payload length (5 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x24,                       // 1-byte flags (END_HEADERS, PRIORITY)
+            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
+            0x80, 0x00, 0x00, 0x01,     // 4-byte stream dependency (top bit = exclusive)
+            0x01,                       // 1-byte weight (1)
+        ]
+
+        let priorityData = HTTP2Frame.StreamPriorityData(exclusive: true, dependency: HTTP2StreamID(1), weight: 1)
+        let expectedFrame = HTTP2Frame(streamID: HTTP2StreamID(3),
+                                       payload: .headers(.init(headers: [:], priorityData: priorityData, endStream: false)))
+
+        var buf = byteBuffer(withBytes: frameBytes)
+        try assertReadsFrame(from: &buf, matching: expectedFrame)
+    }
     
     func testHeadersFrameEncodingNoPriority() throws {
         let streamID = HTTP2StreamID(1)

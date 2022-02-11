@@ -48,6 +48,8 @@ extension HTTP2FrameParserTests {
                 ("testHeadersFrameDecodingWithPriorityNoPadding", testHeadersFrameDecodingWithPriorityNoPadding),
                 ("testHeadersFrameDecodingWithPriorityWithPadding", testHeadersFrameDecodingWithPriorityWithPadding),
                 ("testHeadersFrameDecodeFailures", testHeadersFrameDecodeFailures),
+                ("testHeadersFrameDecodingWithPriorityAndIncorrectLength", testHeadersFrameDecodingWithPriorityAndIncorrectLength),
+                ("testHeadersFrameDecodingWithPriorityAndCorrectLength", testHeadersFrameDecodingWithPriorityAndCorrectLength),
                 ("testHeadersFrameEncodingNoPriority", testHeadersFrameEncodingNoPriority),
                 ("testHeadersFrameEncodingWithPriority", testHeadersFrameEncodingWithPriority),
                 ("testPriorityFrameDecoding", testPriorityFrameDecoding),

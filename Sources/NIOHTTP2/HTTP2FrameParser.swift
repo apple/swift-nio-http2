@@ -686,6 +686,11 @@ struct HTTP2FrameDecoder {
 
         let priorityData: HTTP2Frame.StreamPriorityData?
         if flags.contains(.priority) {
+            // Validate that the length includes the priority data.
+            guard bytesToRead >= 5 else {
+                throw InternalError.codecError(code: .protocolError)
+            }
+
             let raw: UInt32 = bytes.readInteger()!
             priorityData = HTTP2Frame.StreamPriorityData(exclusive: (raw & 0x8000_0000 != 0),
                                                          dependency: HTTP2StreamID(networkID: raw),
