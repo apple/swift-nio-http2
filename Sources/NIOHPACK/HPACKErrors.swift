@@ -120,7 +120,7 @@ public enum NIOHPACKErrors {
     }
 
     /// The integer being decoded is not representable by this implementation.
-    internal struct UnrepresentableInteger: NIOHPACKError {
+    public struct UnrepresentableInteger: NIOHPACKError {
         public init() {}
     }
 }
