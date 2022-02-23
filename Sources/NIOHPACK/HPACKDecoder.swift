@@ -107,37 +107,41 @@ public struct HPACKDecoder {
     /// - Returns: An array of (name, value) pairs.
     /// - Throws: HpackDecoder.Error in the event of a decode failure.
     public mutating func decodeHeaders(from buffer: inout ByteBuffer) throws -> HPACKHeaders {
-        // take a local copy to mutate
-        var bufCopy = buffer
-        var headers: [HPACKHeader] = []
-        headers.reserveCapacity(16)
+        let readerIndex = buffer.readerIndex
 
-        var listSize = 0
+        do {
+            var headers: [HPACKHeader] = []
+            headers.reserveCapacity(16)
 
-        while bufCopy.readableBytes > 0 {
-            switch try self.decodeHeader(from: &bufCopy) {
-            case .tableSizeChange:
-                // RFC 7541 § 4.2 <https://httpwg.org/specs/rfc7541.html#maximum.table.size>:
-                //
-                // 2. "This dynamic table size update MUST occur at the beginning of the first header block
-                //    following the change to the dynamic table size."
-                guard headers.count == 0 else {
-                    // If our decode buffer has any data in it, then this is out of place.
-                    // Treat it as an invalid input
-                    throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
+            var listSize = 0
+
+            while buffer.readableBytes > 0 {
+                switch try self.decodeHeader(from: &buffer) {
+                case .tableSizeChange:
+                    // RFC 7541 § 4.2 <https://httpwg.org/specs/rfc7541.html#maximum.table.size>:
+                    //
+                    // 2. "This dynamic table size update MUST occur at the beginning of the first header block
+                    //    following the change to the dynamic table size."
+                    guard headers.count == 0 else {
+                        // If our decode buffer has any data in it, then this is out of place.
+                        // Treat it as an invalid input
+                        throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
+                    }
+                case .header(let header):
+                    listSize += header.size
+                    guard listSize <= self.maxHeaderListSize else {
+                        throw NIOHPACKErrors.MaxHeaderListSizeViolation()
+                    }
+
+                    headers.append(header)
                 }
-            case .header(let header):
-                listSize += header.size
-                guard listSize <= self.maxHeaderListSize else {
-                    throw NIOHPACKErrors.MaxHeaderListSizeViolation()
-                }
-
-                headers.append(header)
             }
+
+            return HPACKHeaders(headers: headers)
+        } catch {
+            buffer.moveReaderIndex(to: readerIndex)
+            throw error
         }
-        
-        buffer = bufCopy
-        return HPACKHeaders(headers: headers)
     }
 
     enum DecodeResult {
