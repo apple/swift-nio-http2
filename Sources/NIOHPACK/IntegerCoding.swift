@@ -31,7 +31,8 @@ func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
 
     let start = buffer.writerIndex
 
-    let k = (1 << prefix) - 1
+    // The prefix is always hard-coded, and must fit within 8, so unchecked math here is definitely safe.
+    let k = (1 &<< prefix) &- 1
     var initialByte = prefixBits
 
     if value < k {
@@ -48,15 +49,17 @@ func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
 
     // deduct the initial [prefix] bits from the value, then encode it seven bits at a time into
     // the remaining bytes.
-    var n = value - UInt(k)
+    // We can safely use unchecked subtraction here: we know that `k` is zero or greater, and that `value` is
+    // either the same value or greater. As a result, this can be unchecked: it's always safe.
+    var n = value &- UInt(k)
     while n >= 128 {
-        let nextByte = (1 << 7) | UInt8(n & 0x7f)
+        let nextByte = (1 << 7) | UInt8(truncatingIfNeeded: n & 0x7f)
         buffer.writeInteger(nextByte)
         n >>= 7
     }
 
-    buffer.writeInteger(UInt8(n))
-    return buffer.writerIndex - start
+    buffer.writeInteger(UInt8(truncatingIfNeeded: n))
+    return buffer.writerIndex &- start
 }
 
 fileprivate let valueMask: UInt8 = 127
