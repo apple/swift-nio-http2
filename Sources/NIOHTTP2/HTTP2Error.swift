@@ -1438,6 +1438,13 @@ internal enum InternalError: Error {
     case attemptedToCreateStream
 
     case codecError(code: HTTP2ErrorCode)
+
+    // Used to record that an impossible situation occured. Crashes in debug mode, errors in
+    // release mode.
+    static func impossibleSituation(file: StaticString = #file, line: UInt = #line) -> InternalError {
+        assertionFailure(file: file, line: line)
+        return .codecError(code: .internalError)
+    }
 }
 
 extension InternalError: Hashable { }

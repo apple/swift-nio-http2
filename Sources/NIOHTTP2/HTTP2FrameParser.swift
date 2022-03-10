@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2017-2021 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2017-2022 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -15,14 +15,8 @@
 import NIOCore
 import NIOHPACK
 
-// FIXME(jim): Need to improve the buffering behavior so we're not manually copying every byte we see.
-fileprivate protocol BytesAccumulating {
-    mutating func accumulate(bytes: inout ByteBuffer)
-}
-
 /// Ingests HTTP/2 data and produces frames. You feed data in, and sometimes you'll get a complete frame out.
 struct HTTP2FrameDecoder {
-
     private static let clientMagicBytes = Array("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n".utf8)
 
     /// The result of a pass through the decoder state machine.
@@ -35,24 +29,35 @@ struct HTTP2FrameDecoder {
     private struct IgnoredFrame: Error {}
 
     /// The state for a parser that is waiting for the client magic.
-    private struct ClientMagicState: BytesAccumulating {
-        var pendingBytes: ByteBuffer! = nil
+    private struct ClientMagicState {
+        private var pendingBytes: ByteBuffer?
 
-        mutating func accumulate(bytes: inout ByteBuffer) {
-            guard var pendingBytes = self.pendingBytes else {
-                // Take a copy of the pending bytes, consume them.
-                self.pendingBytes = bytes
-                bytes.moveReaderIndex(to: bytes.writerIndex)
-                return
+        init() {
+            self.pendingBytes = nil
+        }
+
+        mutating func process() throws -> AccumulatingFrameHeaderParserState? {
+            // The client magic is 24 octets long: If we don't have it, keep waiting.
+            guard var pendingBytes = self.pendingBytes,
+                    let clientMagic = pendingBytes.readSlice(length: 24) else {
+                return nil
             }
-            _ = pendingBytes.writeBuffer(&bytes)
-            self.pendingBytes = pendingBytes
+
+            guard clientMagic.readableBytesView.elementsEqual(HTTP2FrameDecoder.clientMagicBytes) else {
+                throw NIOHTTP2Errors.badClientMagic()
+            }
+
+            return AccumulatingFrameHeaderParserState(unusedBytes: pendingBytes)
+        }
+
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.pendingBytes.setOrWriteImmutableBuffer(bytes)
         }
     }
 
     /// The state for a parser that is currently accumulating the bytes of a frame header.
-    private struct AccumulatingFrameHeaderParserState: BytesAccumulating {
-        var unusedBytes: ByteBuffer
+    private struct AccumulatingFrameHeaderParserState {
+        private(set) var unusedBytes: ByteBuffer
 
         init(unusedBytes: ByteBuffer) {
             self.unusedBytes = unusedBytes
@@ -63,24 +68,232 @@ struct HTTP2FrameDecoder {
             }
         }
 
-        mutating func accumulate(bytes: inout ByteBuffer) {
-            _ = self.unusedBytes.writeBuffer(&bytes)
+        enum NextState {
+            case awaitingPaddingLengthByte(AwaitingPaddingLengthByteParserState)
+            case accumulatingPayload(AccumulatingPayloadParserState)
+            case simulatingDataFrames(SimulatingDataFramesParserState)
+        }
+
+        /// Process the frame header.
+        ///
+        /// We have three possible transitions here: we can transition to awaiting a padding
+        /// length byte, we can transition to simulating data frames, or we can transition to
+        /// processing any non-padded non-DATA frame.
+        ///
+        /// We also do pro-active verification of the state here.
+        mutating func process(maxFrameSize: UInt32, maxHeaderListSize: Int) throws -> NextState? {
+            guard let header = self.unusedBytes.readFrameHeader() else {
+                return nil
+            }
+
+            // Confirm that SETTINGS_MAX_FRAME_SIZE is respected.
+            guard header.length <= maxFrameSize else {
+                throw InternalError.codecError(code: .frameSizeError)
+            }
+
+            switch header.type {
+            case .data:
+                // ensure we're on a valid stream
+                guard header.streamID != .rootStream else {
+                    // DATA frames cannot appear on the root stream
+                    throw InternalError.codecError(code: .protocolError)
+                }
+
+                if header.flags.contains(.padded) {
+                    guard header.length > 0 else {
+                        // There needs to be at least the padding length byte, so the minimum frame size is 1.
+                        throw InternalError.codecError(code: .protocolError)
+                    }
+                    return .awaitingPaddingLengthByte(
+                        AwaitingPaddingLengthByteParserState(fromAccumulatingFrameHeader: self, frameHeader: header)
+                    )
+                } else {
+                    return .simulatingDataFrames(
+                        SimulatingDataFramesParserState(fromIdle: self, header: header, remainingBytes: header.length)
+                    )
+                }
+
+            case .headers, .pushPromise:
+                // Before we move on, do a quick preflight: if this frame header is for a frame that will
+                // definitely violate SETTINGS_MAX_HEADER_LIST_SIZE, quit now.
+                if header.length > maxHeaderListSize {
+                    throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
+                }
+
+                if header.flags.contains(.padded) {
+                    guard header.length > 0 else {
+                        // There needs to be at least the padding length byte, so the minimum frame size is 1.
+                        throw InternalError.codecError(code: .protocolError)
+                    }
+                    
+                    return .awaitingPaddingLengthByte(
+                        AwaitingPaddingLengthByteParserState(fromAccumulatingFrameHeader: self, frameHeader: header)
+                    )
+                } else {
+                    return .accumulatingPayload(AccumulatingPayloadParserState(fromIdle: self, header: header))
+                }
+
+            default:
+                return .accumulatingPayload(AccumulatingPayloadParserState(fromIdle: self, header: header))
+            }
+        }
+
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.unusedBytes.writeImmutableBuffer(bytes)
+        }
+    }
+
+    private struct AwaitingPaddingLengthByteParserState {
+        private var header: FrameHeader
+        private var accumulatedBytes: ByteBuffer
+
+        init(fromAccumulatingFrameHeader state: AccumulatingFrameHeaderParserState, frameHeader: FrameHeader) {
+            precondition(frameHeader.type.supportsPadding)
+            precondition(frameHeader.flags.contains(.padded))
+
+            precondition(frameHeader.length > 0)
+            self.header = frameHeader
+            self.accumulatedBytes = state.unusedBytes
+        }
+
+        enum NextState {
+            case simulatingDataFrames(SimulatingDataFramesParserState)
+            case accumulatingPayload(AccumulatingPayloadParserState)
+        }
+
+        /// Process the padding length byte.
+        ///
+        /// Only HEADERS/PUSH_PROMISE and DATA frames can have padding length bytes,
+        /// so we can only go to the states that process those frames.
+        mutating func process() throws -> NextState? {
+            // If we can, strip the padding byte.
+            guard let expectedPadding = self.accumulatedBytes.readInteger(as: UInt8.self) else {
+                return nil
+            }
+
+            // Amend the header to remove the `.padded` flag and update the expected length.
+            // We know that `self.header.length > 0` (as shown in our init), so we can use unchecked math.
+            var unpaddedHeader = self.header
+            unpaddedHeader.flags.remove(.padded)
+            unpaddedHeader.length &-= 1
+
+            if unpaddedHeader.length < Int(expectedPadding) {
+                // Padding that exceeds the remaining payload size MUST be treated as a PROTOCOL_ERROR.
+                throw InternalError.codecError(code: .protocolError)
+            }
+
+            if unpaddedHeader.type == .data {
+                return .simulatingDataFrames(
+                    SimulatingDataFramesParserState(
+                        header: unpaddedHeader,
+                        accumulatedBytes: self.accumulatedBytes,
+                        expectedPadding: expectedPadding
+                    )
+                )
+            } else {
+                return .accumulatingPayload(
+                    AccumulatingPayloadParserState(
+                        header: unpaddedHeader,
+                        accumulatedBytes: self.accumulatedBytes,
+                        expectedPadding: expectedPadding
+                    )
+                )
+            }
+        }
+
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.accumulatedBytes.writeImmutableBuffer(bytes)
         }
     }
 
     /// The state for a parser that is currently accumulating payload data associated with
     /// a successfully decoded frame header.
-    private struct AccumulatingPayloadParserState: BytesAccumulating {
-        var header: FrameHeader
-        var accumulatedBytes: ByteBuffer
+    private struct AccumulatingPayloadParserState {
+        private(set) var header: FrameHeader
+        private var accumulatedBytes: ByteBuffer
+        private var expectedPadding: Int?
 
         init(fromIdle state: AccumulatingFrameHeaderParserState, header: FrameHeader) {
             self.header = header
             self.accumulatedBytes = state.unusedBytes
+            self.expectedPadding = nil
         }
 
-        mutating func accumulate(bytes: inout ByteBuffer) {
-            self.accumulatedBytes.writeBuffer(&bytes)
+        init(header: FrameHeader, accumulatedBytes: ByteBuffer, expectedPadding: UInt8) {
+            // In this state we must not see a .padded header: it has to have been stripped earlier.
+            // Do not remove this first precondition without removing the unchecked math in process().
+            precondition(header.length >= Int(expectedPadding))
+            precondition((!header.type.supportsPadding) || (!header.flags.contains(.padded)))
+
+            self.header = header
+            self.accumulatedBytes = accumulatedBytes
+            self.expectedPadding = Int(expectedPadding)
+        }
+
+        enum ProcessResult {
+            case accumulateHeaderBlockFragments(AccumulatingHeaderBlockFragmentsParserState)
+            case parseFrame(header: FrameHeader, payloadBytes: ByteBuffer, paddingBytes: Int?, nextState: AccumulatingFrameHeaderParserState)
+        }
+
+        /// Process a frame.
+        ///
+        /// This has two edges: either we parse out a frame body for consumption, or we jump over to
+        /// the CONTINUATION-sequence logic.
+        mutating func process() throws -> ProcessResult? {
+            switch self.header.type {
+            case .continuation:
+                // This is an unsolicited CONTINUATION frame
+                throw InternalError.codecError(code: .protocolError)
+
+            case .data:
+                // This is an internal programming error, we got into a bad state. DATA frames are
+                // handled separately.
+                throw InternalError.impossibleSituation()
+
+            default:
+                break
+            }
+
+            guard var payloadBytes = self.accumulatedBytes.readSlice(length: self.header.length) else {
+                return nil
+            }
+
+            // We're going to pretend the padding isn't there, by stripping off the trailing portion that contains the padding
+            // and rewriting the header to imply it was never there.
+            var syntheticHeader = self.header
+
+            if let padding = self.expectedPadding {
+                // Drop the padding off the back. The precondition in our constructor means we know that subtracting padding from
+                // the writer index and header length are both safe.
+                payloadBytes.moveWriterIndex(to: payloadBytes.writerIndex &- padding)
+                syntheticHeader.length &-= padding
+            }
+
+            // entire frame is available -- handle the beginning of a CONTINUATION sequence first.
+            if self.header.beginsContinuationSequence {
+                // don't emit these, coalesce them with following CONTINUATION frames
+                return .accumulateHeaderBlockFragments(
+                    AccumulatingHeaderBlockFragmentsParserState(
+                        header: syntheticHeader,
+                        initialPayload: payloadBytes,
+                        incomingPayload: self.accumulatedBytes,
+                        originalPaddingBytes: self.expectedPadding
+                    )
+                )
+            }
+
+            // Before we read the frame, we save our state back. This ensures that if we throw an error here, we've
+            // appropriately skipped the frame payload.
+            let expectedPadding = self.expectedPadding
+            let nextState = AccumulatingFrameHeaderParserState(unusedBytes: self.accumulatedBytes)
+
+            return .parseFrame(
+                header: syntheticHeader, payloadBytes: payloadBytes, paddingBytes: expectedPadding, nextState: nextState
+            )
+        }
+
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.accumulatedBytes.writeImmutableBuffer(bytes)
         }
     }
 
@@ -104,40 +317,180 @@ struct HTTP2FrameDecoder {
     /// partial frames. All subsequent partial frames have a flow controlled length of
     /// zero. This ensures that the upper layer can correctly enforce flow control
     /// windows.
-    private struct SimulatingDataFramesParserState: BytesAccumulating {
-        var header: FrameHeader
-        var payload: ByteBuffer
-        let expectedPadding: UInt8
-        var remainingByteCount: Int
-        private var _flowControlledLength: Int
+    private struct SimulatingDataFramesParserState {
+        private(set) var header: FrameHeader
+        private var payload: ByteBuffer
+        private var remainingByteCount: Int
+        private var flowControlledLength: Int
+        private var expectedPadding: Int?
 
-        init(fromIdle state: AccumulatingFrameHeaderParserState, header: FrameHeader, expectedPadding: UInt8, remainingBytes: Int) {
+        init(fromIdle state: AccumulatingFrameHeaderParserState, header: FrameHeader, remainingBytes: Int) {
             self.header = header
             self.payload = state.unusedBytes
-            self.expectedPadding = expectedPadding
+            self.expectedPadding = nil
             self.remainingByteCount = remainingBytes
-            self._flowControlledLength = header.length
+            self.flowControlledLength = header.length
         }
 
-        init(fromAccumulatingPayload state: AccumulatingPayloadParserState, expectedPadding: UInt8, remainingBytes: Int) {
-            self.header = state.header
-            self.payload = state.accumulatedBytes
-            self.expectedPadding = expectedPadding
-            self.remainingByteCount = remainingBytes
-            self._flowControlledLength = state.header.length
+        init(header: FrameHeader, accumulatedBytes: ByteBuffer, expectedPadding: UInt8) {
+            // In this state we must not see a .padded header: it has to have been stripped earlier.
+            precondition(header.length >= Int(expectedPadding))
+            precondition((!header.type.supportsPadding) || (!header.flags.contains(.padded)))
+
+            self.header = header
+            self.payload = accumulatedBytes
+            self.expectedPadding = Int(expectedPadding)
+            self.remainingByteCount = header.length
+            self.flowControlledLength = header.length + 1  // Include the .padding byte
         }
 
-        mutating func accumulate(bytes: inout ByteBuffer) {
-            self.payload.writeBuffer(&bytes)
+        /// The result of successful processing: we always produce a DATA frame, and have
+        /// to jump to a new state.
+        struct ProcessResult {
+            var frame: HTTP2Frame
+            var flowControlledLength: Int
+            var nextState: NextState
         }
 
-        /// Obtains the flow controlled length, and sets it to zero for the rest of this DATA
-        /// frame.
-        mutating func flowControlledLength() -> Int {
-            defer {
-                self._flowControlledLength = 0
+        enum NextState {
+            case simulatingDataFrames(SimulatingDataFramesParserState)
+            case strippingTrailingPadding(StrippingTrailingPaddingState)
+            case accumulatingFrameHeader(AccumulatingFrameHeaderParserState)
+        }
+
+        /// Process a frame while we're synthesizing data frames.
+        ///
+        /// In this state if we succesfully move forward at all we'll produce a DATA frame, as
+        /// well as a new target state.
+        mutating func process() throws -> ProcessResult? {
+            // Sanity checking: the padded flag should be gone.
+            assert(!self.header.flags.contains(.padded))
+
+            let payloadSize = self.remainingByteCount - (self.expectedPadding ?? 0)
+            guard payloadSize >= 0 else {
+                // This math shouldn't end up short, but we'll defend against it anyway.
+                throw InternalError.impossibleSituation()
             }
-            return self._flowControlledLength
+
+            if payloadSize > 0 && self.payload.readableBytes == 0 {
+                // We can't make progress here, return early.
+                return nil
+            }
+
+            // create a frame using these bytes, or a subset thereof
+            let dataPayload: HTTP2Frame.FramePayload.Data
+            let nextState: NextState
+
+            // We extract the flow controlled length early because we only ever emit it once for a given frame. We set it to zero here so that all other frames will
+            // return 0 as a flow controlled length.
+            let flowControlledLength = self.flowControlledLength
+            self.flowControlledLength = 0
+
+            if let frameByteSlice = self.payload.readSlice(length: payloadSize) {
+                // Here we have the last actual bytes of the payload.
+                // As this is the final bytes of the payload, we report the padding size here (it conceptually trails) and the
+                // value of the END_STREAM flag.
+                dataPayload = HTTP2Frame.FramePayload.Data(
+                    data: .byteBuffer(frameByteSlice),
+                    endStream: self.header.flags.contains(.endStream),
+                    paddingBytes: self.expectedPadding
+                )
+                nextState = self.computeNextStateForFinalFrame()
+            } else {
+                dataPayload = self.createSynthesizedFrame()
+                nextState = .simulatingDataFrames(self)
+            }
+
+            let outputFrame = HTTP2Frame(streamID: self.header.streamID, payload: .data(dataPayload))
+            return ProcessResult(frame: outputFrame, flowControlledLength: flowControlledLength, nextState: nextState)
+        }
+
+        private func computeNextStateForFinalFrame() -> NextState {
+            if let padding = self.expectedPadding, padding > 0 {
+                // We need to strip the padding.
+                return .strippingTrailingPadding(
+                    StrippingTrailingPaddingState(
+                        fromSimulatingDataFramesState: self,
+                        excessBytes: self.payload,
+                        expectedPadding: padding
+                    )
+                )
+            } else {
+                return .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: self.payload))
+            }
+        }
+
+        private mutating func createSynthesizedFrame() -> HTTP2Frame.FramePayload.Data {
+            // We don't want to synthesise empty data frames. Zero-length data frames go through a different method
+            // branch.
+            precondition(self.payload.readableBytes > 0)
+
+            let frameBytes = self.payload      // entire thing
+            self.remainingByteCount -= frameBytes.readableBytes
+            self.payload.quietlyReset()
+
+            return HTTP2Frame.FramePayload.Data(
+                data: .byteBuffer(frameBytes),
+                endStream: false, // We're synthesising frames, there can't be END_STREAM here.
+                paddingBytes: nil // We put all the padding on the last frame in the sequence.
+            )
+        }
+
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.payload.writeImmutableBuffer(bytes)
+        }
+    }
+
+    /// State for a parser that is stripping trailing padidng from a frame.
+    ///
+    /// This is currently used for DATA frames only. For HEADERS/PUSH_PROMISE frames the edges around
+    /// CONTINUATION frames mean that it's easier for us to await the entire frame, including padding,
+    /// before we strip it.
+    private struct StrippingTrailingPaddingState {
+        private var header: FrameHeader
+        private var excessBytes: ByteBuffer
+        private var expectedPadding: Int
+
+        init(fromSimulatingDataFramesState state: SimulatingDataFramesParserState, excessBytes: ByteBuffer, expectedPadding: Int) {
+            precondition(expectedPadding > 0)
+
+            self.header = state.header
+            self.excessBytes = excessBytes
+            self.expectedPadding = expectedPadding
+        }
+
+        init(fromAccumulatingPayloadState state: AccumulatingPayloadParserState, excessBytes: ByteBuffer, expectedPadding: Int) {
+            precondition(expectedPadding > 0)
+
+            self.header = state.header
+            self.excessBytes = excessBytes
+            self.expectedPadding = expectedPadding
+        }
+
+        enum NextState {
+            case accumulatingFrameHeader(AccumulatingFrameHeaderParserState)
+            case strippingTrailingPadding(StrippingTrailingPaddingState)
+        }
+
+        mutating func process() -> NextState? {
+            if self.excessBytes.readableBytes >= self.expectedPadding {
+                // All the padding is here.
+                self.excessBytes.moveReaderIndex(forwardBy: self.expectedPadding)
+                return .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: self.excessBytes))
+            } else if self.excessBytes.readableBytes > 0 {
+                // We're short on padding. Strip some and move forward.
+                // Unchecked is safe here: we know that `readableBytes` is positive, and smaller than `expectedPadding`.
+                self.expectedPadding &-= self.excessBytes.readableBytes
+                self.excessBytes.moveReaderIndex(to: self.excessBytes.writerIndex)
+                return .strippingTrailingPadding(self)
+            } else {
+                // Do nothing, we don't have any bytes to consume.
+                return nil
+            }
+        }
+
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.excessBytes.writeImmutableBuffer(bytes)
         }
     }
 
@@ -145,24 +498,64 @@ struct HTTP2FrameDecoder {
     ///
     /// The CONTINUATION frame must follow from an existing HEADERS or PUSH_PROMISE frame,
     /// whose details are kept in this state.
-    private struct AccumulatingContinuationPayloadParserState: BytesAccumulating {
-//        var headerBlockState: AccumulatingHeaderBlockFragmentsParserState
-        let initialHeader: FrameHeader
-        let continuationHeader: FrameHeader
-        let currentFrameBytes: ByteBuffer
-
-        var continuationPayload: ByteBuffer
+    private struct AccumulatingContinuationPayloadParserState {
+        private var initialHeader: FrameHeader
+        private var continuationHeader: FrameHeader
+        private var currentFrameBytes: ByteBuffer
+        private var continuationPayload: ByteBuffer
+        private var originalPaddingBytes: Int?
 
         init(fromAccumulatingHeaderBlockFragments acc: AccumulatingHeaderBlockFragmentsParserState,
              continuationHeader: FrameHeader) {
+            precondition(acc.header.beginsContinuationSequence)
+            precondition(continuationHeader.type == .continuation)
+
             self.initialHeader = acc.header
             self.continuationHeader = continuationHeader
             self.currentFrameBytes = acc.accumulatedPayload
             self.continuationPayload = acc.incomingPayload
+            self.originalPaddingBytes = acc.originalPaddingBytes
         }
 
-        mutating func accumulate(bytes: inout ByteBuffer) {
-            self.continuationPayload.writeBuffer(&bytes)
+        /// The result of successful processing: we either produce a frame and move to the new accumulating state,
+        /// or we continue accumulating
+        enum ProcessResult {
+            case accumulateContinuationHeader(AccumulatingHeaderBlockFragmentsParserState)
+            case parseFrame(header: FrameHeader, payloadBytes: ByteBuffer, paddingBytes: Int?, nextState: AccumulatingFrameHeaderParserState)
+        }
+
+        mutating func process() throws -> ProcessResult? {
+            guard let continuationPayload = self.continuationPayload.readSlice(length: self.continuationHeader.length) else {
+                return nil
+            }
+
+            // We need to flatten this out. Let's synthesise a new frame with a new header.
+            var header = self.initialHeader
+            header.length += self.continuationHeader.length
+            self.currentFrameBytes.writeImmutableBuffer(continuationPayload)
+            let payload = self.currentFrameBytes
+
+            // we have collected enough bytes: is this the last CONTINUATION frame?
+            guard self.continuationHeader.flags.contains(.endHeaders) else {
+                // nope, switch back to accumulating fragments
+                return .accumulateContinuationHeader(
+                    AccumulatingHeaderBlockFragmentsParserState(
+                        header: header,
+                        initialPayload: payload,
+                        incomingPayload: self.continuationPayload,
+                        originalPaddingBytes: self.originalPaddingBytes
+                    )
+                )
+            }
+
+            // It is! Let's add .endHeaders to our fake frame.
+            header.flags.formUnion(.endHeaders)
+            let nextState = AccumulatingFrameHeaderParserState(unusedBytes: self.continuationPayload)
+            return .parseFrame(header: header, payloadBytes: payload, paddingBytes: self.originalPaddingBytes, nextState: nextState)
+        }
+
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.continuationPayload.writeImmutableBuffer(bytes)
         }
     }
 
@@ -171,32 +564,48 @@ struct HTTP2FrameDecoder {
     ///
     /// The `incomingPayload` member holds any bytes from a following frame that haven't yet
     /// accumulated enough to parse the next frame and move to the next state.
-    private struct AccumulatingHeaderBlockFragmentsParserState: BytesAccumulating {
-        var header: FrameHeader
-        var accumulatedPayload: ByteBuffer
-        var incomingPayload: ByteBuffer
+    private struct AccumulatingHeaderBlockFragmentsParserState {
+        private(set) var header: FrameHeader
+        private(set) var accumulatedPayload: ByteBuffer
+        private(set) var incomingPayload: ByteBuffer
+        private(set) var originalPaddingBytes: Int?
 
-        init(fromAccumulatingPayload acc: AccumulatingPayloadParserState, initialPayload: ByteBuffer) {
-            self.header = acc.header
+        init(header: FrameHeader, initialPayload: ByteBuffer, incomingPayload: ByteBuffer, originalPaddingBytes: Int?) {
+            precondition(header.beginsContinuationSequence)
+            self.header = header
             self.accumulatedPayload = initialPayload
-            self.incomingPayload = acc.accumulatedBytes
+            self.incomingPayload = incomingPayload
+            self.originalPaddingBytes = originalPaddingBytes
         }
 
-        init(fromAccumulatingContinuation acc: AccumulatingContinuationPayloadParserState) {
-            precondition(acc.continuationPayload.readableBytes >= acc.continuationHeader.length)
+        mutating func process(maxHeaderListSize: Int) throws -> AccumulatingContinuationPayloadParserState? {
+            // we have an entire HEADERS/PUSH_PROMISE frame, but one or more CONTINUATION frames
+            // are arriving. Wait for them.
+            guard let header = self.incomingPayload.readFrameHeader() else {
+                return nil
+            }
 
-            self.header = acc.initialHeader
-            self.header.length += acc.continuationHeader.length
-            self.accumulatedPayload = acc.currentFrameBytes
-            self.incomingPayload = acc.continuationPayload
+            // incoming frame: should be CONTINUATION
+            guard header.type == .continuation else {
+                throw InternalError.codecError(code: .protocolError)
+            }
 
-            // strip off the continuation payload from the incoming payload
-            var slice = self.incomingPayload.readSlice(length: acc.continuationHeader.length)!
-            self.accumulatedPayload.writeBuffer(&slice)
+            // This must be for the stream we're buffering header block fragments for, or this is an error.
+            guard header.streamID == self.header.streamID else {
+                throw InternalError.codecError(code: .protocolError)
+            }
+
+            // Check whether there is any possibility of this payload decompressing and fitting in max header list size.
+            // If there isn't, kill it.
+            guard self.header.length + header.length <= maxHeaderListSize else {
+                throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
+            }
+
+            return AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: self, continuationHeader: header)
         }
 
-        mutating func accumulate(bytes: inout ByteBuffer) {
-            self.incomingPayload.writeBuffer(&bytes)
+        mutating func accumulate(bytes: ByteBuffer) {
+            self.incomingPayload.writeImmutableBuffer(bytes)
         }
     }
 
@@ -210,12 +619,18 @@ struct HTTP2FrameDecoder {
         /// We are not in the middle of parsing any frames, we're waiting for a full frame header to arrive.
         case accumulatingFrameHeader(AccumulatingFrameHeaderParserState)
 
+        /// We're waiting for the padding length byte.
+        case awaitingPaddingLengthByte(AwaitingPaddingLengthByteParserState)
+
         /// We are accumulating payload bytes for a single frame.
-        case accumulatingData(AccumulatingPayloadParserState)
+        case accumulatingPayload(AccumulatingPayloadParserState)
 
         /// We are receiving bytes from a DATA frame payload, and are emitting multiple DATA frames,
         /// one for each chunk of bytes we see here.
         case simulatingDataFrames(SimulatingDataFramesParserState)
+
+        /// We've parsed a frame, but we're eating the trailing padding.
+        case strippingTrailingPadding(StrippingTrailingPaddingState)
 
         /// We are accumulating a CONTINUATION frame.
         case accumulatingContinuationPayload(AccumulatingContinuationPayloadParserState)
@@ -225,11 +640,51 @@ struct HTTP2FrameDecoder {
 
         /// A temporary state where we are appending data to a buffer. Must always be exited after the append operation.
         case appending
+
+        // MARK: Constructors from the sub-state results. This just hides some noise in the state machine code.
+        init(_ targetState: AccumulatingFrameHeaderParserState.NextState) {
+            switch targetState {
+            case .awaitingPaddingLengthByte(let state):
+                self = .awaitingPaddingLengthByte(state)
+            case .accumulatingPayload(let state):
+                self = .accumulatingPayload(state)
+            case .simulatingDataFrames(let state):
+                self = .simulatingDataFrames(state)
+            }
+        }
+
+        init(_ targetState: AwaitingPaddingLengthByteParserState.NextState) {
+            switch targetState {
+            case .accumulatingPayload(let state):
+                self = .accumulatingPayload(state)
+            case .simulatingDataFrames(let state):
+                self = .simulatingDataFrames(state)
+            }
+        }
+
+        init(_ targetState: SimulatingDataFramesParserState.NextState) {
+            switch targetState {
+            case .accumulatingFrameHeader(let state):
+                self = .accumulatingFrameHeader(state)
+            case .simulatingDataFrames(let state):
+                self = .simulatingDataFrames(state)
+            case .strippingTrailingPadding(let state):
+                self = .strippingTrailingPadding(state)
+            }
+        }
+
+        init(_ targetState: StrippingTrailingPaddingState.NextState) {
+            switch targetState {
+            case .strippingTrailingPadding(let state):
+                self = .strippingTrailingPadding(state)
+            case .accumulatingFrameHeader(let state):
+                self = .accumulatingFrameHeader(state)
+            }
+        }
     }
 
     internal var headerDecoder: HPACKDecoder
     private var state: ParserState
-    private var allocator: ByteBufferAllocator
 
     // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
     internal var maxFrameSize: UInt32 = 1<<14
@@ -241,11 +696,10 @@ struct HTTP2FrameDecoder {
     /// - parameter expectClientMagic: Whether the parser should expect to receive the bytes of
     ///                                client magic string before frame parsing begins.
     init(allocator: ByteBufferAllocator, expectClientMagic: Bool) {
-        self.allocator = allocator
         self.headerDecoder = HPACKDecoder(allocator: allocator)
 
         if expectClientMagic {
-            self.state = .awaitingClientMagic(ClientMagicState(pendingBytes: nil))
+            self.state = .awaitingClientMagic(ClientMagicState())
         } else {
             self.state = .initialized
         }
@@ -257,40 +711,48 @@ struct HTTP2FrameDecoder {
     /// be decoded from the bytes previously accumulated.
     ///
     /// - Parameter bytes: Raw bytes received, ready to decode.
-    mutating func append(bytes: inout ByteBuffer) {
+    mutating func append(bytes: ByteBuffer) {
         switch self.state {
         case .awaitingClientMagic(var state):
             self.avoidingParserCoW { newState in
-                state.accumulate(bytes: &bytes)
+                state.accumulate(bytes: bytes)
                 newState = .awaitingClientMagic(state)
             }
         case .initialized:
-            // No need for the CoW helper here, as moveReaderIndex does not CoW.
             self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
-            bytes.moveReaderIndex(to: bytes.writerIndex)        // we ate all the bytes
         case .accumulatingFrameHeader(var state):
             self.avoidingParserCoW { newState in
-                state.accumulate(bytes: &bytes)
+                state.accumulate(bytes: bytes)
                 newState = .accumulatingFrameHeader(state)
             }
-        case .accumulatingData(var state):
+        case .awaitingPaddingLengthByte(var state):
             self.avoidingParserCoW { newState in
-                state.accumulate(bytes: &bytes)
-                newState = .accumulatingData(state)
+                state.accumulate(bytes: bytes)
+                newState = .awaitingPaddingLengthByte(state)
+            }
+        case .accumulatingPayload(var state):
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: bytes)
+                newState = .accumulatingPayload(state)
             }
         case .simulatingDataFrames(var state):
             self.avoidingParserCoW { newState in
-                state.accumulate(bytes: &bytes)
+                state.accumulate(bytes: bytes)
                 newState = .simulatingDataFrames(state)
+            }
+        case .strippingTrailingPadding(var state):
+            self.avoidingParserCoW { newState in
+                state.accumulate(bytes: bytes)
+                newState = .strippingTrailingPadding(state)
             }
         case .accumulatingContinuationPayload(var state):
             self.avoidingParserCoW { newState in
-                state.accumulate(bytes: &bytes)
+                state.accumulate(bytes: bytes)
                 newState = .accumulatingContinuationPayload(state)
             }
         case .accumulatingHeaderBlockFragments(var state):
             self.avoidingParserCoW { newState in
-                state.accumulate(bytes: &bytes)
+                state.accumulate(bytes: bytes)
                 newState = .accumulatingHeaderBlockFragments(state)
             }
         case .appending:
@@ -306,373 +768,209 @@ struct HTTP2FrameDecoder {
     ///           rules.
     mutating func nextFrame() throws -> (HTTP2Frame, flowControlledLength: Int)? {
         // Start running through our state machine until we run out of bytes or we emit a frame.
-        switch (try self.processNextState()) {
-        case .needMoreData:
-            return nil
-        case .frame(let frame, let flowControlledLength):
-            return (frame, flowControlledLength)
-        case .continue:
-            // tail-call ourselves
-            return try nextFrame()
+        while true {
+            switch (try self.processNextState()) {
+            case .needMoreData:
+                return nil
+            case .frame(let frame, let flowControlledLength):
+                return (frame, flowControlledLength)
+            case .continue:
+                continue
+            }
         }
+
     }
 
     private mutating func processNextState() throws -> ParseResult {
         switch self.state {
         case .awaitingClientMagic(var state):
-            // The client magic is 24 octets long: If we don't have it, keep waiting.
-            guard let clientMagic = state.pendingBytes.readBytes(length: 24) else {
+            guard let newState = try state.process() else {
                 return .needMoreData
             }
 
-            guard clientMagic == HTTP2FrameDecoder.clientMagicBytes else {
-                throw NIOHTTP2Errors.badClientMagic()
-            }
-
-            self.state = .accumulatingFrameHeader(.init(unusedBytes: state.pendingBytes))
+            self.state = .accumulatingFrameHeader(newState)
+            return .continue
 
         case .initialized:
             // no bytes, no frame
             return .needMoreData
 
         case .accumulatingFrameHeader(var state):
-            guard let header = state.unusedBytes.readFrameHeader() else {
+            guard let targetState = try state.process(maxFrameSize: self.maxFrameSize, maxHeaderListSize: self.headerDecoder.maxHeaderListSize) else {
                 return .needMoreData
             }
 
-            // Confirm that SETTINGS_MAX_FRAME_SIZE is respected.
-            guard header.length <= self.maxFrameSize else {
-                throw InternalError.codecError(code: .frameSizeError)
-            }
+            self.state = .init(targetState)
+            return .continue
 
-            if header.type != 0 {
-                // Not a DATA frame. Before we move on, do a quick preflight: if this frame header is for a frame that will
-                // definitely violate SETTINGS_MAX_HEADER_LIST_SIZE, quit now.
-                if header.type == 1 && header.length > self.headerDecoder.maxHeaderListSize {
-                    throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
-
-                }
-                self.state = .accumulatingData(AccumulatingPayloadParserState(fromIdle: state, header: header))
-            } else if header.flags.contains(.padded) {
-                // DATA frame with padding
-                guard let expectedPadding: UInt8 = state.unusedBytes.readInteger() else {
-                    // Wait for the padding byte to come in
-                    self.state = .accumulatingData(AccumulatingPayloadParserState(fromIdle: state, header: header))
-                    return .needMoreData
-                }
-
-                let remainingBytes = header.length - 1
-                guard remainingBytes >= Int(expectedPadding) else {
-                    // There may not be more padding bytes than the length of the frame allows
-                    throw InternalError.codecError(code: .protocolError)
-                }
-
-                self.state = .simulatingDataFrames(SimulatingDataFramesParserState(fromIdle: state, header: header, expectedPadding: expectedPadding, remainingBytes: remainingBytes))
-
-                // Emit an empty frame if we only have padding; .simulatingDataFrames will handle eating the padding.
-                if expectedPadding == remainingBytes {
-                    let streamID = HTTP2StreamID(networkID: header.rawStreamID)
-                    let dataPayload = HTTP2Frame.FramePayload.Data(data: .byteBuffer(self.allocator.buffer(capacity: 0)), endStream: header.flags.contains(.endStream), paddingBytes: nil)
-                    let outputFrame = HTTP2Frame(streamID: streamID, payload: .data(dataPayload))
-                    return .frame(outputFrame, flowControlledLength: header.length)
-                }
-            }
-            else {
-                // Un-padded DATA frame.
-                // ensure we're on a valid stream
-                guard header.rawStreamID != 0 else {
-                    // DATA frames cannot appear on the root stream
-                    throw InternalError.codecError(code: .protocolError)
-                }
-
-                // No padding and zero length so we can just emit an empty frame.
-                guard header.length > 0 else {
-                    let streamID = HTTP2StreamID(networkID: header.rawStreamID)
-                    let dataPayload = HTTP2Frame.FramePayload.Data(data: .byteBuffer(self.allocator.buffer(capacity: 0)), endStream: header.flags.contains(.endStream), paddingBytes: nil)
-                    let outputFrame = HTTP2Frame(streamID: streamID, payload: .data(dataPayload))
-                    self.state = .accumulatingFrameHeader(.init(unusedBytes: state.unusedBytes))
-                    return .frame(outputFrame, flowControlledLength: 0)
-                }
-
-                self.state = .simulatingDataFrames(SimulatingDataFramesParserState(fromIdle: state, header: header, expectedPadding: 0, remainingBytes: header.length))
-            }
-
-        case .accumulatingData(var state):
-            if state.header.type == 0 && state.accumulatedBytes.readableBytes > 0 {
-                // We now have enough bytes to read the expected padding
-                // We should only be here if it's a DATA frame with padding and we couldn't read
-                // the padding before:
-                precondition(state.header.flags.contains(.padded))
-                // force unwrap must succeed since we checked value of readableBytes
-                let expectedPadding: UInt8 = state.accumulatedBytes.readInteger()!
-                let remainingBytes = state.header.length - 1
-
-                self.state = .simulatingDataFrames(SimulatingDataFramesParserState(fromAccumulatingPayload: state, expectedPadding: expectedPadding, remainingBytes: state.header.length - 1))
-
-                // Emit an empty frame if we only have padding; .simulatingDataFrames will handle eating the padding.
-                if expectedPadding == remainingBytes {
-                    let streamID = HTTP2StreamID(networkID: state.header.rawStreamID)
-                    let dataPayload = HTTP2Frame.FramePayload.Data(data: .byteBuffer(self.allocator.buffer(capacity: 0)), endStream: state.header.flags.contains(.endStream), paddingBytes: nil)
-                    let outputFrame = HTTP2Frame(streamID: streamID, payload: .data(dataPayload))
-                    return .frame(outputFrame, flowControlledLength: state.header.length)
-                }
-
-                return .continue
-            }
-            guard state.header.type != 9 else {
-                // we shouldn't see any CONTINUATION frames in this state
-                throw InternalError.codecError(code: .protocolError)
-            }
-            guard state.accumulatedBytes.readableBytes >= state.header.length else {
+        case .awaitingPaddingLengthByte(var state):
+            guard let targetState = try state.process() else {
                 return .needMoreData
             }
 
-            // entire frame is available -- handle special cases (HEADERS/PUSH_PROMISE) first
-            if (state.header.type == 1 || state.header.type == 5) && !state.header.flags.contains(.endHeaders) {
-                // don't emit these, coalesce them with following CONTINUATION frames
-                // strip out the frame payload bytes
-                var payloadBytes = state.accumulatedBytes.readSlice(length: state.header.length)!
+            self.state = .init(targetState)
+            return .continue
 
-                // handle padding bytes, if any
-                if state.header.flags.contains(.padded) {
-                    // read the padding byte
-                    // we've already ascertained that there's at least one byte in the buffer
-                    let padding: UInt8 = payloadBytes.readInteger()!
-                    // remove that many bytes from the end of the payload buffer
-                    payloadBytes.moveWriterIndex(to: payloadBytes.writerIndex - Int(padding))
-                    state.header.flags.subtract(.padded)     // we ate the padding
-                    state.header.length -= Int(padding)      // shave the padding from the frame's length
-                }
 
-                self.state = .accumulatingHeaderBlockFragments(AccumulatingHeaderBlockFragmentsParserState(fromAccumulatingPayload: state,
-                                                                                                           initialPayload: payloadBytes))
-                return .continue
+        case .accumulatingPayload(var state):
+            guard let processResult = try state.process() else {
+                return .needMoreData
             }
 
-            // an entire frame's data, including HEADERS/PUSH_PROMISE with the END_HEADERS flag set
-            // this may legitimately return nil if we ignore the frame
-            let result = try self.readFrame(withHeader: state.header, from: &state.accumulatedBytes)
-            self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: state.accumulatedBytes))
+            switch processResult {
+            case .accumulateHeaderBlockFragments(let state):
+                self.state = .accumulatingHeaderBlockFragments(state)
+                return .continue
 
-            // if we got a frame, return it. If not that means we consumed and ignored a frame, so we
-            // should go round again.
-            // We cannot emit DATA frames from here, so the flow controlled length is always 0.
-            if let frame = result {
-                assert(state.header.type != 0, "Emitted invalid data frame")
-                return .frame(frame, flowControlledLength: 0)
+            case .parseFrame(header: let header, payloadBytes: var payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
+                // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
+                self.state = .accumulatingFrameHeader(nextState)
+
+                // an entire frame's data, including HEADERS/PUSH_PROMISE with the END_HEADERS flag set
+                // this may legitimately return nil if we ignore the frame
+                let result = try self.readFrame(withHeader: header, from: &payloadBytes, paddingBytes: paddingBytes)
+
+                if payloadBytes.readableBytes > 0 {
+                    // Enforce that we consumed all the bytes.
+                    throw InternalError.codecError(code: .frameSizeError)
+                }
+
+                // if we got a frame, return it. If not that means we consumed and ignored a frame, so we
+                // should go round again.
+                // We cannot emit DATA frames from here, so the flow controlled length is always 0.
+                if let frame = result {
+                    return .frame(frame, flowControlledLength: 0)
+                } else {
+                    return .continue
+                }
             }
 
         case .simulatingDataFrames(var state):
-            // NB: already checked for root stream before entering this state
-            if state.payload.readableBytes == 0 && (state.remainingByteCount - Int(state.expectedPadding)) > 0 {
-                // need more bytes!
+            guard let processResult = try state.process() else {
                 return .needMoreData
             }
 
-            if state.remainingByteCount <= Int(state.expectedPadding) {
-                // we're just eating pad bytes now, maintaining state and emitting nothing
-                if state.payload.readableBytes >= state.remainingByteCount {
-                    // we've got them all, move to idle state with any following bytes
-                    state.payload.moveReaderIndex(forwardBy: state.remainingByteCount)
-                    self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: state.payload))
-                    return .continue
-                } else {
-                    // stay in state and wait for more bytes
-                    return .needMoreData
-                }
+            self.state = .init(processResult.nextState)
+            return .frame(processResult.frame, flowControlledLength: processResult.flowControlledLength)
+
+        case .strippingTrailingPadding(var state):
+            guard let nextState = state.process() else {
+                return .needMoreData
             }
 
-            // create a frame using these bytes, or a subset thereof
-            var frameBytes: ByteBuffer
-            var nextState: ParserState
-            var flags: FrameFlags = state.header.flags
-
-            // We extract the flow controlled length early because we only ever emit it once for a given frame.
-            // This operation mutates the flow controlled length and sets it to zero, so it will always give an appropriate result.
-            let flowControlledLength = state.flowControlledLength()
-
-            if state.payload.readableBytes >= state.remainingByteCount {
-                // read all the bytes for this last frame
-                frameBytes = state.payload.readSlice(length: state.remainingByteCount - Int(state.expectedPadding))!
-                state.payload.moveReaderIndex(forwardBy: Int(state.expectedPadding))
-                if state.payload.readableBytes == 0 {
-                    state.payload.quietlyReset()
-                }
-
-                nextState = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: state.payload))
-            } else if state.payload.readableBytes >= state.remainingByteCount - Int(state.expectedPadding) {
-                // Here we have the last actual bytes of the payload, but haven't yet received all the
-                // padding bytes that follow to complete the frame.
-                frameBytes = state.payload.readSlice(length: state.remainingByteCount - Int(state.expectedPadding))!
-                state.remainingByteCount -= frameBytes.readableBytes
-                nextState = .simulatingDataFrames(state)        // we still need to consume the remaining padding bytes
-            } else {
-                frameBytes = state.payload      // entire thing
-                state.remainingByteCount -= frameBytes.readableBytes
-                state.payload.quietlyReset()
-                nextState = .simulatingDataFrames(state)
-                flags.remove(.endStream)  // Still simulating frames, this can't have END_STREAM on it.
-            }
-
-            let streamID = HTTP2StreamID(networkID: state.header.rawStreamID)
-
-            // TODO(cory): report padding length.
-            let dataPayload = HTTP2Frame.FramePayload.Data(data: .byteBuffer(frameBytes), endStream: flags.contains(.endStream), paddingBytes: nil)
-            let outputFrame = HTTP2Frame(streamID: streamID, payload: .data(dataPayload))
-            self.state = nextState
-            return .frame(outputFrame, flowControlledLength: flowControlledLength)
+            self.state = .init(nextState)
+            return .continue
 
         case .accumulatingContinuationPayload(var state):
-            guard state.continuationHeader.length <= state.continuationPayload.readableBytes else {
+            guard let processResult = try state.process() else {
                 return .needMoreData
             }
 
-            // we have collected enough bytes: is this the last CONTINUATION frame?
-            guard state.continuationHeader.flags.contains(.endHeaders) else {
-                // nope, switch back to accumulating fragments
-                self.state = .accumulatingHeaderBlockFragments(AccumulatingHeaderBlockFragmentsParserState(fromAccumulatingContinuation: state))
+            switch processResult {
+            case .accumulateContinuationHeader(let state):
+                self.state = .accumulatingHeaderBlockFragments(state)
                 return .continue
+
+            case .parseFrame(header: let header, payloadBytes: var payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
+                // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
+                self.state = .accumulatingFrameHeader(nextState)
+
+                // an entire frame's data, including HEADERS/PUSH_PROMISE with the END_HEADERS flag set
+                // this may legitimately return nil if we ignore the frame
+                let result = try self.readFrame(withHeader: header, from: &payloadBytes, paddingBytes: paddingBytes)
+
+                if payloadBytes.readableBytes > 0 {
+                    // Enforce that we consumed all the bytes.
+                    throw InternalError.codecError(code: .frameSizeError)
+                }
+
+                // if we got a frame, return it. If not that means we consumed and ignored a frame, so we
+                // should go round again.
+                // We cannot emit DATA frames from here, so the flow controlled length is always 0.
+                if let frame = result {
+                    return .frame(frame, flowControlledLength: 0)
+                } else {
+                    return .continue
+                }
             }
-
-            // it is, yay! Output a frame
-            var payload = state.currentFrameBytes
-            var continuationSlice = state.continuationPayload.readSlice(length: state.continuationHeader.length)!
-            payload.writeBuffer(&continuationSlice)
-
-            // we have something that looks just like a HEADERS or PUSH_PROMISE frame now
-            var header = state.initialHeader
-            header.length += state.continuationHeader.length
-            header.flags.formUnion(.endHeaders)
-            let frame = try self.readFrame(withHeader: header, from: &payload)
-            precondition(frame != nil)
-
-            // move to idle, passing in whatever was left after we consumed the CONTINUATION payload
-            self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: state.continuationPayload))
-
-            // Emit the frame. This can't be a DATA frame, so there is no flow controlled length here.
-            return .frame(frame!, flowControlledLength: 0)
 
         case .accumulatingHeaderBlockFragments(var state):
-            // we have an entire HEADERS/PUSH_PROMISE frame, but one or more CONTINUATION frames
-            // are arriving. Wait for them.
-            guard let header = state.incomingPayload.readFrameHeader() else {
+            guard let processResult = try state.process(maxHeaderListSize: self.headerDecoder.maxHeaderListSize) else {
                 return .needMoreData
             }
 
-            // incoming frame: should be CONTINUATION
-            guard header.type == 9 else {
-                throw InternalError.codecError(code: .protocolError)
-            }
-
-            // This must be for the stream we're buffering header block fragments for, or this is an error.
-            guard header.rawStreamID == state.header.rawStreamID else {
-                throw InternalError.codecError(code: .protocolError)
-            }
-
-            // Check whether there is any possibility of this payload decompressing and fitting in max header list size.
-            // If there isn't, kill it.
-            guard state.accumulatedPayload.readableBytes + header.length <= self.headerDecoder.maxHeaderListSize else {
-                throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
-            }
-
-            self.state = .accumulatingContinuationPayload(AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: state, continuationHeader: header))
+            self.state = .accumulatingContinuationPayload(processResult)
+            return .continue
 
         case .appending:
             preconditionFailure("Attempting to process in appending state")
         }
-
-        return .continue
     }
 
-    private mutating func readFrame(withHeader header: FrameHeader, from bytes: inout ByteBuffer) throws -> HTTP2Frame? {
-        assert(bytes.readableBytes >= header.length, "Buffer should contain at least \(header.length) bytes.")
+    private mutating func readFrame(withHeader header: FrameHeader, from bytes: inout ByteBuffer, paddingBytes: Int?) throws -> HTTP2Frame? {
+        assert(bytes.readableBytes == header.length, "Buffer should contain exactly \(header.length) bytes.")
 
         let flags = header.flags
-        let streamID = HTTP2StreamID(networkID: header.rawStreamID)
-        let frameEndIndex = bytes.readerIndex + header.length
+        let streamID = header.streamID
 
         let payload: HTTP2Frame.FramePayload
         do {
             switch header.type {
-            case 0:
-                payload = try self.parseDataFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
-            case 1:
+            case .data:
+                // Data frames never come through this flow.
+                preconditionFailure()
+            case .headers:
                 precondition(flags.contains(.endHeaders))
-                payload = try self.parseHeadersFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
-            case 2:
-                payload = try self.parsePriorityFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
-            case 3:
-                payload = try self.parseRstStreamFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
-            case 4:
-                payload = try self.parseSettingsFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
-            case 5:
+                payload = try self.parseHeadersFramePayload(
+                    streamID: streamID,
+                    flags: flags,
+                    bytes: &bytes,
+                    paddingBytes: paddingBytes
+                )
+            case .priority:
+                payload = try self.parsePriorityFramePayload(streamID: streamID, bytes: &bytes)
+            case .rstStream:
+                payload = try self.parseRstStreamFramePayload(streamID: streamID, bytes: &bytes)
+            case .settings:
+                payload = try self.parseSettingsFramePayload(streamID: streamID, flags: flags, bytes: &bytes)
+            case .pushPromise:
                 precondition(flags.contains(.endHeaders))
-                payload = try self.parsePushPromiseFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
-            case 6:
-                payload = try self.parsePingFramePayload(length: header.length, streamID: streamID, flags: flags, bytes: &bytes)
-            case 7:
-                payload = try self.parseGoAwayFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
-            case 8:
-                payload = try self.parseWindowUpdateFramePayload(length: header.length, bytes: &bytes)
-            case 9:
+                payload = try self.parsePushPromiseFramePayload(
+                    streamID: streamID,
+                    flags: flags,
+                    bytes: &bytes,
+                    paddingBytes: paddingBytes
+                )
+            case .ping:
+                payload = try self.parsePingFramePayload(streamID: streamID, flags: flags, bytes: &bytes)
+            case .goAway:
+                payload = try self.parseGoAwayFramePayload(streamID: streamID, bytes: &bytes)
+            case .windowUpdate:
+                payload = try self.parseWindowUpdateFramePayload(bytes: &bytes)
+            case .continuation:
                 // CONTINUATION frame should never be found here -- we should have handled them elsewhere
                 preconditionFailure("Unexpected continuation frame")
-            case 10:
-                payload = try self.parseAltSvcFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
-            case 12:
-                payload = try self.parseOriginFramePayload(length: header.length, streamID: streamID, bytes: &bytes)
+            case .altSvc:
+                payload = try self.parseAltSvcFramePayload(streamID: streamID, bytes: &bytes)
+            case .origin:
+                payload = try self.parseOriginFramePayload(streamID: streamID, bytes: &bytes)
             default:
                 // RFC 7540 § 4.1 https://httpwg.org/specs/rfc7540.html#FrameHeader
                 //    "Implementations MUST ignore and discard any frame that has a type that is unknown."
-                bytes.moveReaderIndex(to: frameEndIndex)
-                self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
+                bytes.moveReaderIndex(forwardBy: header.length)
                 return nil
             }
         } catch is IgnoredFrame {
-            bytes.moveReaderIndex(to: frameEndIndex)
-            self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
             return nil
         } catch _ as NIOHPACKError {
             // convert into a connection error of type COMPRESSION_ERROR
-            bytes.moveReaderIndex(to: frameEndIndex)
-            self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
             throw InternalError.codecError(code: .compressionError)
-        } catch {
-            bytes.moveReaderIndex(to: frameEndIndex)
-            self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
-            throw error
         }
 
-        // ensure we've consumed all the input bytes
-        bytes.moveReaderIndex(to: frameEndIndex)
-        self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
         return HTTP2Frame(streamID: streamID, payload: payload)
     }
 
-    private func parseDataFramePayload(length: Int, streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
-        // DATA frame : RFC 7540 § 6.1
-        guard streamID != .rootStream else {
-            // DATA frames MUST be associated with a stream. If a DATA frame is received whose
-            // stream identifier field is 0x0, the recipient MUST respond with a connection error
-            // (Section 5.4.1) of type PROTOCOL_ERROR.
-            throw InternalError.codecError(code: .protocolError)
-        }
-
-        var dataLen = length
-        let padding = try self.validatePadding(of: &bytes, against: &dataLen, flags: flags)
-
-        let buf = bytes.readSlice(length: dataLen)!
-        if padding > 0 {
-            // don't forget to consume any padding bytes
-            bytes.moveReaderIndex(forwardBy: padding)
-        }
-
-        // TODO(cory): For consistency we don't report padding bytes here either. We should report them both here and when synthesising frames, though.
-        let dataPayload = HTTP2Frame.FramePayload.Data(data: .byteBuffer(buf), endStream: flags.contains(.endStream), paddingBytes: nil)
-        return .data(dataPayload)
-    }
-
-    private mutating func parseHeadersFramePayload(length: Int, streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private mutating func parseHeadersFramePayload(streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer, paddingBytes: Int?) throws -> HTTP2Frame.FramePayload {
         // HEADERS frame : RFC 7540 § 6.2
         guard streamID != .rootStream else {
             // HEADERS frames MUST be associated with a stream. If a HEADERS frame is received whose
@@ -681,39 +979,30 @@ struct HTTP2FrameDecoder {
             throw InternalError.codecError(code: .protocolError)
         }
 
-        var bytesToRead = length
-        let padding = try self.validatePadding(of: &bytes, against: &bytesToRead, flags: flags)
-
         let priorityData: HTTP2Frame.StreamPriorityData?
         if flags.contains(.priority) {
-            // Validate that the length includes the priority data.
-            guard bytesToRead >= 5 else {
+            // If we don't have enough length for the priority data, that's an error.
+            guard let (rawStreamID, weight) = bytes.readMultipleIntegers(as: (UInt32, UInt8).self) else {
                 throw InternalError.codecError(code: .protocolError)
             }
 
-            let raw: UInt32 = bytes.readInteger()!
-            priorityData = HTTP2Frame.StreamPriorityData(exclusive: (raw & 0x8000_0000 != 0),
-                                                         dependency: HTTP2StreamID(networkID: raw),
-                                                         weight: bytes.readInteger()!)
-            bytesToRead -= 5
+            priorityData = HTTP2Frame.StreamPriorityData(exclusive: (rawStreamID & 0x8000_0000 != 0),
+                                                         dependency: HTTP2StreamID(networkID: rawStreamID),
+                                                         weight: weight)
         } else {
             priorityData = nil
         }
 
-        // slice out the relevant chunk of data (ignoring padding)
-        let headerByteSize = bytesToRead - padding
-        var slice = bytes.readSlice(length: headerByteSize)!
-        let headers = try self.headerDecoder.decodeHeaders(from: &slice)
-
+        let headers = try self.headerDecoder.decodeHeaders(from: &bytes)
         let headersPayload = HTTP2Frame.FramePayload.Headers(headers: headers,
                                                              priorityData: priorityData,
                                                              endStream: flags.contains(.endStream),
-                                                             paddingBytes: flags.contains(.padded) ? padding : nil)
+                                                             paddingBytes: paddingBytes)
 
         return .headers(headersPayload)
     }
 
-    private func parsePriorityFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parsePriorityFramePayload(streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // PRIORITY frame : RFC 7540 § 6.3
         guard streamID != .rootStream else {
             // The PRIORITY frame always identifies a stream. If a PRIORITY frame is received
@@ -721,20 +1010,19 @@ struct HTTP2FrameDecoder {
             // (Section 5.4.1) of type PROTOCOL_ERROR.
             throw InternalError.codecError(code: .protocolError)
         }
-        guard length == 5 else {
+        guard let (rawStreamID, weight) = bytes.readMultipleIntegers(as: (UInt32, UInt8).self) else {
             // A PRIORITY frame with a length other than 5 octets MUST be treated as a stream
             // error (Section 5.4.2) of type FRAME_SIZE_ERROR.
             throw InternalError.codecError(code: .frameSizeError)
         }
 
-        let raw: UInt32 = bytes.readInteger()!
-        let priorityData = HTTP2Frame.StreamPriorityData(exclusive: raw & 0x8000_0000 != 0,
-                                                         dependency: HTTP2StreamID(networkID: raw),
-                                                         weight: bytes.readInteger()!)
+        let priorityData = HTTP2Frame.StreamPriorityData(exclusive: rawStreamID & 0x8000_0000 != 0,
+                                                         dependency: HTTP2StreamID(networkID: rawStreamID),
+                                                         weight: weight)
         return .priority(priorityData)
     }
 
-    private func parseRstStreamFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parseRstStreamFramePayload(streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // RST_STREAM frame : RFC 7540 § 6.4
         guard streamID != .rootStream else {
             // RST_STREAM frames MUST be associated with a stream. If a RST_STREAM frame is
@@ -742,17 +1030,16 @@ struct HTTP2FrameDecoder {
             // connection error (Section 5.4.1) of type PROTOCOL_ERROR.
             throw InternalError.codecError(code: .protocolError)
         }
-        guard length == 4 else {
+        guard let errorCode = bytes.readInteger(as: UInt32.self) else {
             // A RST_STREAM frame with a length other than 4 octets MUST be treated as a
             // connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
             throw InternalError.codecError(code: .frameSizeError)
         }
 
-        let errcode: UInt32 = bytes.readInteger()!
-        return .rstStream(HTTP2ErrorCode(errcode))
+        return .rstStream(HTTP2ErrorCode(errorCode))
     }
 
-    private func parseSettingsFramePayload(length: Int, streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parseSettingsFramePayload(streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // SETTINGS frame : RFC 7540 § 6.5
         guard streamID == .rootStream else {
             // SETTINGS frames always apply to a connection, never a single stream. The stream
@@ -762,8 +1049,11 @@ struct HTTP2FrameDecoder {
             // PROTOCOL_ERROR.
             throw InternalError.codecError(code: .protocolError)
         }
+
+        let readableBytes = bytes.readableBytes
+
         if flags.contains(.ack) {
-            guard length == 0 else {
+            guard readableBytes == 0 else {
                 // When [the ACK flag] is set, the payload of the SETTINGS frame MUST be empty.
                 // Receipt of a SETTINGS frame with the ACK flag set and a length field value
                 // other than 0 MUST be treated as a connection error (Section 5.4.1) of type
@@ -772,29 +1062,28 @@ struct HTTP2FrameDecoder {
             }
 
             return .settings(.ack)
-        } else if length % 6 != 0 {
+        } else if readableBytes % 6 != 0 {
             // A SETTINGS frame with a length other than a multiple of 6 octets MUST be treated
             // as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
             throw InternalError.codecError(code: .frameSizeError)
         }
 
         var settings: [HTTP2Setting] = []
-        settings.reserveCapacity(length / 6)
+        settings.reserveCapacity(readableBytes / 6)
 
-        var consumed = 0
-        while consumed < length {
-            // TODO: name here should be HTTP2SettingsParameter(fromNetwork:), but that's currently defined for NGHTTP2's Int32 value
-            let identifier = HTTP2SettingsParameter(fromPayload: bytes.readInteger()!)
-            let value: UInt32 = bytes.readInteger()!
-
+        while let (settingsIdentifier, value) = bytes.readMultipleIntegers(as: (UInt16, UInt32).self) {
+            let identifier = HTTP2SettingsParameter(fromPayload: settingsIdentifier)
             settings.append(HTTP2Setting(parameter: identifier, value: Int(value)))
-            consumed += 6
         }
+
+        // This assert should be utterly safe: we're reading 6 bytes at a time above, so there's no way for us to
+        // fail to achieve this. It exists only to give us some proximate notification if there was a mistake above.
+        assert(bytes.readableBytes == 0)
 
         return .settings(.settings(settings))
     }
 
-    private mutating func parsePushPromiseFramePayload(length: Int, streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private mutating func parsePushPromiseFramePayload(streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer, paddingBytes: Int?) throws -> HTTP2Frame.FramePayload {
         // PUSH_PROMISE frame : RFC 7540 § 6.6
         guard streamID != .rootStream else {
             // The stream identifier of a PUSH_PROMISE frame indicates the stream it is associated with.
@@ -803,27 +1092,25 @@ struct HTTP2FrameDecoder {
             throw InternalError.codecError(code: .protocolError)
         }
 
-        var bytesToRead = length
-        let padding = try self.validatePadding(of: &bytes, against: &bytesToRead, flags: flags)
+        guard let rawPromisedStreamID = bytes.readInteger(as: UInt32.self) else {
+            throw InternalError.codecError(code: .frameSizeError)
+        }
 
-        let promisedStreamID = HTTP2StreamID(networkID: bytes.readInteger()!)
-        bytesToRead -= 4
+        let promisedStreamID = HTTP2StreamID(networkID: rawPromisedStreamID)
 
         guard promisedStreamID != .rootStream else {
             throw InternalError.codecError(code: .protocolError)
         }
 
-        let headerByteLen = bytesToRead - padding
-        var slice = bytes.readSlice(length: headerByteLen)!
-        let headers = try self.headerDecoder.decodeHeaders(from: &slice)
+        let headers = try self.headerDecoder.decodeHeaders(from: &bytes)
 
-        let pushPromiseContent = HTTP2Frame.FramePayload.PushPromise(pushedStreamID: promisedStreamID, headers: headers, paddingBytes: flags.contains(.padded) ? padding : nil)
+        let pushPromiseContent = HTTP2Frame.FramePayload.PushPromise(pushedStreamID: promisedStreamID, headers: headers, paddingBytes: paddingBytes)
         return .pushPromise(pushPromiseContent)
     }
 
-    private func parsePingFramePayload(length: Int, streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parsePingFramePayload(streamID: HTTP2StreamID, flags: FrameFlags, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // PING frame : RFC 7540 § 6.7
-        guard length == 8 else {
+        guard let tuple = bytes.readMultipleIntegers(as: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8).self) else {
             // Receipt of a PING frame with a length field value other than 8 MUST be treated
             // as a connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
             throw InternalError.codecError(code: .frameSizeError)
@@ -835,18 +1122,10 @@ struct HTTP2FrameDecoder {
             throw InternalError.codecError(code: .protocolError)
         }
 
-        var tuple: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8) = (0,0,0,0,0,0,0,0)
-        withUnsafeMutableBytes(of: &tuple) { ptr -> Void in
-            bytes.readWithUnsafeReadableBytes { bytesPtr -> Int in
-                ptr.copyBytes(from: bytesPtr[0..<8])
-                return 8
-            }
-        }
-
         return .ping(HTTP2PingData(withTuple: tuple), ack: flags.contains(.ack))
     }
 
-    private func parseGoAwayFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parseGoAwayFramePayload(streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // GOAWAY frame : RFC 7540 § 6.8
         guard streamID == .rootStream else {
             // The GOAWAY frame applies to the connection, not a specific stream. An endpoint
@@ -855,53 +1134,62 @@ struct HTTP2FrameDecoder {
             throw InternalError.codecError(code: .protocolError)
         }
 
-        guard length >= 8 else {
+        guard let (rawLastStreamID, errorCode) = bytes.readMultipleIntegers(as: (UInt32, UInt32).self) else {
             // Must have at least 8 bytes of data (last-stream-id plus error-code).
             throw InternalError.codecError(code: .frameSizeError)
         }
 
-        let raw: UInt32 = bytes.readInteger()!
-        let errcode: UInt32 = bytes.readInteger()!
+        // Anything left over is the debug data.
+        let debugData = bytes.readableBytes > 0 ? bytes : nil
+        bytes.moveReaderIndex(to: bytes.writerIndex)
 
-        let debugData: ByteBuffer?
-        let extraLen = length - 8
-        if extraLen > 0 {
-            debugData = bytes.readSlice(length: extraLen)
-        } else {
-            debugData = nil
-        }
-
-        return .goAway(lastStreamID: HTTP2StreamID(networkID: raw),
-                       errorCode: HTTP2ErrorCode(errcode), opaqueData: debugData)
+        return .goAway(lastStreamID: HTTP2StreamID(networkID: rawLastStreamID),
+                       errorCode: HTTP2ErrorCode(errorCode),
+                       opaqueData: debugData)
     }
 
-    private func parseWindowUpdateFramePayload(length: Int, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parseWindowUpdateFramePayload(bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // WINDOW_UPDATE frame : RFC 7540 § 6.9
-        guard length == 4 else {
+        guard let rawWindowSizeIncrement = bytes.readInteger(as: UInt32.self) else {
             // A WINDOW_UPDATE frame with a length other than 4 octets MUST be treated as a
             // connection error (Section 5.4.1) of type FRAME_SIZE_ERROR.
             throw InternalError.codecError(code: .frameSizeError)
         }
 
-        let raw: UInt32 = bytes.readInteger()!
-        return .windowUpdate(windowSizeIncrement: Int(raw & ~0x8000_0000))
+        return .windowUpdate(windowSizeIncrement: Int(rawWindowSizeIncrement & ~0x8000_0000))
     }
 
-    private func parseAltSvcFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parseAltSvcFramePayload(streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // ALTSVC frame : RFC 7838 § 4
-        guard length >= 2 else {
+        guard let originLen = bytes.readInteger(as: UInt16.self) else {
             // Must be at least two bytes, to contain the length of the optional 'Origin' field.
             throw InternalError.codecError(code: .frameSizeError)
         }
 
-        let originLen: UInt16 = bytes.readInteger()!
+        // For historical reasons we defined the origin as optional, and set to `nil` when the
+        // origin len was 0, so we need to preserve that here.
         let origin: String?
         if originLen > 0 {
-            origin = bytes.readString(length: Int(originLen))!
+            guard let originString = bytes.readString(length: Int(originLen)) else {
+                throw InternalError.codecError(code: .frameSizeError)
+            }
+
+            origin = originString
         } else {
             origin = nil
         }
 
+        // For historical reasons we also defined the field value as optional, and set to `nil` when there were
+        // no remaining bytes, so we preserve that here as well.
+        let value: ByteBuffer?
+        if bytes.readableBytes > 0 {
+            value = bytes
+            bytes.moveReaderIndex(to: bytes.writerIndex)
+        } else {
+            value = nil
+        }
+
+        // Double-check the frame values.
         if streamID == .rootStream && originLen == 0 {
             // MUST have origin on root stream
             throw IgnoredFrame()
@@ -911,321 +1199,86 @@ struct HTTP2FrameDecoder {
             throw IgnoredFrame()
         }
 
-        let fieldLen = length - 2 - Int(originLen)
-        let value: ByteBuffer?
-        if fieldLen != 0 {
-            value = bytes.readSlice(length: fieldLen)!
-        } else {
-            value = nil
-        }
-
         return .alternativeService(origin: origin, field: value)
     }
 
-    private func parseOriginFramePayload(length: Int, streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
+    private func parseOriginFramePayload(streamID: HTTP2StreamID, bytes: inout ByteBuffer) throws -> HTTP2Frame.FramePayload {
         // ORIGIN frame : RFC 8336 § 2
+        var origins: [String] = []
+        while let originLen = bytes.readInteger(as: UInt16.self) {
+            guard let origin = bytes.readString(length: Int(originLen)) else {
+                throw InternalError.codecError(code: .frameSizeError)
+            }
+            origins.append(origin)
+        }
+
+        if bytes.readableBytes > 0 {
+            // Invalid frame length
+            throw InternalError.codecError(code: .frameSizeError)
+        }
+
+        // Now double-check that we can safely use this frame.
         guard streamID == .rootStream else {
             // The ORIGIN frame MUST be sent on stream 0; an ORIGIN frame on any
             // other stream is invalid and MUST be ignored.
             throw IgnoredFrame()
         }
 
-        var origins: [String] = []
-        var remaining = length
-        while remaining > 0 {
-            guard remaining >= 2 else {
-                // If less than two bytes remain, this is a malformed frame.
-                throw InternalError.codecError(code: .protocolError)
-            }
-            let originLen: UInt16 = bytes.readInteger()!
-            remaining -= 2
-
-            guard remaining >= Int(originLen) else {
-                // Malformed frame.
-                throw InternalError.codecError(code: .frameSizeError)
-            }
-            let origin = bytes.readString(length: Int(originLen))!
-            remaining -= Int(originLen)
-
-            origins.append(origin)
-        }
-
         return .origin(origins)
-    }
-
-    private func validatePadding(of bytes: inout ByteBuffer, against length: inout Int, flags: FrameFlags) throws -> Int {
-        guard flags.contains(.padded) else {
-            return 0
-        }
-
-        let padding: UInt8 = bytes.readInteger()!
-        length -= 1
-
-        if length <= Int(padding) {
-            // Padding that exceeds the remaining payload size MUST be treated as a PROTOCOL_ERROR.
-            throw InternalError.codecError(code: .protocolError)
-        }
-
-        return Int(padding)
-    }
-}
-
-struct HTTP2FrameEncoder {
-    private let allocator: ByteBufferAllocator
-    var headerEncoder: HPACKEncoder
-
-    // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
-    var maxFrameSize: UInt32 = 1<<14
-
-    init(allocator: ByteBufferAllocator) {
-        self.allocator = allocator
-        self.headerEncoder = HPACKEncoder(allocator: allocator)
-    }
-
-    /// Encodes the frame and optionally returns one or more blobs of data
-    /// ready for the system.
-    ///
-    /// Returned data blobs would include anything of potentially flexible
-    /// length, such as DATA payloads, header fragments in HEADERS or PUSH_PROMISE
-    /// frames, and so on. This is to avoid manually copying chunks of data which
-    /// we could just enqueue separately in sequence on the channel. Generally, if
-    /// we have a byte buffer somewhere, we will return that separately rather than
-    /// copy it into another buffer, with the corresponding allocation overhead.
-    ///
-    /// - Parameters:
-    ///   - frame: The frame to encode.
-    ///   - buf: Destination buffer for the encoded frame.
-    /// - Returns: An array containing zero or more additional buffers to send, in
-    ///            order. These may contain data frames' payload bytes, encoded
-    ///            header fragments, etc.
-    /// - Throws: Errors returned from HPACK encoder.
-    mutating func encode(frame: HTTP2Frame, to buf: inout ByteBuffer) throws -> IOData? {
-        // note our starting point
-        let start = buf.writerIndex
-
-//      +-----------------------------------------------+
-//      |                 Length (24)                   |
-//      +---------------+---------------+---------------+
-//      |   Type (8)    |   Flags (8)   |
-//      +-+-------------+---------------+-------------------------------+
-//      |R|                 Stream Identifier (31)                      |
-//      +=+=============================================================+
-//      |                   Frame Payload (0...)                      ...
-//      +---------------------------------------------------------------+
-
-        // skip 24-bit length for now, we'll fill that in later
-        buf.moveWriterIndex(forwardBy: 3)
-
-        // 8-bit type
-        buf.writeInteger(frame.payload.code)
-
-        // skip the 8 bit flags for now, we'll fill it in later as well.
-        let flagsIndex = buf.writerIndex
-        var flags = FrameFlags()
-        buf.moveWriterIndex(forwardBy: 1)
-
-        // 32-bit stream identifier -- ensuring the top bit is empty
-        buf.writeInteger(Int32(frame.streamID))
-
-        // frame payload follows, which depends on the frame type itself
-        let payloadStart = buf.writerIndex
-        let extraFrameData: IOData?
-        let payloadSize: Int
-
-        switch frame.payload {
-        case .data(let dataContent):
-            if dataContent.paddingBytes != nil {
-                // we don't support sending padded frames just now
-                throw NIOHTTP2Errors.unsupported(info: "Padding is not supported on sent frames at this time")
-            }
-
-            if dataContent.endStream {
-                flags.insert(.endStream)
-            }
-            extraFrameData = dataContent.data
-            payloadSize = dataContent.data.readableBytes
-
-        case .headers(let headerData):
-            if headerData.paddingBytes != nil {
-                // we don't support sending padded frames just now
-                throw NIOHTTP2Errors.unsupported(info: "Padding is not supported on sent frames at this time")
-            }
-
-            flags.insert(.endHeaders)
-            if headerData.endStream {
-                flags.insert(.endStream)
-            }
-
-            if let priority = headerData.priorityData {
-                flags.insert(.priority)
-                var dependencyRaw = UInt32(priority.dependency)
-                if priority.exclusive {
-                    dependencyRaw |= 0x8000_0000
-                }
-                buf.writeInteger(dependencyRaw)
-                buf.writeInteger(priority.weight)
-            }
-
-            try self.headerEncoder.encode(headers: headerData.headers, to: &buf)
-            payloadSize = buf.writerIndex - payloadStart
-            extraFrameData = nil
-
-        case .priority(let priorityData):
-            var raw = UInt32(priorityData.dependency)
-            if priorityData.exclusive {
-                raw |= 0x8000_0000
-            }
-            buf.writeInteger(raw)
-            buf.writeInteger(priorityData.weight)
-
-            extraFrameData = nil
-            payloadSize = 5
-
-        case .rstStream(let errcode):
-            buf.writeInteger(UInt32(errcode.networkCode))
-
-            payloadSize = 4
-            extraFrameData = nil
-
-        case .settings(.settings(let settings)):
-            for setting in settings {
-                buf.writeInteger(setting.parameter.networkRepresentation)
-                buf.writeInteger(setting._value)
-            }
-
-            payloadSize = settings.count * 6
-            extraFrameData = nil
-
-        case .settings(.ack):
-            payloadSize = 0
-            extraFrameData = nil
-            flags.insert(.ack)
-
-        case .pushPromise(let pushPromiseData):
-            if pushPromiseData.paddingBytes != nil {
-                // we don't support sending padded frames just now
-                throw NIOHTTP2Errors.unsupported(info: "Padding is not supported on sent frames at this time")
-            }
-
-            let streamVal: UInt32 = UInt32(pushPromiseData.pushedStreamID)
-            buf.writeInteger(streamVal)
-
-            try self.headerEncoder.encode(headers: pushPromiseData.headers, to: &buf)
-
-            payloadSize = buf.writerIndex - payloadStart
-            extraFrameData = nil
-            flags.insert(.endHeaders)
-
-        case .ping(let pingData, let ack):
-            withUnsafeBytes(of: pingData.bytes) { ptr -> Void in
-                _ = buf.writeBytes(ptr)
-            }
-
-            if ack {
-                flags.insert(.ack)
-            }
-
-            payloadSize = 8
-            extraFrameData = nil
-
-        case .goAway(let lastStreamID, let errorCode, let opaqueData):
-            let streamVal: UInt32 = UInt32(lastStreamID) & ~0x8000_0000
-            buf.writeInteger(streamVal)
-            buf.writeInteger(UInt32(errorCode.networkCode))
-
-            if let data = opaqueData {
-                payloadSize = data.readableBytes + 8
-                extraFrameData = .byteBuffer(data)
-            } else {
-                payloadSize = 8
-                extraFrameData = nil
-            }
-
-        case .windowUpdate(let size):
-            buf.writeInteger(UInt32(size) & ~0x8000_0000)
-            payloadSize = 4
-            extraFrameData = nil
-
-        case .alternativeService(let origin, let field):
-            if let org = origin {
-                buf.moveWriterIndex(forwardBy: 2)
-                let start = buf.writerIndex
-                buf.writeString(org)
-                buf.setInteger(UInt16(buf.writerIndex - start), at: payloadStart)
-            } else {
-                buf.writeInteger(UInt16(0))
-            }
-
-            if let value = field {
-                payloadSize = buf.writerIndex - payloadStart + value.readableBytes
-                extraFrameData = .byteBuffer(value)
-            } else {
-                payloadSize = buf.writerIndex - payloadStart
-                extraFrameData = nil
-            }
-
-        case .origin(let origins):
-            for origin in origins {
-                let sizeLoc = buf.writerIndex
-                buf.moveWriterIndex(forwardBy: 2)
-
-                let start = buf.writerIndex
-                buf.writeString(origin)
-                buf.setInteger(UInt16(buf.writerIndex - start), at: sizeLoc)
-            }
-
-            payloadSize = buf.writerIndex - payloadStart
-            extraFrameData = nil
-        }
-
-        // Confirm we're not about to violate SETTINGS_MAX_FRAME_SIZE.
-        guard payloadSize <= Int(self.maxFrameSize) else {
-            throw InternalError.codecError(code: .frameSizeError)
-        }
-
-        // Write the frame data. This is the payload size and the flags byte.
-        buf.writePayloadSize(payloadSize, at: start)
-        buf.setInteger(flags.rawValue, at: flagsIndex)
-
-        // all bytes to write are in the provided buffer now
-        return extraFrameData
     }
 }
 
 fileprivate struct FrameHeader {
     var length: Int     // actually 24-bits
-    var type: UInt8
+    var type: FrameType
     var flags: FrameFlags
-    var rawStreamID: UInt32 // including reserved bit
+    var streamID: HTTP2StreamID
+
+    fileprivate struct FrameType: Hashable {
+        private var rawValue: UInt8
+
+        fileprivate init(_ rawValue: UInt8) {
+            self.rawValue = rawValue
+        }
+
+        static let data = FrameType(0)
+        static let headers = FrameType(1)
+        static let priority = FrameType(2)
+        static let rstStream = FrameType(3)
+        static let settings = FrameType(4)
+        static let pushPromise = FrameType(5)
+        static let ping = FrameType(6)
+        static let goAway = FrameType(7)
+        static let windowUpdate = FrameType(8)
+        static let continuation = FrameType(9)
+        static let altSvc = FrameType(10)
+        static let origin = FrameType(12)
+
+        var supportsPadding: Bool {
+            return self == .data || self == .headers || self == .pushPromise
+        }
+    }
+
+    var beginsContinuationSequence: Bool {
+        return (self.type == .headers || self.type == .pushPromise) && !self.flags.contains(.endHeaders)
+    }
 }
 
-fileprivate extension ByteBuffer {
-    mutating func readFrameHeader() -> FrameHeader? {
-        let saveSelf = self
-        guard let lenHigh = self.readInteger(as: UInt16.self),
-            let lenLow = self.readInteger(as: UInt8.self),
-            let type = self.readInteger(as: UInt8.self),
-            let flags = self.readInteger(as: UInt8.self),
-            let rawStreamID = self.readInteger(as: UInt32.self) else {
-                self = saveSelf
-                return nil
+extension ByteBuffer {
+    fileprivate mutating func readFrameHeader() -> FrameHeader? {
+        guard let (lenHigh, lenLow, type, flags, rawStreamID) = self.readMultipleIntegers(as: (UInt16, UInt8, UInt8, UInt8, UInt32).self) else {
+            return nil
         }
 
-        return FrameHeader(length: Int(lenHigh) << 8 | Int(lenLow), type: type, flags: FrameFlags(rawValue: flags), rawStreamID: rawStreamID)
+        return FrameHeader(
+            length: Int(lenHigh) << 8 | Int(lenLow),
+            type: FrameHeader.FrameType(type),
+            flags: FrameFlags(rawValue: flags),
+            streamID: HTTP2StreamID(networkID: rawStreamID)
+        )
     }
 
-    mutating func writePayloadSize(_ size: Int, at location: Int) {
-        // Yes, this performs better than running a UInt8 through the generic write(integer:) three times.
-        var bytes: (UInt8, UInt8, UInt8)
-        bytes.0 = UInt8((size & 0xff_00_00) >> 16)
-        bytes.1 = UInt8((size & 0x00_ff_00) >>  8)
-        bytes.2 = UInt8( size & 0x00_00_ff)
-        withUnsafeBytes(of: bytes) { ptr in
-            _ = self.setBytes(ptr, at: location)
-        }
-    }
-
-    mutating func quietlyReset() {
+    fileprivate mutating func quietlyReset() {
         self.moveReaderIndex(to: 0)
         self.moveWriterIndex(to: 0)
     }
@@ -1233,7 +1286,7 @@ fileprivate extension ByteBuffer {
 
 
 /// The flags supported by the frame types understood by this protocol.
-private struct FrameFlags: OptionSet, CustomStringConvertible {
+struct FrameFlags: OptionSet, CustomStringConvertible {
     internal typealias RawValue = UInt8
 
     internal private(set) var rawValue: UInt8

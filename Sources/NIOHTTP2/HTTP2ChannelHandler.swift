@@ -152,8 +152,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        var data = self.unwrapInboundIn(data)
-        self.frameDecoder.append(bytes: &data)
+        let data = self.unwrapInboundIn(data)
+        self.frameDecoder.append(bytes: data)
 
         // Before we go in here we need to deliver any pending user events. This is because
         // we may have been called re-entrantly.
