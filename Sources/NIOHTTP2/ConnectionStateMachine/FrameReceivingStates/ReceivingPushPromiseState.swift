@@ -68,8 +68,8 @@ extension ReceivingPushPromiseState {
 
     /// Whether the remote peer may push.
     var peerMayPush: Bool {
-        // In the case where we don't have local settings, we have to assume the default value, in which the peer may push.
-        return true
+        // In the case where we don't have local settings, we have to assume the default value, in which servers may push and clients may not.
+        return self.role == .client
     }
 }
 
@@ -93,6 +93,6 @@ extension ReceivingPushPromiseState where Self: LocallyQuiescingState {
 
 extension ReceivingPushPromiseState where Self: HasLocalSettings {
     var peerMayPush: Bool {
-        return self.localSettings.enablePush == 1
+        return self.localSettings.enablePush == 1 && self.role == .client
     }
 }

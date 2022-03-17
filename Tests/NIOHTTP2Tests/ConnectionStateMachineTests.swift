@@ -237,18 +237,11 @@ class ConnectionStateMachineTests: XCTestCase {
 
         assertBadStreamStateTransition(type: .halfOpenRemoteLocalIdle, self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: false))
         self.server = savedServerState
-        
-        assertBadStreamStateTransition(type: .halfOpenRemoteLocalIdle, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testHeaders))
-        self.server = savedServerState
 
         // Move state to fullyOpen
         let testSendHeaders: HPACKHeaders = [":status": "y"]
         assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: testSendHeaders, isEndStreamSet: false))
         savedServerState = self.server
-
-        let testPushPromiseHeaders: HPACKHeaders = ["test": "value"]
-        assertBadStreamStateTransition(type: .fullyOpen, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testPushPromiseHeaders))
-        self.server = savedServerState
 
         // Move state to halfClosedLocalPeerActive
         assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
@@ -256,9 +249,9 @@ class ConnectionStateMachineTests: XCTestCase {
 
         assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
         self.server = savedServerState
+
+        let testPushPromiseHeaders: HPACKHeaders = ["test": "value"]
         assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testPushPromiseHeaders))
-        self.server = savedServerState
-        assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: testPushPromiseHeaders))
         self.server = savedServerState
         let lastBadStreamStateTransition = assertBadStreamStateTransition(type: .halfClosedLocalPeerActive, self.server.sendHeaders(streamID: streamOne, headers: testPushPromiseHeaders, isEndStreamSet: false))
         self.server = savedServerState
@@ -1776,6 +1769,27 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.sendSettings([HTTP2Setting(parameter: .enablePush, value: 2)]))
         assertConnectionError(type: .protocolError,
                               self.server.receiveSettings(.settings([HTTP2Setting(parameter: .enablePush, value: 2)]), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+    }
+
+    func testClientsCannotPush() {
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+
+        // Default settings.
+        assertSucceeds(self.client.sendSettings([]))
+        assertSucceeds(self.server.receiveSettings(.settings([]), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.server.sendSettings([]))
+        assertSucceeds(self.client.receiveSettings(.settings([]), frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.client.receiveSettings(.ack, frameEncoder: &self.clientEncoder, frameDecoder: &self.clientDecoder))
+        assertSucceeds(self.server.receiveSettings(.ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+
+        // Client attempts to push, using a _server_ stream ID, with stream one not open. This should fail on both server and client.
+        assertConnectionError(type: .protocolError, self.client.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+        assertConnectionError(type: .protocolError, self.server.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
+
+        // Client then sends a HEADERS frame on the stream it just pushed. This should also fail.
+        assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
     }
 
     func testRatchetingGoawayEvenWhenFullyQueisced() {
