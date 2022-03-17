@@ -125,7 +125,7 @@ struct HTTP2FrameDecoder {
                         // There needs to be at least the padding length byte, so the minimum frame size is 1.
                         throw InternalError.codecError(code: .protocolError)
                     }
-                    
+
                     return .awaitingPaddingLengthByte(
                         AwaitingPaddingLengthByteParserState(fromAccumulatingFrameHeader: self, frameHeader: header)
                     )
@@ -363,7 +363,7 @@ struct HTTP2FrameDecoder {
         /// In this state if we succesfully move forward at all we'll produce a DATA frame, as
         /// well as a new target state.
         mutating func process() throws -> ProcessResult? {
-            // Sanity checking: the padded flag should be gone.
+            // Making sure the padded flag should be gone.
             assert(!self.header.flags.contains(.padded))
 
             let payloadSize = self.remainingByteCount - (self.expectedPadding ?? 0)
