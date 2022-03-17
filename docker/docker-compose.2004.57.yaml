@@ -3,26 +3,26 @@ version: "3"
 services:
 
   runtime-setup:
-    image: swift-nio-http2:20.04-main
+    image: swift-nio-http2:20.04-5.7
     build:
       args:
         base_image: "swiftlang/swift:nightly-main-focal"
         h2spec_version: "2.2.1"
 
   unit-tests:
-    image: swift-nio-http2:20.04-main
+    image: swift-nio-http2:20.04-5.7
 
   integration-tests:
-    image: swift-nio-http2:20.04-main
+    image: swift-nio-http2:20.04-5.7
 
   performance-test:
-    image: swift-nio-http2:20.04-main
+    image: swift-nio-http2:20.04-5.7
 
   h2spec:
-    image: swift-nio-http2:20.04-main
+    image: swift-nio-http2:20.04-5.7
 
   test:
-    image: swift-nio-http2:20.04-main
+    image: swift-nio-http2:20.04-5.7
     environment:
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=43200
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=42100
@@ -37,4 +37,4 @@ services:
       - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=293250
 
   shell:
-    image: swift-nio-http2:20.04-main
+    image: swift-nio-http2:20.04-5.7
