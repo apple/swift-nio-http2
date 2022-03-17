@@ -18,6 +18,8 @@ import NIOHPACK
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
 protocol SendingPushPromiseState: HasFlowControlWindows {
+    var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
+
     var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
 
     var streamState: ConnectionStreamState { get set }
@@ -67,8 +69,8 @@ extension SendingPushPromiseState {
 
     /// Whether we may push.
     var mayPush: Bool {
-        // In the case where we don't have remote settings, we have to assume the default value, in which case we may push.
-        return true
+        // In the case where we don't have remote settings, we have to assume the default value, in which case if we're a server we may push.
+        return self.role == .server
     }
 
 }
@@ -83,6 +85,6 @@ extension SendingPushPromiseState where Self: RemotelyQuiescingState {
 
 extension SendingPushPromiseState where Self: HasRemoteSettings {
     var mayPush: Bool {
-        return self.remoteSettings.enablePush == 1
+        return self.remoteSettings.enablePush == 1 && self.role == .server
     }
 }
