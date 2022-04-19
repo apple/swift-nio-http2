@@ -102,7 +102,7 @@ Pod::Spec.new do |s|
   s.documentation_url = 'https://apple.github.io/swift-nio-http2/'
   s.module_name = '${target#Swift}'
 
-  s.swift_version = '5.2'
+  s.swift_version = '5.4'
   s.cocoapods_version = '>=1.6.0'
   s.ios.deployment_target = '10.0'
   s.osx.deployment_target = '10.12'

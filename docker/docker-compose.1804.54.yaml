@@ -3,27 +3,28 @@ version: "3"
 services:
 
   runtime-setup:
-    image: swift-nio-http2:18.04-5.3
+    image: swift-nio-http2:18.04-5.4
     build:
       args:
-        ubuntu_version: "bionic"
-        swift_version: "5.3"
+        base_image: "swift:5.4-focal"
+        ubuntu_version: "focal"
+        swift_version: "5.4"
         h2spec_version: "2.2.1"
 
   unit-tests:
-    image: swift-nio-http2:18.04-5.3
+    image: swift-nio-http2:18.04-5.4
 
   integration-tests:
-    image: swift-nio-http2:18.04-5.3
+    image: swift-nio-http2:18.04-5.4
 
   performance-test:
-    image: swift-nio-http2:18.04-5.3
+    image: swift-nio-http2:18.04-5.4
 
   h2spec:
-    image: swift-nio-http2:18.04-5.3
+    image: swift-nio-http2:18.04-5.4
 
   test:
-    image: swift-nio-http2:18.04-5.3
+    image: swift-nio-http2:18.04-5.4
     environment:
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=46200
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=45100
@@ -38,4 +39,4 @@ services:
       - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=303150
 
   shell:
-    image: swift-nio-http2:18.04-5.3
+    image: swift-nio-http2:18.04-5.4
