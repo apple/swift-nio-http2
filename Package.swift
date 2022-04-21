@@ -24,7 +24,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.35.0")
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "NIOHTTP2Server",
             dependencies: [
                 "NIOHTTP2",
@@ -32,7 +32,7 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
             ]),
-        .target(
+        .executableTarget(
             name: "NIOHTTP2PerformanceTester",
             dependencies: [
                 "NIOHTTP2",
@@ -73,6 +73,11 @@ let package = Package(
                 "NIOHPACK",
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
-            ])
+            ],
+            resources: [
+                .copy("Fixtures/large_complex_huffman_b64.txt"),
+                .copy("Fixtures/large_huffman_b64.txt"),
+            ]
+        )
     ]
 )
