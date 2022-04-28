@@ -88,7 +88,7 @@ for target in "${targets[@]}"; do
     else
       dependencies+=( "${newline}  s.dependency '$raw_dependency', '>= $nio_version', '< $next_major_version'" )
     fi
-  done < <("${here}/list_topsorted_dependencies.sh" -d "${target#Swift}" | sed 's/^NIO/SwiftNIO/')
+  done < <("${here}/list_transitive_dependencies.py" "${target#Swift}" | sed 's/^NIO/SwiftNIO/')
 
   cat > "${tmpdir}/${target}.podspec" <<- EOF
 Pod::Spec.new do |s|
@@ -114,8 +114,8 @@ Pod::Spec.new do |s|
 end
 EOF
 
-  pod repo update # last chance of getting the latest versions of previous pushed pods
   if $upload; then
+    pod repo update # last chance of getting the latest versions of previous pushed pods
     echo "Uploading ${tmpdir}/${target}.podspec"
     pod trunk push "${tmpdir}/${target}.podspec" --synchronous
   fi
