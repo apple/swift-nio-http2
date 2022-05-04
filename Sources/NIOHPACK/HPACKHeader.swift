@@ -428,7 +428,7 @@ extension HPACKHeaders: Hashable {
 
         // This emulates the logic used in equatability, but we sort it to ensure that
         // we hash equivalently.
-        let names = Set(self.headers.map { $0.name }).sorted()
+        let names = Set(self.headers.lazy.map { $0.name }).sorted()
         for name in names {
             hasher.combine(self[name].sorted())
         }
