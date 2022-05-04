@@ -43,6 +43,7 @@ class LinuxMainRunnerImpl: LinuxMainRunner {
              testCase(ConnectionStateMachineTests.allTests),
              testCase(ControlFrameBufferTests.allTests),
              testCase(HPACKCodingTests.allTests),
+             testCase(HPACKHeadersTests.allTests),
              testCase(HPACKIntegrationTests.allTests),
              testCase(HPACKRegressionTests.allTests),
              testCase(HTTP2ErrorTests.allTests),

@@ -400,6 +400,9 @@ extension HPACKHeaders: CustomStringConvertible {
     }
 }
 
+// NOTE: This is a bad definition of equatable and hashable. In particular, both order and
+// indexability are ignored. We should change it, but we should be careful when we do so.
+// More discussion at https://github.com/apple/swift-nio-http2/issues/342.
 extension HPACKHeaders: Equatable {
     @inlinable
     public static func ==(lhs: HPACKHeaders, rhs: HPACKHeaders) -> Bool {
@@ -419,6 +422,22 @@ extension HPACKHeaders: Equatable {
         }
 
         return true
+    }
+}
+
+extension HPACKHeaders: Hashable {
+    @inlinable
+    public func hash(into hasher: inout Hasher) {
+        // Discriminator, to indicate that this is a collection. This improves the performance
+        // of Sets and Dictionaries that include collections of HPACKHeaders by reducing hash collisions.
+        hasher.combine(self.count)
+
+        // This emulates the logic used in equatability, but we sort it to ensure that
+        // we hash equivalently.
+        let names = Set(self.headers.lazy.map { $0.name }).sorted()
+        for name in names {
+            hasher.combine(self[name].sorted())
+        }
     }
 }
 
