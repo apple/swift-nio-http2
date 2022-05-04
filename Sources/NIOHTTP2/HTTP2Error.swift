@@ -347,7 +347,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
-        private final class Storage: Equatable, @unchecked Sendable {
+        fileprivate final class Storage: Equatable {
             var _delta: Int
             var _currentWindowSize: Int
             var _file: String
@@ -1247,7 +1247,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
-        private final class Storage: Equatable, @unchecked Sendable {
+        fileprivate final class Storage: Equatable {
             private var _name: String
             private var _value: String
             private var _file: String
@@ -1465,7 +1465,7 @@ public enum NIOHTTP2Errors {
     /// meaningfully be `Equatable`, so they aren't. There's also no additional location information: that's
     /// provided by the base error.
     public struct StreamError: Error, NIOSendable {
-        private final class Storage: @unchecked Sendable {
+        fileprivate final class Storage {
 
             private let lock = Lock()
 
@@ -1647,6 +1647,15 @@ private final class StringAndLocationStorage: Equatable {
 
 #if swift(>=5.5) && canImport(_Concurrency)
 extension StringAndLocationStorage: @unchecked Sendable {
+
+}
+extension NIOHTTP2Errors.InvalidFlowControlWindowSize.Storage: @unchecked Sendable {
+    
+}
+extension NIOHTTP2Errors.ForbiddenHeaderField.Storage: @unchecked Sendable {
+
+}
+extension NIOHTTP2Errors.StreamError.Storage: @unchecked Sendable {
 
 }
 #endif
