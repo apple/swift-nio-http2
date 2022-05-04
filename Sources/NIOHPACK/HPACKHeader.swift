@@ -395,8 +395,8 @@ extension HPACKHeaders: CustomStringConvertible {
 }
 
 // NOTE: This is a bad definition of equatable and hashable. In particular, both order and
-// indexability are ignored. We're sort of stuck with this behaviour now and cannot change it,
-// but in the next major version we should strongly consider revising it.
+// indexability are ignored. We should change it, but we should be careful when we do so.
+// More discussion at https://github.com/apple/swift-nio-http2/issues/342.
 extension HPACKHeaders: Equatable {
     @inlinable
     public static func ==(lhs: HPACKHeaders, rhs: HPACKHeaders) -> Bool {
