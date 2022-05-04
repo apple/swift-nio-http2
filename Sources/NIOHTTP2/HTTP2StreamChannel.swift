@@ -19,7 +19,7 @@ import NIOConcurrencyHelpers
 /// The various channel options specific to `HTTP2StreamChannel`s.
 ///
 /// Please note that some of NIO's regular `ChannelOptions` are valid on `HTTP2StreamChannel`s.
-public struct HTTP2StreamChannelOptions {
+public struct HTTP2StreamChannelOptions: NIOSendable {
     /// - seealso: `StreamIDOption`.
     public static let streamID: HTTP2StreamChannelOptions.Types.StreamIDOption = .init()
 }

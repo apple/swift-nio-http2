@@ -11,7 +11,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
+import NIOCore
 import NIOHPACK
+
 import NIOConcurrencyHelpers
 
 public protocol NIOHTTP2Error: Equatable, Error { }
@@ -182,7 +184,7 @@ public enum NIOHTTP2Errors {
     /// further outbound frames. This occurs when the remote peer is generating work
     /// faster than they are consuming the result. Additional buffering runs the risk of
     /// memory exhaustion.
-    public struct ExcessiveOutboundFrameBuffering: NIOHTTP2Error {
+    public struct ExcessiveOutboundFrameBuffering: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -208,7 +210,7 @@ public enum NIOHTTP2Errors {
 
     /// NIO's upgrade handler encountered a successful upgrade to a protocol that it
     /// does not recognise.
-    public struct InvalidALPNToken: NIOHTTP2Error {
+    public struct InvalidALPNToken: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -233,7 +235,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to issue a write on a stream that does not exist.
-    public struct NoSuchStream: NIOHTTP2Error {
+    public struct NoSuchStream: NIOHTTP2Error, NIOSendable {
         /// The stream ID that was used that does not exist.
         public var streamID: HTTP2StreamID
 
@@ -256,7 +258,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A stream was closed.
-    public struct StreamClosed: NIOHTTP2Error {
+    public struct StreamClosed: NIOHTTP2Error, NIOSendable {
         /// The stream ID that was closed.
         public var streamID: HTTP2StreamID
 
@@ -282,7 +284,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    public struct BadClientMagic: NIOHTTP2Error {
+    public struct BadClientMagic: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -307,7 +309,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A stream state transition was attempted that was not valid.
-    public struct BadStreamStateTransition: NIOHTTP2Error, CustomStringConvertible {
+    public struct BadStreamStateTransition: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         public let fromState: NIOHTTP2StreamState?
 
         /// The location where the error was thrown.
@@ -336,7 +338,7 @@ public enum NIOHTTP2Errors {
     /// An attempt was made to change the flow control window size, either via
     /// SETTINGS or WINDOW_UPDATE, but this change would move the flow control
     /// window size out of bounds.
-    public struct InvalidFlowControlWindowSize: NIOHTTP2Error, CustomStringConvertible {
+    public struct InvalidFlowControlWindowSize: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: Storage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -345,29 +347,72 @@ public enum NIOHTTP2Errors {
             }
         }
 
-        private final class Storage: Equatable {
-            var delta: Int
-            var currentWindowSize: Int
-            var file: String
-            var line: UInt
+        private final class Storage: Equatable, @unchecked Sendable {
+            var _delta: Int
+            var _currentWindowSize: Int
+            var _file: String
+            var _line: UInt
+
+            private let lock = Lock()
+
+            var delta: Int {
+                get {
+                    self.lock.withLock { self._delta }
+                }
+                set {
+                    self.lock.withLock { self._delta = newValue }
+                }
+            }
+            var currentWindowSize: Int {
+                get {
+                    self.lock.withLock { self._currentWindowSize }
+                }
+                set {
+                    self.lock.withLock { self._currentWindowSize = newValue }
+                }
+            }
+            var file: String {
+                get {
+                    self.lock.withLock { self._file }
+                }
+                set {
+                    self.lock.withLock { self._file = newValue }
+                }
+            }
+            var line: UInt {
+                get {
+                    self.lock.withLock { self._line }
+                }
+                set {
+                    self.lock.withLock { self._line = newValue }
+                }
+            }
 
             var location: String {
-                return _location(file: self.file, line: self.line)
+                self.lock.withLock {
+                    _location(file: self._file, line: self._line)
+                }
             }
 
             init(delta: Int, currentWindowSize: Int, file: String, line: UInt) {
-                self.delta = delta
-                self.currentWindowSize = currentWindowSize
-                self.file = file
-                self.line = line
+                self._delta = delta
+                self._currentWindowSize = currentWindowSize
+                self._file = file
+                self._line = line
             }
 
             func copy() -> Storage {
-                return Storage(delta: self.delta, currentWindowSize: self.currentWindowSize, file: self.file, line: self.line)
+                self.lock.withLock {
+                    Storage(delta: self._delta, currentWindowSize: self._currentWindowSize, file: self._file, line: self._line)
+                }
             }
 
             static func ==(lhs: Storage, rhs: Storage) -> Bool {
-                return lhs.delta == rhs.delta && lhs.currentWindowSize == rhs.currentWindowSize
+                lhs.lock.withLock {
+                    rhs.lock.withLock {
+                        lhs._delta == rhs._delta && lhs._currentWindowSize == rhs._currentWindowSize
+                    }
+                }
             }
         }
 
@@ -415,7 +460,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A frame was sent or received that violates HTTP/2 flow control rules.
-    public struct FlowControlViolation: NIOHTTP2Error {
+    public struct FlowControlViolation: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -440,7 +485,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A SETTINGS frame was sent or received with an invalid setting.
-    public struct InvalidSetting: NIOHTTP2Error {
+    public struct InvalidSetting: NIOHTTP2Error, NIOSendable {
         /// The invalid setting.
         public var setting: HTTP2Setting
 
@@ -463,7 +508,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt to perform I/O was made on a connection that is already closed.
-    public struct IOOnClosedConnection: NIOHTTP2Error {
+    public struct IOOnClosedConnection: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -488,7 +533,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A SETTINGS frame was received that is invalid.
-    public struct ReceivedBadSettings: NIOHTTP2Error {
+    public struct ReceivedBadSettings: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -513,7 +558,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A violation of SETTINGS_MAX_CONCURRENT_STREAMS occurred.
-    public struct MaxStreamsViolation: NIOHTTP2Error {
+    public struct MaxStreamsViolation: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -538,7 +583,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to use a stream ID that is too small.
-    public struct StreamIDTooSmall: NIOHTTP2Error {
+    public struct StreamIDTooSmall: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -563,7 +608,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send a frame without having previously sent a connection preface!
-    public struct MissingPreface: NIOHTTP2Error {
+    public struct MissingPreface: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -589,7 +634,7 @@ public enum NIOHTTP2Errors {
 
     /// An attempt was made to create a stream after a GOAWAY frame has forbidden further
     /// stream creation.
-    public struct CreatedStreamAfterGoaway: NIOHTTP2Error {
+    public struct CreatedStreamAfterGoaway: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -614,7 +659,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A peer has attempted to create a stream with a stream ID it is not permitted to use.
-    public struct InvalidStreamIDForPeer: NIOHTTP2Error {
+    public struct InvalidStreamIDForPeer: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -639,7 +684,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send a new GOAWAY frame whose lastStreamID is higher than the previous value.
-    public struct RaisedGoawayLastStreamID: NIOHTTP2Error {
+    public struct RaisedGoawayLastStreamID: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -664,7 +709,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// The size of the window increment is invalid.
-    public struct InvalidWindowIncrementSize: NIOHTTP2Error {
+    public struct InvalidWindowIncrementSize: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -689,7 +734,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to push a stream, even though the settings forbid it.
-    public struct PushInViolationOfSetting: NIOHTTP2Error {
+    public struct PushInViolationOfSetting: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -714,7 +759,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to use a currently unsupported feature.
-    public struct Unsupported: NIOHTTP2Error, CustomStringConvertible {
+    public struct Unsupported: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -754,7 +799,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    public struct UnableToSerializeFrame: NIOHTTP2Error {
+    public struct UnableToSerializeFrame: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -778,7 +823,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    public struct UnableToParseFrame: NIOHTTP2Error {
+    public struct UnableToParseFrame: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -803,7 +848,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A pseudo-header field is missing.
-    public struct MissingPseudoHeader: NIOHTTP2Error, CustomStringConvertible {
+    public struct MissingPseudoHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -844,7 +889,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A pseudo-header field has been duplicated.
-    public struct DuplicatePseudoHeader: NIOHTTP2Error, CustomStringConvertible {
+    public struct DuplicatePseudoHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -885,7 +930,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A header block contained a pseudo-header after a regular header.
-    public struct PseudoHeaderAfterRegularHeader: NIOHTTP2Error, CustomStringConvertible {
+    public struct PseudoHeaderAfterRegularHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -926,7 +971,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An unknown pseudo-header was received.
-    public struct UnknownPseudoHeader: NIOHTTP2Error, CustomStringConvertible {
+    public struct UnknownPseudoHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -967,7 +1012,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A header block was received with an invalid set of pseudo-headers for the block type.
-    public struct InvalidPseudoHeaders: NIOHTTP2Error {
+    public struct InvalidPseudoHeaders: NIOHTTP2Error, NIOSendable {
         public var headerBlock: HPACKHeaders
 
         /// The location where the error was thrown.
@@ -989,7 +1034,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An outbound request was about to be sent, but does not contain a Host header.
-    public struct MissingHostHeader: NIOHTTP2Error {
+    public struct MissingHostHeader: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -1014,7 +1059,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An outbound request was about to be sent, but it contains a duplicated Host header.
-    public struct DuplicateHostHeader: NIOHTTP2Error {
+    public struct DuplicateHostHeader: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -1039,7 +1084,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A HTTP/2 header block was received with an empty :path header.
-    public struct EmptyPathHeader: NIOHTTP2Error {
+    public struct EmptyPathHeader: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -1064,7 +1109,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A :status header was received with an invalid value.
-    public struct InvalidStatusValue: NIOHTTP2Error, CustomStringConvertible {
+    public struct InvalidStatusValue: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1105,7 +1150,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A priority update was received that would create a PRIORITY cycle.
-    public struct PriorityCycle: NIOHTTP2Error {
+    public struct PriorityCycle: NIOHTTP2Error, NIOSendable {
         /// The affected stream ID.
         public var streamID: HTTP2StreamID
 
@@ -1128,7 +1173,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send trailers without setting END_STREAM on them.
-    public struct TrailersWithoutEndStream: NIOHTTP2Error {
+    public struct TrailersWithoutEndStream: NIOHTTP2Error, NIOSendable {
         /// The affected stream ID.
         public var streamID: HTTP2StreamID
 
@@ -1151,7 +1196,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send a header field with a field name that is not valid in HTTP/2.
-    public struct InvalidHTTP2HeaderFieldName: NIOHTTP2Error, CustomStringConvertible {
+    public struct InvalidHTTP2HeaderFieldName: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1193,7 +1238,7 @@ public enum NIOHTTP2Errors {
 
     /// Connection-specific header fields are forbidden in HTTP/2: this error is raised when one is
     /// sent or received.
-    public struct ForbiddenHeaderField: NIOHTTP2Error, CustomStringConvertible {
+    public struct ForbiddenHeaderField: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
         private var storage: Storage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1202,29 +1247,72 @@ public enum NIOHTTP2Errors {
             }
         }
 
-        private final class Storage: Equatable {
-            var name: String
-            var value: String
-            var file: String
-            var line: UInt
+        private final class Storage: Equatable, @unchecked Sendable {
+            private var _name: String
+            private var _value: String
+            private var _file: String
+            private var _line: UInt
+
+            private let lock = Lock()
+
+            var name: String {
+                get {
+                    self.lock.withLock { self._name }
+                }
+                set {
+                    self.lock.withLock { self._name = newValue }
+                }
+            }
+            var value: String {
+                get {
+                    self.lock.withLock { self._value }
+                }
+                set {
+                    self.lock.withLock { self._value = newValue }
+                }
+            }
+            var file: String {
+                get {
+                    self.lock.withLock { self._file }
+                }
+                set {
+                    self.lock.withLock { self._file = newValue }
+                }
+            }
+            var line: UInt {
+                get {
+                    self.lock.withLock { self._line }
+                }
+                set {
+                    self.lock.withLock { self._line = newValue }
+                }
+            }
 
             var location: String {
-                return _location(file: self.file, line: self.line)
+                self.lock.withLock {
+                    _location(file: self._file, line: self._line)
+                }
             }
 
             init(name: String, value: String, file: String, line: UInt) {
-                self.name = name
-                self.value = value
-                self.file = file
-                self.line = line
+                self._name = name
+                self._value = value
+                self._file = file
+                self._line = line
             }
 
             func copy() -> Storage {
-                return Storage(name: self.name, value: self.value, file: self.file, line: self.line)
+                self.lock.withLock {
+                    Storage(name: self._name, value: self._value, file: self._file, line: self._line)
+                }
             }
 
             static func ==(lhs: Storage, rhs: Storage) -> Bool {
-                return lhs.name == rhs.name && lhs.value == rhs.value
+                lhs.lock.withLock {
+                    rhs.lock.withLock {
+                        lhs._name == rhs._name && lhs._value == rhs._value
+                    }
+                }
             }
         }
 
@@ -1270,7 +1358,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A request or response has violated the expected content length, either exceeding or falling beneath it.
-    public struct ContentLengthViolated: NIOHTTP2Error {
+    public struct ContentLengthViolated: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -1296,7 +1384,7 @@ public enum NIOHTTP2Errors {
 
     /// The remote peer has sent an excessive number of empty DATA frames, which looks like a denial of service
     /// attempt, so the connection has been closed.
-    public struct ExcessiveEmptyDataFrames: NIOHTTP2Error {
+    public struct ExcessiveEmptyDataFrames: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -1321,7 +1409,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// The remote peer has sent a header block so large that NIO refuses to buffer any more data than that.
-    public struct ExcessivelyLargeHeaderBlock: NIOHTTP2Error {
+    public struct ExcessivelyLargeHeaderBlock: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -1346,7 +1434,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// The channel does not yet have a stream ID, as it has not reached the network yet.
-    public struct NoStreamIDAvailable: NIOHTTP2Error {
+    public struct NoStreamIDAvailable: NIOHTTP2Error, NIOSendable {
         private let file: String
         private let line: UInt
 
@@ -1376,21 +1464,51 @@ public enum NIOHTTP2Errors {
     /// As they are a wrapper error, they carry a "real" error in the `baseError`. Additionally, they cannot
     /// meaningfully be `Equatable`, so they aren't. There's also no additional location information: that's
     /// provided by the base error.
-    public struct StreamError: Error {
-        private final class Storage {
-            var streamID: HTTP2StreamID
-            var baseError: Error
+    public struct StreamError: Error, NIOSendable {
+        private final class Storage: @unchecked Sendable {
+
+            private let lock = Lock()
+
+            var _streamID: HTTP2StreamID
+            var _baseError: Error
+
+            var streamID: HTTP2StreamID {
+                get {
+                    self.lock.withLock {
+                        self._streamID
+                    }
+                }
+                set {
+                    self.lock.withLock {
+                        self.streamID = newValue
+                    }
+                }
+            }
+            var baseError: Error {
+                get {
+                    self.lock.withLock {
+                        self._baseError
+                    }
+                }
+                set {
+                    self.lock.withLock {
+                        self._baseError = newValue
+                    }
+                }
+            }
 
             init(streamID: HTTP2StreamID, baseError: Error) {
-                self.baseError = baseError
-                self.streamID = streamID
+                self._baseError = baseError
+                self._streamID = streamID
             }
 
             func copy() -> Storage {
-                return Storage(
-                    streamID: self.streamID,
-                    baseError: self.baseError
-                )
+                self.lock.withLock {
+                    return Storage(
+                        streamID: self.streamID,
+                        baseError: self.baseError
+                    )
+                }
             }
         }
 

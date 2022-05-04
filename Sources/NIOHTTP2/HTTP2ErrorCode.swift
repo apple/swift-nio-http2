@@ -15,7 +15,7 @@
 import NIOCore
 
 /// An HTTP/2 error code.
-public struct HTTP2ErrorCode {
+public struct HTTP2ErrorCode: NIOSendable {
     /// The underlying network representation of the error code.
     public var networkCode: Int {
         get {

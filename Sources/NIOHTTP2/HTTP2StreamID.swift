@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import NIOCore
+
 /// A single HTTP/2 stream ID.
 ///
 /// Every stream in HTTP/2 has a unique 31-bit stream ID. This stream ID monotonically
@@ -21,7 +23,7 @@
 ///
 /// For this reason, SwiftNIO encapsulates the idea of this type into the HTTP2StreamID
 /// structure.
-public struct HTTP2StreamID {
+public struct HTTP2StreamID: NIOSendable {
     /// The stream ID as a 32 bit integer that will be sent on the network. This will
     /// always be positive.
     internal var networkStreamID: Int32

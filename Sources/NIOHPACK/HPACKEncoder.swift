@@ -12,7 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOCore
+#if swift(>=5.5) && canImport(_Concurrency)
+@preconcurrency import NIOCore
+#else
+import NIO
+#endif
+
+import NIOConcurrencyHelpers
 
 /// An `HPACKEncoder` maintains its own dynamic header table and uses that to
 /// encode HTTP headers to an internal byte buffer.
@@ -22,12 +28,12 @@ import NIOCore
 /// `reset()` before the encode can be re-used. It maintains a header table for
 /// outbound header indexing, and will update the header table as described in
 /// RFC 7541, appending and evicting items as described there.
-public struct HPACKEncoder {
+public struct HPACKEncoder: NIOSendable {
     /// The default size of the encoder's dynamic header table.
     public static var defaultDynamicTableSize: Int { return DynamicHeaderTable.defaultSize }
     private static let defaultDataBufferSize = 128
     
-    public struct HeaderDefinition {
+    public struct HeaderDefinition: NIOSendable {
         var name: String
         var value: String
         var indexing: HPACKIndexing

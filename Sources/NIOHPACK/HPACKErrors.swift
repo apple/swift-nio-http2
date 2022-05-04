@@ -12,7 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOCore
+#if swift(>=5.5) && canImport(_Concurrency)
+@preconcurrency import NIOCore
+#else
+import NIO
+#endif
 
 public protocol NIOHPACKError : Error, Equatable { }
 
@@ -20,7 +24,7 @@ public protocol NIOHPACKError : Error, Equatable { }
 public enum NIOHPACKErrors {
     /// An indexed header referenced an index that doesn't exist in our
     /// header tables.
-    public struct InvalidHeaderIndex : NIOHPACKError {
+    public struct InvalidHeaderIndex : NIOHPACKError, NIOSendable {
         /// The offending index.
         public let suppliedIndex: Int
 
@@ -31,14 +35,14 @@ public enum NIOHPACKErrors {
     /// A header block indicated an indexed header with no accompanying
     /// value, but the index referenced an entry with no value of its own
     /// e.g. one of the many valueless items in the static header table.
-    public struct IndexedHeaderWithNoValue : NIOHPACKError {
+    public struct IndexedHeaderWithNoValue : NIOHPACKError, NIOSendable {
         /// The offending index.
         public let index: Int
     }
 
     /// An encoded string contained an invalid length that extended
     /// beyond its frame's payload size.
-    public struct StringLengthBeyondPayloadSize : NIOHPACKError {
+    public struct StringLengthBeyondPayloadSize : NIOHPACKError, NIOSendable {
         /// The length supplied.
         public let length: Int
 
@@ -47,20 +51,20 @@ public enum NIOHPACKErrors {
     }
 
     /// Decoded string data could not be parsed as valid UTF-8.
-    public struct InvalidUTF8Data : NIOHPACKError {
+    public struct InvalidUTF8Data : NIOHPACKError, NIOSendable {
         /// The offending bytes.
         public let bytes: ByteBuffer
     }
 
     /// The start byte of a header did not match any format allowed by
     /// the HPACK specification.
-    public struct InvalidHeaderStartByte : NIOHPACKError {
+    public struct InvalidHeaderStartByte : NIOHPACKError, NIOSendable {
         /// The offending byte.
         public let byte: UInt8
     }
 
     /// A dynamic table size update specified an invalid size.
-    public struct InvalidDynamicTableSize : NIOHPACKError {
+    public struct InvalidDynamicTableSize : NIOHPACKError, NIOSendable {
         /// The offending size.
         public let requestedSize: Int
 
@@ -70,7 +74,7 @@ public enum NIOHPACKErrors {
 
     /// A dynamic table size update was found outside its allowed place.
     /// They may only be included at the start of a header block.
-    public struct IllegalDynamicTableSizeChange : NIOHPACKError {}
+    public struct IllegalDynamicTableSizeChange : NIOHPACKError, NIOSendable {}
 
     /// A new header could not be added to the dynamic table. Usually
     /// this means the header itself is larger than the current
@@ -94,33 +98,39 @@ public enum NIOHPACKErrors {
     }
 
     /// Ran out of input bytes while decoding.
-    public struct InsufficientInput : NIOHPACKError {}
+    public struct InsufficientInput : NIOHPACKError, NIOSendable {}
 
     /// HPACK encoder asked to begin a new header block while partway through encoding
     /// another block.
-    public struct EncoderAlreadyActive : NIOHPACKError {}
+    public struct EncoderAlreadyActive : NIOHPACKError, NIOSendable {}
 
     /// HPACK encoder asked to append a header without first calling `beginEncoding(allocator:)`.
-    public struct EncoderNotStarted : NIOHPACKError {}
+    public struct EncoderNotStarted : NIOHPACKError, NIOSendable {}
 
     /// HPACK decoder asked to decode an indexed header with index zero.
-    public struct ZeroHeaderIndex: NIOHPACKError {
+    public struct ZeroHeaderIndex: NIOHPACKError, NIOSendable {
         public init() { }
     }
 
     /// HPACK decoder asked to decode a header list that would violate the configured
     /// max header list size.
-    public struct MaxHeaderListSizeViolation: NIOHPACKError {
+    public struct MaxHeaderListSizeViolation: NIOHPACKError, NIOSendable {
         public init() { }
     }
 
     /// HPACK decoder asked to decode a header field name that was empty.
-    public struct EmptyLiteralHeaderFieldName: NIOHPACKError {
+    public struct EmptyLiteralHeaderFieldName: NIOHPACKError, NIOSendable {
         public init() { }
     }
 
     /// The integer being decoded is not representable by this implementation.
-    public struct UnrepresentableInteger: NIOHPACKError {
+    public struct UnrepresentableInteger: NIOHPACKError, NIOSendable {
         public init() {}
     }
 }
+
+#if swift(>=5.5) && canImport(_Concurrency)
+extension NIOHPACKErrors.FailedToAddIndexedHeader: @unchecked Sendable {
+    
+}
+#endif
