@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import NIOHPACK
+import NIOConcurrencyHelpers
 
 public protocol NIOHTTP2Error: Equatable, Error { }
 
@@ -1454,26 +1455,80 @@ private func _location(file: String, line: UInt) -> String {
 }
 
 private final class StringAndLocationStorage: Equatable {
-    var value: String
-    var file: String
-    var line: UInt
+
+    private let lock = Lock()
+
+    private var _value: String
+    private var _file: String
+    private var _line: UInt
+
+    var value: String {
+        get {
+            self.lock.withLock {
+                self._value
+            }
+        }
+        set {
+            self.lock.withLock {
+                self._value = newValue
+            }
+        }
+    }
+    var file: String {
+        get {
+            self.lock.withLock {
+                self._file
+            }
+        }
+        set {
+            self.lock.withLock {
+                self._file = newValue
+            }
+        }
+    }
+    var line: UInt {
+        get {
+            self.lock.withLock {
+                self._line
+            }
+        }
+        set {
+            self.lock.withLock {
+                self._line = newValue
+            }
+        }
+    }
 
     var location: String {
-        return _location(file: self.file, line: self.line)
+        self.lock.withLock {
+            _location(file: self._file, line: self._line)
+        }
     }
 
     init(_ value: String, file: String, line: UInt) {
-        self.value = value
-        self.file = file
-        self.line = line
+        self._value = value
+        self._file = file
+        self._line = line
     }
 
     func copy() -> StringAndLocationStorage {
-        return StringAndLocationStorage(self.value, file: self.file, line: self.line)
+        self.lock.withLock {
+            return StringAndLocationStorage(self._value, file: self._file, line: self._line)
+        }
     }
 
     static func ==(lhs: StringAndLocationStorage, rhs: StringAndLocationStorage) -> Bool {
         // Only compare the value. The 'file' is not relevant here.
-        return lhs.value == rhs.value
+        lhs.lock.withLock {
+            rhs.lock.withLock {
+                lhs._value == rhs._value
+            }
+        }
     }
 }
+
+#if swift(>=5.5) && canImport(_Concurrency)
+extension StringAndLocationStorage: @unchecked Sendable {
+
+}
+#endif

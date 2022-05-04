@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import NIOCore
+import NIOConcurrencyHelpers
 
 /// A buffer of pending user events.
 ///
@@ -22,11 +23,15 @@ import NIOCore
 /// force the stack to unwind, we have this temporary storage location where all user events go.
 /// This will be drained both before and after any frame read operation, to ensure that we
 /// have always delivered all pending user events before we deliver a frame.
-class InboundEventBuffer {
+final class InboundEventBuffer {
     fileprivate var buffer: CircularBuffer<Any> = CircularBuffer(initialCapacity: 8)
 
+    private let lock = Lock()
+
     func pendingUserEvent(_ event: Any) {
-        self.buffer.append(event)
+        self.lock.withLock {
+            self.buffer.append(event)
+        }
     }
 }
 
@@ -65,3 +70,9 @@ extension InboundEventBuffer: CustomStringConvertible {
         return "InboundEventBuffer { \(self.buffer) }"
     }
 }
+
+#if swift(>=5.5) && canImport(_Concurrency)
+extension InboundEventBuffer: @unchecked Sendable {
+
+}
+#endif
