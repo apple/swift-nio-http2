@@ -716,7 +716,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to use a currently unsupported feature.
-    public struct Unsupported: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct Unsupported: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -805,7 +805,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A pseudo-header field is missing.
-    public struct MissingPseudoHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct MissingPseudoHeader: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -846,7 +846,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A pseudo-header field has been duplicated.
-    public struct DuplicatePseudoHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct DuplicatePseudoHeader: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -887,7 +887,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A header block contained a pseudo-header after a regular header.
-    public struct PseudoHeaderAfterRegularHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct PseudoHeaderAfterRegularHeader: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -928,7 +928,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An unknown pseudo-header was received.
-    public struct UnknownPseudoHeader: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct UnknownPseudoHeader: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1066,7 +1066,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A :status header was received with an invalid value.
-    public struct InvalidStatusValue: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct InvalidStatusValue: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1153,7 +1153,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send a header field with a field name that is not valid in HTTP/2.
-    public struct InvalidHTTP2HeaderFieldName: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct InvalidHTTP2HeaderFieldName: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1459,81 +1459,31 @@ private func _location(file: String, line: UInt) -> String {
 
 private final class StringAndLocationStorage: Equatable {
 
-    private let lock = Lock()
-
-    private var _value: String
-    private var _file: String
-    private var _line: UInt
-
-    var value: String {
-        get {
-            self.lock.withLock {
-                self._value
-            }
-        }
-        set {
-            self.lock.withLock {
-                self._value = newValue
-            }
-        }
-    }
-    var file: String {
-        get {
-            self.lock.withLock {
-                self._file
-            }
-        }
-        set {
-            self.lock.withLock {
-                self._file = newValue
-            }
-        }
-    }
-    var line: UInt {
-        get {
-            self.lock.withLock {
-                self._line
-            }
-        }
-        set {
-            self.lock.withLock {
-                self._line = newValue
-            }
-        }
-    }
+    var value: String
+    var file: String
+    var line: UInt
 
     var location: String {
-        self.lock.withLock {
-            _location(file: self._file, line: self._line)
-        }
+        _location(file: self.file, line: self.line)
     }
 
     init(_ value: String, file: String, line: UInt) {
-        self._value = value
-        self._file = file
-        self._line = line
+        self.value = value
+        self.file = file
+        self.line = line
     }
 
     func copy() -> StringAndLocationStorage {
-        self.lock.withLock {
-            return StringAndLocationStorage(self._value, file: self._file, line: self._line)
-        }
+        return StringAndLocationStorage(self.value, file: self.file, line: self.line)
     }
 
     static func ==(lhs: StringAndLocationStorage, rhs: StringAndLocationStorage) -> Bool {
         // Only compare the value. The 'file' is not relevant here.
-        lhs.lock.withLock {
-            rhs.lock.withLock {
-                lhs._value == rhs._value
-            }
-        }
+        lhs.value == rhs.value
     }
 }
 
 #if swift(>=5.5) && canImport(_Concurrency)
-extension StringAndLocationStorage: @unchecked Sendable {
-
-}
 extension NIOHTTP2Errors.InvalidFlowControlWindowSize: @unchecked Sendable {
     
 }
