@@ -330,6 +330,7 @@ public struct HPACKEncoder {
     }
 }
 
+// The `@unchecked` is needed because at the time of writing `NIOCore` didn't have `Sendable` support.
 #if swift(>=5.5) && canImport(_Concurrency)
 extension HPACKEncoder: @unchecked Sendable {
 

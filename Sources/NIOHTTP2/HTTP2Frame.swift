@@ -17,7 +17,7 @@ import NIOHTTP1
 import NIOHPACK
 
 /// A representation of a single HTTP/2 frame.
-public struct HTTP2Frame {
+public struct HTTP2Frame: NIOSendable {
 
     /// The frame stream ID as a 32-bit integer.
     public var streamID: HTTP2StreamID
@@ -294,10 +294,8 @@ extension HTTP2Frame.FramePayload {
     }
 }
 
+// The `@unchecked` is needed because at the time of writing `NIOCore` didn't have `Sendable` support.
 #if swift(>=5.5) && canImport(_Concurrency)
-extension HTTP2Frame: @unchecked Sendable {
-
-}
 extension HTTP2Frame.FramePayload: @unchecked Sendable {
 
 }

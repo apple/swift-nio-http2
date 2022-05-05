@@ -338,7 +338,7 @@ public enum NIOHTTP2Errors {
     /// An attempt was made to change the flow control window size, either via
     /// SETTINGS or WINDOW_UPDATE, but this change would move the flow control
     /// window size out of bounds.
-    public struct InvalidFlowControlWindowSize: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct InvalidFlowControlWindowSize: NIOHTTP2Error, CustomStringConvertible {
         private var storage: Storage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1238,7 +1238,7 @@ public enum NIOHTTP2Errors {
 
     /// Connection-specific header fields are forbidden in HTTP/2: this error is raised when one is
     /// sent or received.
-    public struct ForbiddenHeaderField: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct ForbiddenHeaderField: NIOHTTP2Error, CustomStringConvertible {
         private var storage: Storage
 
         private mutating func copyStorageIfNotUniquelyReferenced() {
@@ -1464,7 +1464,7 @@ public enum NIOHTTP2Errors {
     /// As they are a wrapper error, they carry a "real" error in the `baseError`. Additionally, they cannot
     /// meaningfully be `Equatable`, so they aren't. There's also no additional location information: that's
     /// provided by the base error.
-    public struct StreamError: Error, NIOSendable {
+    public struct StreamError: Error {
         fileprivate final class Storage {
 
             private let lock = Lock()
@@ -1649,13 +1649,13 @@ private final class StringAndLocationStorage: Equatable {
 extension StringAndLocationStorage: @unchecked Sendable {
 
 }
-extension NIOHTTP2Errors.InvalidFlowControlWindowSize.Storage: @unchecked Sendable {
+extension NIOHTTP2Errors.InvalidFlowControlWindowSize: @unchecked Sendable {
     
 }
-extension NIOHTTP2Errors.ForbiddenHeaderField.Storage: @unchecked Sendable {
+extension NIOHTTP2Errors.ForbiddenHeaderField: @unchecked Sendable {
 
 }
-extension NIOHTTP2Errors.StreamError.Storage: @unchecked Sendable {
+extension NIOHTTP2Errors.StreamError: @unchecked Sendable {
 
 }
 #endif
