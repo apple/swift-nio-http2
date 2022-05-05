@@ -14,8 +14,6 @@
 import NIOCore
 import NIOHPACK
 
-import NIOConcurrencyHelpers
-
 public protocol NIOHTTP2Error: Equatable, Error { }
 
 /// Errors that NIO raises when handling HTTP/2 connections.
