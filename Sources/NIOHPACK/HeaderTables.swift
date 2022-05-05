@@ -15,7 +15,6 @@
 import NIOCore
 
 internal struct HeaderTableEntry {
-
     var name: String
 
     var value: String

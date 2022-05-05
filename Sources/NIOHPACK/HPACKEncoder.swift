@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
-import NIOConcurrencyHelpers
 
 /// An `HPACKEncoder` maintains its own dynamic header table and uses that to
 /// encode HTTP headers to an internal byte buffer.
