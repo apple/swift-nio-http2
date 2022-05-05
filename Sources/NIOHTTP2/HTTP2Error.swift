@@ -347,72 +347,29 @@ public enum NIOHTTP2Errors {
             }
         }
 
-        fileprivate final class Storage: Equatable {
-            var _delta: Int
-            var _currentWindowSize: Int
-            var _file: String
-            var _line: UInt
-
-            private let lock = Lock()
-
-            var delta: Int {
-                get {
-                    self.lock.withLock { self._delta }
-                }
-                set {
-                    self.lock.withLock { self._delta = newValue }
-                }
-            }
-            var currentWindowSize: Int {
-                get {
-                    self.lock.withLock { self._currentWindowSize }
-                }
-                set {
-                    self.lock.withLock { self._currentWindowSize = newValue }
-                }
-            }
-            var file: String {
-                get {
-                    self.lock.withLock { self._file }
-                }
-                set {
-                    self.lock.withLock { self._file = newValue }
-                }
-            }
-            var line: UInt {
-                get {
-                    self.lock.withLock { self._line }
-                }
-                set {
-                    self.lock.withLock { self._line = newValue }
-                }
-            }
+        private final class Storage: Equatable {
+            var delta: Int
+            var currentWindowSize: Int
+            var file: String
+            var line: UInt
 
             var location: String {
-                self.lock.withLock {
-                    _location(file: self._file, line: self._line)
-                }
+                _location(file: self.file, line: self.line)
             }
 
             init(delta: Int, currentWindowSize: Int, file: String, line: UInt) {
-                self._delta = delta
-                self._currentWindowSize = currentWindowSize
-                self._file = file
-                self._line = line
+                self.delta = delta
+                self.currentWindowSize = currentWindowSize
+                self.file = file
+                self.line = line
             }
 
             func copy() -> Storage {
-                self.lock.withLock {
-                    Storage(delta: self._delta, currentWindowSize: self._currentWindowSize, file: self._file, line: self._line)
-                }
+                Storage(delta: self.delta, currentWindowSize: self.currentWindowSize, file: self.file, line: self.line)
             }
 
             static func ==(lhs: Storage, rhs: Storage) -> Bool {
-                lhs.lock.withLock {
-                    rhs.lock.withLock {
-                        lhs._delta == rhs._delta && lhs._currentWindowSize == rhs._currentWindowSize
-                    }
-                }
+                lhs.delta == rhs.delta && lhs.currentWindowSize == rhs.currentWindowSize
             }
         }
 
@@ -1247,72 +1204,29 @@ public enum NIOHTTP2Errors {
             }
         }
 
-        fileprivate final class Storage: Equatable {
-            private var _name: String
-            private var _value: String
-            private var _file: String
-            private var _line: UInt
-
-            private let lock = Lock()
-
-            var name: String {
-                get {
-                    self.lock.withLock { self._name }
-                }
-                set {
-                    self.lock.withLock { self._name = newValue }
-                }
-            }
-            var value: String {
-                get {
-                    self.lock.withLock { self._value }
-                }
-                set {
-                    self.lock.withLock { self._value = newValue }
-                }
-            }
-            var file: String {
-                get {
-                    self.lock.withLock { self._file }
-                }
-                set {
-                    self.lock.withLock { self._file = newValue }
-                }
-            }
-            var line: UInt {
-                get {
-                    self.lock.withLock { self._line }
-                }
-                set {
-                    self.lock.withLock { self._line = newValue }
-                }
-            }
+        private final class Storage: Equatable {
+            var name: String
+            var value: String
+            var file: String
+            var line: UInt
 
             var location: String {
-                self.lock.withLock {
-                    _location(file: self._file, line: self._line)
-                }
+                _location(file: self.file, line: self.line)
             }
 
             init(name: String, value: String, file: String, line: UInt) {
-                self._name = name
-                self._value = value
-                self._file = file
-                self._line = line
+                self.name = name
+                self.value = value
+                self.file = file
+                self.line = line
             }
 
             func copy() -> Storage {
-                self.lock.withLock {
-                    Storage(name: self._name, value: self._value, file: self._file, line: self._line)
-                }
+                Storage(name: self.name, value: self.value, file: self.file, line: self.line)
             }
 
             static func ==(lhs: Storage, rhs: Storage) -> Bool {
-                lhs.lock.withLock {
-                    rhs.lock.withLock {
-                        lhs._name == rhs._name && lhs._value == rhs._value
-                    }
-                }
+                lhs.name == rhs.name && lhs.value == rhs.value
             }
         }
 
@@ -1465,50 +1379,21 @@ public enum NIOHTTP2Errors {
     /// meaningfully be `Equatable`, so they aren't. There's also no additional location information: that's
     /// provided by the base error.
     public struct StreamError: Error {
-        fileprivate final class Storage {
+        private final class Storage {
 
-            private let lock = Lock()
-
-            var _streamID: HTTP2StreamID
-            var _baseError: Error
-
-            var streamID: HTTP2StreamID {
-                get {
-                    self.lock.withLock {
-                        self._streamID
-                    }
-                }
-                set {
-                    self.lock.withLock {
-                        self.streamID = newValue
-                    }
-                }
-            }
-            var baseError: Error {
-                get {
-                    self.lock.withLock {
-                        self._baseError
-                    }
-                }
-                set {
-                    self.lock.withLock {
-                        self._baseError = newValue
-                    }
-                }
-            }
+            var streamID: HTTP2StreamID
+            var baseError: Error
 
             init(streamID: HTTP2StreamID, baseError: Error) {
-                self._baseError = baseError
-                self._streamID = streamID
+                self.baseError = baseError
+                self.streamID = streamID
             }
 
             func copy() -> Storage {
-                self.lock.withLock {
-                    return Storage(
-                        streamID: self.streamID,
-                        baseError: self.baseError
-                    )
-                }
+                return Storage(
+                    streamID: self.streamID,
+                    baseError: self.baseError
+                )
             }
         }
 

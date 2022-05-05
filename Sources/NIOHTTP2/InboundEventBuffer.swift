@@ -27,12 +27,8 @@ import NIOConcurrencyHelpers
 final class InboundEventBuffer {
     fileprivate var buffer: CircularBuffer<Any> = CircularBuffer(initialCapacity: 8)
 
-    private let lock = Lock()
-
     func pendingUserEvent(_ event: Any) {
-        self.lock.withLock {
-            self.buffer.append(event)
-        }
+        self.buffer.append(event)
     }
 }
 
