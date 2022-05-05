@@ -12,14 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if swift(>=5.6) && canImport(_Concurrency)
-@preconcurrency import NIOCore
-#else
 import NIOCore
-#endif
+import EditLine
 
 /// The unified header table used by HTTP/2, encompassing both static and dynamic tables.
-public struct IndexedHeaderTable: NIOSendable {
+public struct IndexedHeaderTable {
     // private but tests
     @usableFromInline
     let staticTable: HeaderTableStorage
@@ -194,3 +191,9 @@ public struct IndexedHeaderTable: NIOSendable {
         set { self.dynamicTable.maximumTableLength = newValue }
     }
 }
+
+#if swift(>=5.5) && canImport(_Concurrency)
+extension IndexedHeaderTable: @unchecked Sendable {
+
+}
+#endif

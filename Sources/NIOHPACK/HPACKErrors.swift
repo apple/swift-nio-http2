@@ -12,11 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if swift(>=5.6) && canImport(_Concurrency)
-@preconcurrency import NIOCore
-#else
 import NIOCore
-#endif
 
 public protocol NIOHPACKError : Error, Equatable { }
 
@@ -51,7 +47,7 @@ public enum NIOHPACKErrors {
     }
 
     /// Decoded string data could not be parsed as valid UTF-8.
-    public struct InvalidUTF8Data : NIOHPACKError, NIOSendable {
+    public struct InvalidUTF8Data : NIOHPACKError {
         /// The offending bytes.
         public let bytes: ByteBuffer
     }
@@ -132,5 +128,8 @@ public enum NIOHPACKErrors {
 #if swift(>=5.5) && canImport(_Concurrency)
 extension NIOHPACKErrors.FailedToAddIndexedHeader: @unchecked Sendable {
     
+}
+extension NIOHPACKErrors.InvalidUTF8Data: @unchecked Sendable {
+
 }
 #endif

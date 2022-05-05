@@ -12,14 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if swift(>=5.6) && canImport(_Concurrency)
-@preconcurrency import NIOCore
-#else
 import NIOCore
-#endif
+import EditLine
 
-internal struct HeaderTableEntry: NIOSendable {
-
+internal struct HeaderTableEntry {
 
     var name: String
 
@@ -41,7 +37,7 @@ internal struct HeaderTableEntry: NIOSendable {
 /// `HPACKHeaders` and `NIOHTTP1.HTTPHeaders`, but uses a ring buffer to hold the bytes to
 /// avoid allocation churn while evicting and replacing entries.
 @usableFromInline
-struct HeaderTableStorage: NIOSendable {
+struct HeaderTableStorage {
     static let defaultMaxSize = 4096
 
     private var headers: CircularBuffer<HeaderTableEntry>
@@ -209,3 +205,12 @@ extension HeaderTableStorage : CustomStringConvertible {
         return array.description
     }
 }
+
+#if swift(>=5.5) && canImport(_Concurrency)
+extension HeaderTableEntry: @unchecked Sendable {
+
+}
+extension HeaderTableStorage: @unchecked Sendable {
+
+}
+#endif

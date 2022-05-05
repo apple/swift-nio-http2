@@ -12,17 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if swift(>=5.6) && canImport(_Concurrency)
-@preconcurrency import NIOCore
-#else
 import NIOCore
-#endif
+
 
 import NIOHTTP1
 import NIOHPACK
 
 /// A representation of a single HTTP/2 frame.
-public struct HTTP2Frame: NIOSendable {
+public struct HTTP2Frame {
 
     /// The frame stream ID as a 32-bit integer.
     public var streamID: HTTP2StreamID
@@ -38,7 +35,7 @@ public struct HTTP2Frame: NIOSendable {
     }
 
     /// Frame-type-specific payload data.
-    public enum FramePayload: NIOSendable {
+    public enum FramePayload {
         /// A DATA frame, containing raw bytes.
         ///
         /// See [RFC 7540 § 6.1](https://httpwg.org/specs/rfc7540.html#rfc.section.6.1).
@@ -128,7 +125,7 @@ public struct HTTP2Frame: NIOSendable {
         case origin([String])
 
         /// The payload of a DATA frame.
-        public struct Data: NIOSendable {
+        public struct Data {
             /// The application data carried within the DATA frame.
             public var data: IOData
 
@@ -298,3 +295,15 @@ extension HTTP2Frame.FramePayload {
         }
     }
 }
+
+#if swift(>=5.5) && canImport(_Concurrency)
+extension HTTP2Frame: @unchecked Sendable {
+
+}
+extension HTTP2Frame.FramePayload: @unchecked Sendable {
+
+}
+extension HTTP2Frame.FramePayload.Data: @unchecked Sendable {
+
+}
+#endif
