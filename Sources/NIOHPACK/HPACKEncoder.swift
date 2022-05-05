@@ -12,10 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#if swift(>=5.5) && canImport(_Concurrency)
+#if swift(>=5.6) && canImport(_Concurrency)
 @preconcurrency import NIOCore
 #else
-import NIO
+import NIOCore
 #endif
 
 import NIOConcurrencyHelpers

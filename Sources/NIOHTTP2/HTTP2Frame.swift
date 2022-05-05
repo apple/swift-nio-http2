@@ -12,7 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if swift(>=5.6) && canImport(_Concurrency)
 @preconcurrency import NIOCore
+#else
+import NIOCore
+#endif
+
 import NIOHTTP1
 import NIOHPACK
 

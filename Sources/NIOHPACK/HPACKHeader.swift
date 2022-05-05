@@ -15,11 +15,11 @@
 import NIOCore
 import NIOHTTP1
 
-//#if swift(>=5.5) && canImport(_Concurrency)
-//@preconcurrency import NIOCore
-//#else
-//import NIO
-//#endif
+#if swift(>=5.6) && canImport(_Concurrency)
+@preconcurrency import NIOCore
+#else
+import NIOCore
+#endif
 
 /// Very similar to `NIOHTTP1.HTTPHeaders`, but with extra data for storing indexing
 /// information.
