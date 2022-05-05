@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
-import EditLine
 
 internal struct HeaderTableEntry {
 

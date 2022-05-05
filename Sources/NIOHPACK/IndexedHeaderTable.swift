@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
-import EditLine
 
 /// The unified header table used by HTTP/2, encompassing both static and dynamic tables.
 public struct IndexedHeaderTable {
