@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 import NIOCore
-import NIOConcurrencyHelpers
 
 /// A buffer of pending user events.
 ///
@@ -24,7 +23,7 @@ import NIOConcurrencyHelpers
 /// This will be drained both before and after any frame read operation, to ensure that we
 /// have always delivered all pending user events before we deliver a frame.
 /// Deliberately not threadsafe or `Sendable`.
-final class InboundEventBuffer {
+class InboundEventBuffer {
     fileprivate var buffer: CircularBuffer<Any> = CircularBuffer(initialCapacity: 8)
 
     func pendingUserEvent(_ event: Any) {
