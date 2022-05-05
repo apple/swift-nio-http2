@@ -11,7 +11,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import NIOCore
 import NIOHPACK
 
 public protocol NIOHTTP2Error: Equatable, Error { }
@@ -182,7 +181,7 @@ public enum NIOHTTP2Errors {
     /// further outbound frames. This occurs when the remote peer is generating work
     /// faster than they are consuming the result. Additional buffering runs the risk of
     /// memory exhaustion.
-    public struct ExcessiveOutboundFrameBuffering: NIOHTTP2Error, NIOSendable {
+    public struct ExcessiveOutboundFrameBuffering: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -208,7 +207,7 @@ public enum NIOHTTP2Errors {
 
     /// NIO's upgrade handler encountered a successful upgrade to a protocol that it
     /// does not recognise.
-    public struct InvalidALPNToken: NIOHTTP2Error, NIOSendable {
+    public struct InvalidALPNToken: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -233,7 +232,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to issue a write on a stream that does not exist.
-    public struct NoSuchStream: NIOHTTP2Error, NIOSendable {
+    public struct NoSuchStream: NIOHTTP2Error {
         /// The stream ID that was used that does not exist.
         public var streamID: HTTP2StreamID
 
@@ -256,7 +255,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A stream was closed.
-    public struct StreamClosed: NIOHTTP2Error, NIOSendable {
+    public struct StreamClosed: NIOHTTP2Error {
         /// The stream ID that was closed.
         public var streamID: HTTP2StreamID
 
@@ -282,7 +281,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    public struct BadClientMagic: NIOHTTP2Error, NIOSendable {
+    public struct BadClientMagic: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -307,7 +306,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A stream state transition was attempted that was not valid.
-    public struct BadStreamStateTransition: NIOHTTP2Error, CustomStringConvertible, NIOSendable {
+    public struct BadStreamStateTransition: NIOHTTP2Error, CustomStringConvertible {
         public let fromState: NIOHTTP2StreamState?
 
         /// The location where the error was thrown.
@@ -415,7 +414,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A frame was sent or received that violates HTTP/2 flow control rules.
-    public struct FlowControlViolation: NIOHTTP2Error, NIOSendable {
+    public struct FlowControlViolation: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -440,7 +439,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A SETTINGS frame was sent or received with an invalid setting.
-    public struct InvalidSetting: NIOHTTP2Error, NIOSendable {
+    public struct InvalidSetting: NIOHTTP2Error {
         /// The invalid setting.
         public var setting: HTTP2Setting
 
@@ -463,7 +462,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt to perform I/O was made on a connection that is already closed.
-    public struct IOOnClosedConnection: NIOHTTP2Error, NIOSendable {
+    public struct IOOnClosedConnection: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -488,7 +487,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A SETTINGS frame was received that is invalid.
-    public struct ReceivedBadSettings: NIOHTTP2Error, NIOSendable {
+    public struct ReceivedBadSettings: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -513,7 +512,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A violation of SETTINGS_MAX_CONCURRENT_STREAMS occurred.
-    public struct MaxStreamsViolation: NIOHTTP2Error, NIOSendable {
+    public struct MaxStreamsViolation: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -538,7 +537,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to use a stream ID that is too small.
-    public struct StreamIDTooSmall: NIOHTTP2Error, NIOSendable {
+    public struct StreamIDTooSmall: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -563,7 +562,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send a frame without having previously sent a connection preface!
-    public struct MissingPreface: NIOHTTP2Error, NIOSendable {
+    public struct MissingPreface: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -589,7 +588,7 @@ public enum NIOHTTP2Errors {
 
     /// An attempt was made to create a stream after a GOAWAY frame has forbidden further
     /// stream creation.
-    public struct CreatedStreamAfterGoaway: NIOHTTP2Error, NIOSendable {
+    public struct CreatedStreamAfterGoaway: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -614,7 +613,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A peer has attempted to create a stream with a stream ID it is not permitted to use.
-    public struct InvalidStreamIDForPeer: NIOHTTP2Error, NIOSendable {
+    public struct InvalidStreamIDForPeer: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -639,7 +638,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send a new GOAWAY frame whose lastStreamID is higher than the previous value.
-    public struct RaisedGoawayLastStreamID: NIOHTTP2Error, NIOSendable {
+    public struct RaisedGoawayLastStreamID: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -664,7 +663,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// The size of the window increment is invalid.
-    public struct InvalidWindowIncrementSize: NIOHTTP2Error, NIOSendable {
+    public struct InvalidWindowIncrementSize: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -689,7 +688,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to push a stream, even though the settings forbid it.
-    public struct PushInViolationOfSetting: NIOHTTP2Error, NIOSendable {
+    public struct PushInViolationOfSetting: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -754,7 +753,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    public struct UnableToSerializeFrame: NIOHTTP2Error, NIOSendable {
+    public struct UnableToSerializeFrame: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -778,7 +777,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    public struct UnableToParseFrame: NIOHTTP2Error, NIOSendable {
+    public struct UnableToParseFrame: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -967,7 +966,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A header block was received with an invalid set of pseudo-headers for the block type.
-    public struct InvalidPseudoHeaders: NIOHTTP2Error, NIOSendable {
+    public struct InvalidPseudoHeaders: NIOHTTP2Error {
         public var headerBlock: HPACKHeaders
 
         /// The location where the error was thrown.
@@ -989,7 +988,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An outbound request was about to be sent, but does not contain a Host header.
-    public struct MissingHostHeader: NIOHTTP2Error, NIOSendable {
+    public struct MissingHostHeader: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -1014,7 +1013,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An outbound request was about to be sent, but it contains a duplicated Host header.
-    public struct DuplicateHostHeader: NIOHTTP2Error, NIOSendable {
+    public struct DuplicateHostHeader: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -1039,7 +1038,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A HTTP/2 header block was received with an empty :path header.
-    public struct EmptyPathHeader: NIOHTTP2Error, NIOSendable {
+    public struct EmptyPathHeader: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -1105,7 +1104,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A priority update was received that would create a PRIORITY cycle.
-    public struct PriorityCycle: NIOHTTP2Error, NIOSendable {
+    public struct PriorityCycle: NIOHTTP2Error {
         /// The affected stream ID.
         public var streamID: HTTP2StreamID
 
@@ -1128,7 +1127,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to send trailers without setting END_STREAM on them.
-    public struct TrailersWithoutEndStream: NIOHTTP2Error, NIOSendable {
+    public struct TrailersWithoutEndStream: NIOHTTP2Error {
         /// The affected stream ID.
         public var streamID: HTTP2StreamID
 
@@ -1270,7 +1269,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A request or response has violated the expected content length, either exceeding or falling beneath it.
-    public struct ContentLengthViolated: NIOHTTP2Error, NIOSendable {
+    public struct ContentLengthViolated: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -1296,7 +1295,7 @@ public enum NIOHTTP2Errors {
 
     /// The remote peer has sent an excessive number of empty DATA frames, which looks like a denial of service
     /// attempt, so the connection has been closed.
-    public struct ExcessiveEmptyDataFrames: NIOHTTP2Error, NIOSendable {
+    public struct ExcessiveEmptyDataFrames: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -1321,7 +1320,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// The remote peer has sent a header block so large that NIO refuses to buffer any more data than that.
-    public struct ExcessivelyLargeHeaderBlock: NIOHTTP2Error, NIOSendable {
+    public struct ExcessivelyLargeHeaderBlock: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -1346,7 +1345,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// The channel does not yet have a stream ID, as it has not reached the network yet.
-    public struct NoStreamIDAvailable: NIOHTTP2Error, NIOSendable {
+    public struct NoStreamIDAvailable: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
@@ -1480,15 +1479,3 @@ private final class StringAndLocationStorage: Equatable {
         lhs.value == rhs.value
     }
 }
-
-#if swift(>=5.5) && canImport(_Concurrency)
-extension NIOHTTP2Errors.InvalidFlowControlWindowSize: @unchecked Sendable {
-    
-}
-extension NIOHTTP2Errors.ForbiddenHeaderField: @unchecked Sendable {
-
-}
-extension NIOHTTP2Errors.StreamError: @unchecked Sendable {
-
-}
-#endif
