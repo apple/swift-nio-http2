@@ -22,6 +22,7 @@ import NIOCore
 /// force the stack to unwind, we have this temporary storage location where all user events go.
 /// This will be drained both before and after any frame read operation, to ensure that we
 /// have always delivered all pending user events before we deliver a frame.
+/// Deliberately not threadsafe or `Sendable`.
 class InboundEventBuffer {
     fileprivate var buffer: CircularBuffer<Any> = CircularBuffer(initialCapacity: 8)
 

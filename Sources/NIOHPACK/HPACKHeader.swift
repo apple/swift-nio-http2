@@ -17,7 +17,7 @@ import NIOHTTP1
 
 /// Very similar to `NIOHTTP1.HTTPHeaders`, but with extra data for storing indexing
 /// information.
-public struct HPACKHeaders: ExpressibleByDictionaryLiteral {
+public struct HPACKHeaders: ExpressibleByDictionaryLiteral, NIOSendable {
     @usableFromInline
     internal var headers: [HPACKHeader]
 
@@ -437,7 +437,7 @@ extension HPACKHeaders: Hashable {
 
 /// Defines the types of indexing and rewriting operations a decoder may take with
 /// regard to this header.
-public enum HPACKIndexing: CustomStringConvertible {
+public enum HPACKIndexing: CustomStringConvertible, NIOSendable {
     /// Header may be written into the dynamic index table or may be rewritten by
     /// proxy servers.
     case indexable
@@ -461,7 +461,7 @@ public enum HPACKIndexing: CustomStringConvertible {
 }
 
 @usableFromInline
-internal struct HPACKHeader {
+internal struct HPACKHeader: NIOSendable {
     @usableFromInline
     var indexing: HPACKIndexing
 

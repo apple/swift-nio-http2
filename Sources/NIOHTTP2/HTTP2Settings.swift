@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import NIOCore
+
 /// A collection of HTTP/2 settings.
 ///
 /// This is a typealias because we may change this into a custom structure at some stage.
@@ -19,7 +21,7 @@ public typealias HTTP2Settings = [HTTP2Setting]
 
 /// A HTTP/2 settings parameter that allows representing both known and unknown HTTP/2
 /// settings parameters.
-public struct HTTP2SettingsParameter {
+public struct HTTP2SettingsParameter: NIOSendable {
     internal let networkRepresentation: UInt16
 
     /// Create a `HTTP2SettingsParameter` that is not known to NIO.
@@ -71,7 +73,7 @@ extension HTTP2SettingsParameter: Equatable { }
 extension HTTP2SettingsParameter: Hashable { }
 
 /// A single setting for HTTP/2, a combination of a `HTTP2SettingsParameter` and its value.
-public struct HTTP2Setting {
+public struct HTTP2Setting: NIOSendable {
     /// The settings parameter for this setting.
     public var parameter: HTTP2SettingsParameter
 

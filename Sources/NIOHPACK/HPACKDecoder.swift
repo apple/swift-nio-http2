@@ -25,7 +25,7 @@ import NIOCore
 ///
 /// - note: This type is not thread-safe. It is designed to be owned and operated
 /// by a single HTTP/2 stream, operating on a single NIO `EventLoop`.
-public struct HPACKDecoder {
+public struct HPACKDecoder: NIOSendable {
     public static var maxDynamicTableSize: Int {
         return DynamicHeaderTable.defaultSize
     }

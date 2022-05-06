@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 import NIOHPACK
+import NIOCore
 
 /// A HTTP/2 protocol implementation is fundamentally built on top of two interlocking finite
 /// state machines. The full description of this is in ConnectionStateMachine.swift.
@@ -1026,7 +1027,7 @@ private extension HPACKHeaders {
 }
 
 /// A state of a `HTTP2StreamStateMachine`. This copy in effect mirrors `HTTP2StreamStateMachine.state` but without associated values.
-public struct NIOHTTP2StreamState: Hashable, CustomStringConvertible {
+public struct NIOHTTP2StreamState: Hashable, CustomStringConvertible, NIOSendable {
     private enum State {
         case idle
         case reservedRemote

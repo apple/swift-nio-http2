@@ -27,7 +27,7 @@ public struct HPACKEncoder {
     public static var defaultDynamicTableSize: Int { return DynamicHeaderTable.defaultSize }
     private static let defaultDataBufferSize = 128
     
-    public struct HeaderDefinition {
+    public struct HeaderDefinition: NIOSendable {
         var name: String
         var value: String
         var indexing: HPACKIndexing
@@ -329,3 +329,10 @@ public struct HPACKEncoder {
         }
     }
 }
+
+// The `@unchecked` is needed because at the time of writing `NIOCore` didn't have `Sendable` support.
+#if swift(>=5.5) && canImport(_Concurrency)
+extension HPACKEncoder: @unchecked Sendable {
+
+}
+#endif

@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import NIOCore
+
 /// A `StreamClosedEvent` is fired whenever a stream is closed.
 ///
 /// This event is fired whether the stream is closed normally, or via RST_STREAM,
@@ -19,7 +21,7 @@
 /// case of closure by GOAWAY the `reason` is always `.refusedStream`, indicating that
 /// the remote peer has not processed this stream. In the case of RST_STREAM,
 /// the `reason` contains the error code sent by the peer in the RST_STREAM frame.
-public struct StreamClosedEvent {
+public struct StreamClosedEvent: NIOSendable {
     /// The stream ID of the stream that is closed.
     public let streamID: HTTP2StreamID
 
