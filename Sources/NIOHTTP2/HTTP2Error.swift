@@ -351,7 +351,7 @@ public enum NIOHTTP2Errors {
             var line: UInt
 
             var location: String {
-                _location(file: self.file, line: self.line)
+                return _location(file: self.file, line: self.line)
             }
 
             init(delta: Int, currentWindowSize: Int, file: String, line: UInt) {
@@ -362,11 +362,11 @@ public enum NIOHTTP2Errors {
             }
 
             func copy() -> Storage {
-                Storage(delta: self.delta, currentWindowSize: self.currentWindowSize, file: self.file, line: self.line)
+                return Storage(delta: self.delta, currentWindowSize: self.currentWindowSize, file: self.file, line: self.line)
             }
 
             static func ==(lhs: Storage, rhs: Storage) -> Bool {
-                lhs.delta == rhs.delta && lhs.currentWindowSize == rhs.currentWindowSize
+                return lhs.delta == rhs.delta && lhs.currentWindowSize == rhs.currentWindowSize
             }
         }
 
@@ -1208,7 +1208,7 @@ public enum NIOHTTP2Errors {
             var line: UInt
 
             var location: String {
-                _location(file: self.file, line: self.line)
+                return _location(file: self.file, line: self.line)
             }
 
             init(name: String, value: String, file: String, line: UInt) {
@@ -1219,11 +1219,11 @@ public enum NIOHTTP2Errors {
             }
 
             func copy() -> Storage {
-                Storage(name: self.name, value: self.value, file: self.file, line: self.line)
+                return Storage(name: self.name, value: self.value, file: self.file, line: self.line)
             }
 
             static func ==(lhs: Storage, rhs: Storage) -> Bool {
-                lhs.name == rhs.name && lhs.value == rhs.value
+                return lhs.name == rhs.name && lhs.value == rhs.value
             }
         }
 
@@ -1377,7 +1377,6 @@ public enum NIOHTTP2Errors {
     /// provided by the base error.
     public struct StreamError: Error {
         private final class Storage {
-
             var streamID: HTTP2StreamID
             var baseError: Error
 
@@ -1455,13 +1454,12 @@ private func _location(file: String, line: UInt) -> String {
 }
 
 private final class StringAndLocationStorage: Equatable {
-
     var value: String
     var file: String
     var line: UInt
 
     var location: String {
-        _location(file: self.file, line: self.line)
+        return _location(file: self.file, line: self.line)
     }
 
     init(_ value: String, file: String, line: UInt) {
@@ -1476,6 +1474,6 @@ private final class StringAndLocationStorage: Equatable {
 
     static func ==(lhs: StringAndLocationStorage, rhs: StringAndLocationStorage) -> Bool {
         // Only compare the value. The 'file' is not relevant here.
-        lhs.value == rhs.value
+        return lhs.value == rhs.value
     }
 }
