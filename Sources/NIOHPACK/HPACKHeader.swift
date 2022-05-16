@@ -18,6 +18,22 @@ import NIOHTTP1
 /// Very similar to `NIOHTTP1.HTTPHeaders`, but with extra data for storing indexing
 /// information.
 public struct HPACKHeaders: ExpressibleByDictionaryLiteral, NIOSendable {
+    /// The maximum size of the canonical connection header value array to use when removing
+    /// connection headers during `HTTPHeaders` normalisation. When using an array the removal
+    /// is O(H·C) where H is the length of headers to noramlize and C is the length of the
+    /// connection header value array.
+    ///
+    /// Beyond this limit we construct a set of the connection header values to reduce the
+    /// complexity to O(H).
+    ///
+    /// We use an array for small connection header lists as it is cheaper (values don't need to be
+    /// hashed and constructing a set incurs an additional allocation). The value of 32 was picked
+    /// as the crossover point where using an array became more expensive than using a set when
+    /// running the `hpackheaders_normalize_httpheaders_removing_10k_conn_headers` performance test
+    /// with varying input sizes.
+    @usableFromInline
+    static let connectionHeaderValueArraySizeLimit = 32
+
     @usableFromInline
     internal var headers: [HPACKHeader]
 
@@ -33,10 +49,21 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, NIOSendable {
             self.headers = httpHeaders.map { HPACKHeader(name: $0.name.lowercased(), value: $0.value) }
 
             let connectionHeaderValue = httpHeaders[canonicalForm: "connection"]
-            
-            self.headers.removeAll { header in
-                connectionHeaderValue.contains(header.name[...]) ||
-                    HPACKHeaders.illegalHeaders.contains(header.name)
+
+            // Above a limit we use a set rather than scanning the connection header value array.
+            // See `Self.connectionHeaderValueArraySizeLimit`.
+            if connectionHeaderValue.count > Self.connectionHeaderValueArraySizeLimit {
+                var headersToRemove = Set(connectionHeaderValue)
+                // Since we have a set we can just merge in the illegal headers.
+                headersToRemove.formUnion(Self.illegalHeaders.lazy.map { $0[...] })
+                self.headers.removeAll { header in
+                    headersToRemove.contains(header.name[...])
+                }
+            } else {
+                self.headers.removeAll { header in
+                    connectionHeaderValue.contains(header.name[...]) ||
+                        HPACKHeaders.illegalHeaders.contains(header.name)
+                }
             }
         } else {
             self.headers = httpHeaders.map { HPACKHeader(name: $0.name, value: $0.value) }

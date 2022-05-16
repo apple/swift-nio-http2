@@ -28,6 +28,8 @@ extension HPACKHeadersTests {
    static var allTests : [(String, (HPACKHeadersTests) -> () throws -> Void)] {
       return [
                 ("testHPACKHeadersAreHashable", testHPACKHeadersAreHashable),
+                ("testNormalizationOfHTTPHeaders", testNormalizationOfHTTPHeaders),
+                ("testNormalizationOfHTTPHeadersWithManyConnectionHeaderValues", testNormalizationOfHTTPHeadersWithManyConnectionHeaderValues),
            ]
    }
 }
