@@ -16,18 +16,31 @@ import NIOHPACK
 import NIOHTTP1
 
 final class HPACKHeadersNormalizationOfHTTPHeadersBenchmark {
-    private let httpHeaders: HTTPHeaders
+    private let httpHeadersKind: HeadersKind
+    private var httpHeaders: HTTPHeaders!
     private let iterations: Int
 
-    init(httpHeaders: HTTPHeaders, iterations: Int) {
-        self.httpHeaders = httpHeaders
+    enum HeadersKind {
+        case manyUniqueConnectionHeaderValues(Int)
+        case manyConnectionHeaderValuesWhichAreNotRemoved(Int)
+    }
+
+    init(headersKind: HeadersKind, iterations: Int) {
+        self.httpHeadersKind = headersKind
         self.iterations = iterations
     }
 }
 
 
 extension HPACKHeadersNormalizationOfHTTPHeadersBenchmark: Benchmark {
-    func setUp() throws { }
+    func setUp() throws {
+        switch self.httpHeadersKind {
+        case .manyUniqueConnectionHeaderValues(let count):
+            self.httpHeaders = .manyUniqueConnectionHeaderValues(count)
+        case .manyConnectionHeaderValuesWhichAreNotRemoved(let count):
+            self.httpHeaders = .manyConnectionHeaderValuesWhichAreNotRemoved(count)
+        }
+    }
 
     func tearDown() { }
 
