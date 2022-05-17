@@ -92,6 +92,8 @@ try measureAndPrint(desc: "hpackheaders_canonical_form", benchmark: HPACKHeaderC
 try measureAndPrint(desc: "hpackheaders_canonical_form_trimming_whitespace", benchmark: HPACKHeaderCanonicalFormBenchmark(.trimmingWhitespace))
 try measureAndPrint(desc: "hpackheaders_canonical_form_trimming_whitespace_short_strings", benchmark: HPACKHeaderCanonicalFormBenchmark(.trimmingWhitespaceFromShortStrings))
 try measureAndPrint(desc: "hpackheaders_canonical_form_trimming_whitespace_long_strings", benchmark: HPACKHeaderCanonicalFormBenchmark(.trimmingWhitespaceFromLongStrings))
+try measureAndPrint(desc: "hpackheaders_normalize_httpheaders_removing_10k_conn_headers", benchmark: HPACKHeadersNormalizationOfHTTPHeadersBenchmark(headersKind: .manyUniqueConnectionHeaderValues(10_000), iterations: 10))
+try measureAndPrint(desc: "hpackheaders_normalize_httpheaders_keeping_10k_conn_headers", benchmark: HPACKHeadersNormalizationOfHTTPHeadersBenchmark(headersKind: .manyConnectionHeaderValuesWhichAreNotRemoved(10_000), iterations: 10))
 try measureAndPrint(desc: "huffman_encode_basic", benchmark: HuffmanEncodingBenchmark(huffmanString: .basicHuffmanString, loopCount: 100))
 try measureAndPrint(desc: "huffman_encode_complex", benchmark: HuffmanEncodingBenchmark(huffmanString: .complexHuffmanString, loopCount: 100))
 try measureAndPrint(desc: "huffman_decode_basic", benchmark: HuffmanDecodingBenchmark(huffmanBytes: .basicHuffmanBytes, loopCount: 25))
