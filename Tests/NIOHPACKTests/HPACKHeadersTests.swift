@@ -15,6 +15,7 @@
 import XCTest
 import NIOCore
 import NIOHPACK
+import NIOHTTP1
 
 final class HPACKHeadersTests: XCTestCase {
     func testHPACKHeadersAreHashable() throws {
@@ -70,5 +71,52 @@ final class HPACKHeadersTests: XCTestCase {
             Set([firstHeaders, secondHeaders, thirdHeaders, fourthHeaders]),
             Set([firstHeaders, thirdHeaders, fourthHeaders])
         )
+    }
+
+    func testNormalizationOfHTTPHeaders() {
+        let httpHeaders: HTTPHeaders = [
+            "connection": "keepalive",
+            "connection": "remove-me, and-me",
+            "connection": "also-me-please",
+            "remove-me": "",
+            "and-me": "",
+            "also-me-please": "",
+            "but-not-me": "",
+            "keep-alive": "remove-me",
+            "proxy-connection": "me too",
+            "transfer-encoding": "me three"
+        ]
+
+        let normalized = HPACKHeaders(httpHeaders: httpHeaders, normalizeHTTPHeaders: true)
+        let expected: HPACKHeaders = [
+            "but-not-me": ""
+        ]
+
+        XCTAssertEqual(normalized, expected)
+    }
+
+    func testNormalizationOfHTTPHeadersWithManyConnectionHeaderValues() {
+        var httpHeaders: HTTPHeaders = [
+            "keep-alive": "remove-me",
+            "proxy-connection": "me too",
+            "transfer-encoding": "me three",
+            "but-not-me": "",
+        ]
+
+        // Add a bunch of connection headers to remove. We add a large number because the
+        // implementation of the normalizing init branches on the number of connection header
+        // values.
+        for i in 0 ..< 512 {
+            let toRemove = "value-\(i)"
+            httpHeaders.add(name: "connection", value: toRemove)
+            httpHeaders.add(name: toRemove, value: "")
+        }
+
+        let normalized = HPACKHeaders(httpHeaders: httpHeaders, normalizeHTTPHeaders: true)
+        let expected: HPACKHeaders = [
+            "but-not-me": ""
+        ]
+
+        XCTAssertEqual(normalized, expected)
     }
 }
