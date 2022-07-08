@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Atomics
 import NIOCore
 import NIOConcurrencyHelpers
 
@@ -164,8 +165,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.streamID = streamID
         self.multiplexer = multiplexer
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
-        self._isActiveAtomic = .makeAtomic(value: false)
-        self._isWritable = .makeAtomic(value: true)
+        self._isActiveAtomic = .init(false)
+        self._isWritable = .init(true)
         self.state = .idle
         self.streamDataType = streamDataType
         self.writabilityManager = StreamChannelFlowController(highWatermark: outboundBytesHighWatermark,
@@ -307,10 +308,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
         self.modifyingState { $0.networkActive() }
 
-        if self.writabilityManager.isWritable != self._isWritable.load() {
+        if self.writabilityManager.isWritable != self._isWritable.load(ordering: .relaxed) {
             // We have probably delayed telling the user that this channel isn't writable, but we should do
             // it now.
-            self._isWritable.store(self.writabilityManager.isWritable)
+            self._isWritable.store(self.writabilityManager.isWritable, ordering: .relaxed)
             self.pipeline.fireChannelWritabilityChanged()
         }
 
@@ -404,20 +405,20 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     public var isWritable: Bool {
-        return self._isWritable.load()
+        return self._isWritable.load(ordering: .relaxed)
     }
 
-    private let _isWritable: NIOAtomic<Bool>
+    private let _isWritable: ManagedAtomic<Bool>
 
     private var _isActive: Bool {
         return self.state == .active || self.state == .closing || self.state == .localActive
     }
 
     public var isActive: Bool {
-        return self._isActiveAtomic.load()
+        return self._isActiveAtomic.load(ordering: .relaxed)
     }
 
-    private let _isActiveAtomic: NIOAtomic<Bool>
+    private let _isActiveAtomic: ManagedAtomic<Bool>
 
     public var _channelCore: ChannelCore {
         return self
@@ -663,7 +664,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     private func changeWritability(to newWritability: Bool) {
-        self._isWritable.store(newWritability)
+        self._isWritable.store(newWritability, ordering: .relaxed)
         self.pipeline.fireChannelWritabilityChanged()
     }
 
@@ -869,7 +870,7 @@ internal extension HTTP2StreamChannel {
             // Do nothing here.
             return
         case .remoteActive, .active, .closing, .closingNeverActivated, .closed:
-            self._isWritable.store(localValue)
+            self._isWritable.store(localValue, ordering: .relaxed)
             self.pipeline.fireChannelWritabilityChanged()
         }
     }
@@ -884,7 +885,7 @@ extension HTTP2StreamChannel {
     // A helper function used to ensure that state modification leads to changes in the channel active atomic.
     private func modifyingState<ReturnType>(_ closure: (inout StreamChannelState) throws -> ReturnType) rethrows -> ReturnType {
         defer {
-            self._isActiveAtomic.store(self._isActive)
+            self._isActiveAtomic.store(self._isActive, ordering: .relaxed)
         }
         return try closure(&self.state)
     }
