@@ -21,7 +21,8 @@ let package = Package(
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.35.0")
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.35.0"),
+        .package(url: "https://github.com/apple/swift-atomics.git", from: "1.0.2"),
     ],
     targets: [
         .executableTarget(
@@ -49,6 +50,7 @@ let package = Package(
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOTLS", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
+                .product(name: "Atomics", package: "swift-atomics"),
             ]),
         .target(
             name: "NIOHPACK",
