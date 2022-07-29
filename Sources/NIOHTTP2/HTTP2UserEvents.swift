@@ -14,19 +14,19 @@
 
 import NIOCore
 
-/// A `StreamClosedEvent` is fired whenever a stream is closed.
+/// A ``StreamClosedEvent`` is fired whenever a stream is closed.
 ///
-/// This event is fired whether the stream is closed normally, or via RST_STREAM,
-/// or via GOAWAY. Normal closure is indicated by having `reason` be `nil`. In the
-/// case of closure by GOAWAY the `reason` is always `.refusedStream`, indicating that
-/// the remote peer has not processed this stream. In the case of RST_STREAM,
-/// the `reason` contains the error code sent by the peer in the RST_STREAM frame.
+/// This event is fired whether the stream is closed normally, or via `RST_STREAM`,
+/// or via `GOAWAY`. Normal closure is indicated by having ``reason`` be `nil`. In the
+/// case of closure by `GOAWAY` the ``reason`` is always ``HTTP2ErrorCode/refusedStream``,
+/// indicating that the remote peer has not processed this stream. In the case of
+/// `RST_STREAM`, the ``reason`` contains the error code sent by the peer in the `RST_STREAM` frame.
 public struct StreamClosedEvent: NIOSendable {
     /// The stream ID of the stream that is closed.
     public let streamID: HTTP2StreamID
 
     /// The reason for the stream closure. `nil` if the stream was closed without
-    /// error. Otherwise, the error code indicating why the stream was closed.
+    /// error. Otherwise, ``HTTP2ErrorCode`` indicating why the stream was closed.
     public let reason: HTTP2ErrorCode?
 
     public init(streamID: HTTP2StreamID, reason: HTTP2ErrorCode?) {
@@ -38,11 +38,11 @@ public struct StreamClosedEvent: NIOSendable {
 extension StreamClosedEvent: Hashable { }
 
 
-/// A `NIOHTTP2WindowUpdatedEvent` is fired whenever a flow control window is changed.
+/// A ``NIOHTTP2WindowUpdatedEvent`` is fired whenever a flow control window is changed.
 /// This includes changes on the connection flow control window, which is signalled by
-/// this event having `streamID` set to `.rootStream`.
+/// this event having ``streamID`` set to ``HTTP2StreamID/rootStream``.
 public struct NIOHTTP2WindowUpdatedEvent {
-    /// The stream ID of the window that has been changed. May be .rootStream, in which
+    /// The stream ID of the window that has been changed. May be ``HTTP2StreamID/rootStream``, in which
     /// case the connection window has changed.
     public let streamID: HTTP2StreamID
 
@@ -86,8 +86,9 @@ public struct NIOHTTP2WindowUpdatedEvent {
 extension NIOHTTP2WindowUpdatedEvent: Hashable { }
 
 
-/// A `NIOHTTP2StreamCreatedEvent` is fired whenever a HTTP/2 stream is created.
+/// A ``NIOHTTP2StreamCreatedEvent`` is fired whenever a HTTP/2 stream is created.
 public struct NIOHTTP2StreamCreatedEvent {
+    /// The ``HTTP2StreamID`` of the created stream.
     public let streamID: HTTP2StreamID
 
     /// The initial local stream window size. May be nil if this stream may never have data sent on it.
@@ -105,9 +106,9 @@ public struct NIOHTTP2StreamCreatedEvent {
 
 extension NIOHTTP2StreamCreatedEvent: Hashable { }
 
-/// A `NIOHTTP2BulkStreamWindowChangeEvent` is fired whenever all of the remote flow control windows for a given stream have been changed.
+/// A ``NIOHTTP2BulkStreamWindowChangeEvent`` is fired whenever all of the remote flow control windows for a given stream have been changed.
 ///
-/// This occurs when an ACK to a SETTINGS frame is received that changes the value of SETTINGS_INITIAL_WINDOW_SIZE. This is only fired
+/// This occurs when an `ACK` to a `SETTINGS` frame is received that changes the value of `SETTINGS_INITIAL_WINDOW_SIZE`. This is only fired
 /// when the local peer has changed its settings.
 public struct NIOHTTP2BulkStreamWindowChangeEvent {
     /// The change in the remote stream window sizes.

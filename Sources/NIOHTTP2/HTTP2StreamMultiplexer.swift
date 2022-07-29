@@ -19,8 +19,9 @@ import NIOCore
 /// In general in NIO applications it is helpful to consider each HTTP/2 stream as an
 /// independent stream of HTTP/2 frames. This multiplexer achieves this by creating a
 /// number of in-memory `HTTP2StreamChannel` objects, one for each stream. These operate
-/// on `HTTP2Frame` objects as their base communication atom, as opposed to the regular
-/// NIO `SelectableChannel` objects which use `ByteBuffer` and `IOData`.
+/// on ``HTTP2Frame`` or ``HTTP2Frame/FramePayload`` objects as their base communication
+/// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
+/// and `IOData`.
 public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias InboundOut = HTTP2Frame
@@ -224,17 +225,17 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         context.writeAndFlush(self.wrapOutboundOut(frame), promise: nil)
     }
 
-    /// Create a new `HTTP2StreamMultiplexer`.
+    /// Create a new ``HTTP2StreamMultiplexer``.
     ///
     /// - parameters:
     ///     - mode: The mode of the HTTP/2 connection being used: server or client.
-    ///     - channel: The Channel to which this `HTTP2StreamMultiplexer` belongs.
+    ///     - channel: The Channel to which this ``HTTP2StreamMultiplexer`` belongs.
     ///     - targetWindowSize: The target inbound connection and stream window size. Defaults to 65535 bytes.
     ///     - inboundStreamStateInitializer: A block that will be invoked to configure each new child stream
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
-    ///         `createStreamChannel`.
+    ///         ``createStreamChannel(promise:_:)-18bxc``.
     @available(*, deprecated, renamed: "init(mode:channel:targetWindowSize:outboundBufferSizeHighWatermark:outboundBufferSizeLowWatermark:inboundStreamInitializer:)")
     public convenience init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, targetWindowSize: Int = 65535, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
         // We default to an 8kB outbound buffer size: this is a good trade off for avoiding excessive buffering while ensuring that decent
@@ -247,11 +248,11 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                   inboundStreamStateInitializer: .includesStreamID(inboundStreamStateInitializer))
     }
 
-    /// Create a new `HTTP2StreamMultiplexer`.
+    /// Create a new ``HTTP2StreamMultiplexer``.
     ///
     /// - parameters:
     ///     - mode: The mode of the HTTP/2 connection being used: server or client.
-    ///     - channel: The Channel to which this `HTTP2StreamMultiplexer` belongs.
+    ///     - channel: The Channel to which this ``HTTP2StreamMultiplexer`` belongs.
     ///     - targetWindowSize: The target inbound connection and stream window size. Defaults to 65535 bytes.
     ///     - outboundBufferSizeHighWatermark: The high watermark for the number of bytes of writes that are
     ///         allowed to be un-sent on any child stream. This is broadly analogous to a regular socket send buffer.
@@ -263,7 +264,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
-    ///         `createStreamChannel`.
+    ///         ``createStreamChannel(promise:_:)-18bxc``.
     public convenience init(mode: NIOHTTP2Handler.ParserMode,
                             channel: Channel,
                             targetWindowSize: Int = 65535,
@@ -278,7 +279,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                   inboundStreamStateInitializer: .excludesStreamID(inboundStreamInitializer))
     }
 
-    /// Create a new `HTTP2StreamMultiplexer`.
+    /// Create a new ``HTTP2StreamMultiplexer``.
     ///
     /// - parameters:
     ///     - mode: The mode of the HTTP/2 connection being used: server or client.
@@ -292,7 +293,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
-    ///         `createStreamChannel`.
+    ///         ``createStreamChannel(promise:_:)-18bxc``.
     @available(*, deprecated, renamed: "init(mode:channel:targetWindowSize:outboundBufferSizeHighWatermark:outboundBufferSizeLowWatermark:inboundStreamInitializer:)")
     public convenience init(mode: NIOHTTP2Handler.ParserMode,
                             channel: Channel,
@@ -362,8 +363,7 @@ extension HTTP2StreamMultiplexer {
     /// This method is intended for situations where the NIO application is initiating the stream. For clients,
     /// this is for all request streams. For servers, this is for pushed streams.
     ///
-    /// - note:
-    /// Resources for the stream will be freed after it has been closed.
+    /// > Note: Resources for the stream will be freed after it has been closed.
     ///
     /// - parameters:
     ///     - promise: An `EventLoopPromise` that will be succeeded with the new activated channel, or
@@ -392,8 +392,7 @@ extension HTTP2StreamMultiplexer {
     /// This method is intended for situations where the NIO application is initiating the stream. For clients,
     /// this is for all request streams. For servers, this is for pushed streams.
     ///
-    /// - note:
-    /// Resources for the stream will be freed after it has been closed.
+    /// > Note: Resources for the stream will be freed after it has been closed.
     ///
     /// - parameters:
     ///     - promise: An `EventLoopPromise` that will be succeeded with the new activated channel, or

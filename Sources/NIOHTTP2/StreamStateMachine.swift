@@ -1026,7 +1026,8 @@ private extension HPACKHeaders {
     }
 }
 
-/// A state of a `HTTP2StreamStateMachine`. This copy in effect mirrors `HTTP2StreamStateMachine.state` but without associated values.
+/// A state of a `HTTP2StreamStateMachine`. This copy in effect mirrors `HTTP2StreamStateMachine.state` but without associated values,
+/// and is used to provide detail in errors.
 public struct NIOHTTP2StreamState: Hashable, CustomStringConvertible, NIOSendable {
     private enum State {
         case idle

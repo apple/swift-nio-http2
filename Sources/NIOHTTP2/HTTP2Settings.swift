@@ -24,19 +24,19 @@ public typealias HTTP2Settings = [HTTP2Setting]
 public struct HTTP2SettingsParameter: NIOSendable {
     internal let networkRepresentation: UInt16
 
-    /// Create a `HTTP2SettingsParameter` that is not known to NIO.
+    /// Create a ``HTTP2SettingsParameter`` that is not known to NIO.
     ///
     /// If this is a known parameter, use one of the static values.
     public init(extensionSetting: Int) {
         self.networkRepresentation = UInt16(extensionSetting)
     }
 
-    /// Initialize a `HTTP2SettingsParameter` from nghttp2's representation.
+    /// Initialize a ``HTTP2SettingsParameter`` from nghttp2's representation.
     internal init(fromNetwork value: Int32) {
         self.networkRepresentation = UInt16(value)
     }
     
-    /// Initialize a `HTTP2SettingsParameter` from a network `UInt16`.
+    /// Initialize a ``HTTP2SettingsParameter`` from a network `UInt16`.
     internal init(fromPayload value: UInt16) {
         self.networkRepresentation = value
     }
@@ -46,25 +46,25 @@ public struct HTTP2SettingsParameter: NIOSendable {
         self.networkRepresentation = value
     }
 
-    /// Corresponds to SETTINGS_HEADER_TABLE_SIZE
+    /// Corresponds to `SETTINGS_HEADER_TABLE_SIZE`
     public static let headerTableSize = HTTP2SettingsParameter(1)
 
-    /// Corresponds to SETTINGS_ENABLE_PUSH.
+    /// Corresponds to `SETTINGS_ENABLE_PUSH`.
     public static let enablePush = HTTP2SettingsParameter(2)
 
-    /// Corresponds to SETTINGS_MAX_CONCURRENT_STREAMS
+    /// Corresponds to `SETTINGS_MAX_CONCURRENT_STREAMS`
     public static let maxConcurrentStreams = HTTP2SettingsParameter(3)
 
-    /// Corresponds to SETTINGS_INITIAL_WINDOW_SIZE
+    /// Corresponds to `SETTINGS_INITIAL_WINDOW_SIZE`
     public static let initialWindowSize = HTTP2SettingsParameter(4)
 
-    /// Corresponds to SETTINGS_MAX_FRAME_SIZE
+    /// Corresponds to `SETTINGS_MAX_FRAME_SIZE`
     public static let maxFrameSize = HTTP2SettingsParameter(5)
 
-    /// Corresponds to SETTINGS_MAX_HEADER_LIST_SIZE
+    /// Corresponds to `SETTINGS_MAX_HEADER_LIST_SIZE`
     public static let maxHeaderListSize = HTTP2SettingsParameter(6)
     
-    /// Corresponds to SETTINGS_ENABLE_CONNECT_PROTOCOL from RFC 8441.
+    /// Corresponds to `SETTINGS_ENABLE_CONNECT_PROTOCOL` from RFC 8441.
     public static let enableConnectProtocol = HTTP2SettingsParameter(8)
 }
 
@@ -72,7 +72,7 @@ extension HTTP2SettingsParameter: Equatable { }
 
 extension HTTP2SettingsParameter: Hashable { }
 
-/// A single setting for HTTP/2, a combination of a `HTTP2SettingsParameter` and its value.
+/// A single setting for HTTP/2, a combination of a ``HTTP2SettingsParameter`` and its value.
 public struct HTTP2Setting: NIOSendable {
     /// The settings parameter for this setting.
     public var parameter: HTTP2SettingsParameter
@@ -92,7 +92,7 @@ public struct HTTP2Setting: NIOSendable {
     /// property.
     internal var _value: UInt32
 
-    /// Create a new `HTTP2Setting`.
+    /// Create a new ``HTTP2Setting``.
     public init(parameter: HTTP2SettingsParameter, value: Int) {
         self.parameter = parameter
         self._value = UInt32(value)

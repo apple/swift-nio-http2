@@ -21,11 +21,12 @@ import NIOConcurrencyHelpers
 ///
 /// Please note that some of NIO's regular `ChannelOptions` are valid on `HTTP2StreamChannel`s.
 public struct HTTP2StreamChannelOptions: NIOSendable {
-    /// - seealso: `StreamIDOption`.
+    /// See ``HTTP2StreamChannelOptions/Types/StreamIDOption``.
     public static let streamID: HTTP2StreamChannelOptions.Types.StreamIDOption = .init()
 }
 
 extension HTTP2StreamChannelOptions {
+    /// A namespace for the types used to represent HTTP/2 stream channel options.
     public enum Types {}
 }
 
@@ -33,7 +34,7 @@ extension HTTP2StreamChannelOptions {
 public typealias StreamIDOption = HTTP2StreamChannelOptions.Types.StreamIDOption
 
 extension HTTP2StreamChannelOptions.Types {
-    /// `StreamIDOption` allows users to query the stream ID for a given `HTTP2StreamChannel`.
+    /// ``StreamIDOption`` allows users to query the stream ID for a given `HTTP2StreamChannel`.
     ///
     /// On active `HTTP2StreamChannel`s, it is possible that a channel handler or user may need to know which
     /// stream ID the channel owns. This channel option allows that query. Please note that this channel option
