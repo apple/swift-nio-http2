@@ -11,7 +11,6 @@ services:
 
   unit-tests:
     image: swift-nio-http2:20.04-5.7
-    command: /bin/bash -xcl "swift test -Xswiftc -warnings-as-errors --enable-test-discovery"
 
   integration-tests:
     image: swift-nio-http2:20.04-5.7
@@ -36,7 +35,6 @@ services:
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_short_string=200050
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
       - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=293150
-    command: /bin/bash -xcl "swift test --enable-test-discovery -Xswiftc -warnings-as-errors $${SANITIZER_ARG-} && ./scripts/integration_tests.sh && ./scripts/test_h2spec.sh $${SANITIZER_ARG-}"
 
   shell:
     image: swift-nio-http2:20.04-5.7

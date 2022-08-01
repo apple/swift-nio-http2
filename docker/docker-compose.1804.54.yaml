@@ -13,6 +13,7 @@ services:
 
   unit-tests:
     image: swift-nio-http2:18.04-5.4
+    command: /bin/bash -xcl "swift test -Xswiftc -warnings-as-errors"
 
   integration-tests:
     image: swift-nio-http2:18.04-5.4
@@ -25,6 +26,7 @@ services:
 
   test:
     image: swift-nio-http2:18.04-5.4
+    command: /bin/bash -xcl "swift test -Xswiftc -warnings-as-errors $${SANITIZER_ARG-} && ./scripts/integration_tests.sh && ./scripts/test_h2spec.sh $${SANITIZER_ARG-}"
     environment:
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=46200
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=45100
