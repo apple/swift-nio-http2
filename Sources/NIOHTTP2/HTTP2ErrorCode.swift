@@ -15,6 +15,9 @@
 import NIOCore
 
 /// An HTTP/2 error code.
+///
+/// HTTP/2 uses error codes to communicate to remote peers what went wrong on either a stream or
+/// a connection. This data type models that underlying representation.
 public struct HTTP2ErrorCode: NIOSendable {
     /// The underlying network representation of the error code.
     public var networkCode: Int {
@@ -29,18 +32,18 @@ public struct HTTP2ErrorCode: NIOSendable {
     /// The underlying network representation of the error code.
     fileprivate var _networkCode: UInt32
 
-    /// Create a HTTP/2 error code from the given network value.
+    /// Create a ``HTTP2ErrorCode`` from the given network value.
     public init(networkCode: Int) {
         self._networkCode = UInt32(networkCode)
     }
 
-    /// Create a `HTTP2ErrorCode` from the 32-bit integer it corresponds to.
+    /// Create a ``HTTP2ErrorCode`` from the 32-bit integer it corresponds to.
     internal init(_ networkInteger: UInt32) {
         self._networkCode = networkInteger
     }
 
     /// The associated condition is not a result of an error. For example,
-    /// a GOAWAY might include this code to indicate graceful shutdown of
+    /// a `GOAWAY` might include this code to indicate graceful shutdown of
     /// a connection.
     public static let noError = HTTP2ErrorCode(networkCode: 0x0)
 
@@ -55,7 +58,7 @@ public struct HTTP2ErrorCode: NIOSendable {
     /// protocol.
     public static let flowControlError = HTTP2ErrorCode(networkCode: 0x03)
 
-    /// The endpoint sent a SETTINGS frame but did not receive a
+    /// The endpoint sent a `SETTINGS` frame but did not receive a
     /// response in a timely manner.
     public static let settingsTimeout = HTTP2ErrorCode(networkCode: 0x04)
 
@@ -77,7 +80,7 @@ public struct HTTP2ErrorCode: NIOSendable {
     /// context for the connection.
     public static let compressionError = HTTP2ErrorCode(networkCode: 0x09)
 
-    /// The connection established in response to a CONNECT request
+    /// The connection established in response to a `CONNECT` request
     /// was reset or abnormally closed.
     public static let connectError = HTTP2ErrorCode(networkCode: 0x0a)
 
@@ -138,25 +141,25 @@ extension HTTP2ErrorCode: CustomDebugStringConvertible {
 }
 
 public extension UInt32 {
-    /// Create a 32-bit integer corresponding to the given `HTTP2ErrorCode`.
+    /// Create a 32-bit integer corresponding to the given ``HTTP2ErrorCode``.
     init(http2ErrorCode code: HTTP2ErrorCode) {
         self = code._networkCode
     }
 }
 
 public extension Int {
-    /// Create an integer corresponding to the given `HTTP2ErrorCode`.
+    /// Create an integer corresponding to the given ``HTTP2ErrorCode``.
     init(http2ErrorCode code: HTTP2ErrorCode) {
         self = code.networkCode
     }
 }
 
 public extension ByteBuffer {
-    /// Serializes a `HTTP2ErrorCode` into a `ByteBuffer` in the appropriate endianness
+    /// Serializes a ``HTTP2ErrorCode`` into a `ByteBuffer` in the appropriate endianness
     /// for use in HTTP/2.
     ///
     /// - parameters:
-    ///     - code: The `HTTP2ErrorCode` to serialize.
+    ///     - code: The ``HTTP2ErrorCode`` to serialize.
     /// - returns: The number of bytes written.
     mutating func write(http2ErrorCode code: HTTP2ErrorCode) -> Int {
         return self.writeInteger(UInt32(http2ErrorCode: code))

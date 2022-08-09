@@ -21,13 +21,15 @@ import NIOTLS
 /// can negotiate HTTP/2 on secure connections. For example, using swift-nio-ssl,
 /// you could configure the pipeline like this:
 ///
-///     let config = TLSConfiguration.forClient(applicationProtocols: NIOHTTP2SupportedALPNProtocols)
-///     let context = try SSLContext(configuration: config)
-///     channel.pipeline.add(handler: OpenSSLClientHandler(context: context, serverHostname: "example.com")).then {
-///         channel.pipeline.configureHTTP2SecureUpgrade(...)
-///     }
+/// ```swift
+/// let config = TLSConfiguration.forClient(applicationProtocols: NIOHTTP2SupportedALPNProtocols)
+/// let context = try SSLContext(configuration: config)
+/// channel.pipeline.add(handler: OpenSSLClientHandler(context: context, serverHostname: "example.com")).then {
+///     channel.pipeline.configureHTTP2SecureUpgrade(...)
+/// }
+/// ```
 ///
-/// Configuring for servers is very similar, but is left as an exercise for the reader.
+/// Configuring for servers is very similar.
 public let NIOHTTP2SupportedALPNProtocols = ["h2", "http/1.1"]
 
 extension ChannelPipeline {

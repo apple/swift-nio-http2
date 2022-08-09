@@ -24,6 +24,13 @@ public let nioDefaultSettings = [
 ]
 
 
+/// ``NIOHTTP2Handler`` implements the HTTP/2 protocol for a single connection.
+///
+/// This `ChannelHandler` takes a series of bytes and turns them into a sequence of ``HTTP2Frame`` objects.
+/// This type allows implementing a single `ChannelPipeline` that runs a complete HTTP/2 connection, and
+/// doesn't deal with managing stream state.
+///
+/// Most users should combine this with a ``HTTP2StreamMultiplexer`` to get an easier programming model.
 public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public typealias InboundIn = ByteBuffer
     public typealias InboundOut = HTTP2Frame
@@ -94,13 +101,22 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         case server
     }
 
-    /// Whether a certain operation has validation enabled or not.
+    /// Whether a given operation has validation enabled or not.
     public enum ValidationState {
+        /// Validation is enabled
         case enabled
 
+        /// Validation is disabled
         case disabled
     }
 
+    /// Constructs a ``NIOHTTP2Handler``.
+    ///
+    /// - parameters:
+    ///     - mode: The mode for this handler, client or server.
+    ///     - initialSettings: The settings that will be advertised to the peer in the preamble. Defaults to ``nioDefaultSettings``.
+    ///     - headerBlockValidation: Whether to validate sent and received HTTP/2 header blocks. Defaults to ``ValidationState/enabled``.
+    ///     - contentLengthValidation: Whether to validate the content length of sent and received streams. Defaults to ``ValidationState/enabled``.
     public convenience init(mode: ParserMode,
                             initialSettings: HTTP2Settings = nioDefaultSettings,
                             headerBlockValidation: ValidationState = .enabled,
@@ -113,6 +129,18 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   maximumBufferedControlFrames: 10000)
     }
 
+    /// Constructs a ``NIOHTTP2Handler``.
+    ///
+    /// - parameters:
+    ///     - mode: The mode for this handler, client or server.
+    ///     - initialSettings: The settings that will be advertised to the peer in the preamble. Defaults to ``nioDefaultSettings``.
+    ///     - headerBlockValidation: Whether to validate sent and received HTTP/2 header blocks. Defaults to ``ValidationState/enabled``.
+    ///     - contentLengthValidation: Whether to validate the content length of sent and received streams. Defaults to ``ValidationState/enabled``.
+    ///     - maximumSequentialEmptyDataFrames: Controls the number of empty data frames this handler will tolerate receiving in a row before DoS protection
+    ///         is triggered and the connection is terminated. Defaults to 1.
+    ///     - maximumBufferedControlFrames: Controls the maximum buffer size of buffered outbound control frames. If we are unable to send control frames as
+    ///         fast as we produce them we risk building up an unbounded buffer and exhausting our memory. To protect against this DoS vector, we put an
+    ///         upper limit on the depth of this queue. Defaults to 10,000.
     public init(mode: ParserMode,
                 initialSettings: HTTP2Settings = nioDefaultSettings,
                 headerBlockValidation: ValidationState = .enabled,

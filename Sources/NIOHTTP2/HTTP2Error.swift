@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2017-2018 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2017-2022 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -13,166 +13,264 @@
 //===----------------------------------------------------------------------===//
 import NIOHPACK
 
+/// The base protocol for all errors thrown by ``NIOHTTP2``.
+///
+/// Users are recommended not to implement this protocol with their own types.
 public protocol NIOHTTP2Error: Equatable, Error { }
 
-/// Errors that NIO raises when handling HTTP/2 connections.
+/// Errors that ``NIOHTTP2`` raises when handling HTTP/2 connections.
 public enum NIOHTTP2Errors {
+    /// Creates an ``ExcessiveOutboundFrameBuffering`` error with appropriate source context.
     public static func excessiveOutboundFrameBuffering(file: String = #file, line: UInt = #line) -> ExcessiveOutboundFrameBuffering {
         return ExcessiveOutboundFrameBuffering(file: file, line: line)
     }
 
+    /// Creates an ``InvalidALPNToken`` error with appropriate source context
     public static func invalidALPNToken(file: String = #file, line: UInt = #line) -> InvalidALPNToken {
         return InvalidALPNToken(file: file, line: line)
     }
 
+    /// Creates a ``NoSuchStream`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - streamID: The ``HTTP2StreamID`` for the stream that does not exist.
     public static func noSuchStream(streamID: HTTP2StreamID, file: String = #file, line: UInt = #line) -> NoSuchStream {
         return NoSuchStream(streamID: streamID, file: file, line: line)
     }
 
+    /// Creates a ``StreamClosed`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - streamID: The ``HTTP2StreamID`` for the stream that is or has been closed
+    ///     - errorCode: The ``HTTP2ErrorCode`` representing the reason for closure of the stream.
     public static func streamClosed(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: String = #file, line: UInt = #line) -> StreamClosed {
         return StreamClosed(streamID: streamID, errorCode: errorCode, file: file, line: line)
     }
 
+    /// Creates a ``BadClientMagic`` error with appropriate source context.
     public static func badClientMagic(file: String = #file, line: UInt = #line) -> BadClientMagic {
         return BadClientMagic(file: file, line: line)
     }
 
+    /// Creates a ``BadStreamStateTransition`` error with appropriate source context
+    ///
+    /// - parameters
+    ///     - state: The ``NIOHTTP2StreamState`` representing the state of the stream from which we were trying to transition
     public static func badStreamStateTransition(from state: NIOHTTP2StreamState? = nil, file: String = #file, line: UInt = #line) -> BadStreamStateTransition {
         return BadStreamStateTransition(from: state, file: file, line: line)
     }
 
+    /// Creates an ``InvalidFlowControlWindowSize`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - delta: The change in the window size that was proposed in error
+    ///     - currentWindowSize: The current size of the stream flow control window
     public static func invalidFlowControlWindowSize(delta: Int, currentWindowSize: Int, file: String = #file, line: UInt = #line) -> InvalidFlowControlWindowSize {
         return InvalidFlowControlWindowSize(delta: delta, currentWindowSize: currentWindowSize, file: file, line: line)
     }
 
+    /// Creates a ``FlowControlViolation`` error with appropriate source context.
     public static func flowControlViolation(file: String = #file, line: UInt = #line) -> FlowControlViolation {
         return FlowControlViolation(file: file, line: line)
     }
 
+    /// Creates an ``InvalidSetting`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - setting: The invalid setting in question
     public static func invalidSetting(setting: HTTP2Setting, file: String = #file, line: UInt = #line) -> InvalidSetting {
         return InvalidSetting(setting: setting, file: file, line: line)
     }
 
+    /// Creates an ``IOOnClosedConnection`` error with appropriate source context.
     public static func ioOnClosedConnection(file: String = #file, line: UInt = #line) -> IOOnClosedConnection {
         return IOOnClosedConnection(file: file, line: line)
     }
 
+    /// Creates a ``ReceivedBadSettings`` error with appropriate source context.
     public static func receivedBadSettings(file: String = #file, line: UInt = #line) -> ReceivedBadSettings {
         return ReceivedBadSettings(file: file, line: line)
     }
 
+    /// Creates a ``MaxStreamsViolation`` error with appropriate source context.
     public static func maxStreamsViolation(file: String = #file, line: UInt = #line) -> MaxStreamsViolation {
         return MaxStreamsViolation(file: file, line: line)
     }
 
+    /// Creates a ``StreamIDTooSmall`` error with appropriate source context.
     public static func streamIDTooSmall(file: String = #file, line: UInt = #line) -> StreamIDTooSmall {
         return StreamIDTooSmall(file: file, line: line)
     }
 
+    /// Creates a ``MissingPreface`` error with appropriate source context.
     public static func missingPreface(file: String = #file, line: UInt = #line) -> MissingPreface {
         return MissingPreface(file: file, line: line)
     }
 
+    /// Creates a ``CreatedStreamAfterGoaway`` error with appropriate source context.
     public static func createdStreamAfterGoaway(file: String = #file, line: UInt = #line) -> CreatedStreamAfterGoaway {
         return CreatedStreamAfterGoaway(file: file, line: line)
     }
 
+    /// Creates a ``InvalidStreamIDForPeer`` error with appropriate source context.
     public static func invalidStreamIDForPeer(file: String = #file, line: UInt = #line) -> InvalidStreamIDForPeer {
         return InvalidStreamIDForPeer(file: file, line: line)
     }
 
+    /// Creates a ``RaisedGoawayLastStreamID`` error with appropriate source context.
     public static func raisedGoawayLastStreamID(file: String = #file, line: UInt = #line) -> RaisedGoawayLastStreamID {
         return RaisedGoawayLastStreamID(file: file, line: line)
     }
 
+    /// Creates a ``InvalidWindowIncrementSize`` error with appropriate source context.
     public static func invalidWindowIncrementSize(file: String = #file, line: UInt = #line) -> InvalidWindowIncrementSize {
         return InvalidWindowIncrementSize(file: file, line: line)
     }
 
+    /// Creates a ``PushInViolationOfSetting`` error with appropriate source context.
     public static func pushInViolationOfSetting(file: String = #file, line: UInt = #line) -> PushInViolationOfSetting {
         return PushInViolationOfSetting(file: file, line: line)
     }
 
+    /// Creates a ``Unsupported`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///      - info: Human-readable information describing _what_ is unsupported.
     public static func unsupported(info: String, file: String = #file, line: UInt = #line) -> Unsupported {
         return Unsupported(info: info, file: file, line: line)
     }
 
+    /// Creates a ``UnableToSerializeFrame`` error with appropriate source context.
     public static func unableToSerializeFrame(file: String = #file, line: UInt = #line) -> UnableToSerializeFrame {
         return UnableToSerializeFrame(file: file, line: line)
     }
 
+    /// Creates a ``UnableToParseFrame`` error with appropriate source context.
     public static func unableToParseFrame(file: String = #file, line: UInt = #line) -> UnableToParseFrame {
         return UnableToParseFrame(file: file, line: line)
     }
 
+    /// Creates a ``MissingPseudoHeader`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///      - name: The name of the pseudo-header that was missing from the header block.
     public static func missingPseudoHeader(_ name: String, file: String = #file, line: UInt = #line) -> MissingPseudoHeader {
         return MissingPseudoHeader(name, file: file, line: line)
     }
 
+    /// Creates a ``DuplicatePseudoHeader`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - name: The name of the pseudo-header that was duplicated within the header block.
     public static func duplicatePseudoHeader(_ name: String, file: String = #file, line: UInt = #line) -> DuplicatePseudoHeader {
         return DuplicatePseudoHeader(name, file: file, line: line)
     }
 
+    /// Creates a ``PseudoHeaderAfterRegularHeader`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - name: The name of the pseudo-header that appeared after a regular header in the header block.
     public static func pseudoHeaderAfterRegularHeader(_ name: String, file: String = #file, line: UInt = #line) -> PseudoHeaderAfterRegularHeader {
         return PseudoHeaderAfterRegularHeader(name, file: file, line: line)
     }
 
+    /// Creates a ``UnknownPseudoHeader`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - name: The name of the pseudo-header that was not recognised by ``NIOHTTP2``.
     public static func unknownPseudoHeader(_ name: String, file: String = #file, line: UInt = #line) -> UnknownPseudoHeader {
         return UnknownPseudoHeader(name, file: file, line: line)
     }
 
+    /// Creates a ``InvalidPseudoHeaders`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - block: The block of `HPACKHeaders` that contain the invalid pseudo headers.
     public static func invalidPseudoHeaders(_ block: HPACKHeaders, file: String = #file, line: UInt = #line) -> InvalidPseudoHeaders {
         return InvalidPseudoHeaders(block, file: file, line: line)
     }
 
+    /// Creates a ``MissingHostHeader`` error with appropriate source context.
     public static func missingHostHeader(file: String = #file, line: UInt = #line) -> MissingHostHeader {
         return MissingHostHeader(file: file, line: line)
     }
 
+    /// Creates a ``DuplicateHostHeader`` error with appropriate source context.
     public static func duplicateHostHeader(file: String = #file, line: UInt = #line) -> DuplicateHostHeader {
         return DuplicateHostHeader(file: file, line: line)
     }
 
+    /// Creates a ``EmptyPathHeader`` error with appropriate source context.
     public static func emptyPathHeader(file: String = #file, line: UInt = #line) -> EmptyPathHeader {
         return EmptyPathHeader(file: file, line: line)
     }
 
+    /// Creates a ``InvalidStatusValue`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - value: The value of the `:status` header that is invalid.
     public static func invalidStatusValue(_ value: String, file: String = #file, line: UInt = #line) -> InvalidStatusValue {
         return InvalidStatusValue(value, file: file, line: line)
     }
 
+    /// Creates a ``PriorityCycle`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - streamID: The ``HTTP2StreamID`` representing the stream that created the priority cycle.
     public static func priorityCycle(streamID: HTTP2StreamID, file: String = #file, line: UInt = #line) -> PriorityCycle {
         return PriorityCycle(streamID: streamID, file: file, line: line)
     }
 
+    /// Creates a ``TrailersWithoutEndStream`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - streamID: The ``HTTP2StreamID`` on which the `HEADERS` frame without `END_STREAM` was received.
     public static func trailersWithoutEndStream(streamID: HTTP2StreamID, file: String = #file, line: UInt = #line) -> TrailersWithoutEndStream {
         return TrailersWithoutEndStream(streamID: streamID, file: file, line: line)
     }
 
+    /// Creates a ``InvalidHTTP2HeaderFieldName`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - fieldName: The invalid HTTP/2 header field name
     public static func invalidHTTP2HeaderFieldName(_ fieldName: String, file: String = #file, line: UInt = #line) -> InvalidHTTP2HeaderFieldName {
         return InvalidHTTP2HeaderFieldName(fieldName, file: file, line: line)
     }
 
+    /// Creates a ``ForbiddenHeaderField`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - name: The field name for the forbidden header field
+    ///     - value: The field value for the forbidden header field
     public static func forbiddenHeaderField(name: String, value: String, file: String = #file, line: UInt = #line) -> ForbiddenHeaderField {
         return ForbiddenHeaderField(name: name, value: value, file: file, line: line)
     }
 
+    /// Creates a ``ContentLengthViolated`` error with appropriate source context.
     public static func contentLengthViolated(file: String = #file, line: UInt = #line) -> ContentLengthViolated {
         return ContentLengthViolated(file: file, line: line)
     }
 
+    /// Creates a ``ExcessiveEmptyDataFrames`` error with appropriate source context.
     public static func excessiveEmptyDataFrames(file: String = #file, line: UInt = #line) -> ExcessiveEmptyDataFrames {
         return ExcessiveEmptyDataFrames(file: file, line: line)
     }
 
+    /// Creates a ``ExcessivelyLargeHeaderBlock`` error with appropriate source context.
     public static func excessivelyLargeHeaderBlock(file: String = #file, line: UInt = #line) -> ExcessivelyLargeHeaderBlock {
         return ExcessivelyLargeHeaderBlock(file: file, line: line)
     }
 
+    /// Creates a ``NoStreamIDAvailable`` error with appropriate source context.
     public static func noStreamIDAvailable(file: String = #file, line: UInt = #line) -> NoStreamIDAvailable {
         return NoStreamIDAvailable(file: file, line: line)
     }
 
+    /// Creates a ``StreamError`` error with appropriate source context.
+    ///
+    /// - parameters:
+    ///     - streamID: The ``HTTP2StreamID`` on which this error was triggered
+    ///     - baseError: The underlying `Error` that was thrown.
     public static func streamError(streamID: HTTP2StreamID, baseError: Error) -> StreamError {
         return StreamError(streamID: streamID, baseError: baseError)
     }
@@ -233,7 +331,7 @@ public enum NIOHTTP2Errors {
 
     /// An attempt was made to issue a write on a stream that does not exist.
     public struct NoSuchStream: NIOHTTP2Error {
-        /// The stream ID that was used that does not exist.
+        /// The ``HTTP2StreamID`` that was used that does not exist.
         public var streamID: HTTP2StreamID
 
         /// The location where the error was thrown.
@@ -256,10 +354,10 @@ public enum NIOHTTP2Errors {
 
     /// A stream was closed.
     public struct StreamClosed: NIOHTTP2Error {
-        /// The stream ID that was closed.
+        /// The ``HTTP2StreamID`` that was closed.
         public var streamID: HTTP2StreamID
 
-        /// The error code associated with the closure.
+        /// The ``HTTP2ErrorCode`` associated with the closure.
         public var errorCode: HTTP2ErrorCode
 
         /// The file and line where the error was created.
@@ -281,6 +379,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
+    /// The expected "client magic" string that must be received first on a HTTP/2 connection was incorrect.
     public struct BadClientMagic: NIOHTTP2Error {
         private let file: String
         private let line: UInt
@@ -307,6 +406,7 @@ public enum NIOHTTP2Errors {
 
     /// A stream state transition was attempted that was not valid.
     public struct BadStreamStateTransition: NIOHTTP2Error, CustomStringConvertible {
+        /// The ``NIOHTTP2StreamState`` that we were trying to transition out of.
         public let fromState: NIOHTTP2StreamState?
 
         /// The location where the error was thrown.
@@ -333,7 +433,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// An attempt was made to change the flow control window size, either via
-    /// SETTINGS or WINDOW_UPDATE, but this change would move the flow control
+    /// `SETTINGS` or `WINDOW_UPDATE`, but this change would move the flow control
     /// window size out of bounds.
     public struct InvalidFlowControlWindowSize: NIOHTTP2Error, CustomStringConvertible {
         private var storage: Storage
@@ -438,7 +538,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// A SETTINGS frame was sent or received with an invalid setting.
+    /// A `SETTINGS` frame was sent or received with an invalid setting.
     public struct InvalidSetting: NIOHTTP2Error {
         /// The invalid setting.
         public var setting: HTTP2Setting
@@ -486,7 +586,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// A SETTINGS frame was received that is invalid.
+    /// A `SETTINGS` frame was received that is invalid.
     public struct ReceivedBadSettings: NIOHTTP2Error {
         private let file: String
         private let line: UInt
@@ -511,7 +611,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// A violation of SETTINGS_MAX_CONCURRENT_STREAMS occurred.
+    /// A violation of `SETTINGS_MAX_CONCURRENT_STREAMS` occurred.
     public struct MaxStreamsViolation: NIOHTTP2Error {
         private let file: String
         private let line: UInt
@@ -586,7 +686,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// An attempt was made to create a stream after a GOAWAY frame has forbidden further
+    /// An attempt was made to create a stream after a `GOAWAY` frame has forbidden further
     /// stream creation.
     public struct CreatedStreamAfterGoaway: NIOHTTP2Error {
         private let file: String
@@ -637,7 +737,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// An attempt was made to send a new GOAWAY frame whose lastStreamID is higher than the previous value.
+    /// An attempt was made to send a new `GOAWAY` frame whose `lastStreamID` is higher than the previous value.
     public struct RaisedGoawayLastStreamID: NIOHTTP2Error {
         private let file: String
         private let line: UInt
@@ -722,6 +822,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// A human-readable description of what unsupported feature was used.
         public var info: String {
             get {
                 return self.storage.value
@@ -753,6 +854,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
+    /// A HTTP/2 frame could not be serialized.
     public struct UnableToSerializeFrame: NIOHTTP2Error {
         private let file: String
         private let line: UInt
@@ -777,6 +879,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
+    /// A HTTP/2 frame was unable to be parsed.
     public struct UnableToParseFrame: NIOHTTP2Error {
         private let file: String
         private let line: UInt
@@ -811,6 +914,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The name of the missing pseudo-header field
         public var name: String {
             get {
                 return self.storage.value
@@ -852,6 +956,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The name of the pseudo-header field that was duplicated
         public var name: String {
             get {
                 return self.storage.value
@@ -893,6 +998,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The name of the pseudo-header that occurred after the regular header.
         public var name: String {
             get {
                 return self.storage.value
@@ -934,6 +1040,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The name of the unrecognised pseudo-header field.
         public var name: String {
             get {
                 return self.storage.value
@@ -967,6 +1074,7 @@ public enum NIOHTTP2Errors {
 
     /// A header block was received with an invalid set of pseudo-headers for the block type.
     public struct InvalidPseudoHeaders: NIOHTTP2Error {
+        /// The header block containing the invalid set of pseudo-headers.
         public var headerBlock: HPACKHeaders
 
         /// The location where the error was thrown.
@@ -1062,7 +1170,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// A :status header was received with an invalid value.
+    /// A `:status` header was received with an invalid value.
     public struct InvalidStatusValue: NIOHTTP2Error, CustomStringConvertible {
         private var storage: StringAndLocationStorage
 
@@ -1072,6 +1180,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The invalid value of the `:status` header.
         public var value: String {
             get {
                 return self.storage.value
@@ -1103,7 +1212,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// A priority update was received that would create a PRIORITY cycle.
+    /// A priority update was received that would create a `PRIORITY` cycle.
     public struct PriorityCycle: NIOHTTP2Error {
         /// The affected stream ID.
         public var streamID: HTTP2StreamID
@@ -1126,7 +1235,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// An attempt was made to send trailers without setting END_STREAM on them.
+    /// An attempt was made to send trailers without setting `END_STREAM` on them.
     public struct TrailersWithoutEndStream: NIOHTTP2Error {
         /// The affected stream ID.
         public var streamID: HTTP2StreamID
@@ -1159,6 +1268,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The name of the invalid header field.
         public var fieldName: String {
             get {
                 return self.storage.value
@@ -1227,6 +1337,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The name of the forbidden header field.
         public var name: String {
             get {
                 return self.storage.name
@@ -1237,6 +1348,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The value of the forbidden header field.
         public var value: String {
             get {
                 return self.storage.value
@@ -1293,7 +1405,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// The remote peer has sent an excessive number of empty DATA frames, which looks like a denial of service
+    /// The remote peer has sent an excessive number of empty `DATA` frames, which looks like a denial of service
     /// attempt, so the connection has been closed.
     public struct ExcessiveEmptyDataFrames: NIOHTTP2Error {
         private let file: String
@@ -1319,7 +1431,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// The remote peer has sent a header block so large that NIO refuses to buffer any more data than that.
+    /// The remote peer has sent a header block so large that ``NIOHTTP2`` refuses to buffer any more data than that.
     public struct ExcessivelyLargeHeaderBlock: NIOHTTP2Error {
         private let file: String
         private let line: UInt
@@ -1372,7 +1484,7 @@ public enum NIOHTTP2Errors {
     /// A StreamError was hit during outbound frame processing.
     ///
     /// Stream errors are wrappers around another error of some other kind that occurred on a specific stream.
-    /// As they are a wrapper error, they carry a "real" error in the `baseError`. Additionally, they cannot
+    /// As they are a wrapper error, they carry a "real" error in ``baseError``. Additionally, they cannot
     /// meaningfully be `Equatable`, so they aren't. There's also no additional location information: that's
     /// provided by the base error.
     public struct StreamError: Error {
@@ -1401,6 +1513,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The underlying thrown error.
         public var baseError: Error {
             get {
                 return self.storage.baseError
@@ -1411,6 +1524,7 @@ public enum NIOHTTP2Errors {
             }
         }
 
+        /// The ``HTTP2StreamID`` on which the error was thrown.
         public var streamID: HTTP2StreamID {
             get {
                 return self.storage.streamID

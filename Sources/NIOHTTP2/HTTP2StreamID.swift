@@ -50,19 +50,19 @@ public struct HTTP2StreamID: NIOSendable {
         return self.networkStreamID % 2 == 0 && self != .rootStream
     }
 
-    /// Create a `HTTP2StreamID` for a specific integer value.
+    /// Create a ``HTTP2StreamID`` for a specific integer value.
     public init(_ integerID: Int) {
         precondition(integerID >= 0 && integerID <= Int32.max, "\(integerID) is not a valid HTTP/2 stream ID value")
         self.networkStreamID = Int32(integerID)
     }
 
-    /// Create a `HTTP2StreamID` for a specific integer value.
+    /// Create a ``HTTP2StreamID`` for a specific integer value.
     public init(_ integerID: Int32) {
         precondition(integerID >= 0, "\(integerID) is not a valid HTTP/2 stream ID value")
         self.networkStreamID = integerID
     }
     
-    /// Create a `HTTP2StreamID` from a 32-bit value received as part of a frame.
+    /// Create a ``HTTP2StreamID`` from a 32-bit value received as part of a frame.
     ///
     /// This will ignore the most significant bit of the provided value.
     internal init(networkID: UInt32) {

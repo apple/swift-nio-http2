@@ -14,7 +14,7 @@
 
 import NIOCore
 
-/// The opaque data contained in a HTTP/2 ping frame.
+/// The opaque data contained in a HTTP/2 `PING` frame.
 ///
 /// A HTTP/2 ping frame must contain 8 bytes of opaque data that is controlled entirely by the sender.
 /// This data type encapsulates those 8 bytes while providing a friendly interface for them.
@@ -22,7 +22,7 @@ public struct HTTP2PingData: NIOSendable {
     /// The underlying bytes to be sent to the wire. These are in network byte order.
     public var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8)
 
-    /// Exposes the `HTTP2PingData` as an unsigned 64-bit integer. This property will perform any
+    /// Exposes the ``HTTP2PingData`` as an unsigned 64-bit integer. This property will perform any
     /// endianness transition that is required, meaning that there is no need to byte swap the result
     /// or before setting this property.
     public var integer: UInt64 {
@@ -50,18 +50,18 @@ public struct HTTP2PingData: NIOSendable {
         }
     }
 
-    /// Create a new, blank, `HTTP2PingData`.
+    /// Create a new, blank, ``HTTP2PingData``.
     public init() {
         self.bytes = (0, 0, 0, 0, 0, 0, 0, 0)
     }
 
-    /// Create a `HTTP2PingData` containing the 64-bit integer provided in network byte order.
+    /// Create a ``HTTP2PingData`` containing the 64-bit integer provided in network byte order.
     public init(withInteger integer: UInt64) {
         self.init()
         self.integer = integer
     }
 
-    /// Create a `HTTP2PingData` from a tuple of bytes.
+    /// Create a ``HTTP2PingData`` from a tuple of bytes.
     public init(withTuple tuple: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8)) {
         self.bytes = tuple
     }
