@@ -44,7 +44,7 @@ struct ConnectionStreamState {
     private var serverStreamCount: UInt32 = 0
 
     /// The highest stream ID opened or reserved by the client.
-    private var lastClientStreamID: HTTP2StreamID = .rootStream
+    private(set) var lastClientStreamID: HTTP2StreamID = .rootStream
 
     /// The highest stream ID opened or reserved by the server.
     private var lastServerStreamID: HTTP2StreamID = .rootStream
