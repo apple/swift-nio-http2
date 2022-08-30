@@ -70,7 +70,12 @@ extension SendingHeadersState where Self: RemotelyQuiescingState {
     mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
         let validateHeaderBlock = self.headerBlockValidation == .enabled
         let validateContentLength = self.contentLengthValidation == .enabled
-        
+        if streamID.mayBeInitiatedBy(.client) &&
+            self.role == .client &&
+            streamID > self.streamState.lastClientStreamID {
+            let error = NIOHTTP2Errors.createdStreamAfterGoaway()
+            return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+        }
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
             $0.sendHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, isEndStreamSet: endStream)
         }
