@@ -955,14 +955,13 @@ class ConnectionStateMachineTests: XCTestCase {
         var temporaryClient = self.client!
 
         assertConnectionError(type: .protocolError, temporaryServer.sendPushPromise(originalStreamID: streamOne, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
-        let error = assertConnectionError(type: .protocolError, temporaryClient.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
-        XCTAssertEqual(error as? NIOHTTP2Errors.CreatedStreamAfterGoaway, NIOHTTP2Errors.createdStreamAfterGoaway())
         assertIgnored(temporaryClient.receivePushPromise(originalStreamID: streamOne, childStreamID: streamFour, headers: ConnectionStateMachineTests.requestHeaders))
 
         // And the client cannot initiate a new stream with headers.
         temporaryServer = self.server!
         temporaryClient = self.client!
-        assertConnectionError(type: .protocolError, temporaryClient.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        let error = assertConnectionError(type: .protocolError, temporaryClient.sendHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        XCTAssertEqual(error as? NIOHTTP2Errors.CreatedStreamAfterGoaway, NIOHTTP2Errors.createdStreamAfterGoaway())
         assertIgnored(temporaryServer.receiveHeaders(streamID: streamThree, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
 
         XCTAssertFalse(self.server.fullyQuiesced)
