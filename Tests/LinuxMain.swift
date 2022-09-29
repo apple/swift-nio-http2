@@ -26,14 +26,11 @@ import XCTest
    @testable import NIOHPACKTests
    @testable import NIOHTTP2Tests
 
-// This protocol is necessary to we can call the 'run' method (on an existential of this protocol)
-// without the compiler noticing that we're calling a deprecated function.
-// This hack exists so we can deprecate individual tests which test deprecated functionality without
-// getting a compiler warning...
-protocol LinuxMainRunner { func run() }
-class LinuxMainRunnerImpl: LinuxMainRunner {
+@main
+@available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
+class LinuxMainRunner {
    @available(*, deprecated, message: "not actually deprecated. Just deprecated to allow deprecated tests (which test deprecated functionality) without warnings")
-   func run() {
+   static func main() {
        XCTMain([
              testCase(CircularBufferExtensionsTests.allTests),
              testCase(CompoundOutboundBufferTest.allTests),
@@ -66,5 +63,4 @@ class LinuxMainRunnerImpl: LinuxMainRunner {
         ])
     }
 }
-(LinuxMainRunnerImpl() as LinuxMainRunner).run()
 #endif
