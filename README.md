@@ -24,14 +24,14 @@ To depend on `swift-nio-http2`, put the following in the `dependencies` of your 
 
     .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.19.2"),
 
-The most recent versions of SwiftNIO HTTP/2 support Swift 5.5 and newer. The minimum Swift version supported for SwiftNIO HTTP/2 releases are detailed below:
+The most recent versions of SwiftNIO HTTP/2 support Swift 5.5.2 and newer. The minimum Swift version supported for SwiftNIO HTTP/2 releases are detailed below:
 
 SwiftNIO HTTP/2     | Minimum Swift Version
 --------------------|----------------------
 `1.0.0 ..< 1.18.0`  | 5.0
 `1.18.0 ..< 1.21.0` | 5.2
 `1.21.0 ..< 1.23.0` | 5.4
-`1.24.0 ...`        | 5.5
+`1.24.0 ...`        | 5.5.2
 
 
 ### `swift-nio-http2` 0.x
