@@ -295,12 +295,9 @@ extension HTTP2Frame.FramePayload {
     }
 }
 
-// The `@unchecked` is needed because at the time of writing `NIOCore` didn't have `Sendable` support.
-#if swift(>=5.5) && canImport(_Concurrency)
-extension HTTP2Frame.FramePayload: @unchecked Sendable {
+/// ``HTTP2Frame/FramePayload/Data`` and therefore ``HTTP2Frame/FramePayload`` and ``HTTP2Frame`` are actually **not** `Sendable`,
+/// because ``HTTP2Frame/FramePayload/Data/data`` stores `IOData` which is not and can not be `Sendable`.
+/// Marking them non-Sendable would sadly be API breaking.
+extension HTTP2Frame.FramePayload: @unchecked Sendable {}
+extension HTTP2Frame.FramePayload.Data: @unchecked Sendable {}
 
-}
-extension HTTP2Frame.FramePayload.Data: @unchecked Sendable {
-
-}
-#endif
