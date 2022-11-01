@@ -21,7 +21,7 @@ import NIOCore
 /// case of closure by `GOAWAY` the ``reason`` is always ``HTTP2ErrorCode/refusedStream``,
 /// indicating that the remote peer has not processed this stream. In the case of
 /// `RST_STREAM`, the ``reason`` contains the error code sent by the peer in the `RST_STREAM` frame.
-public struct StreamClosedEvent: NIOSendable {
+public struct StreamClosedEvent: Sendable {
     /// The stream ID of the stream that is closed.
     public let streamID: HTTP2StreamID
 

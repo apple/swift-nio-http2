@@ -23,7 +23,7 @@ import NIOCore
 ///
 /// For this reason, SwiftNIO encapsulates the idea of this type into the HTTP2StreamID
 /// structure.
-public struct HTTP2StreamID: NIOSendable {
+public struct HTTP2StreamID: Sendable {
     /// The stream ID as a 32 bit integer that will be sent on the network. This will
     /// always be positive.
     internal var networkStreamID: Int32
