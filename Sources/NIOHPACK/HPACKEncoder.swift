@@ -27,7 +27,7 @@ public struct HPACKEncoder {
     public static var defaultDynamicTableSize: Int { return DynamicHeaderTable.defaultSize }
     private static let defaultDataBufferSize = 128
     
-    public struct HeaderDefinition: NIOSendable {
+    public struct HeaderDefinition: Sendable {
         var name: String
         var value: String
         var indexing: HPACKIndexing
