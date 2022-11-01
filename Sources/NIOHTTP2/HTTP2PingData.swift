@@ -18,7 +18,7 @@ import NIOCore
 ///
 /// A HTTP/2 ping frame must contain 8 bytes of opaque data that is controlled entirely by the sender.
 /// This data type encapsulates those 8 bytes while providing a friendly interface for them.
-public struct HTTP2PingData: NIOSendable {
+public struct HTTP2PingData: Sendable {
     /// The underlying bytes to be sent to the wire. These are in network byte order.
     public var bytes: (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8)
 

@@ -17,7 +17,7 @@ import NIOHTTP1
 
 /// Very similar to `NIOHTTP1.HTTPHeaders`, but with extra data for storing indexing
 /// information.
-public struct HPACKHeaders: ExpressibleByDictionaryLiteral, NIOSendable {
+public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// The maximum size of the canonical connection header value array to use when removing
     /// connection headers during `HTTPHeaders` normalisation. When using an array the removal
     /// is O(H·C) where H is the length of headers to noramlize and C is the length of the
@@ -464,7 +464,7 @@ extension HPACKHeaders: Hashable {
 
 /// Defines the types of indexing and rewriting operations a decoder may take with
 /// regard to this header.
-public enum HPACKIndexing: CustomStringConvertible, NIOSendable {
+public enum HPACKIndexing: CustomStringConvertible, Sendable {
     /// Header may be written into the dynamic index table or may be rewritten by
     /// proxy servers.
     case indexable
@@ -488,7 +488,7 @@ public enum HPACKIndexing: CustomStringConvertible, NIOSendable {
 }
 
 @usableFromInline
-internal struct HPACKHeader: NIOSendable {
+internal struct HPACKHeader: Sendable {
     @usableFromInline
     var indexing: HPACKIndexing
 

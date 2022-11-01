@@ -17,7 +17,7 @@ import NIOHTTP1
 import NIOHPACK
 
 /// A representation of a single HTTP/2 frame.
-public struct HTTP2Frame: NIOSendable {
+public struct HTTP2Frame: Sendable {
 
     /// The ID representing the stream on which this frame is sent.
     public var streamID: HTTP2StreamID
@@ -26,7 +26,7 @@ public struct HTTP2Frame: NIOSendable {
     public var payload: FramePayload
 
     /// Stream priority data, used in PRIORITY frames and optionally in HEADERS frames.
-    public struct StreamPriorityData: Equatable, Hashable, NIOSendable {
+    public struct StreamPriorityData: Equatable, Hashable, Sendable {
         public var exclusive: Bool
         public var dependency: HTTP2StreamID
         public var weight: UInt8
@@ -156,7 +156,7 @@ public struct HTTP2Frame: NIOSendable {
         }
 
         /// The payload of a `HEADERS` frame.
-        public struct Headers: NIOSendable {
+        public struct Headers: Sendable {
             /// The decoded header block belonging to this `HEADERS` frame.
             public var headers: HPACKHeaders
 
@@ -193,7 +193,7 @@ public struct HTTP2Frame: NIOSendable {
         }
 
         /// The payload of a `SETTINGS` frame.
-        public enum Settings: NIOSendable {
+        public enum Settings: Sendable {
             /// This `SETTINGS` frame contains new `SETTINGS`.
             case settings(HTTP2Settings)
 
@@ -202,7 +202,7 @@ public struct HTTP2Frame: NIOSendable {
         }
 
         /// The payload of a `PUSH_PROMISE` frame.
-        public struct PushPromise: NIOSendable {
+        public struct PushPromise: Sendable {
             /// The pushed stream ID.
             public var pushedStreamID: HTTP2StreamID
 

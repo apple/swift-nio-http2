@@ -14,7 +14,7 @@
 
 import NIOCore
 
-internal struct HeaderTableEntry: NIOSendable {
+internal struct HeaderTableEntry: Sendable {
     var name: String
 
     var value: String

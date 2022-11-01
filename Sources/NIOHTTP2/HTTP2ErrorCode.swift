@@ -18,7 +18,7 @@ import NIOCore
 ///
 /// HTTP/2 uses error codes to communicate to remote peers what went wrong on either a stream or
 /// a connection. This data type models that underlying representation.
-public struct HTTP2ErrorCode: NIOSendable {
+public struct HTTP2ErrorCode: Sendable {
     /// The underlying network representation of the error code.
     public var networkCode: Int {
         get {
