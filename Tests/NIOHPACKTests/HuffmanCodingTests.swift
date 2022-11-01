@@ -23,7 +23,7 @@ class HuffmanCodingTests: XCTestCase {
     
     // MARK: - Helper Methods
     
-    func assertEqualContents(_ buffer: ByteBuffer, _ array: [UInt8], file: StaticString = #file, line: UInt = #line) {
+    func assertEqualContents(_ buffer: ByteBuffer, _ array: [UInt8], file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(buffer.readableBytes, array.count, "Buffer and array are different sizes", file: (file), line: line)
         buffer.withUnsafeReadableBytes { bufPtr in
             array.withUnsafeBytes { arrayPtr in
@@ -32,7 +32,7 @@ class HuffmanCodingTests: XCTestCase {
         }
     }
     
-    func verifyHuffmanCoding(_ string: String, _ bytes: [UInt8], file: StaticString = #file, line: UInt = #line) throws {
+    func verifyHuffmanCoding(_ string: String, _ bytes: [UInt8], file: StaticString = #filePath, line: UInt = #line) throws {
         self.scratchBuffer.clear()
         
         let utf8 = string.utf8

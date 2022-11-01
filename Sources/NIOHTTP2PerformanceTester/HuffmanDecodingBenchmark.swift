@@ -95,7 +95,7 @@ extension Array where Element == UInt8 {
     }()
 
     // The location of the test fixtures.
-    private static let fixtureDirectoryURL = URL(fileURLWithPath: #file).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Tests").appendingPathComponent("NIOHPACKTests").appendingPathComponent("Fixtures").absoluteURL
+    private static let fixtureDirectoryURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Tests").appendingPathComponent("NIOHPACKTests").appendingPathComponent("Fixtures").absoluteURL
 }
 
 

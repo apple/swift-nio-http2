@@ -638,7 +638,7 @@ extension NIOHTTP2Handler {
     private func failDroppedPromises(_ promises: CompoundOutboundBuffer.DroppedPromisesCollection,
                                      streamID: HTTP2StreamID,
                                      errorCode: HTTP2ErrorCode,
-                                     file: String = #file, line: UInt = #line) {
+                                     file: String = #fileID, line: UInt = #line) {
         // 'NIOHTTP2Errors.streamClosed' always allocates, if there are no promises then there's no
         // need to create the error.
         guard promises.contains(where: { $0 != nil }) else {

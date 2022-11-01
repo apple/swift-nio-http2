@@ -17,9 +17,8 @@ import NIOCore
 @testable import NIOHPACK
 
 class HPACKIntegrationTests : XCTestCase {
-    
     private let hpackTestsURL: URL = {
-        let myURL = URL(fileURLWithPath: #file, isDirectory: false)
+        let myURL = URL(fileURLWithPath: #filePath, isDirectory: false)
         let result: URL
         if #available(OSX 10.11, iOS 9.0, *) {
             result = URL(fileURLWithPath: "../hpack-test-case", isDirectory: true, relativeTo: myURL).absoluteURL
