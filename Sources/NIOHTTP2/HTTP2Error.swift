@@ -21,12 +21,12 @@ public protocol NIOHTTP2Error: Equatable, Error { }
 /// Errors that ``NIOHTTP2`` raises when handling HTTP/2 connections.
 public enum NIOHTTP2Errors {
     /// Creates an ``ExcessiveOutboundFrameBuffering`` error with appropriate source context.
-    public static func excessiveOutboundFrameBuffering(file: String = #file, line: UInt = #line) -> ExcessiveOutboundFrameBuffering {
+    public static func excessiveOutboundFrameBuffering(file: String = #fileID, line: UInt = #line) -> ExcessiveOutboundFrameBuffering {
         return ExcessiveOutboundFrameBuffering(file: file, line: line)
     }
 
     /// Creates an ``InvalidALPNToken`` error with appropriate source context
-    public static func invalidALPNToken(file: String = #file, line: UInt = #line) -> InvalidALPNToken {
+    public static func invalidALPNToken(file: String = #fileID, line: UInt = #line) -> InvalidALPNToken {
         return InvalidALPNToken(file: file, line: line)
     }
 
@@ -34,7 +34,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - streamID: The ``HTTP2StreamID`` for the stream that does not exist.
-    public static func noSuchStream(streamID: HTTP2StreamID, file: String = #file, line: UInt = #line) -> NoSuchStream {
+    public static func noSuchStream(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> NoSuchStream {
         return NoSuchStream(streamID: streamID, file: file, line: line)
     }
 
@@ -43,12 +43,12 @@ public enum NIOHTTP2Errors {
     /// - parameters:
     ///     - streamID: The ``HTTP2StreamID`` for the stream that is or has been closed
     ///     - errorCode: The ``HTTP2ErrorCode`` representing the reason for closure of the stream.
-    public static func streamClosed(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: String = #file, line: UInt = #line) -> StreamClosed {
+    public static func streamClosed(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: String = #fileID, line: UInt = #line) -> StreamClosed {
         return StreamClosed(streamID: streamID, errorCode: errorCode, file: file, line: line)
     }
 
     /// Creates a ``BadClientMagic`` error with appropriate source context.
-    public static func badClientMagic(file: String = #file, line: UInt = #line) -> BadClientMagic {
+    public static func badClientMagic(file: String = #fileID, line: UInt = #line) -> BadClientMagic {
         return BadClientMagic(file: file, line: line)
     }
 
@@ -56,7 +56,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters
     ///     - state: The ``NIOHTTP2StreamState`` representing the state of the stream from which we were trying to transition
-    public static func badStreamStateTransition(from state: NIOHTTP2StreamState? = nil, file: String = #file, line: UInt = #line) -> BadStreamStateTransition {
+    public static func badStreamStateTransition(from state: NIOHTTP2StreamState? = nil, file: String = #fileID, line: UInt = #line) -> BadStreamStateTransition {
         return BadStreamStateTransition(from: state, file: file, line: line)
     }
 
@@ -65,12 +65,12 @@ public enum NIOHTTP2Errors {
     /// - parameters:
     ///     - delta: The change in the window size that was proposed in error
     ///     - currentWindowSize: The current size of the stream flow control window
-    public static func invalidFlowControlWindowSize(delta: Int, currentWindowSize: Int, file: String = #file, line: UInt = #line) -> InvalidFlowControlWindowSize {
+    public static func invalidFlowControlWindowSize(delta: Int, currentWindowSize: Int, file: String = #fileID, line: UInt = #line) -> InvalidFlowControlWindowSize {
         return InvalidFlowControlWindowSize(delta: delta, currentWindowSize: currentWindowSize, file: file, line: line)
     }
 
     /// Creates a ``FlowControlViolation`` error with appropriate source context.
-    public static func flowControlViolation(file: String = #file, line: UInt = #line) -> FlowControlViolation {
+    public static func flowControlViolation(file: String = #fileID, line: UInt = #line) -> FlowControlViolation {
         return FlowControlViolation(file: file, line: line)
     }
 
@@ -78,57 +78,57 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - setting: The invalid setting in question
-    public static func invalidSetting(setting: HTTP2Setting, file: String = #file, line: UInt = #line) -> InvalidSetting {
+    public static func invalidSetting(setting: HTTP2Setting, file: String = #fileID, line: UInt = #line) -> InvalidSetting {
         return InvalidSetting(setting: setting, file: file, line: line)
     }
 
     /// Creates an ``IOOnClosedConnection`` error with appropriate source context.
-    public static func ioOnClosedConnection(file: String = #file, line: UInt = #line) -> IOOnClosedConnection {
+    public static func ioOnClosedConnection(file: String = #fileID, line: UInt = #line) -> IOOnClosedConnection {
         return IOOnClosedConnection(file: file, line: line)
     }
 
     /// Creates a ``ReceivedBadSettings`` error with appropriate source context.
-    public static func receivedBadSettings(file: String = #file, line: UInt = #line) -> ReceivedBadSettings {
+    public static func receivedBadSettings(file: String = #fileID, line: UInt = #line) -> ReceivedBadSettings {
         return ReceivedBadSettings(file: file, line: line)
     }
 
     /// Creates a ``MaxStreamsViolation`` error with appropriate source context.
-    public static func maxStreamsViolation(file: String = #file, line: UInt = #line) -> MaxStreamsViolation {
+    public static func maxStreamsViolation(file: String = #fileID, line: UInt = #line) -> MaxStreamsViolation {
         return MaxStreamsViolation(file: file, line: line)
     }
 
     /// Creates a ``StreamIDTooSmall`` error with appropriate source context.
-    public static func streamIDTooSmall(file: String = #file, line: UInt = #line) -> StreamIDTooSmall {
+    public static func streamIDTooSmall(file: String = #fileID, line: UInt = #line) -> StreamIDTooSmall {
         return StreamIDTooSmall(file: file, line: line)
     }
 
     /// Creates a ``MissingPreface`` error with appropriate source context.
-    public static func missingPreface(file: String = #file, line: UInt = #line) -> MissingPreface {
+    public static func missingPreface(file: String = #fileID, line: UInt = #line) -> MissingPreface {
         return MissingPreface(file: file, line: line)
     }
 
     /// Creates a ``CreatedStreamAfterGoaway`` error with appropriate source context.
-    public static func createdStreamAfterGoaway(file: String = #file, line: UInt = #line) -> CreatedStreamAfterGoaway {
+    public static func createdStreamAfterGoaway(file: String = #fileID, line: UInt = #line) -> CreatedStreamAfterGoaway {
         return CreatedStreamAfterGoaway(file: file, line: line)
     }
 
     /// Creates a ``InvalidStreamIDForPeer`` error with appropriate source context.
-    public static func invalidStreamIDForPeer(file: String = #file, line: UInt = #line) -> InvalidStreamIDForPeer {
+    public static func invalidStreamIDForPeer(file: String = #fileID, line: UInt = #line) -> InvalidStreamIDForPeer {
         return InvalidStreamIDForPeer(file: file, line: line)
     }
 
     /// Creates a ``RaisedGoawayLastStreamID`` error with appropriate source context.
-    public static func raisedGoawayLastStreamID(file: String = #file, line: UInt = #line) -> RaisedGoawayLastStreamID {
+    public static func raisedGoawayLastStreamID(file: String = #fileID, line: UInt = #line) -> RaisedGoawayLastStreamID {
         return RaisedGoawayLastStreamID(file: file, line: line)
     }
 
     /// Creates a ``InvalidWindowIncrementSize`` error with appropriate source context.
-    public static func invalidWindowIncrementSize(file: String = #file, line: UInt = #line) -> InvalidWindowIncrementSize {
+    public static func invalidWindowIncrementSize(file: String = #fileID, line: UInt = #line) -> InvalidWindowIncrementSize {
         return InvalidWindowIncrementSize(file: file, line: line)
     }
 
     /// Creates a ``PushInViolationOfSetting`` error with appropriate source context.
-    public static func pushInViolationOfSetting(file: String = #file, line: UInt = #line) -> PushInViolationOfSetting {
+    public static func pushInViolationOfSetting(file: String = #fileID, line: UInt = #line) -> PushInViolationOfSetting {
         return PushInViolationOfSetting(file: file, line: line)
     }
 
@@ -136,17 +136,17 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///      - info: Human-readable information describing _what_ is unsupported.
-    public static func unsupported(info: String, file: String = #file, line: UInt = #line) -> Unsupported {
+    public static func unsupported(info: String, file: String = #fileID, line: UInt = #line) -> Unsupported {
         return Unsupported(info: info, file: file, line: line)
     }
 
     /// Creates a ``UnableToSerializeFrame`` error with appropriate source context.
-    public static func unableToSerializeFrame(file: String = #file, line: UInt = #line) -> UnableToSerializeFrame {
+    public static func unableToSerializeFrame(file: String = #fileID, line: UInt = #line) -> UnableToSerializeFrame {
         return UnableToSerializeFrame(file: file, line: line)
     }
 
     /// Creates a ``UnableToParseFrame`` error with appropriate source context.
-    public static func unableToParseFrame(file: String = #file, line: UInt = #line) -> UnableToParseFrame {
+    public static func unableToParseFrame(file: String = #fileID, line: UInt = #line) -> UnableToParseFrame {
         return UnableToParseFrame(file: file, line: line)
     }
 
@@ -154,7 +154,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///      - name: The name of the pseudo-header that was missing from the header block.
-    public static func missingPseudoHeader(_ name: String, file: String = #file, line: UInt = #line) -> MissingPseudoHeader {
+    public static func missingPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> MissingPseudoHeader {
         return MissingPseudoHeader(name, file: file, line: line)
     }
 
@@ -162,7 +162,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - name: The name of the pseudo-header that was duplicated within the header block.
-    public static func duplicatePseudoHeader(_ name: String, file: String = #file, line: UInt = #line) -> DuplicatePseudoHeader {
+    public static func duplicatePseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> DuplicatePseudoHeader {
         return DuplicatePseudoHeader(name, file: file, line: line)
     }
 
@@ -170,7 +170,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - name: The name of the pseudo-header that appeared after a regular header in the header block.
-    public static func pseudoHeaderAfterRegularHeader(_ name: String, file: String = #file, line: UInt = #line) -> PseudoHeaderAfterRegularHeader {
+    public static func pseudoHeaderAfterRegularHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> PseudoHeaderAfterRegularHeader {
         return PseudoHeaderAfterRegularHeader(name, file: file, line: line)
     }
 
@@ -178,7 +178,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - name: The name of the pseudo-header that was not recognised by ``NIOHTTP2``.
-    public static func unknownPseudoHeader(_ name: String, file: String = #file, line: UInt = #line) -> UnknownPseudoHeader {
+    public static func unknownPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> UnknownPseudoHeader {
         return UnknownPseudoHeader(name, file: file, line: line)
     }
 
@@ -186,22 +186,22 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - block: The block of `HPACKHeaders` that contain the invalid pseudo headers.
-    public static func invalidPseudoHeaders(_ block: HPACKHeaders, file: String = #file, line: UInt = #line) -> InvalidPseudoHeaders {
+    public static func invalidPseudoHeaders(_ block: HPACKHeaders, file: String = #fileID, line: UInt = #line) -> InvalidPseudoHeaders {
         return InvalidPseudoHeaders(block, file: file, line: line)
     }
 
     /// Creates a ``MissingHostHeader`` error with appropriate source context.
-    public static func missingHostHeader(file: String = #file, line: UInt = #line) -> MissingHostHeader {
+    public static func missingHostHeader(file: String = #fileID, line: UInt = #line) -> MissingHostHeader {
         return MissingHostHeader(file: file, line: line)
     }
 
     /// Creates a ``DuplicateHostHeader`` error with appropriate source context.
-    public static func duplicateHostHeader(file: String = #file, line: UInt = #line) -> DuplicateHostHeader {
+    public static func duplicateHostHeader(file: String = #fileID, line: UInt = #line) -> DuplicateHostHeader {
         return DuplicateHostHeader(file: file, line: line)
     }
 
     /// Creates a ``EmptyPathHeader`` error with appropriate source context.
-    public static func emptyPathHeader(file: String = #file, line: UInt = #line) -> EmptyPathHeader {
+    public static func emptyPathHeader(file: String = #fileID, line: UInt = #line) -> EmptyPathHeader {
         return EmptyPathHeader(file: file, line: line)
     }
 
@@ -209,7 +209,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - value: The value of the `:status` header that is invalid.
-    public static func invalidStatusValue(_ value: String, file: String = #file, line: UInt = #line) -> InvalidStatusValue {
+    public static func invalidStatusValue(_ value: String, file: String = #fileID, line: UInt = #line) -> InvalidStatusValue {
         return InvalidStatusValue(value, file: file, line: line)
     }
 
@@ -217,7 +217,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - streamID: The ``HTTP2StreamID`` representing the stream that created the priority cycle.
-    public static func priorityCycle(streamID: HTTP2StreamID, file: String = #file, line: UInt = #line) -> PriorityCycle {
+    public static func priorityCycle(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> PriorityCycle {
         return PriorityCycle(streamID: streamID, file: file, line: line)
     }
 
@@ -225,7 +225,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - streamID: The ``HTTP2StreamID`` on which the `HEADERS` frame without `END_STREAM` was received.
-    public static func trailersWithoutEndStream(streamID: HTTP2StreamID, file: String = #file, line: UInt = #line) -> TrailersWithoutEndStream {
+    public static func trailersWithoutEndStream(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> TrailersWithoutEndStream {
         return TrailersWithoutEndStream(streamID: streamID, file: file, line: line)
     }
 
@@ -233,7 +233,7 @@ public enum NIOHTTP2Errors {
     ///
     /// - parameters:
     ///     - fieldName: The invalid HTTP/2 header field name
-    public static func invalidHTTP2HeaderFieldName(_ fieldName: String, file: String = #file, line: UInt = #line) -> InvalidHTTP2HeaderFieldName {
+    public static func invalidHTTP2HeaderFieldName(_ fieldName: String, file: String = #fileID, line: UInt = #line) -> InvalidHTTP2HeaderFieldName {
         return InvalidHTTP2HeaderFieldName(fieldName, file: file, line: line)
     }
 
@@ -242,27 +242,27 @@ public enum NIOHTTP2Errors {
     /// - parameters:
     ///     - name: The field name for the forbidden header field
     ///     - value: The field value for the forbidden header field
-    public static func forbiddenHeaderField(name: String, value: String, file: String = #file, line: UInt = #line) -> ForbiddenHeaderField {
+    public static func forbiddenHeaderField(name: String, value: String, file: String = #fileID, line: UInt = #line) -> ForbiddenHeaderField {
         return ForbiddenHeaderField(name: name, value: value, file: file, line: line)
     }
 
     /// Creates a ``ContentLengthViolated`` error with appropriate source context.
-    public static func contentLengthViolated(file: String = #file, line: UInt = #line) -> ContentLengthViolated {
+    public static func contentLengthViolated(file: String = #fileID, line: UInt = #line) -> ContentLengthViolated {
         return ContentLengthViolated(file: file, line: line)
     }
 
     /// Creates a ``ExcessiveEmptyDataFrames`` error with appropriate source context.
-    public static func excessiveEmptyDataFrames(file: String = #file, line: UInt = #line) -> ExcessiveEmptyDataFrames {
+    public static func excessiveEmptyDataFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveEmptyDataFrames {
         return ExcessiveEmptyDataFrames(file: file, line: line)
     }
 
     /// Creates a ``ExcessivelyLargeHeaderBlock`` error with appropriate source context.
-    public static func excessivelyLargeHeaderBlock(file: String = #file, line: UInt = #line) -> ExcessivelyLargeHeaderBlock {
+    public static func excessivelyLargeHeaderBlock(file: String = #fileID, line: UInt = #line) -> ExcessivelyLargeHeaderBlock {
         return ExcessivelyLargeHeaderBlock(file: file, line: line)
     }
 
     /// Creates a ``NoStreamIDAvailable`` error with appropriate source context.
-    public static func noStreamIDAvailable(file: String = #file, line: UInt = #line) -> NoStreamIDAvailable {
+    public static func noStreamIDAvailable(file: String = #fileID, line: UInt = #line) -> NoStreamIDAvailable {
         return NoStreamIDAvailable(file: file, line: line)
     }
 
@@ -290,7 +290,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "excessiveOutboundFrameBuffering")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -316,7 +316,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidALPNToken")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -339,7 +339,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "noSuchStream")
         public init(streamID: HTTP2StreamID) {
-            self.init(streamID: streamID, file: #file, line: #line)
+            self.init(streamID: streamID, file: #fileID, line: #line)
         }
 
         fileprivate init(streamID: HTTP2StreamID, file: String, line: UInt) {
@@ -365,7 +365,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "streamClosed")
         public init(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode) {
-            self.init(streamID: streamID, errorCode: errorCode, file: #file, line: #line)
+            self.init(streamID: streamID, errorCode: errorCode, file: #fileID, line: #line)
         }
 
         fileprivate init(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: String, line: UInt) {
@@ -391,7 +391,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "badClientMagic")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -424,7 +424,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "badStreamStateTransition")
         public init() {
-            self.init(from: nil, file: #file, line: #line)
+            self.init(from: nil, file: #fileID, line: #line)
         }
 
         public static func ==(lhs: BadStreamStateTransition, rhs: BadStreamStateTransition) -> Bool {
@@ -505,7 +505,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidFlowControlWindowSize")
         public init(delta: Int, currentWindowSize: Int) {
-            self.init(delta: delta, currentWindowSize: currentWindowSize, file: #file, line: #line)
+            self.init(delta: delta, currentWindowSize: currentWindowSize, file: #fileID, line: #line)
         }
 
         fileprivate init(delta: Int, currentWindowSize: Int, file: String, line: UInt) {
@@ -525,7 +525,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "flowControlViolation")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -548,7 +548,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidSetting")
         public init(setting: HTTP2Setting) {
-            self.init(setting: setting, file: #file, line: #line)
+            self.init(setting: setting, file: #fileID, line: #line)
         }
 
         fileprivate init(setting: HTTP2Setting, file: String, line: UInt) {
@@ -573,7 +573,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "ioOnClosedConnection")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -598,7 +598,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "receivedBadSettings")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -623,7 +623,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "maxStreamsViolation")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -648,7 +648,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "streamIDTooSmall")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -673,7 +673,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "missingPreface")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -699,7 +699,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "createdStreamAfterGoaway")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -724,7 +724,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidStreamIDForPeer")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -749,7 +749,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "raisedGoawayLastStreamID")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -774,7 +774,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidWindowIncrementSize")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -799,7 +799,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "pushInViolationOfSetting")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -846,7 +846,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "unsupported")
         public init(info: String) {
-            self.init(info: info, file: #file, line: #line)
+            self.init(info: info, file: #fileID, line: #line)
         }
 
         fileprivate init(info: String, file: String, line: UInt) {
@@ -866,7 +866,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "unableToSerializeFrame")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -891,7 +891,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "unableToParseFrame")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -938,7 +938,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "missingPseudoHeader")
         public init(_ name: String) {
-            self.init(name, file: #file, line: #line)
+            self.init(name, file: #fileID, line: #line)
         }
 
         fileprivate init(_ name: String, file: String, line: UInt) {
@@ -980,7 +980,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "duplicatePseudoHeader")
         public init(_ name: String) {
-            self.init(name, file: #file, line: #line)
+            self.init(name, file: #fileID, line: #line)
         }
 
         fileprivate init(_ name: String, file: String, line: UInt) {
@@ -1022,7 +1022,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "pseudoHeaderAfterRegularHeader")
         public init(_ name: String) {
-            self.init(name, file: #file, line: #line)
+            self.init(name, file: #fileID, line: #line)
         }
 
         fileprivate init(_ name: String, file: String, line: UInt) {
@@ -1064,7 +1064,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "unknownPseudoHeader")
         public init(_ name: String) {
-            self.init(name, file: #file, line: #line)
+            self.init(name, file: #fileID, line: #line)
         }
 
         fileprivate init(_ name: String, file: String, line: UInt) {
@@ -1082,7 +1082,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidPseudoHeaders")
         public init(_ block: HPACKHeaders) {
-            self.init(block, file: #file, line: #line)
+            self.init(block, file: #fileID, line: #line)
         }
 
         fileprivate init(_ block: HPACKHeaders, file: String, line: UInt) {
@@ -1107,7 +1107,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "missingHostHeader")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -1132,7 +1132,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "duplicateHostHeader")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -1157,7 +1157,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "emptyPathHeader")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -1204,7 +1204,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidStatusValue")
         public init(_ value: String) {
-            self.init(value, file: #file, line: #line)
+            self.init(value, file: #fileID, line: #line)
         }
 
         fileprivate init(_ value: String, file: String, line: UInt) {
@@ -1222,7 +1222,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "priorityCycle")
         public init(streamID: HTTP2StreamID) {
-            self.init(streamID: streamID, file: #file, line: #line)
+            self.init(streamID: streamID, file: #fileID, line: #line)
         }
 
         fileprivate init(streamID: HTTP2StreamID, file: String, line: UInt) {
@@ -1245,7 +1245,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "trailersWithoutEndStream")
         public init(streamID: HTTP2StreamID) {
-            self.init(streamID: streamID, file: #file, line: #line)
+            self.init(streamID: streamID, file: #fileID, line: #line)
         }
 
         fileprivate init(streamID: HTTP2StreamID, file: String, line: UInt) {
@@ -1292,7 +1292,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "invalidHTTP2HeaderFieldName")
         public init(_ name: String) {
-            self.init(name, file: #file, line: #line)
+            self.init(name, file: #fileID, line: #line)
         }
 
         fileprivate init(_ name: String, file: String, line: UInt) {
@@ -1372,7 +1372,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "forbiddenHeaderField")
         public init(name: String, value: String) {
-            self.init(name: name, value: value, file: #file, line: #line)
+            self.init(name: name, value: value, file: #fileID, line: #line)
         }
 
         fileprivate init(name: String, value: String, file: String, line: UInt) {
@@ -1392,7 +1392,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "contentLengthViolated")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -1418,7 +1418,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "excessiveEmptyDataFrames")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -1443,7 +1443,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "excessivelyLargeHeaderBlock")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -1468,7 +1468,7 @@ public enum NIOHTTP2Errors {
 
         @available(*, deprecated, renamed: "noStreamIDAvailable")
         public init() {
-            self.init(file: #file, line: #line)
+            self.init(file: #fileID, line: #line)
         }
 
         fileprivate init(file: String, line: UInt) {
@@ -1555,7 +1555,7 @@ internal enum InternalError: Error {
 
     // Used to record that an impossible situation occured. Crashes in debug mode, errors in
     // release mode.
-    static func impossibleSituation(file: StaticString = #file, line: UInt = #line) -> InternalError {
+    static func impossibleSituation(file: StaticString = #fileID, line: UInt = #line) -> InternalError {
         assertionFailure(file: file, line: line)
         return .codecError(code: .internalError)
     }

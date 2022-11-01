@@ -19,7 +19,7 @@ import NIOCore
 func XCTAssertEqualTuple<T1: Equatable, T2: Equatable>(_ expression1: @autoclosure () throws -> (T1, T2)?,
                                                        _ expression2: @autoclosure () throws -> (T1, T2)?,
                                                        _ message: @autoclosure () -> String = "",
-                                                       file: StaticString = #file, line: UInt = #line) {
+                                                       file: StaticString = #filePath, line: UInt = #line) {
     let ex1: (T1, T2)?
     let ex2: (T1, T2)?
     do {
