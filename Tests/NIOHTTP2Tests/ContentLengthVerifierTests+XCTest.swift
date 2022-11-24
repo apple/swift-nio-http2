@@ -30,6 +30,10 @@ extension ContentLengthVerifierTests {
                 ("testDuplicatedLengthHeadersPermitted", testDuplicatedLengthHeadersPermitted),
                 ("testDuplicatedConflictingLengthHeadersThrow", testDuplicatedConflictingLengthHeadersThrow),
                 ("testNumericallyEquivalentButConflictingLengthHeadersThrow", testNumericallyEquivalentButConflictingLengthHeadersThrow),
+                ("testNegativeLengthHeaderThrows", testNegativeLengthHeaderThrows),
+                ("testMinIntLengthHeaderDoesntPanic", testMinIntLengthHeaderDoesntPanic),
+                ("testMaxIntLengthHeaderDoesntPanic", testMaxIntLengthHeaderDoesntPanic),
+                ("testInvalidLengthHeaderValuesThrow", testInvalidLengthHeaderValuesThrow),
            ]
    }
 }

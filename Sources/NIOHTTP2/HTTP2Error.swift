@@ -256,6 +256,16 @@ public enum NIOHTTP2Errors {
         return ContentLengthHeadersMismatch(file: file, line: line)
     }
 
+    /// Creates a ``ContentLengthHeaderNegative`` error with appropriate source context.
+    public static func contentLengthHeaderNegative(file: String = #fileID, line: UInt = #line) -> ContentLengthHeaderNegative {
+        return ContentLengthHeaderNegative(file: file, line: line)
+    }
+
+    /// Creates a ``ContentLengthHeaderMalformedValue`` error with appropriate source context.
+    public static func contentLengthHeaderMalformedValue(file: String = #fileID, line: UInt = #line) -> ContentLengthHeaderMalformedValue {
+        return ContentLengthHeaderMalformedValue(file: file, line: line)
+    }
+
     /// Creates a ``ExcessiveEmptyDataFrames`` error with appropriate source context.
     public static func excessiveEmptyDataFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveEmptyDataFrames {
         return ExcessiveEmptyDataFrames(file: file, line: line)
@@ -1426,6 +1436,47 @@ public enum NIOHTTP2Errors {
         }
 
         public static func ==(lhs: ContentLengthHeadersMismatch, rhs: ContentLengthHeadersMismatch) -> Bool {
+            return true
+        }
+    }
+
+    /// A request header block contains a content length header with a negative value
+    public struct ContentLengthHeaderNegative: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            return _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func ==(lhs: ContentLengthHeaderNegative, rhs: ContentLengthHeaderNegative) -> Bool {
+            return true
+        }
+    }
+
+    /// A request header block contains a content length header with a malformed value
+    /// e.g. an unparsable string or an integer which cannot be represented by an Int
+    public struct ContentLengthHeaderMalformedValue: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            return _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func ==(lhs: ContentLengthHeaderMalformedValue, rhs: ContentLengthHeaderMalformedValue) -> Bool {
             return true
         }
     }

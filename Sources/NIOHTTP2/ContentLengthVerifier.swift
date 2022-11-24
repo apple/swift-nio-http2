@@ -57,7 +57,15 @@ extension ContentLengthVerifier {
         guard contentLengths.dropFirst().allSatisfy({ $0 == first }) else {
             throw NIOHTTP2Errors.contentLengthHeadersMismatch()
         }
+
         self.expectedContentLength = Int(first, radix: 10)
+
+        guard let expectedLength = self.expectedContentLength else {
+            throw NIOHTTP2Errors.contentLengthHeaderMalformedValue()
+        }
+        if expectedLength < 0 {
+            throw NIOHTTP2Errors.contentLengthHeaderNegative()
+        }
     }
 
     /// The verifier for use when content length verification is disabled.
