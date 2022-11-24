@@ -284,7 +284,7 @@ extension HTTP2StreamStateMachine {
             switch self.state {
             case .idle(.client, localWindow: let localWindow, remoteWindow: let remoteWindow):
                 let targetState: State
-                let localContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try localContentLength.endOfStream()
@@ -301,7 +301,7 @@ extension HTTP2StreamStateMachine {
 
             case .halfOpenRemoteLocalIdle(localWindow: let localWindow, remoteContentLength: let remoteContentLength, remoteWindow: let remoteWindow):
                 let targetState: State
-                let localContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try localContentLength.endOfStream()
@@ -326,7 +326,7 @@ extension HTTP2StreamStateMachine {
             case .reservedLocal(let localWindow):
                 let targetState: State
                 let targetEffect: StreamStateChange
-                let localContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try localContentLength.endOfStream()
@@ -353,7 +353,7 @@ extension HTTP2StreamStateMachine {
             case .halfClosedRemoteLocalIdle(let localWindow):
                 let targetState: State
                 let targetEffect: StreamStateChange?
-                let localContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try localContentLength.endOfStream()
@@ -414,7 +414,7 @@ extension HTTP2StreamStateMachine {
             switch self.state {
             case .idle(.server, localWindow: let localWindow, remoteWindow: let remoteWindow):
                 let targetState: State
-                let remoteContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let remoteContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try remoteContentLength.endOfStream()
@@ -431,7 +431,7 @@ extension HTTP2StreamStateMachine {
 
             case .halfOpenLocalPeerIdle(localWindow: let localWindow, localContentLength: let localContentLength, remoteWindow: let remoteWindow):
                 let targetState: State
-                let remoteContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let remoteContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try remoteContentLength.endOfStream()
@@ -456,7 +456,7 @@ extension HTTP2StreamStateMachine {
             case .reservedRemote(let remoteWindow):
                 let targetState: State
                 let targetEffect: StreamStateChange
-                let remoteContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let remoteContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try remoteContentLength.endOfStream()
@@ -483,7 +483,7 @@ extension HTTP2StreamStateMachine {
             case .halfClosedLocalPeerIdle(let remoteWindow):
                 let targetState: State
                 let targetEffect: StreamStateChange?
-                let remoteContentLength = validateContentLength ? ContentLengthVerifier(headers) : .disabled
+                let remoteContentLength = validateContentLength ? try ContentLengthVerifier(headers) : .disabled
 
                 if endStream {
                     try remoteContentLength.endOfStream()

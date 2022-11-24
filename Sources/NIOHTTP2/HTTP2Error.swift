@@ -251,6 +251,11 @@ public enum NIOHTTP2Errors {
         return ContentLengthViolated(file: file, line: line)
     }
 
+    /// Creates a ``ContentLengthHeadersMismatch`` error with appropriate source context.
+    public static func contentLengthHeadersMismatch(file: String = #fileID, line: UInt = #line) -> ContentLengthHeadersMismatch {
+        return ContentLengthHeadersMismatch(file: file, line: line)
+    }
+
     /// Creates a ``ExcessiveEmptyDataFrames`` error with appropriate source context.
     public static func excessiveEmptyDataFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveEmptyDataFrames {
         return ExcessiveEmptyDataFrames(file: file, line: line)
@@ -1401,6 +1406,26 @@ public enum NIOHTTP2Errors {
         }
 
         public static func ==(lhs: ContentLengthViolated, rhs: ContentLengthViolated) -> Bool {
+            return true
+        }
+    }
+
+    /// A request header block contains multiple content length headers with disagreeing values
+    public struct ContentLengthHeadersMismatch: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            return _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func ==(lhs: ContentLengthHeadersMismatch, rhs: ContentLengthHeadersMismatch) -> Bool {
             return true
         }
     }

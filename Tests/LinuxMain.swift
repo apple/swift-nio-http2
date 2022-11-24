@@ -38,6 +38,7 @@ class LinuxMainRunner {
              testCase(ConfiguringPipelineTests.allTests),
              testCase(ConfiguringPipelineWithFramePayloadStreamsTests.allTests),
              testCase(ConnectionStateMachineTests.allTests),
+             testCase(ContentLengthVerifierTests.allTests),
              testCase(ControlFrameBufferTests.allTests),
              testCase(HPACKCodingTests.allTests),
              testCase(HPACKHeadersTests.allTests),
