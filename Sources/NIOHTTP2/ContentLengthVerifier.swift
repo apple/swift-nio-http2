@@ -48,8 +48,19 @@ extension ContentLengthVerifier {
 }
 
 extension ContentLengthVerifier {
-    internal init(_ headers: HPACKHeaders) {
-        self.expectedContentLength = headers[canonicalForm: "content-length"].first.flatMap { Int($0, radix: 10) }
+    internal init(_ headers: HPACKHeaders) throws {
+        var headerIterator = headers[canonicalForm: "content-length"].makeIterator()
+        guard let first = headerIterator.next() else {
+            return
+        }
+
+        // multiple content-length headers are permitted as long as they agree
+        for header in headerIterator {
+            guard header == first else {
+                throw NIOHTTP2Errors.contentLengthHeadersMismatch()
+            }
+        }
+        self.expectedContentLength = Int(first, radix: 10)
     }
 
     /// The verifier for use when content length verification is disabled.
