@@ -16,7 +16,7 @@ import NIOHPACK
 /// An object that verifies that a content-length field on a HTTP request or
 /// response is respected.
 struct ContentLengthVerifier {
-    private var expectedContentLength: Int?
+    internal var expectedContentLength: Int?
 }
 
 extension ContentLengthVerifier {
@@ -49,16 +49,13 @@ extension ContentLengthVerifier {
 
 extension ContentLengthVerifier {
     internal init(_ headers: HPACKHeaders) throws {
-        var headerIterator = headers[canonicalForm: "content-length"].makeIterator()
-        guard let first = headerIterator.next() else {
+        let contentLengths = headers[canonicalForm: "content-length"]
+        guard let first = contentLengths.first else {
             return
         }
-
         // multiple content-length headers are permitted as long as they agree
-        for header in headerIterator {
-            guard header == first else {
-                throw NIOHTTP2Errors.contentLengthHeadersMismatch()
-            }
+        guard contentLengths.dropFirst().allSatisfy({ $0 == first }) else {
+            throw NIOHTTP2Errors.contentLengthHeadersMismatch()
         }
         self.expectedContentLength = Int(first, radix: 10)
     }
