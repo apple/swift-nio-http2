@@ -32,10 +32,10 @@ services:
       - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=313050
       - MAX_ALLOCS_ALLOWED_client_server_request_response=277050
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=42050
-      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=200050
-      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace=200050
-      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=300050
-      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_short_string=200050
+      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=100050
+      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace=100050
+      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=200050
+      - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_short_string=100050
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
       - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=303350
 

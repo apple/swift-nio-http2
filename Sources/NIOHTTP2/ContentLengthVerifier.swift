@@ -49,13 +49,16 @@ extension ContentLengthVerifier {
 
 extension ContentLengthVerifier {
     internal init(_ headers: HPACKHeaders) throws {
-        let contentLengths = headers[canonicalForm: "content-length"]
-        guard let first = contentLengths.first else {
+        let contentLengths = headers.values(forHeader: "content-length", canonicalForm: true)
+        var iterator = contentLengths.makeIterator()
+        guard let first = iterator.next() else {
             return
         }
         // multiple content-length headers are permitted as long as they agree
-        guard contentLengths.dropFirst().allSatisfy({ $0 == first }) else {
-            throw NIOHTTP2Errors.contentLengthHeadersMismatch()
+        while let next = iterator.next() {
+            if next != first {
+                throw NIOHTTP2Errors.contentLengthHeadersMismatch()
+            }
         }
 
         self.expectedContentLength = Int(first, radix: 10)
