@@ -44,7 +44,9 @@ class ContentLengthVerifierTests: XCTestCase {
         XCTAssertEqual(1834, verifier.expectedContentLength)
 
         headers.add(contentsOf: [("Content-Length", "4381")])
-        XCTAssertThrowsError(try ContentLengthVerifier(headers))
+        XCTAssertThrowsError(try ContentLengthVerifier(headers)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.ContentLengthHeadersMismatch)
+        }
     }
 
     func testNumericallyEquivalentButConflictingLengthHeadersThrow() throws {
@@ -53,6 +55,47 @@ class ContentLengthVerifierTests: XCTestCase {
         XCTAssertEqual(1834, verifier.expectedContentLength)
 
         headers.add(contentsOf: [("Content-Length", "01834")])
-        XCTAssertThrowsError(try ContentLengthVerifier(headers))
+        XCTAssertThrowsError(try ContentLengthVerifier(headers)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.ContentLengthHeadersMismatch)
+        }
+    }
+
+    func testNegativeLengthHeaderThrows() throws {
+        let headers = HPACKHeaders([("Host", "apple.com"), ("content-length", "-1"), ("User-Agent", "myCoolClient/1.0")])
+        XCTAssertThrowsError(try ContentLengthVerifier(headers)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.ContentLengthHeaderNegative)
+        }
+    }
+
+    func testMinIntLengthHeaderDoesntPanic() throws {
+        let headers = HPACKHeaders([("Host", "apple.com"), ("content-length", String(Int.min)), ("User-Agent", "myCoolClient/1.0")])
+        XCTAssertThrowsError(try ContentLengthVerifier(headers)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.ContentLengthHeaderNegative)
+        }
+    }
+
+    func testMaxIntLengthHeaderDoesntPanic() throws {
+        let headers = HPACKHeaders([("Host", "apple.com"), ("content-length", String(Int.max)), ("User-Agent", "myCoolClient/1.0")])
+        let verifier = try assertNoThrowWithValue(try ContentLengthVerifier(headers))
+        XCTAssertEqual(Int.max, verifier.expectedContentLength)
+    }
+
+    func testInvalidLengthHeaderValuesThrow() throws {
+        var headers = HPACKHeaders([("Host", "apple.com"), ("content-length", "0xFF"), ("User-Agent", "myCoolClient/1.0")])
+        XCTAssertThrowsError(try ContentLengthVerifier(headers)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.ContentLengthHeaderMalformedValue)
+        }
+
+        // Int.min - 1
+        headers = HPACKHeaders([("Host", "apple.com"), ("content-length", "-9223372036854775809"), ("User-Agent", "myCoolClient/1.0")])
+        XCTAssertThrowsError(try ContentLengthVerifier(headers)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.ContentLengthHeaderMalformedValue)
+        }
+
+        // Int.max + 1
+        headers = HPACKHeaders([("Host", "apple.com"), ("content-length", "9223372036854775809"), ("User-Agent", "myCoolClient/1.0")])
+        XCTAssertThrowsError(try ContentLengthVerifier(headers)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.ContentLengthHeaderMalformedValue)
+        }
     }
 }
