@@ -176,7 +176,7 @@ final class HPACKHeadersTests: XCTestCase {
         for name in ["set-cookie", "Set-Cookie"] {
             for canonical in [true, false] {
                 let values = Array(headers.values(forHeader: name, canonicalForm: canonical))
-                XCTAssertEqual(values, expected)
+                XCTAssertEqual(values, expected.map { $0[...] })
             }
         }
     }

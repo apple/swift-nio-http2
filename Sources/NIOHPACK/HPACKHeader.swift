@@ -297,40 +297,30 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
 
     @inlinable
     internal func _values(forHeader name: String, canonicalForm: Bool) -> [String] {
-        if self.headers.isEmpty {
+        let values = self.values(forHeader: name, canonicalForm: canonicalForm)
+        var iterator = values.makeIterator()
+
+        guard let first = iterator.next() else {
+            // No value, no allocation.
             return []
         }
 
-        // Estimate the size of the array at the cost of a second scan through the header table.
-        // This allows us to avoid the incremental allocations we would otherwise have without
-        // reserving capacity in the array.
-        let count = self._countValues(forHeader: name)
-
-        // Allow for some extra space when getting the canonical form.
-        let minimumCapacity = canonicalForm ? 4 * count : count
-
-        var values = [String]()
-        values.reserveCapacity(minimumCapacity)
-        values.append(contentsOf: self.values(forHeader: name, canonicalForm: canonicalForm))
-        return values
-    }
-
-    @inlinable
-    internal func _countValues(forHeader name: String) -> Int {
-        var count = 0
-        for header in self.headers {
-            if header.name.isEqualCaseInsensitiveASCIIBytes(to: name) {
-                // Cannot overflow: count is no greater than headers.count.
-                count &+= 1
-            }
+        var headerValues = [String]()
+        // Avoid intermediate allocations by overcomitting on capacity. Note: may be an undercommit
+        // if the canonical form is being fetched.
+        headerValues.reserveCapacity(self.headers.count)
+        headerValues.append(String(first))
+        while let next = iterator.next() {
+            headerValues.append(String(next))
         }
-        return count
+
+        return headerValues
     }
 }
 
 extension HPACKHeaders {
     public struct Values: Sequence {
-        public typealias Element = String
+        public typealias Element = Substring
 
         private let headers: HPACKHeaders
         private let name: String
@@ -367,7 +357,7 @@ extension HPACKHeaders.Values {
             self.shouldSplit = canonicalize
         }
 
-        public mutating func next() -> String? {
+        public mutating func next() -> Substring? {
             while true {
                 switch self.process() {
                 case .emit(let value):
@@ -379,7 +369,7 @@ extension HPACKHeaders.Values {
         }
 
         private enum NextStep {
-            case emit(String?)
+            case emit(Substring?)
             case continueProcessing
         }
 
@@ -392,7 +382,7 @@ extension HPACKHeaders.Values {
                     if !trimmed.isEmpty {
                         // Non-empty, emit the value.
                         self.splittingIterator = splittingIterator
-                        return .emit(String(Substring(trimmed)))
+                        return .emit(Substring(trimmed))
                     }
                 }
 
@@ -409,7 +399,7 @@ extension HPACKHeaders.Values {
                             self.splittingIterator = split.makeIterator()
                             return .continueProcessing
                         } else {
-                            return .emit(next.value)
+                            return .emit(next.value[...])
                         }
                     }
                 }
