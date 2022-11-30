@@ -30,6 +30,9 @@ extension HPACKHeadersTests {
                 ("testHPACKHeadersAreHashable", testHPACKHeadersAreHashable),
                 ("testNormalizationOfHTTPHeaders", testNormalizationOfHTTPHeaders),
                 ("testNormalizationOfHTTPHeadersWithManyConnectionHeaderValues", testNormalizationOfHTTPHeadersWithManyConnectionHeaderValues),
+                ("testValuesSequence", testValuesSequence),
+                ("testValuesSequenceInCanonicalForm", testValuesSequenceInCanonicalForm),
+                ("testValuesSequenceIgnoresCanonicalFormForSetCookie", testValuesSequenceIgnoresCanonicalFormForSetCookie),
            ]
    }
 }

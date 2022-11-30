@@ -214,18 +214,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// - Returns: A list of the values for that header field name.
     @inlinable
     public subscript(name: String) -> [String] {
-        guard !self.headers.isEmpty else {
-            return []
-        }
-
-        var array: [String] = []
-        for header in self.headers {
-            if header.name.isEqualCaseInsensitiveASCIIBytes(to: name) {
-                array.append(header.value)
-            }
-        }
-
-        return array
+        return self._values(forHeader: name, canonicalForm: false)
     }
 
     /// Retrieves the first value for a given header field name from the block.
@@ -276,35 +265,27 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// - Returns: A list of the values for that header field name.
     @inlinable
     public subscript(canonicalForm name: String) -> [String] {
-        let result = self[name]
-        guard result.count > 0 else {
-            return []
+        return self._values(forHeader: name, canonicalForm: true)
+    }
+
+    /// Return a sequence of header values for the header field named `name`.
+    ///
+    /// See also ``subscript(name:)`` and ``subscript(canonicalForm:)``.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the header field whose values should be iterated.
+    ///   - canonicalForm: Whether the values should be decomposed into their "canonical form". That
+    ///     is, splitting them on commas as extensively as possible such that multiple values
+    ///     received on the one line are returned as separate entries.
+    /// - Note: Enabling `canonicalForm`  for the 'set-cookie' header has no efffect.
+    /// - Returns: A sequence of header values for `name`.
+    public func values(forHeader name: String, canonicalForm: Bool = false) -> Values {
+        if canonicalForm, name.isEqualCaseInsensitiveASCIIBytes(to: "set-cookie") {
+            // Not safe to split 'set-cookie'.
+            return Values(headers: self, name: name, canonicalize: false)
+        } else {
+            return Values(headers: self, name: name, canonicalize: canonicalForm)
         }
-
-        // It's not safe to split Set-Cookie on comma.
-        if name.isEqualCaseInsensitiveASCIIBytes(to: "set-cookie") {
-            return result
-        }
-
-        // We slightly overcommit here to try to reduce the amount of resizing we do.
-        var trimmedResults: [String] = []
-        trimmedResults.reserveCapacity(result.count * 4)
-
-        // This loop operates entirely on the UTF-8 views. This vastly reduces the cost of this slicing and dicing.
-        for field in result {
-            for entry in field.utf8._lazySplit(separator: UInt8(ascii: ",")) {
-                let trimmed = entry._trimWhitespace()
-                if trimmed.isEmpty {
-                    continue
-                }
-
-                // This constructor pair kinda sucks, but you can't create a String from a slice of UTF8View as
-                // cheaply as you can with a Substring, so we go through that initializer instead.
-                trimmedResults.append(String(Substring(trimmed)))
-            }
-        }
-
-        return trimmedResults
     }
 
     /// Special internal function for use by tests.
@@ -312,6 +293,121 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
         precondition(position < self.headers.endIndex, "Position \(position) is beyond bounds of \(self.headers.endIndex)")
         let header = self.headers[position]
         return (header.name, header.value)
+    }
+
+    @inlinable
+    internal func _values(forHeader name: String, canonicalForm: Bool) -> [String] {
+        let values = self.values(forHeader: name, canonicalForm: canonicalForm)
+        var iterator = values.makeIterator()
+
+        guard let first = iterator.next() else {
+            // No value, no allocation.
+            return []
+        }
+
+        var headerValues = [String]()
+        // Avoid intermediate allocations by overcomitting on capacity. Note: may be an undercommit
+        // if the canonical form is being fetched.
+        headerValues.reserveCapacity(self.headers.count)
+        headerValues.append(String(first))
+        while let next = iterator.next() {
+            headerValues.append(String(next))
+        }
+
+        return headerValues
+    }
+}
+
+extension HPACKHeaders {
+    public struct Values: Sequence {
+        public typealias Element = Substring
+
+        private let headers: HPACKHeaders
+        private let name: String
+        private let canonicalize: Bool
+
+        fileprivate init(headers: HPACKHeaders, name: String, canonicalize: Bool) {
+            self.headers = headers
+            self.name = name
+            self.canonicalize = canonicalize
+        }
+
+        public func makeIterator() -> Iterator {
+            return Iterator(headers: self.headers, name: self.name, canonicalize: self.canonicalize)
+        }
+    }
+}
+
+extension HPACKHeaders.Values {
+    public struct Iterator: IteratorProtocol {
+        /// The header name to look for.
+        private let name: String
+        /// Whether the header values should be split.
+        private let shouldSplit: Bool
+
+        /// An iterator for the header values.
+        private var headerIterator: Array<HPACKHeader>.Iterator
+        /// An iterator for splitting a given header value.
+        private var splittingIterator: String.UTF8View.LazyUTF8ViewSplitSequence.Iterator?
+
+        fileprivate init(headers: HPACKHeaders, name: String, canonicalize: Bool) {
+            self.headerIterator = headers.headers.makeIterator()
+            self.splittingIterator = nil
+            self.name = name
+            self.shouldSplit = canonicalize
+        }
+
+        public mutating func next() -> Substring? {
+            while true {
+                switch self.process() {
+                case .emit(let value):
+                    return value
+                case .continueProcessing:
+                    continue
+                }
+            }
+        }
+
+        private enum NextStep {
+            case emit(Substring?)
+            case continueProcessing
+        }
+
+        private mutating func process() -> NextStep {
+            // If there's a splitting iterator, spin through that first.
+            if var splittingIterator = self.splittingIterator {
+                while let nextFragment = splittingIterator.next() {
+                    let trimmed = nextFragment._trimWhitespace()
+
+                    if !trimmed.isEmpty {
+                        // Non-empty, emit the value.
+                        self.splittingIterator = splittingIterator
+                        return .emit(Substring(trimmed))
+                    }
+                }
+
+                // Exhausted the iterator, switch back to iterating plain values.
+                self.splittingIterator = nil
+                return .continueProcessing
+            } else {
+                while let next = self.headerIterator.next() {
+                    if next.name.isEqualCaseInsensitiveASCIIBytes(to: self.name) {
+                        // A match: do we need to split it?
+                        if self.shouldSplit {
+                            let split = next.value.utf8._lazySplit(separator: UInt8(ascii: ","))
+                            // Spin through the splitting iterator next.
+                            self.splittingIterator = split.makeIterator()
+                            return .continueProcessing
+                        } else {
+                            return .emit(next.value[...])
+                        }
+                    }
+                }
+
+                // Exhausted the value iterator; we're done.
+                return .emit(nil)
+            }
+        }
     }
 }
 
@@ -662,4 +758,3 @@ extension String {
         return self.utf8.compareCaseInsensitiveASCIIBytes(to: to.utf8)
     }
 }
-

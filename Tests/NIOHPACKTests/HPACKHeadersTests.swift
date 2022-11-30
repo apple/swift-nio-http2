@@ -119,4 +119,65 @@ final class HPACKHeadersTests: XCTestCase {
 
         XCTAssertEqual(normalized, expected)
     }
+
+    func testValuesSequence() {
+        let headers: HPACKHeaders = [
+            "foo": "bar",
+            "bar": "foo",
+            "foo": "baz",
+            "foo": "bar,baz",
+            "foo": " bar ,baz ,,",
+            "bar": "foo"
+        ]
+
+        let values = headers.values(forHeader: "foo", canonicalForm: false)
+        var iterator = values.makeIterator()
+        XCTAssertEqual(iterator.next(), "bar")
+        XCTAssertEqual(iterator.next(), "baz")
+        XCTAssertEqual(iterator.next(), "bar,baz")
+        XCTAssertEqual(iterator.next(), " bar ,baz ,,")
+        XCTAssertNil(iterator.next())
+        XCTAssertNil(iterator.next()) // Still nil
+    }
+
+    func testValuesSequenceInCanonicalForm() {
+        let headers: HPACKHeaders = [
+            "foo": "bar",
+            "bar": "foo",
+            "foo": "baz",
+            "foo": "bar,baz",
+            "foo": " bar ,baz ,,",
+            "bar": "foo"
+        ]
+
+        let values = headers.values(forHeader: "foo", canonicalForm: true)
+        var iterator = values.makeIterator()
+        XCTAssertEqual(iterator.next(), "bar")
+        XCTAssertEqual(iterator.next(), "baz")
+        XCTAssertEqual(iterator.next(), "bar")
+        XCTAssertEqual(iterator.next(), "baz")
+        XCTAssertEqual(iterator.next(), "bar")
+        XCTAssertEqual(iterator.next(), "baz")
+        XCTAssertNil(iterator.next())
+        XCTAssertNil(iterator.next()) // Still nil
+    }
+
+    func testValuesSequenceIgnoresCanonicalFormForSetCookie() {
+        let expected = [
+            "haha,you,wont,split,me,im,set-cookie",
+            "but we should still get multiple values"
+        ]
+
+        var headers = HPACKHeaders()
+        for value in expected {
+            headers.add(name: "set-cookie", value: value)
+        }
+
+        for name in ["set-cookie", "Set-Cookie"] {
+            for canonical in [true, false] {
+                let values = Array(headers.values(forHeader: name, canonicalForm: canonical))
+                XCTAssertEqual(values, expected.map { $0[...] })
+            }
+        }
+    }
 }
