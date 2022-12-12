@@ -125,8 +125,8 @@ public struct HTTP2Frame: Sendable {
         /// The payload of a `DATA` frame.
         public struct Data {
             /// The application data carried within the `DATA` frame.
+            @inlinable
             public var data: IOData {
-                @inlinable
                 get {
                     return self._backing.data
                 }
@@ -137,8 +137,8 @@ public struct HTTP2Frame: Sendable {
             }
 
             /// The value of the `END_STREAM` flag on this frame.
+            @inlinable
             public var endStream: Bool {
-                @inlinable
                 get {
                     return self._backing.endStream
                 }
@@ -149,6 +149,7 @@ public struct HTTP2Frame: Sendable {
             }
 
             /// The number of padding bytes sent in this frame. If nil, this frame was not padded.
+            @inlinable
             public var paddingBytes: Int? {
                 get {
                     return self._backing.paddingBytes.map { Int($0) }
@@ -167,6 +168,7 @@ public struct HTTP2Frame: Sendable {
             @usableFromInline
             var _backing: _Backing
 
+            @inlinable
             public init(data: IOData, endStream: Bool = false, paddingBytes: Int? = nil) {
                 self._backing = _Backing(data: data, endStream: endStream, paddingBytes: paddingBytes.map { UInt8($0) })
             }
