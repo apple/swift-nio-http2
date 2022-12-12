@@ -37,7 +37,7 @@ public struct HTTP2Frame: Sendable {
         /// A `DATA` frame, containing raw bytes.
         ///
         /// See [RFC 7540 § 6.1](https://httpwg.org/specs/rfc7540.html#rfc.section.6.1).
-        indirect case data(FramePayload.Data)
+        case data(FramePayload.Data)
         
         /// A `HEADERS` frame, containing all headers or trailers associated with a request
         /// or response.
@@ -125,33 +125,88 @@ public struct HTTP2Frame: Sendable {
         /// The payload of a `DATA` frame.
         public struct Data {
             /// The application data carried within the `DATA` frame.
-            public var data: IOData
-
-            /// The value of the `END_STREAM` flag on this frame.
-            public var endStream: Bool
-
-            /// The underlying number of padding bytes. If nil, no padding is present.
-            internal private(set) var _paddingBytes: UInt8?
-
-            /// The number of padding bytes sent in this frame. If nil, this frame was not padded.
-            public var paddingBytes: Int? {
+            @inlinable
+            public var data: IOData {
                 get {
-                    return self._paddingBytes.map { Int($0) }
+                    return self._backing.data
                 }
                 set {
+                    self._copyIfNeeded()
+                    self._backing.data = newValue
+                }
+            }
+
+            /// The value of the `END_STREAM` flag on this frame.
+            @inlinable
+            public var endStream: Bool {
+                get {
+                    return self._backing.endStream
+                }
+                set {
+                    self._copyIfNeeded()
+                    self._backing.endStream = newValue
+                }
+            }
+
+            /// The number of padding bytes sent in this frame. If nil, this frame was not padded.
+            @inlinable
+            public var paddingBytes: Int? {
+                get {
+                    return self._backing.paddingBytes.map { Int($0) }
+                }
+                set {
+                    self._copyIfNeeded()
                     if let newValue = newValue {
                         precondition(newValue >= 0 && newValue <= Int(UInt8.max), "Invalid padding byte length: \(newValue)")
-                        self._paddingBytes = UInt8(newValue)
+                        self._backing.paddingBytes = UInt8(newValue)
                     } else {
-                        self._paddingBytes = nil
+                        self._backing.paddingBytes = nil
                     }
                 }
             }
 
+            @usableFromInline
+            var _backing: _Backing
+
+            @inlinable
             public init(data: IOData, endStream: Bool = false, paddingBytes: Int? = nil) {
-                self.data = data
-                self.endStream = endStream
-                self.paddingBytes = paddingBytes
+                self._backing = _Backing(data: data, endStream: endStream, paddingBytes: paddingBytes.map { UInt8($0) })
+            }
+
+            @inlinable
+            init(_ backing: _Backing) {
+                self._backing = backing
+            }
+
+            @inlinable
+            mutating func _copyIfNeeded() {
+                if !isKnownUniquelyReferenced(&self._backing) {
+                    self._backing = self._backing.copy()
+                }
+            }
+
+            @usableFromInline
+            final class _Backing {
+                @usableFromInline
+                var data: IOData
+
+                @usableFromInline
+                var endStream: Bool
+
+                @usableFromInline
+                var paddingBytes: UInt8?
+
+                @inlinable
+                init(data: IOData, endStream: Bool, paddingBytes: UInt8?) {
+                    self.data = data
+                    self.endStream = endStream
+                    self.paddingBytes = paddingBytes
+                }
+
+                @inlinable
+                func copy() -> _Backing {
+                    return _Backing(data: self.data, endStream: self.endStream, paddingBytes: self.paddingBytes)
+                }
             }
         }
 
