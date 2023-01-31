@@ -48,7 +48,17 @@ extension ContentLengthVerifier {
 }
 
 extension ContentLengthVerifier {
-    internal init(_ headers: HPACKHeaders) throws {
+    internal init(_ headers: HPACKHeaders, requestMethod: String?) throws {
+         if requestMethod != nil {
+            if let status = headers.getPseudoHeader(name: ":status"), status == "304" {
+                self.expectedContentLength = 0
+                return
+            }
+            else if requestMethod == "HEAD" {
+                self.expectedContentLength = 0
+                return
+            }
+        }
         let contentLengths = headers.values(forHeader: "content-length", canonicalForm: true)
         var iterator = contentLengths.makeIterator()
         guard let first = iterator.next() else {
@@ -80,5 +90,16 @@ extension ContentLengthVerifier {
 extension ContentLengthVerifier: CustomStringConvertible {
     var description: String {
         return "ContentLengthVerifier(length: \(String(describing: self.expectedContentLength)))"
+    }
+}
+
+extension HPACKHeaders {
+    func getPseudoHeader(name: String) -> String? {
+        for (fieldName, fieldValue, _) in self {
+            if name == fieldName {
+                return fieldValue
+            }
+        }
+        return nil
     }
 }
