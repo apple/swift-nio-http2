@@ -284,15 +284,13 @@ extension HTTP2StreamStateMachine {
             switch self.state {
             case .idle(.client, localWindow: let localWindow, remoteWindow: let remoteWindow):
                 let targetState: State
-//                since we are a client and this is a request, server sending a response
-                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers,requestMethod: nil) : .disabled
-                let requestVerb = headers.getPseudoHeader(name: ":method")
+                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers, requestMethod: nil) : .disabled
+                let requestVerb = headers.first(name: ":method")
 
                 if endStream {
                     try localContentLength.endOfStream()
                     targetState = .halfClosedLocalPeerIdle(remoteWindow: remoteWindow, requestVerb: requestVerb)
                 } else {
-//                    not sure if I need _ or finding the request verb despit it being 0
                     targetState = .halfOpenLocalPeerIdle(localWindow: localWindow, localContentLength: localContentLength, remoteWindow: remoteWindow, requestVerb: requestVerb)
                 }
 
@@ -329,7 +327,7 @@ extension HTTP2StreamStateMachine {
             case .reservedLocal(let localWindow, requestVerb: let requestVerb):
                 let targetState: State
                 let targetEffect: StreamStateChange
-                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers,requestMethod: requestVerb) : .disabled
+                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers, requestMethod: requestVerb) : .disabled
 
                 if endStream {
                     try localContentLength.endOfStream()
@@ -356,7 +354,7 @@ extension HTTP2StreamStateMachine {
             case .halfClosedRemoteLocalIdle(let localWindow, requestVerb: let requestVerb):
                 let targetState: State
                 let targetEffect: StreamStateChange?
-                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers,requestMethod: requestVerb) : .disabled
+                let localContentLength = validateContentLength ? try ContentLengthVerifier(headers, requestMethod: requestVerb) : .disabled
 
                 if endStream {
                     try localContentLength.endOfStream()
@@ -417,9 +415,8 @@ extension HTTP2StreamStateMachine {
             switch self.state {
             case .idle(.server, localWindow: let localWindow, remoteWindow: let remoteWindow):
                 let targetState: State
-//                 left side of diagr4am can get it and right side is where we need it!
-                let requestVerb = headers.getPseudoHeader(name: ":method")
-                let remoteContentLength = validateContentLength ? try ContentLengthVerifier(headers,requestMethod: nil) : .disabled
+                let requestVerb = headers.first(name: ":method")
+                let remoteContentLength = validateContentLength ? try ContentLengthVerifier(headers, requestMethod: nil) : .disabled
 
                 if endStream {
                     try remoteContentLength.endOfStream()
@@ -434,8 +431,6 @@ extension HTTP2StreamStateMachine {
                                                   targetState: targetState,
                                                   targetEffect: targetEffect)
 
-//                clients revieing need requestVerb only when we are sending, is it nill
-//                client sending is nil and server recieving is nil
             case .halfOpenLocalPeerIdle(localWindow: let localWindow, localContentLength: let localContentLength, remoteWindow: let remoteWindow, requestVerb: let requestVerb):
                 let targetState: State
                 let remoteContentLength = validateContentLength ? try ContentLengthVerifier(headers, requestMethod: requestVerb) : .disabled
@@ -688,7 +683,7 @@ extension HTTP2StreamStateMachine {
         // PUSH_PROMISE frames never have stream effects: they cannot create or close streams, or affect flow control state.
         switch self.state {
         case .fullyOpen(localRole: .server, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
-                .halfOpenRemoteLocalIdle(localWindow: _, remoteContentLength: _, remoteWindow: _, requestVerb: _),
+            .halfOpenRemoteLocalIdle(localWindow: _, remoteContentLength: _, remoteWindow: _, requestVerb: _),
              .halfClosedRemoteLocalIdle(localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localContentLength: _, localWindow: _):
             return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
@@ -715,7 +710,7 @@ extension HTTP2StreamStateMachine {
         // RFC 7540 § 6.6 forbids receiving PUSH_PROMISE frames on remotely-initiated streams.
         switch self.state {
         case .fullyOpen(localRole: .client, localContentLength: _, remoteContentLength: _, localWindow: _, remoteWindow: _),
-                .halfOpenLocalPeerIdle(localWindow: _, localContentLength: _, remoteWindow: _, requestVerb: _),
+            .halfOpenLocalPeerIdle(localWindow: _, localContentLength: _, remoteWindow: _, requestVerb: _),
              .halfClosedLocalPeerIdle(remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteContentLength: _, remoteWindow: _):
             return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
@@ -807,7 +802,6 @@ extension HTTP2StreamStateMachine {
             switch self.state {
             case .reservedLocal(localWindow: var localWindow, requestVerb: let requestVerb):
                 try localWindow.windowUpdate(by: windowIncrement)
-//                let ch = headers.getPseudoHeader(name: ":method")
                 self.state = .reservedLocal(localWindow: localWindow, requestVerb: requestVerb)
                 windowEffect = .windowSizeChange(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: nil))
 

@@ -3004,8 +3004,7 @@ class ConnectionStateMachineTests: XCTestCase {
 
     func testContentLengthForStatus304() {
         let streamOne = HTTP2StreamID(1)
-        
-        // Override the setup with validation disabled.
+
         self.server = .init(role: .server)
         self.client = .init(role: .client)
         
@@ -3026,11 +3025,9 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
     }
 
-    ///when the status is 304 and we send bytes through
     func testContentLengthForStatus304Failure() {
         let streamOne = HTTP2StreamID(1)
 
-        // Override the setup with validation disabled.
         self.server = .init(role: .server)
         self.client = .init(role: .client)
 
@@ -3054,7 +3051,6 @@ class ConnectionStateMachineTests: XCTestCase {
     func testContentLengthForMethodHead() {
         let streamOne = HTTP2StreamID(1)
 
-        // Override the setup with validation disabled.
         self.server = .init(role: .server)
         self.client = .init(role: .client)
 
@@ -3079,7 +3075,6 @@ class ConnectionStateMachineTests: XCTestCase {
     func testContentLengthForHeadFailure() {
         let streamOne = HTTP2StreamID(1)
 
-        // Override the setup with validation disabled.
         self.server = .init(role: .server)
         self.client = .init(role: .client)
 
@@ -3101,7 +3096,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertStreamError(type: HTTP2ErrorCode.protocolError, self.client.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
     }
 
-    func testSimpleServerPush_forPushHeadRequestFailure() {
+    func testPushHeadRequestFailure() {
         let streamOne = HTTP2StreamID(1)
         let streamTwo = HTTP2StreamID(2)
         
@@ -3109,8 +3104,7 @@ class ConnectionStateMachineTests: XCTestCase {
         
         let requestHeaders = HPACKHeaders([(":method", "HEAD"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
         let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
-        
-        
+
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         
@@ -3127,7 +3121,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertStreamError(type: HTTP2ErrorCode.protocolError, self.client.receiveData(streamID: streamTwo, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
     }
 
-    func testSimpleServerPush_forPushHeadRequest() {
+    func testPushHeadRequest() {
         let streamOne = HTTP2StreamID(1)
         let streamTwo = HTTP2StreamID(2)
 
@@ -3135,7 +3129,6 @@ class ConnectionStateMachineTests: XCTestCase {
 
         let requestHeaders = HPACKHeaders([(":method", "HEAD"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
         let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
-
 
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
@@ -3148,7 +3141,7 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: responseHeaders, isEndStreamSet: false))
         assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: responseHeaders, isEndStreamSet: false))
 
-        // Send in 0 bytea over one frame
+        // Send in 0 bytes over one frame
         assertSucceeds(self.client.receiveData(streamID: streamTwo, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
     }
 }

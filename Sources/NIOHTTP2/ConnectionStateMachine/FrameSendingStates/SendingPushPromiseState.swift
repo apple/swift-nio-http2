@@ -59,7 +59,7 @@ extension SendingPushPromiseState {
             guard case .succeed = result.result else {
                 return result
             }
-            let requestVerb = headers.getPseudoHeader(name: ":method")
+            let requestVerb = headers.first(name: ":method")
             try self.streamState.createLocallyPushedStream(streamID: childStreamID, localInitialWindowSize: self.localInitialWindowSize, requestVerb: requestVerb)
             return result
         } catch {
