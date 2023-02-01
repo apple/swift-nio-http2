@@ -99,9 +99,8 @@ class ContentLengthVerifierTests: XCTestCase {
         }
     }
 
-    func testContentLengthVerifier_whenRequestMethodIs304() throws {
+    func testContentLengthVerifier_whenResponseStatusIs304() throws {
         let headers = HPACKHeaders([(":status", "304"), ("Host", "apple.com"), ("content-length", "1834"), ("User-Agent", "myCoolClient/1.0")])
-        XCTAssertNoThrow(try ContentLengthVerifier(headers, requestMethod: "GET"))
         let verifier = try assertNoThrowWithValue(try ContentLengthVerifier(headers, requestMethod: "GET"))
         XCTAssertEqual(0, verifier.expectedContentLength)
     }
@@ -109,7 +108,6 @@ class ContentLengthVerifierTests: XCTestCase {
 
     func testContentLengthVerifier_whenRequestMethodIsHead() throws {
         let headers = HPACKHeaders([("Host", "apple.com"), ("content-length", "1834"), ("User-Agent", "myCoolClient/1.0")])
-        XCTAssertNoThrow(try ContentLengthVerifier(headers, requestMethod: "HEAD"))
         let verifier = try assertNoThrowWithValue(try ContentLengthVerifier(headers, requestMethod: "HEAD"))
         XCTAssertEqual(0, verifier.expectedContentLength)
     }

@@ -77,7 +77,7 @@ struct ConnectionStreamState {
     /// - parameters:
     ///     - streamID: The ID of the pushed stream.
     ///     - remoteInitialWindowSize: The initial window size of the remote peer.
-    ///     - requestVerb: HTTP Request Method used for different purposes with a web server
+    ///     - requestVerb: the HTTP method used on the request
     /// - throws: If the stream ID is invalid.
     mutating func createRemotelyPushedStream(streamID: HTTP2StreamID, remoteInitialWindowSize: UInt32, requestVerb: String?) throws {
         try self.reserveServerStreamID(streamID)
