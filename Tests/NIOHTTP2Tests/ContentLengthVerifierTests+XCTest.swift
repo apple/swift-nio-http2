@@ -34,6 +34,8 @@ extension ContentLengthVerifierTests {
                 ("testMinIntLengthHeaderDoesntPanic", testMinIntLengthHeaderDoesntPanic),
                 ("testMaxIntLengthHeaderDoesntPanic", testMaxIntLengthHeaderDoesntPanic),
                 ("testInvalidLengthHeaderValuesThrow", testInvalidLengthHeaderValuesThrow),
+                ("testContentLengthVerifier_whenResponseStatusIs304", testContentLengthVerifier_whenResponseStatusIs304),
+                ("testContentLengthVerifier_whenRequestMethodIsHead", testContentLengthVerifier_whenRequestMethodIsHead),
            ]
    }
 }
