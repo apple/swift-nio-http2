@@ -113,27 +113,4 @@ class ContentLengthVerifierTests: XCTestCase {
         let verifier = try assertNoThrowWithValue(try ContentLengthVerifier(headers, requestMethod: "HEAD"))
         XCTAssertEqual(0, verifier.expectedContentLength)
     }
-
-
-
-//    want top to bottom testing
-//    want to confirm it does the right thing wiht the right inputs
-
-//    when we are running the whole stack, everyone is keeping track of what the correct content length is
-
-//    function in the radar that doesn't work 
-//    func testHeadAsVerb() throws {
-//        let client = HTTPClient(eventLoopGroupProvider: .shared(group))
-//        defer { try! client.syncShutdown() }
-//        do {
-//            var req = HTTPClientRequest(url: "https://service.results.apple.com/api/v0/result/test")
-//
-//            // ### This is the important bit ####
-//            req.method = .HEAD
-//
-//            _ = try await client.execute(req, timeout: .seconds(10))
-//        } catch {
-//            XCTFail(">\(error)")
-//        }
-//    }
 }
