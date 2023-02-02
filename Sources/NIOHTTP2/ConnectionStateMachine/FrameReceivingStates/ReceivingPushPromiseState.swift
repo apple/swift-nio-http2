@@ -50,10 +50,10 @@ extension ReceivingPushPromiseState {
         }
 
         let validateHeaderBlock = self.headerBlockValidation == .enabled
-
+        let requestVerb = headers.first(name: ":method")
         do {
             try self.streamState.createRemotelyPushedStream(streamID: childStreamID,
-                                                            remoteInitialWindowSize: self.remoteInitialWindowSize)
+                                                            remoteInitialWindowSize: self.remoteInitialWindowSize, requestVerb: requestVerb)
 
             let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: true) {
                 $0.receivePushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)

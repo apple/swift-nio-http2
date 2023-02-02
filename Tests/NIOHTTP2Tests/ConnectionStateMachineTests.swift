@@ -3001,6 +3001,149 @@ class ConnectionStateMachineTests: XCTestCase {
         assertIgnored(self.client.receiveOrigin(origins: ["one", "two"]))
         assertIgnored(self.server.receiveOrigin(origins: ["one", "two"]))
     }
+
+    func testContentLengthForStatus304() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.server = .init(role: .server)
+        self.client = .init(role: .client)
+        
+        self.exchangePreamble()
+        
+        let responseHeaders = HPACKHeaders([(":status", "304"), ("content-length", "25")])
+        
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        
+        // Send in 0 bytes over two sets
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+    }
+
+    func testContentLengthForStatus304Failure() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.server = .init(role: .server)
+        self.client = .init(role: .client)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "304"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 1 byte over one frame
+        assertStreamError(type: HTTP2ErrorCode.protocolError, self.server.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+        assertStreamError(type: HTTP2ErrorCode.protocolError, self.client.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testContentLengthForMethodHead() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.server = .init(role: .server)
+        self.client = .init(role: .client)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "HEAD"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 0 bytes over one frame
+        assertSucceeds(self.server.sendData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+        assertSucceeds(self.client.receiveData(streamID: streamOne, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+    }
+
+    func testContentLengthForHeadFailure() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.server = .init(role: .server)
+        self.client = .init(role: .client)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "HEAD"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: requestHeaders, isEndStreamSet: true))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 1 byte over 1 frame
+        assertStreamError(type: HTTP2ErrorCode.protocolError, self.server.sendData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+        assertStreamError(type: HTTP2ErrorCode.protocolError, self.client.receiveData(streamID: streamOne, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testPushHeadRequestFailure() {
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+        
+        self.exchangePreamble()
+        
+        let requestHeaders = HPACKHeaders([(":method", "HEAD"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        
+        // Server can push right away
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: requestHeaders))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 1 byte over one frame
+        assertStreamError(type: HTTP2ErrorCode.protocolError, self.server.sendData(streamID: streamTwo, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+        assertStreamError(type: HTTP2ErrorCode.protocolError, self.client.receiveData(streamID: streamTwo, contentLength: 1, flowControlledBytes: 1, isEndStreamSet: true))
+    }
+
+    func testPushHeadRequest() {
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+
+        self.exchangePreamble()
+
+        let requestHeaders = HPACKHeaders([(":method", "HEAD"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "25")])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+
+        // Server can push right away
+        assertSucceeds(self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: requestHeaders))
+        assertSucceeds(self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: requestHeaders))
+
+        // The server responds
+        assertSucceeds(self.server.sendHeaders(streamID: streamTwo, headers: responseHeaders, isEndStreamSet: false))
+        assertSucceeds(self.client.receiveHeaders(streamID: streamTwo, headers: responseHeaders, isEndStreamSet: false))
+
+        // Send in 0 bytes over one frame
+        assertSucceeds(self.client.receiveData(streamID: streamTwo, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
+    }
 }
 
 

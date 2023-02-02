@@ -77,10 +77,11 @@ struct ConnectionStreamState {
     /// - parameters:
     ///     - streamID: The ID of the pushed stream.
     ///     - remoteInitialWindowSize: The initial window size of the remote peer.
+    ///     - requestVerb: the HTTP method used on the request
     /// - throws: If the stream ID is invalid.
-    mutating func createRemotelyPushedStream(streamID: HTTP2StreamID, remoteInitialWindowSize: UInt32) throws {
+    mutating func createRemotelyPushedStream(streamID: HTTP2StreamID, remoteInitialWindowSize: UInt32, requestVerb: String?) throws {
         try self.reserveServerStreamID(streamID)
-        let streamState = HTTP2StreamStateMachine(receivedPushPromiseCreatingStreamID: streamID, remoteInitialWindowSize: remoteInitialWindowSize)
+        let streamState = HTTP2StreamStateMachine(receivedPushPromiseCreatingStreamID: streamID, remoteInitialWindowSize: remoteInitialWindowSize, requestVerb: requestVerb)
         self.activeStreams.insert(streamState)
     }
 
@@ -93,9 +94,9 @@ struct ConnectionStreamState {
     ///     - streamID: The ID of the pushed stream.
     ///     - localInitialWindowSize: Our initial window size..
     /// - throws: If the stream ID is invalid.
-    mutating func createLocallyPushedStream(streamID: HTTP2StreamID, localInitialWindowSize: UInt32) throws {
+    mutating func createLocallyPushedStream(streamID: HTTP2StreamID, localInitialWindowSize: UInt32, requestVerb: String?) throws {
         try self.reserveServerStreamID(streamID)
-        let streamState = HTTP2StreamStateMachine(sentPushPromiseCreatingStreamID: streamID, localInitialWindowSize: localInitialWindowSize)
+        let streamState = HTTP2StreamStateMachine(sentPushPromiseCreatingStreamID: streamID, localInitialWindowSize: localInitialWindowSize, requestVerb: requestVerb)
         self.activeStreams.insert(streamState)
     }
 

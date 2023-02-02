@@ -145,6 +145,12 @@ extension ConnectionStateMachineTests {
                 ("testWeTolerateOneStreamBeingResetTwice", testWeTolerateOneStreamBeingResetTwice),
                 ("testReceivedAltServiceFramesAreIgnored", testReceivedAltServiceFramesAreIgnored),
                 ("testReceivedOriginFramesAreIgnored", testReceivedOriginFramesAreIgnored),
+                ("testContentLengthForStatus304", testContentLengthForStatus304),
+                ("testContentLengthForStatus304Failure", testContentLengthForStatus304Failure),
+                ("testContentLengthForMethodHead", testContentLengthForMethodHead),
+                ("testContentLengthForHeadFailure", testContentLengthForHeadFailure),
+                ("testPushHeadRequestFailure", testPushHeadRequestFailure),
+                ("testPushHeadRequest", testPushHeadRequest),
            ]
    }
 }
