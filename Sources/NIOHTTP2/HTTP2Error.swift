@@ -18,6 +18,9 @@ import NIOHPACK
 /// Users are recommended not to implement this protocol with their own types.
 public protocol NIOHTTP2Error: Equatable, Error { }
 
+/// An internal marker-protocol for errors to do with content-length.
+protocol InvalidContentLengthError: NIOHTTP2Error { }
+
 /// Errors that ``NIOHTTP2`` raises when handling HTTP/2 connections.
 public enum NIOHTTP2Errors {
     /// Creates an ``ExcessiveOutboundFrameBuffering`` error with appropriate source context.
@@ -1396,7 +1399,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A request or response has violated the expected content length, either exceeding or falling beneath it.
-    public struct ContentLengthViolated: NIOHTTP2Error {
+    public struct ContentLengthViolated: NIOHTTP2Error, InvalidContentLengthError {
         private let file: String
         private let line: UInt
 
@@ -1421,7 +1424,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A request header block contains multiple content length headers with disagreeing values
-    public struct ContentLengthHeadersMismatch: NIOHTTP2Error {
+    public struct ContentLengthHeadersMismatch: NIOHTTP2Error, InvalidContentLengthError {
         private let file: String
         private let line: UInt
 
@@ -1441,7 +1444,7 @@ public enum NIOHTTP2Errors {
     }
 
     /// A request header block contains a content length header with a negative value
-    public struct ContentLengthHeaderNegative: NIOHTTP2Error {
+    public struct ContentLengthHeaderNegative: NIOHTTP2Error, InvalidContentLengthError {
         private let file: String
         private let line: UInt
 
@@ -1462,7 +1465,7 @@ public enum NIOHTTP2Errors {
 
     /// A request header block contains a content length header with a malformed value
     /// e.g. an unparsable string or an integer which cannot be represented by an Int
-    public struct ContentLengthHeaderMalformedValue: NIOHTTP2Error {
+    public struct ContentLengthHeaderMalformedValue: NIOHTTP2Error, InvalidContentLengthError {
         private let file: String
         private let line: UInt
 

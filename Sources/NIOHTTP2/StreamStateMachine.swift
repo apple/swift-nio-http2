@@ -389,7 +389,7 @@ extension HTTP2StreamStateMachine {
             case .reservedRemote, .halfClosedLocalPeerIdle, .halfClosedLocalPeerActive:
                 return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             }
-        } catch let error where error is NIOHTTP2Errors.ContentLengthViolated {
+        } catch let error where error is InvalidContentLengthError {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
@@ -521,7 +521,7 @@ extension HTTP2StreamStateMachine {
             case .reservedLocal, .halfClosedRemoteLocalIdle, .halfClosedRemoteLocalActive:
                 return .init(result: .streamError(streamID: self.streamID, underlyingError: NIOHTTP2Errors.badStreamStateTransition(from: NIOHTTP2StreamState.get(self.state)), type: .protocolError), effect: nil)
             }
-        } catch let error where error is NIOHTTP2Errors.ContentLengthViolated {
+        } catch let error where error is InvalidContentLengthError {
             return .init(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
         } catch {
             preconditionFailure("Unexpected error: \(error)")
