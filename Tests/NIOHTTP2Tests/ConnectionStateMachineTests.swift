@@ -3144,6 +3144,51 @@ class ConnectionStateMachineTests: XCTestCase {
         // Send in 0 bytes over one frame
         assertSucceeds(self.client.receiveData(streamID: streamTwo, contentLength: 0, flowControlledBytes: 0, isEndStreamSet: true))
     }
+
+    func testNegativeContentLengthHeader() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "-25")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: Self.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: Self.requestHeaders, isEndStreamSet: true))
+
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+    }
+
+    func testInvalidContentLengthHeader() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0xFF")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: Self.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: Self.requestHeaders, isEndStreamSet: true))
+
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+    }
+
+    func testContentLengthHeadersMismatch() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "1384"), ("content-length", "4831")])
+
+        // Set up the connection
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: Self.requestHeaders, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: Self.requestHeaders, isEndStreamSet: true))
+
+        assertStreamError(type: .protocolError, self.server.sendHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+        assertStreamError(type: .protocolError, self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false))
+    }
 }
 
 

@@ -151,6 +151,9 @@ extension ConnectionStateMachineTests {
                 ("testContentLengthForHeadFailure", testContentLengthForHeadFailure),
                 ("testPushHeadRequestFailure", testPushHeadRequestFailure),
                 ("testPushHeadRequest", testPushHeadRequest),
+                ("testNegativeContentLengthHeader", testNegativeContentLengthHeader),
+                ("testInvalidContentLengthHeader", testInvalidContentLengthHeader),
+                ("testContentLengthHeadersMismatch", testContentLengthHeadersMismatch),
            ]
    }
 }
