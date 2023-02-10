@@ -78,6 +78,7 @@ extension SimpleClientServerFramePayloadStreamTests {
                 ("testHTTP2HandlerDoesNotFlushExcessively", testHTTP2HandlerDoesNotFlushExcessively),
                 ("testHTTPHandlerIgnoresInboundAltServiceFrames", testHTTPHandlerIgnoresInboundAltServiceFrames),
                 ("testHTTPHandlerIgnoresInboundOriginFrames", testHTTPHandlerIgnoresInboundOriginFrames),
+                ("testWriteWithAlreadyCompletedPromise", testWriteWithAlreadyCompletedPromise),
            ]
    }
 }
