@@ -2039,4 +2039,25 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         // Frame should be dropped.
         XCTAssert(h2FrameRecorder.receivedFrames.isEmpty)
     }
+
+    func testWriteWithAlreadyCompletedPromise() throws {
+        try self.basicHTTP2Connection()
+
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.clientChannel, inboundStreamInitializer: nil)
+        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(multiplexer).wait())
+
+        let streamPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamPromise) { channel in
+            return channel.eventLoop.makeSucceededFuture(())
+        }
+
+        self.clientChannel.embeddedEventLoop.run()
+        let stream = try assertNoThrowWithValue(try streamPromise.futureResult.wait())
+
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headerPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
+        let promise = self.clientChannel.eventLoop.makePromise(of: Void.self)
+        promise.succeed(())
+        stream.writeAndFlush(headerPayload, promise: promise)
+    }
 }

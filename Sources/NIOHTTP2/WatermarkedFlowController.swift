@@ -36,23 +36,24 @@
 struct WatermarkedFlowController {
     /// The "high" water mark. If the number of pending bytes exceeds this number, the
     /// writability state will change to "false".
-    private let highWatermark: UInt
+    private let highWatermark: Int
 
     /// The "low" watermark. If the number of pending bytes is lower than this number, the
     /// writability state will change to "true".
-    private let lowWatermark: UInt
+    private let lowWatermark: Int
 
     /// The number of pending bytes waiting to be written to the network.
-    private var pendingBytes: UInt
+    private var pendingBytes: Int
 
     /// Whether the `Channel` should consider itself writable or not.
     internal private(set) var isWritable: Bool
 
     internal init(highWatermark: Int, lowWatermark: Int) {
         precondition(lowWatermark < highWatermark, "Low watermark \(lowWatermark) exceeds or meets High watermark \(highWatermark)")
+        precondition(lowWatermark >= 0, "Low watermark \(lowWatermark) is negative")
 
-        self.highWatermark = UInt(highWatermark)
-        self.lowWatermark = UInt(lowWatermark)
+        self.highWatermark = highWatermark
+        self.lowWatermark = lowWatermark
         self.pendingBytes = 0
         self.isWritable = true
     }
@@ -62,7 +63,8 @@ struct WatermarkedFlowController {
 extension WatermarkedFlowController {
     /// Notifies the flow controller that we have buffered some bytes to send to the network.
     mutating func bufferedBytes(_ bufferedBytes: Int) {
-        self.pendingBytes += UInt(bufferedBytes)
+        precondition(bufferedBytes >= 0)
+        self.pendingBytes += bufferedBytes
         if self.pendingBytes > self.highWatermark {
             self.isWritable = false
         }
@@ -70,7 +72,19 @@ extension WatermarkedFlowController {
 
     /// Notifies the flow controller that we have successfully written some bytes to the network.
     mutating func wroteBytes(_ writtenBytes: Int) {
-        self.pendingBytes -= UInt(writtenBytes)
+        precondition(writtenBytes >= 0)
+        // pendingBytes can become negative: this is unusual but tolerated.
+        //
+        // Both bufferedBytes(_:) and wroteBytes(_:) are called by the HTTP2StreamChannel in
+        // write0(_:promise:). bufferedBytes(_:) is called when the outbound write is buffered
+        // and wroteBytes(_:) is called when the promise for the buffer write is completed. Both
+        // calls are given the estimated size of the write so their effect on pendingBytes will
+        // always balance out.
+        //
+        // If the promise passed to write0(_:promise:) has already been completed then the callback
+        // to wroteBytes(_:) will happen before the call to bufferedBytes(_:). If this happens then
+        // pendingBytes can (briefly) become negative.
+        self.pendingBytes -= writtenBytes
         if self.pendingBytes < self.lowWatermark {
             self.isWritable = true
         }
