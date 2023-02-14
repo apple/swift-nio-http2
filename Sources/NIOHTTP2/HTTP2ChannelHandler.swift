@@ -92,6 +92,13 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// which can cause an infinite recursion.
     private var isUnbufferingAndFlushingAutomaticFrames = false
 
+    /// In some cases channelInactive can be fired while channelActive is still running.
+    private var activationState = ActivationState.idle
+
+    /// Whether we should tolerate "impossible" state transitions in debug mode. Only true in tests specifically trying to
+    /// trigger them.
+    private let tolerateImpossibleStateTransitionsInDebugMode: Bool
+
     /// The mode for this parser to operate in: client or server.
     public enum ParserMode {
         /// Client mode
@@ -152,6 +159,36 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.initialSettings = initialSettings
         self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
         self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames)
+        self.tolerateImpossibleStateTransitionsInDebugMode = false
+    }
+
+    /// Constructs a ``NIOHTTP2Handler``.
+    ///
+    /// - parameters:
+    ///     - mode: The mode for this handler, client or server.
+    ///     - initialSettings: The settings that will be advertised to the peer in the preamble. Defaults to ``nioDefaultSettings``.
+    ///     - headerBlockValidation: Whether to validate sent and received HTTP/2 header blocks. Defaults to ``ValidationState/enabled``.
+    ///     - contentLengthValidation: Whether to validate the content length of sent and received streams. Defaults to ``ValidationState/enabled``.
+    ///     - maximumSequentialEmptyDataFrames: Controls the number of empty data frames this handler will tolerate receiving in a row before DoS protection
+    ///         is triggered and the connection is terminated. Defaults to 1.
+    ///     - maximumBufferedControlFrames: Controls the maximum buffer size of buffered outbound control frames. If we are unable to send control frames as
+    ///         fast as we produce them we risk building up an unbounded buffer and exhausting our memory. To protect against this DoS vector, we put an
+    ///         upper limit on the depth of this queue. Defaults to 10,000.
+    ///     - tolerateImpossibleStateTransitionsInDebugMode: Whether impossible state transitions should be tolerated
+    ///         in debug mode.
+    internal init(mode: ParserMode,
+                  initialSettings: HTTP2Settings = nioDefaultSettings,
+                  headerBlockValidation: ValidationState = .enabled,
+                  contentLengthValidation: ValidationState = .enabled,
+                  maximumSequentialEmptyDataFrames: Int = 1,
+                  maximumBufferedControlFrames: Int = 10000,
+                  tolerateImpossibleStateTransitionsInDebugMode: Bool = false) {
+        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
+        self.mode = mode
+        self.initialSettings = initialSettings
+        self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
+        self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames)
+        self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
@@ -160,6 +197,11 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.writeBuffer = context.channel.allocator.buffer(capacity: 128)
 
         if context.channel.isActive {
+            // We jump immediately to activated here, as channelActive has probably already passed.
+            if self.activationState != .idle {
+                self.impossibleActivationStateTransition(state: self.activationState, activating: true, context: context)
+            }
+            self.activationState = .activated
             self.writeAndFlushPreamble(context: context)
         }
     }
@@ -170,13 +212,80 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 
     public func channelActive(context: ChannelHandlerContext) {
+        // Check our activation state.
+        switch self.activationState {
+        case .idle:
+            // This is our first channelActive. We're now activating.
+            self.activationState = .activating
+        case .activated:
+            // This is a weird one, but it implies we "beat" the channelActive
+            // call down the pipeline when we added in handlerAdded. That's ok!
+            // We can safely ignore this.
+            return
+        case .activating, .inactiveWhileActivating, .inactive:
+            // All of these states are channel pipeline invariant violations, but conceptually possible.
+            //
+            // - .activating implies we got another channelActive while we were handling one. That would be
+            //     a violation of pipeline invariants.
+            // - .inactiveWhileActivating implies a sequence of channelActive, channelInactive, channelActive
+            //     synchronously. This is not just unlikely, but also misuse of the handler or violation of
+            //     channel pipeline invariants.
+            // - .inactive implies we received channelInactive and then got another active. This is almost certainly
+            //     misuse of the handler.
+            //
+            // We'll throw an error and then close. In debug builds, we crash.
+            self.impossibleActivationStateTransition(
+                state: self.activationState, activating: true, context: context
+            )
+            return
+        }
+
         self.writeAndFlushPreamble(context: context)
-        context.fireChannelActive()
+
+        // Ok, we progressed. Now we check our state again.
+        switch self.activationState {
+        case .activating:
+            // This is the easy case: nothing exciting happened. We can activate and notify the pipeline.
+            self.activationState = .activated
+            context.fireChannelActive()
+        case .inactiveWhileActivating:
+            // This is awkward: we got a channelInactive during the above operation. We need to fire channelActive
+            // and then re-issue the channelInactive call.
+            self.activationState = .activated
+            context.fireChannelActive()
+            self.channelInactive(context: context)
+        case .idle, .activated, .inactive:
+            // These three states should be impossible.
+            //
+            // - .idle somehow implies we didn't execute the code above.
+            // - .activated implies that the above code didn't prevent us re-entrantly getting to this point.
+            // - .inactive implies that somehow we hit channelInactive but didn't enter .inactiveWhileActivating.
+            self.impossibleActivationStateTransition(
+                state: self.activationState, activating: true, context: context
+            )
+        }
     }
 
     public func channelInactive(context: ChannelHandlerContext) {
-        self.channelClosed = true
-        context.fireChannelInactive()
+        switch self.activationState {
+        case .activated:
+            // This is the easy one. We were active, now we aren't.
+            self.activationState = .inactive
+            self.channelClosed = true
+            context.fireChannelInactive()
+        case .activating:
+            // Huh, we got channelInactive during activation. We need to maintain
+            // ordering, so we'll temporarily delay this.
+            self.activationState = .inactiveWhileActivating
+        case .idle, .inactiveWhileActivating, .inactive:
+            // This is weird.
+            //
+            // .idle implies that somehow we got channelInactive before channelActive, which is probably an error.
+            // .inactiveWhileActivating and .inactive make this a second channelInactive call, which is also probably
+            //    an error.
+            self.impossibleActivationStateTransition(state: self.activationState, activating: false, context: context)
+        }
+
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -699,8 +808,38 @@ NIOHTTP2Handler(
     mode: \(String(describing: self.mode)),
     initialSettings: \(String(describing: self.initialSettings)),
     channelClosed: \(String(describing: self.channelClosed)),
-    channelWritable: \(String(describing: self.channelWritable))
+    channelWritable: \(String(describing: self.channelWritable)),
+    activationState: \(String(describing: self.activationState))
 )
 """
+    }
+}
+
+extension NIOHTTP2Handler {
+    /// Tracks the state of activation of the handler.
+    enum ActivationState {
+        /// The handler hasn't been activated yet.
+        case idle
+
+        /// The handler has received channelActive, but hasn't yet fired it on.
+        case activating
+
+        /// The handler was activating when it received channelInactive. The channel
+        /// must go inactive after firing channel active.
+        case inactiveWhileActivating
+
+        /// The channel has received and fired channelActive.
+        case activated
+
+        /// The channel has received and fired channelActive and channelInactive.
+        case inactive
+    }
+
+    fileprivate func impossibleActivationStateTransition(
+        state: ActivationState, activating: Bool, context: ChannelHandlerContext
+    ) {
+        assert(self.tolerateImpossibleStateTransitionsInDebugMode, "Unexpected channelActive in state \(state)")
+        context.fireErrorCaught(NIOHTTP2Errors.ActivationError(state: state, activating: activating))
+        context.close(promise: nil)
     }
 }

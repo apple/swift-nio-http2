@@ -2067,7 +2067,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     }
 }
 
-private final class ErrorRecorder: ChannelInboundHandler {
+final class ErrorRecorder: ChannelInboundHandler {
     typealias InboundIn = Any
 
     var errors: [Error] = []
