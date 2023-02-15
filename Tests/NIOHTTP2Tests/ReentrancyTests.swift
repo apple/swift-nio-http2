@@ -149,7 +149,6 @@ final class ReentrancyTests: XCTestCase {
         try self.serverChannel.assertReceivedFrame().assertFrameMatches(this: settingsFrame)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
-        XCTAssertNoThrow(try self.serverChannel.finish())
     }
 
     func testReenterReadEOFOnRead() throws {

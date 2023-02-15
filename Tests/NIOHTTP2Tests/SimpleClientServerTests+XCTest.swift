@@ -33,6 +33,10 @@ extension SimpleClientServerTests {
                 ("testNoStreamWindowUpdateOnEndStreamFrameFromServer", testNoStreamWindowUpdateOnEndStreamFrameFromServer),
                 ("testNoStreamWindowUpdateOnEndStreamFrameFromClient", testNoStreamWindowUpdateOnEndStreamFrameFromClient),
                 ("testStreamCreationOrder", testStreamCreationOrder),
+                ("testHandlingChannelInactiveDuringActive", testHandlingChannelInactiveDuringActive),
+                ("testWritingFromChannelActiveIsntReordered", testWritingFromChannelActiveIsntReordered),
+                ("testChannelActiveAfterAddingToActivePipelineDoesntError", testChannelActiveAfterAddingToActivePipelineDoesntError),
+                ("testImpossibleStateTransitionsThrowErrors", testImpossibleStateTransitionsThrowErrors),
            ]
    }
 }

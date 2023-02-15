@@ -360,4 +360,207 @@ class SimpleClientServerTests: XCTestCase {
             XCTAssert(error is NIOHTTP2Errors.StreamIDTooSmall)
         }
     }
+
+    func testHandlingChannelInactiveDuringActive() throws {
+        let channel = EmbeddedChannel()
+        let orderingHandler = ActiveInactiveOrderingHandler()
+        try channel.pipeline.syncOperations.addHandlers(
+            [
+                ActionOnFlushHandler { $0.close(promise: nil) },
+                NIOHTTP2Handler(mode: .client),
+                orderingHandler,
+            ]
+        )
+
+        try channel.connect(to: SocketAddress(unixDomainSocketPath: "/tmp/ignored"), promise: nil)
+        XCTAssertEqual(orderingHandler.events, [.active, .inactive])
+    }
+
+    func testWritingFromChannelActiveIsntReordered() throws {
+        let channel = EmbeddedChannel()
+        try channel.pipeline.syncOperations.addHandlers(
+            [
+                NIOHTTP2Handler(mode: .client),
+                WriteOnChannelActiveHandler(),
+            ]
+        )
+
+        try channel.connect(to: SocketAddress(unixDomainSocketPath: "/tmp/ignored"), promise: nil)
+
+        var writes = [ByteBuffer]()
+        while let nextWrite = try channel.readOutbound(as: ByteBuffer.self) {
+            writes.append(nextWrite)
+        }
+
+        XCTAssertEqual(writes.count, 3)
+        // This is a PING frame.
+        XCTAssertEqual(
+            writes.last,
+            ByteBuffer(bytes: [
+                0x00, 0x00, 0x08,  // length, 8 bytes
+                0x06,  // frame type, ping
+                0x00,  // flags, zeros
+                0x00, 0x00, 0x00, 0x00,  // stream ID, 0
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // 8 byte payload, all zeros
+            ])
+        )
+    }
+
+    func testChannelActiveAfterAddingToActivePipelineDoesntError() throws {
+        let channel = EmbeddedChannel()
+        try channel.connect(to: SocketAddress(unixDomainSocketPath: "/tmp/ignored"), promise: nil)
+
+        XCTAssertNil(try channel.readOutbound(as: ByteBuffer.self))
+
+        try channel.pipeline.syncOperations.addHandler(
+            NIOHTTP2Handler(mode: .client)
+        )
+
+        // Two non-nil writes issued when the handler is added to an active channel.
+        XCTAssertNotNil(try channel.readOutbound(as: ByteBuffer.self))
+        XCTAssertNotNil(try channel.readOutbound(as: ByteBuffer.self))
+        XCTAssertNil(try channel.readOutbound(as: ByteBuffer.self))
+
+        // Delayed channel active.
+        channel.pipeline.fireChannelActive()
+
+        // No further writes.
+        XCTAssertNil(try channel.readOutbound(as: ByteBuffer.self))
+    }
+
+    func testImpossibleStateTransitionsThrowErrors() throws {
+        func setUpChannel() throws -> (EmbeddedChannel, ErrorRecorder) {
+            let channel = EmbeddedChannel()
+            let recorder = ErrorRecorder()
+            try channel.pipeline.syncOperations.addHandlers(
+                [
+                    NIOHTTP2Handler(mode: .client, tolerateImpossibleStateTransitionsInDebugMode: true),
+                    recorder
+                ]
+            )
+
+            XCTAssertEqual(recorder.errors.count, 0)
+            return (channel, recorder)
+        }
+
+        // First impossible state transition: channelInactive during idle.
+        // Doesn't transition state, just errors. Becuase we close during this, we hit
+        // the error twice!
+        var (channel, recorder) = try setUpChannel()
+        channel.pipeline.fireChannelInactive()
+        XCTAssertEqual(recorder.errors.count, 2)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+
+        // Second impossible state transition: channelActive on channelActive.
+        (channel, recorder) = try setUpChannel()
+        try channel.pipeline.syncOperations.addHandler(ActionOnFlushHandler { $0.pipeline.fireChannelActive() }, position: .first)
+        channel.pipeline.fireChannelActive()
+        XCTAssertEqual(recorder.errors.count, 1)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+
+        // Third impossible state transition. Synchronous active/inactive/active. The error causes a close,
+        // so we error twice!
+        (channel, recorder) = try setUpChannel()
+        try channel.pipeline.syncOperations.addHandler(
+            ActionOnFlushHandler {
+                $0.pipeline.fireChannelInactive()
+                $0.pipeline.fireChannelActive()
+            },
+            position: .first
+        )
+        channel.pipeline.fireChannelActive()
+        XCTAssertEqual(recorder.errors.count, 2)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+
+        // Fourth impossible state transition: active/inactive/active asynchronously. The error causes a close,
+        // so we error twice!
+        (channel, recorder) = try setUpChannel()
+        channel.pipeline.fireChannelActive()
+        channel.pipeline.fireChannelInactive()
+        XCTAssertEqual(recorder.errors.count, 0)
+        channel.pipeline.fireChannelActive()
+        XCTAssertEqual(recorder.errors.count, 2)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+
+        // Fifth impossible state transition: active/inactive/inactive synchronously. The error causes a close,
+        // so we error twice!
+        (channel, recorder) = try setUpChannel()
+        try channel.pipeline.syncOperations.addHandler(
+            ActionOnFlushHandler {
+                $0.pipeline.fireChannelInactive()
+                $0.pipeline.fireChannelInactive()
+            },
+            position: .first
+        )
+        channel.pipeline.fireChannelActive()
+        XCTAssertEqual(recorder.errors.count, 2)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+
+        // Sixth impossible state transition: active/inactive/inactive asynchronously. The error causes a close,
+        // so we error twice!
+        (channel, recorder) = try setUpChannel()
+        channel.pipeline.fireChannelActive()
+        channel.pipeline.fireChannelInactive()
+        XCTAssertEqual(recorder.errors.count, 0)
+        channel.pipeline.fireChannelInactive()
+        XCTAssertEqual(recorder.errors.count, 2)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+
+        // Seventh impossible state transition: adding the handler twice. The error causes a close, so we
+        // error twice!
+        (channel, recorder) = try setUpChannel()
+        try channel.connect(to: SocketAddress(unixDomainSocketPath: "/tmp/ignored"), promise: nil)
+        let handler = try channel.pipeline.syncOperations.handler(type: NIOHTTP2Handler.self)
+        try channel.pipeline.syncOperations.addHandler(handler, position: .after(handler))
+        XCTAssertEqual(recorder.errors.count, 2)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+    }
+}
+
+final class ActionOnFlushHandler: ChannelOutboundHandler {
+    typealias OutboundIn = Any
+    typealias OutboundOut = Any
+
+    private let action: (ChannelHandlerContext) -> Void
+
+    init(_ action: @escaping (ChannelHandlerContext) -> Void) {
+        self.action = action
+    }
+
+    func flush(context: ChannelHandlerContext) {
+        self.action(context)
+    }
+}
+
+final class ActiveInactiveOrderingHandler: ChannelInboundHandler {
+    typealias InboundIn = Any
+    typealias InboundOut = Any
+
+    enum Event {
+        case active
+        case inactive
+    }
+
+    var events: [Event] = []
+
+    func channelActive(context: ChannelHandlerContext) {
+        self.events.append(.active)
+        context.fireChannelActive()
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        self.events.append(.inactive)
+        context.fireChannelInactive()
+    }
+}
+
+final class WriteOnChannelActiveHandler: ChannelInboundHandler {
+    typealias InboundIn = Any
+    typealias OutboundOut = HTTP2Frame
+
+    func channelActive(context: ChannelHandlerContext) {
+        let frame = HTTP2Frame(streamID: 0, payload: .ping(HTTP2PingData(), ack: false))
+        context.writeAndFlush(self.wrapOutboundOut(frame), promise: nil)
+        context.fireChannelActive()
+    }
 }

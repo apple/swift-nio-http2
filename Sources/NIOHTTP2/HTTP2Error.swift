@@ -1622,6 +1622,25 @@ public enum NIOHTTP2Errors {
             self.storage = .init(streamID: streamID, baseError: baseError)
         }
     }
+
+    public struct ActivationError: NIOHTTP2Error, CustomStringConvertible {
+        private let state: NIOHTTP2Handler.ActivationState
+
+        private var activating: Bool
+
+        init(state: NIOHTTP2Handler.ActivationState, activating: Bool) {
+            self.state = state
+            self.activating = activating
+        }
+
+        public var description: String {
+            if self.activating {
+                return "Error during activation: in state \(self.state)"
+            } else {
+                return "Error during inactivation: in state \(self.state)"
+            }
+        }
+    }
 }
 
 
