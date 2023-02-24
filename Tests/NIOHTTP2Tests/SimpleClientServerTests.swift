@@ -515,6 +515,295 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertEqual(recorder.errors.count, 2)
         XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
     }
+
+    func testDynamicHeaderFieldsArentEmittedWithZeroTableSize() throws {
+        let handler = NIOHTTP2Handler(mode: .client)
+        let channel = EmbeddedChannel(handler: handler)
+
+        channel.pipeline.connect(to: try .init(unixDomainSocketPath: "/no/such/path"), promise: nil)
+
+        // We'll receive the preamble from the peer, which advertises no header table size.
+        let newSettings: HTTP2Settings = [.init(parameter: .headerTableSize, value: 0)]
+        let settings = HTTP2Frame(streamID: 0, payload: .settings(.settings(newSettings)))
+
+        // Let's send our preamble as well.
+        var frameEncoder = HTTP2FrameEncoder(allocator: channel.allocator)
+        var buffer = channel.allocator.buffer(capacity: 1024)
+        XCTAssertNil(try frameEncoder.encode(frame: settings, to: &buffer))
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 0, payload: .settings(.ack)), to: &buffer))
+        try channel.writeInbound(buffer)
+
+        // Now we're going to write a header. This includes a new header eligible for dynamic table insertion.
+        // It must not be inserted!
+        let headers = HPACKHeaders([
+            (":path", "/"),
+            (":scheme", "https"),
+            (":authority", "example.com"),
+            (":method", "GET"),
+            ("a-header-field", "is set"),
+        ])
+        let framePayload = HTTP2Frame.FramePayload.Headers(headers: headers, endStream: true)
+        try channel.writeOutbound(HTTP2Frame(streamID: 1, payload: .headers(framePayload)))
+
+        // Take the reads. We expect 4.
+        var reads = try channel.readAllBuffers()
+        XCTAssertEqual(reads.count, 4)
+
+        // We only care about the last one, which we expect is headers.
+        // We expect the following frame bytes. The use of incremental indexing here is fine,
+        // as the value shouldn't actually be added to the dynamic table.
+        var expectedBytes = ByteBuffer(bytes: [
+            0x00, 0x00, 0x1f,       // Frame length: 31 bytes
+            0x01,                   // Frame type: 1, HEADERS
+            0x05,                   // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x01, // Stream ID: 1
+            0x20,                   // Max dynamic table size change, 0
+            0x84,                   // Indexed field, index number 4, static table
+            0x87,                   // Indexed field, index number 7, static table
+            0x41,                   // Literal field with incremental indexing, index 1,
+                  0x88,             // Huffman-coded value with length 8,
+                  0x2f, 0x91, 0xd3,
+                  0x5d, 0x05, 0x5c,
+                  0x87, 0xa7,
+            0x82,                   // Indexed field, index number 2, static table
+            0x40,                   // Literal field with incremental indexing, new name,
+                  0x8a,             // Huffman-coded name with length 10
+                  0x1a, 0xd3, 0x94,
+                  0x72, 0x16, 0xc5,
+                  0xa5, 0x31, 0x68,
+                  0x93,
+                  0x84,             // Huffman-coded value with length 4
+                  0x32, 0x14, 0x41,
+                  0x53
+        ])
+
+        XCTAssertEqual(expectedBytes, reads.last)
+
+        // Now we'll send a second query. This must not use a dynamic representation.
+        try channel.writeOutbound(HTTP2Frame(streamID: 3, payload: .headers(framePayload)))
+
+        // Take another read.
+        reads = try channel.readAllBuffers()
+        XCTAssertEqual(reads.count, 1)
+
+        // This should be similar to the first, but without the dynamic table size change and a new stream ID.
+        expectedBytes = ByteBuffer(bytes: [
+            0x00, 0x00, 0x1e,       // Frame length: 30 bytes
+            0x01,                   // Frame type: 1, HEADERS
+            0x05,                   // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x03, // Stream ID: 3
+            0x84,                   // Indexed field, index number 4, static table
+            0x87,                   // Indexed field, index number 7, static table
+            0x41,                   // Literal field with incremental indexing, index 1,
+                  0x88,             // Huffman-coded value with length 8,
+                  0x2f, 0x91, 0xd3,
+                  0x5d, 0x05, 0x5c,
+                  0x87, 0xa7,
+            0x82,                   // Indexed field, index number 2, static table
+            0x40,                   // Literal field with incremental indexing, new name,
+                  0x8a,             // Huffman-coded name with length 10
+                  0x1a, 0xd3, 0x94,
+                  0x72, 0x16, 0xc5,
+                  0xa5, 0x31, 0x68,
+                  0x93,
+                  0x84,             // Huffman-coded value with length 4
+                  0x32, 0x14, 0x41,
+                  0x53
+        ])
+        XCTAssertEqual(expectedBytes, reads.first)
+    }
+
+    func testDynamicHeaderFieldsArentToleratedWithZeroTableSize() throws {
+        // Set ourselves up to advertise zero header table size.
+        let handler = NIOHTTP2Handler(mode: .server, initialSettings: [.init(parameter: .headerTableSize, value: 0)])
+        let channel = EmbeddedChannel(handler: handler)
+
+        channel.pipeline.connect(to: try .init(unixDomainSocketPath: "/no/such/path"), promise: nil)
+
+        // We'll receive the preamble from the peer, which is normal.
+        let newSettings: HTTP2Settings = []
+        let settings = HTTP2Frame(streamID: 0, payload: .settings(.settings(newSettings)))
+
+        var frameEncoder = HTTP2FrameEncoder(allocator: channel.allocator)
+        var buffer = channel.allocator.buffer(capacity: 1024)
+        buffer.writeString("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")
+        XCTAssertNil(try frameEncoder.encode(frame: settings, to: &buffer))
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 0, payload: .settings(.ack)), to: &buffer))
+        try channel.writeInbound(buffer)
+
+        // Now we're going to receive a header. This includes a new header eligible for dynamic table insertion.
+        // It isn't inherently rejected, this is ok. However, the _second_ frame will use the dynamic table,
+        // and that must be rejected.
+        let headers = HPACKHeaders([
+            (":path", "/"),
+            (":scheme", "https"),
+            (":authority", "example.com"),
+            (":method", "GET"),
+            ("a-header-field", "is set"),
+        ])
+        let framePayload = HTTP2Frame.FramePayload.Headers(headers: headers, endStream: true)
+
+        // Send the frame twice. This should error.
+        buffer.clear()
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 1, payload: .headers(framePayload)), to: &buffer))
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 3, payload: .headers(framePayload)), to: &buffer))
+        XCTAssertThrowsError(try channel.writeInbound(buffer)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.UnableToParseFrame)
+        }
+    }
+
+    func testSettingTableSizeToZeroAfterStartEvictsHeaders() throws {
+        let handler = NIOHTTP2Handler(mode: .client)
+        let channel = EmbeddedChannel(handler: handler)
+
+        channel.pipeline.connect(to: try .init(unixDomainSocketPath: "/no/such/path"), promise: nil)
+
+        // We'll receive the preamble from the peer, which advertises default settings
+        var settings = HTTP2Frame(streamID: 0, payload: .settings(.settings([])))
+
+        // Let's send our preamble as well.
+        var frameEncoder = HTTP2FrameEncoder(allocator: channel.allocator)
+        var buffer = channel.allocator.buffer(capacity: 1024)
+        XCTAssertNil(try frameEncoder.encode(frame: settings, to: &buffer))
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 0, payload: .settings(.ack)), to: &buffer))
+        try channel.writeInbound(buffer)
+
+        // Now we're going to write a header. This includes a new header eligible for dynamic table insertion.
+        // It actually will be inserted!
+        let headers = HPACKHeaders([
+            (":path", "/"),
+            (":scheme", "https"),
+            (":authority", "example.com"),
+            (":method", "GET"),
+            ("a-header-field", "is set"),
+        ])
+        let framePayload = HTTP2Frame.FramePayload.Headers(headers: headers, endStream: true)
+        try channel.writeOutbound(HTTP2Frame(streamID: 1, payload: .headers(framePayload)))
+
+        // Take the reads. We expect 4.
+        var reads = try channel.readAllBuffers()
+        XCTAssertEqual(reads.count, 4)
+
+        // We only care about the last one, which we expect is headers.
+        // We expect the following frame bytes. The use of incremental indexing here is expected,
+        // as the value will be added to the dynamic table.
+        var expectedBytes = ByteBuffer(bytes: [
+            0x00, 0x00, 0x1e,       // Frame length: 30 bytes
+            0x01,                   // Frame type: 1, HEADERS
+            0x05,                   // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x01, // Stream ID: 1
+            0x84,                   // Indexed field, index number 4, static table
+            0x87,                   // Indexed field, index number 7, static table
+            0x41,                   // Literal field with incremental indexing, index 1,
+                  0x88,             // Huffman-coded value with length 8,
+                  0x2f, 0x91, 0xd3,
+                  0x5d, 0x05, 0x5c,
+                  0x87, 0xa7,
+            0x82,                   // Indexed field, index number 2, static table
+            0x40,                   // Literal field with incremental indexing, new name,
+                  0x8a,             // Huffman-coded name with length 10
+                  0x1a, 0xd3, 0x94,
+                  0x72, 0x16, 0xc5,
+                  0xa5, 0x31, 0x68,
+                  0x93,
+                  0x84,             // Huffman-coded value with length 4
+                  0x32, 0x14, 0x41,
+                  0x53
+        ])
+
+        XCTAssertEqual(expectedBytes, reads.last)
+
+        // Now we'll have the peer send a new SETTINGS frame that sets the dynamic table size to zero.
+        let newSettings: HTTP2Settings = [.init(parameter: .headerTableSize, value: 0)]
+        settings = HTTP2Frame(streamID: 0, payload: .settings(.settings(newSettings)))
+        buffer.clear()
+        XCTAssertNil(try frameEncoder.encode(frame: settings, to: &buffer))
+        try channel.writeInbound(buffer)
+
+        // Now we'll send a second query. This must not use a dynamic representation.
+        try channel.writeOutbound(HTTP2Frame(streamID: 3, payload: .headers(framePayload)))
+
+        // Take another read. This time there are two writes, and the first is a SETTINGS ACK.
+        reads = try channel.readAllBuffers()
+        XCTAssertEqual(reads.count, 2)
+
+        // This should be similar to the first, but without a dynamic table size change and a new stream ID.
+        expectedBytes = ByteBuffer(bytes: [
+            0x00, 0x00, 0x1f,       // Frame length: 31 bytes
+            0x01,                   // Frame type: 1, HEADERS
+            0x05,                   // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x03, // Stream ID: 3
+            0x20,                   // Max dynamic table size change, 0
+            0x84,                   // Indexed field, index number 4, static table
+            0x87,                   // Indexed field, index number 7, static table
+            0x41,                   // Literal field with incremental indexing, index 1,
+                  0x88,             // Huffman-coded value with length 8,
+                  0x2f, 0x91, 0xd3,
+                  0x5d, 0x05, 0x5c,
+                  0x87, 0xa7,
+            0x82,                   // Indexed field, index number 2, static table
+            0x40,                   // Literal field with incremental indexing, new name,
+                  0x8a,             // Huffman-coded name with length 10
+                  0x1a, 0xd3, 0x94,
+                  0x72, 0x16, 0xc5,
+                  0xa5, 0x31, 0x68,
+                  0x93,
+                  0x84,             // Huffman-coded value with length 4
+                  0x32, 0x14, 0x41,
+                  0x53
+        ])
+        XCTAssertEqual(expectedBytes, reads.last)
+    }
+
+    func testSettingTableSizeToZeroEvictsHeadersAndRefusesToDecodeThem() throws {
+        // Set ourselves up with default settings
+        let handler = NIOHTTP2Handler(mode: .server)
+        let channel = EmbeddedChannel(handler: handler)
+
+        channel.pipeline.connect(to: try .init(unixDomainSocketPath: "/no/such/path"), promise: nil)
+
+        // We'll receive the preamble from the peer, which is normal.
+        let newSettings: HTTP2Settings = []
+        let settings = HTTP2Frame(streamID: 0, payload: .settings(.settings(newSettings)))
+
+        var frameEncoder = HTTP2FrameEncoder(allocator: channel.allocator)
+        var buffer = channel.allocator.buffer(capacity: 1024)
+        buffer.writeString("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")
+        XCTAssertNil(try frameEncoder.encode(frame: settings, to: &buffer))
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 0, payload: .settings(.ack)), to: &buffer))
+        try channel.writeInbound(buffer)
+
+        // Now we're going to send a header. This includes a new header eligible for dynamic table insertion.
+        // It isn't inherently rejected, this is ok. However, the _second_ frame will use the dynamic table,
+        // and that must be rejected.
+        let headers = HPACKHeaders([
+            (":path", "/"),
+            (":scheme", "https"),
+            (":authority", "example.com"),
+            (":method", "GET"),
+            ("a-header-field", "is set"),
+        ])
+        let framePayload = HTTP2Frame.FramePayload.Headers(headers: headers, endStream: true)
+
+        // Send the first frame.
+        buffer.clear()
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 1, payload: .headers(framePayload)), to: &buffer))
+        XCTAssertNoThrow(try channel.writeInbound(buffer))
+
+        // Now, we send a settings frame that updates our settings.
+        try channel.writeOutbound(
+            HTTP2Frame(streamID: 0, payload: .settings(.settings([.init(parameter: .headerTableSize, value: 0)])))
+        )
+
+        // We receive a settings ACK and then another frame. This frame hasn't respected our settings change! It should
+        // be rejected.
+        buffer.clear()
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 0, payload: .settings(.ack)), to: &buffer))
+        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 3, payload: .headers(framePayload)), to: &buffer))
+        XCTAssertThrowsError(try channel.writeInbound(buffer)) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.UnableToParseFrame)
+        }
+    }
 }
 
 final class ActionOnFlushHandler: ChannelOutboundHandler {
@@ -562,5 +851,29 @@ final class WriteOnChannelActiveHandler: ChannelInboundHandler {
         let frame = HTTP2Frame(streamID: 0, payload: .ping(HTTP2PingData(), ack: false))
         context.writeAndFlush(self.wrapOutboundOut(frame), promise: nil)
         context.fireChannelActive()
+    }
+}
+
+extension EmbeddedChannel {
+    func readAllBuffers() throws -> [ByteBuffer] {
+        var buffers = [ByteBuffer]()
+
+        while let next = try self.readOutbound(as: ByteBuffer.self) {
+            buffers.append(next)
+        }
+
+        return buffers
+    }
+}
+
+extension HTTP2FrameDecoder {
+    mutating func readAllFrames() throws -> [HTTP2Frame] {
+        var frames = [HTTP2Frame]()
+
+        while let next = try self.nextFrame() {
+            frames.append(next.0)
+        }
+
+        return frames
     }
 }
