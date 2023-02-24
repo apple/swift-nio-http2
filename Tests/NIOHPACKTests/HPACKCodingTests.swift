@@ -491,20 +491,11 @@ class HPACKCodingTests: XCTestCase {
         // NB: current size is 81 bytes.
         encoder.headerIndexTable.dynamicTable.clear()
 
-        XCTAssertThrowsError(try encoder.setDynamicTableSize(8192)) { error in
-            guard let err = error as? NIOHPACKErrors.InvalidDynamicTableSize else {
-                XCTFail()
-                return
-            }
-            XCTAssertEqual(err.requestedSize, 8192)
-            XCTAssertEqual(err.allowedSize, 4096)
-        }
-
         XCTAssertThrowsError(try decoder.decodeHeaders(from: &request3)) {error in
             XCTAssertTrue(error is NIOHPACKErrors.InvalidDynamicTableSize)
         }
 
-        // 5 - Decoder will not accept a table size update unless it appears at the start of a header block.
+        // 4 - Decoder will not accept a table size update unless it appears at the start of a header block.
         decoder.headerTable.dynamicTable.clear()
 
         XCTAssertThrowsError(try decoder.decodeHeaders(from: &request4)) {error in

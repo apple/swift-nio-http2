@@ -26,7 +26,7 @@ protocol HasRemoteSettings {
 }
 
 extension HasRemoteSettings {
-    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
+    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameEncoder: inout HTTP2FrameEncoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
         // self. It's a little more complex than normal because HTTP2SettingsState has
         // two CoWable objects, and we don't want to CoW either of them, so we shove a dummy
@@ -50,7 +50,7 @@ extension HasRemoteSettings {
                     }
                     effect.newMaxConcurrentStreams = newValue
                 case .headerTableSize:
-                    frameDecoder.headerDecoder.maxDynamicTableLength = Int(newValue)
+                    try frameEncoder.headerEncoder.setDynamicTableSize(Int(newValue))
                 case .initialWindowSize:
                     // We default the value of SETTINGS_INITIAL_WINDOW_SIZE, so originalValue mustn't be nil.
                     // The max value of SETTINGS_INITIAL_WINDOW_SIZE is Int32.max, so we can safely fit it into that here.

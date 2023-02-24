@@ -542,9 +542,9 @@ extension HTTP2ConnectionStateMachine {
         switch payload {
         case .ack:
             // No action is ever required after receiving a settings ACK
-            return (self.receiveSettingsAck(frameEncoder: &frameEncoder), .nothing)
+            return (self.receiveSettingsAck(frameDecoder: &frameDecoder), .nothing)
         case .settings(let settings):
-            return self.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+            return self.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
         }
     }
 
@@ -1485,7 +1485,7 @@ extension HTTP2ConnectionStateMachine {
 // Mark:- Private helper methods
 extension HTTP2ConnectionStateMachine {
     /// Called when we have received a SETTINGS frame from the remote peer. Applies the changes immediately.
-    private mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
+    private mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameEncoder: inout HTTP2FrameEncoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
         let validationResult = self.validateSettings(settings)
 
         guard case .succeed = validationResult else {
@@ -1496,7 +1496,7 @@ extension HTTP2ConnectionStateMachine {
         case .idle(let state):
             return self.avoidingStateMachineCoW { newState in
                 var newStateData = PrefaceReceivedState(fromIdle: state, remoteSettings: HTTP2SettingsState(localState: false))
-                let result = newStateData.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = newStateData.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .prefaceReceived(newStateData)
                 return result
             }
@@ -1504,42 +1504,42 @@ extension HTTP2ConnectionStateMachine {
         case .prefaceSent(let state):
             return self.avoidingStateMachineCoW { newState in
                 var newStateData = ActiveConnectionState(fromPrefaceSent: state, remoteSettings: HTTP2SettingsState(localState: false))
-                let result = newStateData.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = newStateData.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .active(newStateData)
                 return result
             }
 
         case .prefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = state.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .prefaceReceived(state)
                 return result
             }
 
         case .active(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = state.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .active(state)
                 return result
             }
 
         case .remotelyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = state.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .remotelyQuiesced(state)
                 return result
             }
 
         case .locallyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = state.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .locallyQuiesced(state)
                 return result
             }
 
         case .bothQuiescing(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = state.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .bothQuiescing(state)
                 return result
             }
@@ -1547,14 +1547,14 @@ extension HTTP2ConnectionStateMachine {
         case .quiescingPrefaceSent(let state):
             return self.avoidingStateMachineCoW { newState in
                 var newStateData = LocallyQuiescedState(fromQuiescingPrefaceSent: state, remoteSettings: HTTP2SettingsState(localState: false))
-                let result = newStateData.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = newStateData.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .locallyQuiesced(newStateData)
                 return result
             }
 
         case .quiescingPrefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsChange(settings, frameDecoder: &frameDecoder)
+                let result = state.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .quiescingPrefaceReceived(state)
                 return result
             }
@@ -1567,34 +1567,34 @@ extension HTTP2ConnectionStateMachine {
         }
     }
 
-    private mutating func receiveSettingsAck(frameEncoder: inout HTTP2FrameEncoder) -> StateMachineResultWithEffect {
+    private mutating func receiveSettingsAck(frameDecoder: inout HTTP2FrameDecoder) -> StateMachineResultWithEffect {
         // We can only receive a SETTINGS ACK after we've sent our own preface *and* the remote peer has
         // sent its own. That means we have to be active or quiescing.
         switch self.state {
         case .active(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsAck(frameEncoder: &frameEncoder)
+                let result = state.receiveSettingsAck(frameDecoder: &frameDecoder)
                 newState = .active(state)
                 return result
             }
 
         case .locallyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsAck(frameEncoder: &frameEncoder)
+                let result = state.receiveSettingsAck(frameDecoder: &frameDecoder)
                 newState = .locallyQuiesced(state)
                 return result
             }
 
         case .remotelyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsAck(frameEncoder: &frameEncoder)
+                let result = state.receiveSettingsAck(frameDecoder: &frameDecoder)
                 newState = .remotelyQuiesced(state)
                 return result
             }
 
         case .bothQuiescing(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveSettingsAck(frameEncoder: &frameEncoder)
+                let result = state.receiveSettingsAck(frameDecoder: &frameDecoder)
                 newState = .bothQuiescing(state)
                 return result
             }

@@ -65,6 +65,9 @@ public struct HPACKEncoder {
     /// SETTINGS frame.
     public var maximumDynamicTableSize: Int {
         get { return self.headerIndexTable.maxDynamicTableLength }
+
+        // This should have been private, but we messed up. Nevermind.
+        @available(*, deprecated, message: "Setting the dynamic table length on the HPACK encoder doesn't have the intended effect.", renamed: "setDynamicTableSize(_:)")
         set { self.headerIndexTable.maxDynamicTableLength = newValue }
     }
     
@@ -75,9 +78,6 @@ public struct HPACKEncoder {
     /// - Throws: If the encoder is currently in use, or if the requested size
     ///           exceeds the maximum value negotiated with the peer.
     public mutating func setDynamicTableSize(_ size: Int) throws {
-        guard size <= self.maximumDynamicTableSize else {
-            throw NIOHPACKErrors.InvalidDynamicTableSize(requestedSize: size, allowedSize: self.maximumDynamicTableSize)
-        }
         guard size != self.allowedDynamicTableSize else {
             // no need to change anything
             return
@@ -98,6 +98,7 @@ public struct HPACKEncoder {
         }
         
         // set the new size on our dynamic table
+        self.headerIndexTable.maxDynamicTableLength = size
         self.allowedDynamicTableSize = size
     }
     
