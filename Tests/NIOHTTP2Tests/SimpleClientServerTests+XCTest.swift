@@ -36,6 +36,7 @@ extension SimpleClientServerTests {
                 ("testHandlingChannelInactiveDuringActive", testHandlingChannelInactiveDuringActive),
                 ("testWritingFromChannelActiveIsntReordered", testWritingFromChannelActiveIsntReordered),
                 ("testChannelActiveAfterAddingToActivePipelineDoesntError", testChannelActiveAfterAddingToActivePipelineDoesntError),
+                ("testChannelInactiveThenChannelActiveErrorsButDoesntTrap", testChannelInactiveThenChannelActiveErrorsButDoesntTrap),
                 ("testImpossibleStateTransitionsThrowErrors", testImpossibleStateTransitionsThrowErrors),
                 ("testDynamicHeaderFieldsArentEmittedWithZeroTableSize", testDynamicHeaderFieldsArentEmittedWithZeroTableSize),
                 ("testDynamicHeaderFieldsArentToleratedWithZeroTableSize", testDynamicHeaderFieldsArentToleratedWithZeroTableSize),
