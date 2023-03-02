@@ -428,6 +428,29 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertNil(try channel.readOutbound(as: ByteBuffer.self))
     }
 
+    func testChannelInactiveThenChannelActiveErrorsButDoesntTrap() throws {
+        let channel = EmbeddedChannel()
+        let recorder = ErrorRecorder()
+        try channel.pipeline.syncOperations.addHandlers(
+            [
+                NIOHTTP2Handler(mode: .client),
+                recorder
+            ]
+        )
+
+        XCTAssertEqual(recorder.errors.count, 0)
+
+        // Send channelInactive followed by channelActive. This can happen if a user calls close
+        // from within a connect promise.
+        channel.pipeline.fireChannelInactive()
+        XCTAssertEqual(recorder.errors.count, 0)
+
+        channel.pipeline.fireChannelActive()
+
+        XCTAssertEqual(recorder.errors.count, 1)
+        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+    }
+
     func testImpossibleStateTransitionsThrowErrors() throws {
         func setUpChannel() throws -> (EmbeddedChannel, ErrorRecorder) {
             let channel = EmbeddedChannel()
@@ -443,22 +466,14 @@ class SimpleClientServerTests: XCTestCase {
             return (channel, recorder)
         }
 
-        // First impossible state transition: channelInactive during idle.
-        // Doesn't transition state, just errors. Becuase we close during this, we hit
-        // the error twice!
+        // First impossible state transition: channelActive on channelActive.
         var (channel, recorder) = try setUpChannel()
-        channel.pipeline.fireChannelInactive()
-        XCTAssertEqual(recorder.errors.count, 2)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
-
-        // Second impossible state transition: channelActive on channelActive.
-        (channel, recorder) = try setUpChannel()
         try channel.pipeline.syncOperations.addHandler(ActionOnFlushHandler { $0.pipeline.fireChannelActive() }, position: .first)
         channel.pipeline.fireChannelActive()
         XCTAssertEqual(recorder.errors.count, 1)
         XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
 
-        // Third impossible state transition. Synchronous active/inactive/active. The error causes a close,
+        // Second impossible state transition. Synchronous active/inactive/active. The error causes a close,
         // so we error twice!
         (channel, recorder) = try setUpChannel()
         try channel.pipeline.syncOperations.addHandler(
@@ -472,17 +487,18 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertEqual(recorder.errors.count, 2)
         XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
 
-        // Fourth impossible state transition: active/inactive/active asynchronously. The error causes a close,
-        // so we error twice!
+        // Third impossible state transition: active/inactive/active asynchronously. This error doesn't cause a
+        // close because we don't distinguish it from the case tested in
+        // testChannelInactiveThenChannelActiveErrorsButDoesntTrap.
         (channel, recorder) = try setUpChannel()
         channel.pipeline.fireChannelActive()
         channel.pipeline.fireChannelInactive()
         XCTAssertEqual(recorder.errors.count, 0)
         channel.pipeline.fireChannelActive()
-        XCTAssertEqual(recorder.errors.count, 2)
+        XCTAssertEqual(recorder.errors.count, 1)
         XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
 
-        // Fifth impossible state transition: active/inactive/inactive synchronously. The error causes a close,
+        // Fourth impossible state transition: active/inactive/inactive synchronously. The error causes a close,
         // so we error twice!
         (channel, recorder) = try setUpChannel()
         try channel.pipeline.syncOperations.addHandler(
@@ -496,7 +512,7 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertEqual(recorder.errors.count, 2)
         XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
 
-        // Sixth impossible state transition: active/inactive/inactive asynchronously. The error causes a close,
+        // Fifth impossible state transition: active/inactive/inactive asynchronously. The error causes a close,
         // so we error twice!
         (channel, recorder) = try setUpChannel()
         channel.pipeline.fireChannelActive()
@@ -506,7 +522,7 @@ class SimpleClientServerTests: XCTestCase {
         XCTAssertEqual(recorder.errors.count, 2)
         XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
 
-        // Seventh impossible state transition: adding the handler twice. The error causes a close, so we
+        // Sixth impossible state transition: adding the handler twice. The error causes a close, so we
         // error twice!
         (channel, recorder) = try setUpChannel()
         try channel.connect(to: SocketAddress(unixDomainSocketPath: "/tmp/ignored"), promise: nil)

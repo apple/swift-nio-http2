@@ -222,7 +222,14 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             // call down the pipeline when we added in handlerAdded. That's ok!
             // We can safely ignore this.
             return
-        case .activating, .inactiveWhileActivating, .inactive:
+        case .inactive:
+            // This means we received channelInactive already. This can happen, unfortunately, usually when
+            // calling close() from within the completion of a channel connect promise. We tolerate this,
+            // but fire an error to make sure it's fatal.
+            context.fireChannelActive()
+            context.fireErrorCaught(NIOHTTP2Errors.ActivationError(state: .inactive, activating: true))
+            return
+        case .activating, .inactiveWhileActivating:
             // All of these states are channel pipeline invariant violations, but conceptually possible.
             //
             // - .activating implies we got another channelActive while we were handling one. That would be
@@ -230,8 +237,6 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             // - .inactiveWhileActivating implies a sequence of channelActive, channelInactive, channelActive
             //     synchronously. This is not just unlikely, but also misuse of the handler or violation of
             //     channel pipeline invariants.
-            // - .inactive implies we received channelInactive and then got another active. This is almost certainly
-            //     misuse of the handler.
             //
             // We'll throw an error and then close. In debug builds, we crash.
             self.impossibleActivationStateTransition(
@@ -257,7 +262,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         case .idle, .activated, .inactive:
             // These three states should be impossible.
             //
-            // - .idle somehow implies we didn't execute the code above.
+            // - .idle and .inactive somehow implies we didn't execute the code above.
             // - .activated implies that the above code didn't prevent us re-entrantly getting to this point.
             // - .inactive implies that somehow we hit channelInactive but didn't enter .inactiveWhileActivating.
             self.impossibleActivationStateTransition(
@@ -277,12 +282,12 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             // Huh, we got channelInactive during activation. We need to maintain
             // ordering, so we'll temporarily delay this.
             self.activationState = .inactiveWhileActivating
-        case .idle, .inactiveWhileActivating, .inactive:
-            // This is weird.
-            //
-            // .idle implies that somehow we got channelInactive before channelActive, which is probably an error.
-            // .inactiveWhileActivating and .inactive make this a second channelInactive call, which is also probably
-            //    an error.
+        case .idle:
+            // This implies getting channelInactive before channelActive. This is uncommon, but not impossible.
+            // We'll tolerate it here.
+            self.activationState = .inactive
+        case .inactiveWhileActivating, .inactive:
+            // This is weird. This can only happen if we see channelInactive twice, which is probably an error.
             self.impossibleActivationStateTransition(state: self.activationState, activating: false, context: context)
         }
 
