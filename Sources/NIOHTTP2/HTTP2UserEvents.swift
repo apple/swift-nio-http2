@@ -95,12 +95,18 @@ public struct NIOHTTP2StreamCreatedEvent {
     public let localInitialWindowSize: UInt32?
 
     /// The initial remote stream window size. May be nil if this stream may never have data received on it.
-    public let remoteInitialWidowSize: UInt32?
+    @available(*, deprecated, renamed: "remoteInitialWindowSize")
+    public var remoteInitialWidowSize: UInt32? {
+        self.remoteInitialWindowSize
+    }
+
+    /// The initial remote stream window size. May be nil if this stream has never had data received on it.
+    public let remoteInitialWindowSize: UInt32?
 
     public init(streamID: HTTP2StreamID, localInitialWindowSize: UInt32?, remoteInitialWindowSize: UInt32?) {
         self.streamID = streamID
         self.localInitialWindowSize = localInitialWindowSize
-        self.remoteInitialWidowSize = remoteInitialWindowSize
+        self.remoteInitialWindowSize = remoteInitialWindowSize
     }
 }
 
