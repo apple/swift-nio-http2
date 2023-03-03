@@ -164,7 +164,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.parent = parent
         self.eventLoop = parent.eventLoop
         self.streamID = streamID
-        self.multiplexer = multiplexer
+        self.multiplexer = .legacy(LegacyMultiplexer(multiplexer: multiplexer))
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
         self._isActiveAtomic = .init(false)
         self._isWritable = .init(true)
@@ -329,7 +329,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     private let closePromise: EventLoopPromise<()>
 
-    private let multiplexer: HTTP2StreamMultiplexer
+    private let multiplexer: StreamMultiplexer
 
     public var closeFuture: EventLoopFuture<Void> {
         return self.closePromise.futureResult
@@ -590,7 +590,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // We should have a stream ID here, force-unwrap is safe.
         let resetFrame = HTTP2Frame(streamID: self.streamID!, payload: .rstStream(.cancel))
         self.receiveOutboundFrame(resetFrame, promise: nil)
-        self.multiplexer.childChannelFlush()
+        self.multiplexer.flushStream(self.streamID!)
     }
 
     private func closedCleanly() {
@@ -610,9 +610,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             self.removeHandlers(pipeline: self.pipeline)
             self.closePromise.succeed(())
             if let streamID = self.streamID {
-                self.multiplexer.childChannelClosed(streamID: streamID)
+                self.multiplexer.streamClosed(id: streamID)
             } else {
-                self.multiplexer.childChannelClosed(channelID: ObjectIdentifier(self))
+                self.multiplexer.streamClosed(channelID: ObjectIdentifier(self))
             }
         }
     }
@@ -635,9 +635,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             self.removeHandlers(pipeline: self.pipeline)
             self.closePromise.fail(error)
             if let streamID = self.streamID {
-                self.multiplexer.childChannelClosed(streamID: streamID)
+                self.multiplexer.streamClosed(id: streamID)
             } else {
-                self.multiplexer.childChannelClosed(channelID: ObjectIdentifier(self))
+                self.multiplexer.streamClosed(channelID: ObjectIdentifier(self))
             }
         }
     }
@@ -717,7 +717,7 @@ private extension HTTP2StreamChannel {
                 let frame = HTTP2Frame(streamID: self.streamID!, payload: .windowUpdate(windowSizeIncrement: increment))
                 self.receiveOutboundFrame(frame, promise: nil)
                 // This flush should really go away, but we need it for now until we sort out window management.
-                self.multiplexer.childChannelFlush()
+                self.multiplexer.flushStream(self.streamID!)
             }
         }
         self.pipeline.fireChannelReadComplete()
@@ -749,7 +749,7 @@ private extension HTTP2StreamChannel {
 
             self.receiveOutboundFrame(frame, promise: promise)
         }
-        self.multiplexer.childChannelFlush()
+        self.multiplexer.flushStream(self.streamID!)
     }
 
     /// Fails all pending writes with the given error.
@@ -803,7 +803,7 @@ internal extension HTTP2StreamChannel {
             self.errorEncountered(error: error)
             return
         }
-        self.multiplexer.childChannelWrite(frame, promise: promise)
+        self.multiplexer.writeStream(frame, promise: promise)
     }
 
     /// Called when a stream closure is received from the network.
@@ -837,7 +837,7 @@ internal extension HTTP2StreamChannel {
             let frame = HTTP2Frame(streamID: self.streamID!, payload: .windowUpdate(windowSizeIncrement: increment))
             self.receiveOutboundFrame(frame, promise: nil)
             // This flush should really go away, but we need it for now until we sort out window management.
-            self.multiplexer.childChannelFlush()
+            self.multiplexer.flushStream(self.streamID!)
         }
     }
 
@@ -847,7 +847,7 @@ internal extension HTTP2StreamChannel {
             let frame = HTTP2Frame(streamID: self.streamID!, payload: .windowUpdate(windowSizeIncrement: increment))
             self.receiveOutboundFrame(frame, promise: nil)
             // This flush should really go away, but we need it for now until we sort out window management.
-            self.multiplexer.childChannelFlush()
+            self.multiplexer.flushStream(self.streamID!)
         }
     }
 
