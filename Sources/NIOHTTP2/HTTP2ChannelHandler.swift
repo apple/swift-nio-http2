@@ -99,8 +99,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// trigger them.
     private let tolerateImpossibleStateTransitionsInDebugMode: Bool
 
-    /// The delegate for demultiplexing streams. Set on `handlerAdded` and `nil`-ed out on
-    /// `channelInactive` and `handlerRemoved`.
+    /// The delegate for demultiplexing streams. Set on `handlerAdded` and `nil`-ed out on `handlerRemoved`.
     private var demultiplexer: ConnectionDemultiplexer?
 
     /// The mode for this parser to operate in: client or server.
@@ -283,7 +282,6 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             // This is the easy one. We were active, now we aren't.
             self.activationState = .inactive
             self.channelClosed = true
-            self.demultiplexer = nil
             context.fireChannelInactive()
         case .activating:
             // Huh, we got channelInactive during activation. We need to maintain
@@ -498,16 +496,7 @@ extension NIOHTTP2Handler {
     /// Emit any pending user events.
     private func processPendingUserEvents(context: ChannelHandlerContext) {
         for event in self.inboundEventBuffer {
-            switch event {
-            case .streamCreated(let event):
-                self.demultiplexer?.streamCreated(event.streamID, localInitialWindowSize: event.localInitialWindowSize, remoteInitialWindowSize: event.remoteInitialWindowSize)
-            case .initialStreamWindowChanged(let event):
-                self.demultiplexer?.initialStreamWindowChanged(by: event.delta)
-            case .streamWindowUpdated(let event):
-                self.demultiplexer?.streamWindowUpdated(event.streamID, inboundWindowSize: event.inboundWindowSize, outboundWindowSize: event.outboundWindowSize)
-            case .streamClosed(let event):
-                self.demultiplexer?.streamClosed(event.streamID, reason: event.reason)
-            }
+            self.demultiplexer?.process(event: event)
         }
     }
 
@@ -517,6 +506,21 @@ extension NIOHTTP2Handler {
         } catch {
             result.result = StateMachineResult.connectionError(underlyingError: error, type: .enhanceYourCalm)
             result.effect = nil
+        }
+    }
+}
+
+extension NIOHTTP2Handler.ConnectionDemultiplexer {
+    func process(event: InboundEventBuffer.BufferedHTTP2UserEvent) {
+        switch event {
+        case .streamCreated(let event):
+            self.streamCreated(event.streamID, localInitialWindowSize: event.localInitialWindowSize, remoteInitialWindowSize: event.remoteInitialWindowSize)
+        case .initialStreamWindowChanged(let event):
+            self.initialStreamWindowChanged(by: event.delta)
+        case .streamWindowUpdated(let event):
+            self.streamWindowUpdated(event.streamID, inboundWindowSize: event.inboundWindowSize, outboundWindowSize: event.outboundWindowSize)
+        case .streamClosed(let event):
+            self.streamClosed(event.streamID, reason: event.reason)
         }
     }
 }
@@ -681,30 +685,30 @@ extension NIOHTTP2Handler {
         switch stateChange {
         case .streamClosed(let streamClosedData):
             self.outboundBuffer.connectionWindowSize = streamClosedData.localConnectionWindowSize
-            self.inboundEventBuffer.pendingUserEvent(.streamClosed(StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason)))
-            self.inboundEventBuffer.pendingUserEvent(.streamWindowUpdated(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: streamClosedData.remoteConnectionWindowSize, outboundWindowSize: streamClosedData.localConnectionWindowSize)))
+            self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason))
+            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: streamClosedData.remoteConnectionWindowSize, outboundWindowSize: streamClosedData.localConnectionWindowSize))
 
             let droppedPromises = self.outboundBuffer.streamClosed(streamClosedData.streamID)
             self.failDroppedPromises(droppedPromises, streamID: streamClosedData.streamID, errorCode: streamClosedData.reason ?? .cancel)
         case .streamCreated(let streamCreatedData):
             self.outboundBuffer.streamCreated(streamCreatedData.streamID, initialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init) ?? 0)
             self.inboundEventBuffer.pendingUserEvent(
-                .streamCreated(NIOHTTP2StreamCreatedEvent(streamID: streamCreatedData.streamID,
+                NIOHTTP2StreamCreatedEvent(streamID: streamCreatedData.streamID,
                                                           localInitialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init),
-                                                          remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init))))
+                                                          remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init)))
         case .bulkStreamClosure(let streamClosureData):
             for droppedStream in streamClosureData.closedStreams {
-                self.inboundEventBuffer.pendingUserEvent(.streamClosed(StreamClosedEvent(streamID: droppedStream, reason: .cancel)))
+                self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
 
                 let droppedPromises = self.outboundBuffer.streamClosed(droppedStream)
                 self.failDroppedPromises(droppedPromises, streamID: droppedStream, errorCode: .cancel)
             }
         case .flowControlChange(let change):
             self.outboundBuffer.connectionWindowSize = change.localConnectionWindowSize
-            self.inboundEventBuffer.pendingUserEvent(.streamWindowUpdated(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: change.remoteConnectionWindowSize, outboundWindowSize: change.localConnectionWindowSize)))
+            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: change.remoteConnectionWindowSize, outboundWindowSize: change.localConnectionWindowSize))
             if let streamSize = change.localStreamWindowSize {
                 self.outboundBuffer.updateStreamWindow(streamSize.streamID, newSize: streamSize.localStreamWindowSize.map(Int32.init) ?? 0)
-                self.inboundEventBuffer.pendingUserEvent(.streamWindowUpdated(NIOHTTP2WindowUpdatedEvent(streamID: streamSize.streamID, inboundWindowSize: streamSize.remoteStreamWindowSize, outboundWindowSize: streamSize.localStreamWindowSize)))
+                self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: streamSize.streamID, inboundWindowSize: streamSize.remoteStreamWindowSize, outboundWindowSize: streamSize.localStreamWindowSize))
             }
         case .streamCreatedAndClosed(let cAndCData):
             self.outboundBuffer.streamCreated(cAndCData.streamID, initialWindowSize: 0)
@@ -723,7 +727,7 @@ extension NIOHTTP2Handler {
             }
         case .localSettingsChanged(let settingsChange):
             if settingsChange.streamWindowSizeChange != 0 {
-                self.inboundEventBuffer.pendingUserEvent(.initialStreamWindowChanged(NIOHTTP2BulkStreamWindowChangeEvent(delta: settingsChange.streamWindowSizeChange)))
+                self.inboundEventBuffer.pendingUserEvent(NIOHTTP2BulkStreamWindowChangeEvent(delta: settingsChange.streamWindowSizeChange))
             }
             if let newMaxFrameSize = settingsChange.newMaxFrameSize {
                 self.frameDecoder.maxFrameSize = newMaxFrameSize
