@@ -23,16 +23,16 @@ internal protocol NIOHTTP2ConnectionDemultiplexer {
     func streamError(streamID: HTTP2StreamID, error: Error)
 
     /// A new HTTP/2 stream was created with the given ID.
-    func streamCreated(_ id: HTTP2StreamID, localInitialWindowSize: UInt32?, remoteInitialWindowSize: UInt32?)
+    func streamCreated(event: NIOHTTP2StreamCreatedEvent)
 
     /// An HTTP/2 stream with the given ID was closed.
-    func streamClosed(_ id: HTTP2StreamID, reason: HTTP2ErrorCode?)
+    func streamClosed(event: StreamClosedEvent)
 
     /// The flow control windows of the HTTP/2 stream changed.
-    func streamWindowUpdated(_ id: HTTP2StreamID, inboundWindowSize: Int?, outboundWindowSize: Int?)
+    func streamWindowUpdated(event: NIOHTTP2WindowUpdatedEvent)
 
     /// The initial stream window for all streams changed by the given amount.
-    func initialStreamWindowChanged(by delta: Int)
+    func initialStreamWindowChanged(event: NIOHTTP2BulkStreamWindowChangeEvent)
 }
 
 extension NIOHTTP2Handler {
@@ -61,37 +61,37 @@ extension NIOHTTP2Handler {
             }
         }
 
-        func streamCreated(_ id: HTTP2StreamID, localInitialWindowSize: UInt32?, remoteInitialWindowSize: UInt32?) {
+        func streamCreated(event: NIOHTTP2StreamCreatedEvent) {
             switch self {
             case .legacy(let demultiplexer):
-                demultiplexer.streamCreated(id, localInitialWindowSize: localInitialWindowSize, remoteInitialWindowSize: remoteInitialWindowSize)
+                demultiplexer.streamCreated(event: event)
             case .new:
                 fatalError("Not yet implemented.")
             }
         }
 
-        func streamClosed(_ id: HTTP2StreamID, reason: HTTP2ErrorCode?) {
+        func streamClosed(event: StreamClosedEvent) {
             switch self {
             case .legacy(let demultiplexer):
-                demultiplexer.streamClosed(id, reason: reason)
+                demultiplexer.streamClosed(event: event)
             case .new:
                 fatalError("Not yet implemented.")
             }
         }
 
-        func streamWindowUpdated(_ id: HTTP2StreamID, inboundWindowSize: Int?, outboundWindowSize: Int?) {
+        func streamWindowUpdated(event: NIOHTTP2WindowUpdatedEvent) {
             switch self {
             case .legacy(let demultiplexer):
-                demultiplexer.streamWindowUpdated(id, inboundWindowSize: inboundWindowSize, outboundWindowSize: outboundWindowSize)
+                demultiplexer.streamWindowUpdated(event: event)
             case .new:
                 fatalError("Not yet implemented.")
             }
         }
 
-        func initialStreamWindowChanged(by delta: Int) {
+        func initialStreamWindowChanged(event: NIOHTTP2BulkStreamWindowChangeEvent) {
             switch self {
             case .legacy(let demultiplexer):
-                demultiplexer.initialStreamWindowChanged(by: delta)
+                demultiplexer.initialStreamWindowChanged(event: event)
             case .new:
                 fatalError("Not yet implemented.")
             }
@@ -115,19 +115,19 @@ extension LegacyHTTP2ConnectionDemultiplexer: NIOHTTP2ConnectionDemultiplexer {
         self.context.fireErrorCaught(NIOHTTP2Errors.streamError(streamID: streamID, baseError: error))
     }
 
-    func streamCreated(_ id: HTTP2StreamID, localInitialWindowSize: UInt32?, remoteInitialWindowSize: UInt32?) {
-        self.context.fireUserInboundEventTriggered(NIOHTTP2StreamCreatedEvent(streamID: id, localInitialWindowSize: localInitialWindowSize, remoteInitialWindowSize: remoteInitialWindowSize))
+    func streamCreated(event: NIOHTTP2StreamCreatedEvent) {
+        self.context.fireUserInboundEventTriggered(event)
     }
 
-    func streamClosed(_ id: HTTP2StreamID, reason: HTTP2ErrorCode?) {
-        self.context.fireUserInboundEventTriggered(StreamClosedEvent(streamID: id, reason: reason))
+    func streamClosed(event: StreamClosedEvent) {
+        self.context.fireUserInboundEventTriggered(event)
     }
 
-    func streamWindowUpdated(_ id: HTTP2StreamID, inboundWindowSize: Int?, outboundWindowSize: Int?) {
-        self.context.fireUserInboundEventTriggered(NIOHTTP2WindowUpdatedEvent(streamID: id, inboundWindowSize: inboundWindowSize, outboundWindowSize: outboundWindowSize))
+    func streamWindowUpdated(event: NIOHTTP2WindowUpdatedEvent) {
+        self.context.fireUserInboundEventTriggered(event)
     }
 
-    func initialStreamWindowChanged(by delta: Int) {
-        self.context.fireUserInboundEventTriggered(NIOHTTP2BulkStreamWindowChangeEvent(delta: delta))
+    func initialStreamWindowChanged(event: NIOHTTP2BulkStreamWindowChangeEvent) {
+        self.context.fireUserInboundEventTriggered(event)
     }
 }

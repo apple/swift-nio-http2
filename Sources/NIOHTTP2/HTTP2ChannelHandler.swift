@@ -514,13 +514,13 @@ extension NIOHTTP2Handler.ConnectionDemultiplexer {
     func process(event: InboundEventBuffer.BufferedHTTP2UserEvent) {
         switch event {
         case .streamCreated(let event):
-            self.streamCreated(event.streamID, localInitialWindowSize: event.localInitialWindowSize, remoteInitialWindowSize: event.remoteInitialWindowSize)
+            self.streamCreated(event: event)
         case .initialStreamWindowChanged(let event):
-            self.initialStreamWindowChanged(by: event.delta)
+            self.initialStreamWindowChanged(event: event)
         case .streamWindowUpdated(let event):
-            self.streamWindowUpdated(event.streamID, inboundWindowSize: event.inboundWindowSize, outboundWindowSize: event.outboundWindowSize)
+            self.streamWindowUpdated(event: event)
         case .streamClosed(let event):
-            self.streamClosed(event.streamID, reason: event.reason)
+            self.streamClosed(event: event)
         }
     }
 }
@@ -694,8 +694,8 @@ extension NIOHTTP2Handler {
             self.outboundBuffer.streamCreated(streamCreatedData.streamID, initialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init) ?? 0)
             self.inboundEventBuffer.pendingUserEvent(
                 NIOHTTP2StreamCreatedEvent(streamID: streamCreatedData.streamID,
-                                                          localInitialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init),
-                                                          remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init)))
+                                           localInitialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init),
+                                           remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init)))
         case .bulkStreamClosure(let streamClosureData):
             for droppedStream in streamClosureData.closedStreams {
                 self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
