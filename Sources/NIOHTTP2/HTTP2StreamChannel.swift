@@ -803,7 +803,7 @@ internal extension HTTP2StreamChannel {
             self.errorEncountered(error: error)
             return
         }
-        self.multiplexer.writeStream(frame, promise: promise)
+        self.multiplexer.writeFrame(frame, promise: promise)
     }
 
     /// Called when a stream closure is received from the network.

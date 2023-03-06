@@ -18,7 +18,7 @@ import NIOCore
 internal protocol HTTP2OutboundStreamMultiplexer {
   /// Write the frame into the HTTP/2 connection. Stream ID is included in the
   /// frame.
-  func writeStream(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?)
+  func writeFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?)
 
   /// Flush the stream with the given ID.
   func flushStream(_ id: HTTP2StreamID)
@@ -45,10 +45,10 @@ extension HTTP2StreamChannel {
         case legacy(LegacyOutboundStreamMultiplexer)
         case new
 
-        func writeStream(_ frame: HTTP2Frame, promise: NIOCore.EventLoopPromise<Void>?) {
+        func writeFrame(_ frame: HTTP2Frame, promise: NIOCore.EventLoopPromise<Void>?) {
             switch self {
             case .legacy(let multiplexer):
-                multiplexer.writeStream(frame, promise: promise)
+                multiplexer.writeFrame(frame, promise: promise)
             case .new:
                 fatalError("Not yet implemented.")
             }
@@ -100,7 +100,7 @@ internal struct LegacyOutboundStreamMultiplexer {
 }
 
 extension LegacyOutboundStreamMultiplexer: HTTP2OutboundStreamMultiplexer {
-    func writeStream(_ frame: HTTP2Frame, promise: NIOCore.EventLoopPromise<Void>?) {
+    func writeFrame(_ frame: HTTP2Frame, promise: NIOCore.EventLoopPromise<Void>?) {
         self.multiplexer.childChannelWrite(frame, promise: promise)
     }
 
