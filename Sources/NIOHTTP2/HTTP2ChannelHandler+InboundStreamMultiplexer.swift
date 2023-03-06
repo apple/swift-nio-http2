@@ -15,7 +15,7 @@
 import NIOCore
 
 /// Demultiplexes inbound HTTP/2 frames on a connection into HTTP/2 streams.
-internal protocol NIOHTTP2ConnectionDemultiplexer {
+internal protocol HTTP2InboundStreamMultiplexer {
     /// An HTTP/2 frame has been received from the remote peer.
     func receivedFrame(_ frame: HTTP2Frame)
 
@@ -39,8 +39,8 @@ extension NIOHTTP2Handler {
     /// Abstracts over the integrated stream multiplexing (new) and the chained channel handler (legacy) multiplexing approaches.
     ///
     /// We use an enum for this purpose since we can't use a generic (for API compatibility reasons) and it allows us to avoid the cost of using an existential.
-    internal enum ConnectionDemultiplexer: NIOHTTP2ConnectionDemultiplexer {
-        case legacy(LegacyHTTP2ConnectionDemultiplexer)
+    internal enum InboundStreamMultiplexer: HTTP2InboundStreamMultiplexer {
+        case legacy(LegacyInboundStreamMultiplexer)
         case new
 
         func receivedFrame(_ frame: HTTP2Frame) {
@@ -99,14 +99,14 @@ extension NIOHTTP2Handler {
     }
 }
 
-/// Provides a 'demultiplexer' interface for legacy compatibility.
+/// Provides an inbound stream multiplexer interface for legacy compatibility.
 ///
-/// This doesn't actually do any demultiplexing but communicates with the `HTTP2StreamChannel` which does - mostly via `UserInboundEvent`s.
-internal struct LegacyHTTP2ConnectionDemultiplexer {
+/// This doesn't actually do any demultiplexing of inbound streams but communicates with the `HTTP2StreamChannel` which does - mostly via `UserInboundEvent`s.
+internal struct LegacyInboundStreamMultiplexer {
     let context: ChannelHandlerContext
 }
 
-extension LegacyHTTP2ConnectionDemultiplexer: NIOHTTP2ConnectionDemultiplexer {
+extension LegacyInboundStreamMultiplexer: HTTP2InboundStreamMultiplexer {
     func receivedFrame(_ frame: HTTP2Frame) {
         self.context.fireChannelRead(NIOAny(frame))
     }
