@@ -15,7 +15,7 @@ import NIOCore
 
 /// Multiplexes outbound HTTP/2 frames from an HTTP/2 stream into an HTTP/2
 /// connection.
-internal protocol HTTP2StreamChannelMultiplexer {
+internal protocol HTTP2OutboundStreamMultiplexer {
   /// Write the frame into the HTTP/2 connection. Stream ID is included in the
   /// frame.
   func writeStream(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?)
@@ -41,8 +41,8 @@ extension HTTP2StreamChannel {
     /// Abstracts over the integrated stream multiplexing (new) and the chained channel handler (legacy) multiplexing approaches.
     ///
     /// We use an enum for this purpose since we can't use a generic (for API compatibility reasons) and it allows us to avoid the cost of using an existential.
-    internal enum StreamMultiplexer: HTTP2StreamChannelMultiplexer {
-        case legacy(LegacyMultiplexer)
+    internal enum OutboundStreamMultiplexer: HTTP2OutboundStreamMultiplexer {
+        case legacy(LegacyOutboundStreamMultiplexer)
         case new
 
         func writeStream(_ frame: HTTP2Frame, promise: NIOCore.EventLoopPromise<Void>?) {
@@ -95,11 +95,11 @@ extension HTTP2StreamChannel {
 /// Provides a 'multiplexer' interface for legacy compatibility.
 ///
 /// This doesn't actually do any multiplexing but delegates it to the `HTTP2StreamMultiplexer` which does.
-internal struct LegacyMultiplexer {
+internal struct LegacyOutboundStreamMultiplexer {
     let multiplexer: HTTP2StreamMultiplexer
 }
 
-extension LegacyMultiplexer: HTTP2StreamChannelMultiplexer {
+extension LegacyOutboundStreamMultiplexer: HTTP2OutboundStreamMultiplexer {
     func writeStream(_ frame: HTTP2Frame, promise: NIOCore.EventLoopPromise<Void>?) {
         self.multiplexer.childChannelWrite(frame, promise: promise)
     }

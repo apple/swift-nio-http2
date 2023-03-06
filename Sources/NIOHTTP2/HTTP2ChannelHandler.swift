@@ -99,8 +99,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// trigger them.
     private let tolerateImpossibleStateTransitionsInDebugMode: Bool
 
-    /// The delegate for demultiplexing streams. Set on `handlerAdded` and `nil`-ed out on `handlerRemoved`.
-    private var demultiplexer: ConnectionDemultiplexer?
+    /// The delegate for (de)multiplexing inbound streams. Set on `handlerAdded` and `nil`-ed out on `handlerRemoved`.
+    private var inboundStreamMultiplexer: InboundStreamMultiplexer?
 
     /// The mode for this parser to operate in: client or server.
     public enum ParserMode {
@@ -198,7 +198,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.frameDecoder = HTTP2FrameDecoder(allocator: context.channel.allocator, expectClientMagic: self.mode == .server)
         self.frameEncoder = HTTP2FrameEncoder(allocator: context.channel.allocator)
         self.writeBuffer = context.channel.allocator.buffer(capacity: 128)
-        self.demultiplexer = .legacy(LegacyHTTP2ConnectionDemultiplexer(context: context))
+        self.inboundStreamMultiplexer = .legacy(LegacyInboundStreamMultiplexer(context: context))
 
         if context.channel.isActive {
             // We jump immediately to activated here, as channelActive has probably already passed.
@@ -213,7 +213,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public func handlerRemoved(context: ChannelHandlerContext) {
         // Any frames we're buffering need to be dropped.
         self.outboundBuffer.invalidateBuffer()
-        self.demultiplexer = nil
+        self.inboundStreamMultiplexer = nil
     }
 
     public func channelActive(context: ChannelHandlerContext) {
@@ -448,7 +448,7 @@ extension NIOHTTP2Handler {
         switch result.result {
         case .succeed:
             // Frame is good, we can pass it on.
-            self.demultiplexer?.receivedFrame(frame)
+            self.inboundStreamMultiplexer?.receivedFrame(frame)
             returnValue = .continue
         case .ignoreFrame:
             // Frame is good but no action needs to be taken.
@@ -496,7 +496,7 @@ extension NIOHTTP2Handler {
     /// Emit any pending user events.
     private func processPendingUserEvents(context: ChannelHandlerContext) {
         for event in self.inboundEventBuffer {
-            self.demultiplexer?.process(event: event)
+            self.inboundStreamMultiplexer?.process(event: event)
         }
     }
 
@@ -510,7 +510,7 @@ extension NIOHTTP2Handler {
     }
 }
 
-extension NIOHTTP2Handler.ConnectionDemultiplexer {
+extension NIOHTTP2Handler.InboundStreamMultiplexer {
     func process(event: InboundEventBuffer.BufferedHTTP2UserEvent) {
         switch event {
         case .streamCreated(let event):
@@ -670,7 +670,7 @@ extension NIOHTTP2Handler {
     /// A stream error was hit while attempting to send a frame.
     private func outboundStreamErrorTriggered(context: ChannelHandlerContext, promise: EventLoopPromise<Void>?, streamID: HTTP2StreamID, underlyingError: Error) {
         promise?.fail(underlyingError)
-        self.demultiplexer?.streamError(streamID: streamID, error: underlyingError)
+        self.inboundStreamMultiplexer?.streamError(streamID: streamID, error: underlyingError)
     }
 }
 

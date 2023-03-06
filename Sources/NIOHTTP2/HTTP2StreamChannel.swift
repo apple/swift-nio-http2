@@ -164,7 +164,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.parent = parent
         self.eventLoop = parent.eventLoop
         self.streamID = streamID
-        self.multiplexer = .legacy(LegacyMultiplexer(multiplexer: multiplexer))
+        self.multiplexer = .legacy(LegacyOutboundStreamMultiplexer(multiplexer: multiplexer))
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
         self._isActiveAtomic = .init(false)
         self._isWritable = .init(true)
@@ -329,7 +329,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     private let closePromise: EventLoopPromise<()>
 
-    private let multiplexer: StreamMultiplexer
+    private let multiplexer: OutboundStreamMultiplexer
 
     public var closeFuture: EventLoopFuture<Void> {
         return self.closePromise.futureResult
