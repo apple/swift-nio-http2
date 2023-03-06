@@ -24,17 +24,39 @@ import NIOCore
 /// have always delivered all pending user events before we deliver a frame.
 /// Deliberately not threadsafe or `Sendable`.
 class InboundEventBuffer {
-    fileprivate var buffer: CircularBuffer<Any> = CircularBuffer(initialCapacity: 8)
+    fileprivate var buffer: CircularBuffer<BufferedHTTP2UserEvent> = CircularBuffer(initialCapacity: 8)
 
-    func pendingUserEvent(_ event: Any) {
-        self.buffer.append(event)
+    func pendingUserEvent(_ event: NIOHTTP2StreamCreatedEvent) {
+        self.buffer.append(.streamCreated(event))
+    }
+
+    func pendingUserEvent(_ event: StreamClosedEvent) {
+        self.buffer.append(.streamClosed(event))
+    }
+
+    func pendingUserEvent(_ event: NIOHTTP2WindowUpdatedEvent) {
+        self.buffer.append(.streamWindowUpdated(event))
+    }
+
+    func pendingUserEvent(_ event: NIOHTTP2BulkStreamWindowChangeEvent) {
+        self.buffer.append(.initialStreamWindowChanged(event))
+    }
+
+    /// Wraps user event types.
+    ///
+    /// This allows us to buffer and pass around the events without making use of an existential.
+    enum BufferedHTTP2UserEvent {
+        case streamCreated(NIOHTTP2StreamCreatedEvent)
+        case streamClosed(StreamClosedEvent)
+        case streamWindowUpdated(NIOHTTP2WindowUpdatedEvent)
+        case initialStreamWindowChanged(NIOHTTP2BulkStreamWindowChangeEvent)
     }
 }
 
 
 // MARK:- Sequence conformance
 extension InboundEventBuffer: Sequence {
-    typealias Element = Any
+    typealias Element = BufferedHTTP2UserEvent
 
     func makeIterator() -> InboundEventBufferIterator {
         return InboundEventBufferIterator(self)
