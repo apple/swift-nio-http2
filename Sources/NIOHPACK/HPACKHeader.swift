@@ -425,6 +425,11 @@ extension HPACKHeaders {
     public mutating func reserveCapacity(_ minimumCapacity: Int) {
         self.headers.reserveCapacity(minimumCapacity)
     }
+
+    @inlinable
+    public mutating func removeAll(keepingCapacity: Bool = false) {
+        self.headers.removeAll(keepingCapacity: keepingCapacity)
+    }
 }
 
 extension HPACKHeaders: RandomAccessCollection {
