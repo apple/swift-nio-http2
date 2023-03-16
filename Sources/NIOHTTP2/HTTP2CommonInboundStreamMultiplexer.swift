@@ -14,9 +14,11 @@
 
 import NIOCore
 
-/// Represents the common multiplexing machinery used by both legacy ``HTTP2StreamMultiplexer`` and new ``InlineStreamMultiplexer``inbound stream multiplexing.
+/// Represents the common multiplexing machinery used by both legacy ``HTTP2StreamMultiplexer`` and new ``InlineStreamMultiplexer`` inbound stream multiplexing.
 internal class HTTP2CommonInboundStreamMultiplexer {
     private let channel: Channel
+
+    // NOTE: All state below should only be modified from the `EventLoop` of the supplied `Channel`
 
     // Streams which have a stream ID.
     private var streams: [HTTP2StreamID: MultiplexerAbstractChannel] = [:]
@@ -37,7 +39,7 @@ internal class HTTP2CommonInboundStreamMultiplexer {
     private var flushPending = false
 
     init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer, targetWindowSize: Int, streamChannelOutboundBytesHighWatermark: Int, streamChannelOutboundBytesLowWatermark: Int) {
-         self.channel = channel
+        self.channel = channel
         self.inboundStreamStateInitializer = inboundStreamStateInitializer
         self.targetWindowSize = targetWindowSize
         self.connectionFlowControlManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
@@ -53,11 +55,12 @@ internal class HTTP2CommonInboundStreamMultiplexer {
     }
 }
 
-
 // MARK:- inbound multiplexer functions
 // note this is intentionally not bound to `HTTP2InboundStreamMultiplexer` to allow for freedom in modifying the shared driver function signatures
 extension HTTP2CommonInboundStreamMultiplexer {
     func receivedFrame(_ frame: HTTP2Frame, context: ChannelHandlerContext, multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer) {
+        self.channel.eventLoop.preconditionInEventLoop()
+
         self.isReading = true
         let streamID = frame.streamID
         if streamID == .rootStream {
@@ -105,35 +108,32 @@ extension HTTP2CommonInboundStreamMultiplexer {
     }
 
     func streamError(context: ChannelHandlerContext, _ streamError: NIOHTTP2Errors.StreamError) {
-        if let channel = self.streams[streamError.streamID] {
-            channel.receiveStreamError(streamError)
-        }
-
+        self.channel.eventLoop.preconditionInEventLoop()
+        self.streams[streamError.streamID]?.receiveStreamError(streamError)
         context.fireErrorCaught(streamError.baseError)
     }
 
     func streamCreated(event: NIOHTTP2StreamCreatedEvent) {
-        if let channel = self.streams[event.streamID] {
-            channel.networkActivationReceived()
-        }
+        self.channel.eventLoop.preconditionInEventLoop()
+        self.streams[event.streamID]?.networkActivationReceived()
     }
 
     func streamClosed(event: StreamClosedEvent) {
-        if let channel = self.streams[event.streamID] {
-            channel.receiveStreamClosed(event.reason)
-        }
+        self.channel.eventLoop.preconditionInEventLoop()
+        self.streams[event.streamID]?.receiveStreamClosed(event.reason)
     }
 
     func newConnectionWindowSize(_ newSize: Int) -> Int? {
-        self.connectionFlowControlManager.newWindowSize(newSize)
+        self.channel.eventLoop.preconditionInEventLoop()
+        return self.connectionFlowControlManager.newWindowSize(newSize)
     }
 
     func childStreamWindowUpdated(event: NIOHTTP2WindowUpdatedEvent) {
-        if event.streamID == .rootStream {
-            //TODO: precondition or no-op?
-            preconditionFailure("not to be called on the root stream")
-        } else if let channel = self.streams[event.streamID], let windowSize = event.inboundWindowSize {
-            channel.receiveWindowUpdatedEvent(windowSize)
+        self.channel.eventLoop.preconditionInEventLoop()
+        precondition(event.streamID != .rootStream, "not to be called on the root stream")
+
+        if let windowSize = event.inboundWindowSize {
+            self.streams[event.streamID]?.receiveWindowUpdatedEvent(windowSize)
         }
     }
 
@@ -146,7 +146,6 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
     }
 }
-
 
 extension HTTP2CommonInboundStreamMultiplexer {
     internal func propagateChannelActive(context: ChannelHandlerContext) {
@@ -182,14 +181,41 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
     }
 
-    internal func propagateReadComplete() {
+    enum ReadFlushNeeded {
+        case flushNow
+        case noop
+    }
+
+    /// returns `.flushPending` if there was a flush pending which may now be performed
+    internal func propagateReadComplete() -> ReadFlushNeeded {
         // Call channelReadComplete on the children until this has been propagated enough.
         while let channel = self.didReadChannels.removeFirst() {
             channel.receiveParentChannelReadComplete()
         }
+
+        // stash the state before clearing
+        let readFlushNeeded: ReadFlushNeeded = self.flushPending ? .flushNow : .noop
+
+        self.isReading = false
+        self.flushPending = false
+
+        return readFlushNeeded
     }
 
-    //TODO: rename / combine this?
+    enum ReadFlushCoalescingState {
+        case waitForReadsToComplete
+        case proceed
+    }
+
+    /// Communicates the intention to flush
+    internal func flushDesired() -> ReadFlushCoalescingState {
+        if self.isReading {
+            self.flushPending = true
+            return .waitForReadsToComplete
+        }
+        return .proceed
+    }
+
     internal func clearDidReadChannels() {
         self.didReadChannels.removeAll()
     }
@@ -205,7 +231,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
         self.pendingStreams.removeValue(forKey: channelID)
     }
 
-    /// Requests a `HTTP2StreamID` for the given `Channel`.
+    /// Requests a ``HTTP2StreamID`` for the given `Channel`.
     ///
     /// - Precondition: The `channel` must not already have a `streamID`.
     internal func requestStreamID(forChannel channel: Channel) -> HTTP2StreamID {
@@ -255,7 +281,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
     }
 
     @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
-    public func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
+    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
         self.channel.eventLoop.execute {
             let streamID = self.nextStreamID()
             let channel = MultiplexerAbstractChannel(

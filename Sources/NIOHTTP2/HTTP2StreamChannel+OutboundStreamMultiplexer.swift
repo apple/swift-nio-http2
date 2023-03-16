@@ -43,50 +43,50 @@ extension HTTP2StreamChannel {
     /// We use an enum for this purpose since we can't use a generic (for API compatibility reasons) and it allows us to avoid the cost of using an existential.
     internal enum OutboundStreamMultiplexer: HTTP2OutboundStreamMultiplexer {
         case legacy(LegacyOutboundStreamMultiplexer)
-        case new
+        case inline(InlineStreamMultiplexer)
 
         func writeFrame(_ frame: HTTP2Frame, promise: NIOCore.EventLoopPromise<Void>?) {
             switch self {
-            case .legacy(let multiplexer):
-                multiplexer.writeFrame(frame, promise: promise)
-            case .new:
-                fatalError("Not yet implemented.")
+            case .legacy(let legacyOutboundMultiplexer):
+                legacyOutboundMultiplexer.writeFrame(frame, promise: promise)
+            case .inline(let inlineStreamMultiplexer):
+                inlineStreamMultiplexer.writeFrame(frame, promise: promise)
             }
         }
 
         func flushStream(_ id: HTTP2StreamID) {
             switch self {
-            case .legacy(let multiplexer):
-                multiplexer.flushStream(id)
-            case .new:
-                fatalError("Not yet implemented.")
+            case .legacy(let legacyOutboundMultiplexer):
+                legacyOutboundMultiplexer.flushStream(id)
+            case .inline(let inlineStreamMultiplexer):
+                inlineStreamMultiplexer.flushStream(id)
             }
         }
 
         func requestStreamID(forChannel: NIOCore.Channel) -> HTTP2StreamID {
             switch self {
-            case .legacy(let multiplexer):
-                return multiplexer.requestStreamID(forChannel: forChannel)
-            case .new:
-                fatalError("Not yet implemented")
+            case .legacy(let legacyOutboundMultiplexer):
+                return legacyOutboundMultiplexer.requestStreamID(forChannel: forChannel)
+            case .inline(let inlineStreamMultiplexer):
+                return inlineStreamMultiplexer.requestStreamID(forChannel: forChannel)
             }
         }
 
         func streamClosed(channelID: ObjectIdentifier) {
             switch self {
-            case .legacy(let multiplexer):
-                multiplexer.streamClosed(channelID: channelID)
-            case .new:
-                fatalError("Not yet implemented.")
+            case .legacy(let legacyOutboundMultiplexer):
+                legacyOutboundMultiplexer.streamClosed(channelID: channelID)
+            case .inline(let inlineStreamMultiplexer):
+                inlineStreamMultiplexer.streamClosed(channelID: channelID)
             }
         }
 
         func streamClosed(id: HTTP2StreamID) {
             switch self {
-            case .legacy(let multiplexer):
-                multiplexer.streamClosed(id: id)
-            case .new:
-                fatalError("Not yet implemented.")
+            case .legacy(let legacyOutboundMultiplexer):
+                legacyOutboundMultiplexer.streamClosed(id: id)
+            case .inline(let inlineStreamMultiplexer):
+                inlineStreamMultiplexer.streamClosed(id: id)
             }
         }
     }

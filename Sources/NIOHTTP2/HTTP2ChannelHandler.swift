@@ -99,8 +99,58 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// trigger them.
     private let tolerateImpossibleStateTransitionsInDebugMode: Bool
 
-    /// The delegate for (de)multiplexing inbound streams. Set on `handlerAdded` and `nil`-ed out on `handlerRemoved`.
-    private var inboundStreamMultiplexer: InboundStreamMultiplexer?
+    /// The delegate for (de)multiplexing inbound streams.
+    private var inboundStreamMultiplexerState: InboundStreamMultiplexerState
+    internal var inboundStreamMultiplexer: InboundStreamMultiplexer? {
+        return self.inboundStreamMultiplexerState.multiplexer
+    }
+
+    /// Holds and tracks the state of the ``InboundStreamMultiplexer``.
+    ///
+    /// It has three states to allow us to stash the config required for the 'inline' case without cluttering the ``NIOHTTP2Handler``
+    /// - For legacy multiplexing this begins as`.uninitializedLegacy`, becomes `.initialized` on `handlerAdded` and moves to to `.deinitialized` on `handlerRemoved`.
+    /// - For inline multiplexing the behavior is the same with the modification that it begins as `.uninitializedInline` state when the ``NIOHTTP2Handler`` is initialized to hold the config until `handlerAdded`.
+    private enum InboundStreamMultiplexerState {
+        case uninitializedLegacy
+        case uninitializedInline(StreamConfiguration, StreamInitializer)
+        case initialized(InboundStreamMultiplexer)
+        case deinitialized
+
+        internal var multiplexer: InboundStreamMultiplexer? {
+            switch self {
+            case .initialized(let inboundStreamMultiplexer):
+                return inboundStreamMultiplexer
+            case .uninitializedLegacy, .uninitializedInline, .deinitialized:
+                return nil
+            }
+        }
+
+        mutating func initialize(context: ChannelHandlerContext, http2Handler: NIOHTTP2Handler, mode: NIOHTTP2Handler.ParserMode) {
+            switch self {
+            case .deinitialized:
+                preconditionFailure("This multiplexer has been de-initialized without being reconfigured with a new context.")
+            case .uninitializedLegacy:
+                self = .initialized(.legacy(LegacyInboundStreamMultiplexer(context: context)))
+
+            case .uninitializedInline(let streamConfiguration, let inboundStreamInitializer):
+                self = .initialized(.inline(
+                    InlineStreamMultiplexer(
+                        context: context,
+                        outboundView: .init(http2Handler: http2Handler),
+                        mode: mode,
+                        inboundStreamStateInitializer: .excludesStreamID(inboundStreamInitializer),
+                        targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
+                        streamChannelOutboundBytesHighWatermark: streamConfiguration.outboundBufferSizeHighWatermark,
+                        streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
+                        streamDelegate: nil
+                    )
+                ))
+
+            case .initialized:
+                break //no-op
+            }
+        }
+    }
 
     /// The mode for this parser to operate in: client or server.
     public enum ParserMode {
@@ -112,7 +162,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 
     /// Whether a given operation has validation enabled or not.
-    public enum ValidationState {
+    public enum ValidationState: Sendable {
         /// Validation is enabled
         case enabled
 
@@ -163,6 +213,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
         self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames)
         self.tolerateImpossibleStateTransitionsInDebugMode = false
+        self.inboundStreamMultiplexerState = .uninitializedLegacy
     }
 
     /// Constructs a ``NIOHTTP2Handler``.
@@ -192,13 +243,14 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
         self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames)
         self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
+        self.inboundStreamMultiplexerState = .uninitializedLegacy
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
         self.frameDecoder = HTTP2FrameDecoder(allocator: context.channel.allocator, expectClientMagic: self.mode == .server)
         self.frameEncoder = HTTP2FrameEncoder(allocator: context.channel.allocator)
         self.writeBuffer = context.channel.allocator.buffer(capacity: 128)
-        self.inboundStreamMultiplexer = .legacy(LegacyInboundStreamMultiplexer(context: context))
+        self.inboundStreamMultiplexerState.initialize(context: context, http2Handler: self, mode: self.mode)
 
         if context.channel.isActive {
             // We jump immediately to activated here, as channelActive has probably already passed.
@@ -213,7 +265,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public func handlerRemoved(context: ChannelHandlerContext) {
         // Any frames we're buffering need to be dropped.
         self.outboundBuffer.invalidateBuffer()
-        self.inboundStreamMultiplexer = nil
+        self.inboundStreamMultiplexerState = .deinitialized
     }
 
     public func channelActive(context: ChannelHandlerContext) {
@@ -251,6 +303,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         }
 
         self.writeAndFlushPreamble(context: context)
+        self.inboundStreamMultiplexer?.channelActiveReceived()
 
         // Ok, we progressed. Now we check our state again.
         switch self.activationState {
@@ -282,6 +335,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             // This is the easy one. We were active, now we aren't.
             self.activationState = .inactive
             self.channelClosed = true
+            self.inboundStreamMultiplexer?.channelInactiveReceived()
             context.fireChannelInactive()
         case .activating:
             // Huh, we got channelInactive during activation. We need to maintain
@@ -295,7 +349,6 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             // This is weird. This can only happen if we see channelInactive twice, which is probably an error.
             self.impossibleActivationStateTransition(state: self.activationState, activating: false, context: context)
         }
-
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -313,6 +366,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public func channelReadComplete(context: ChannelHandlerContext) {
         self.outboundBuffer.flushReceived()
         self.unbufferAndFlushAutomaticFrames(context: context)
+
+        self.inboundStreamMultiplexer?.channelReadCompleteReceived()
         context.fireChannelReadComplete()
     }
 
@@ -333,6 +388,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         if self.channelWritable {
             self.unbufferAndFlushAutomaticFrames(context: context)
         }
+
+        self.inboundStreamMultiplexer?.channelWritabilityChangedReceived()
         context.fireChannelWritabilityChanged()
     }
 }
@@ -841,6 +898,7 @@ NIOHTTP2Handler(
     }
 }
 
+
 extension NIOHTTP2Handler {
     /// Tracks the state of activation of the handler.
     enum ActivationState {
@@ -867,5 +925,78 @@ extension NIOHTTP2Handler {
         assert(self.tolerateImpossibleStateTransitionsInDebugMode, "Unexpected channelActive in state \(state)")
         context.fireErrorCaught(NIOHTTP2Errors.ActivationError(state: state, activating: activating))
         context.close(promise: nil)
+    }
+}
+
+
+extension NIOHTTP2Handler {
+    /// Exposes restricted API for use by the multiplexer
+    internal struct OutboundView {
+        private let http2Handler: NIOHTTP2Handler
+
+        fileprivate init(http2Handler: NIOHTTP2Handler) {
+            self.http2Handler = http2Handler
+        }
+
+        func flush(context: ChannelHandlerContext) {
+            self.http2Handler.flush(context: context)
+        }
+
+        func write(context: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+            self.http2Handler.writeBufferedFrame(context: context, frame: frame, promise: promise)
+        }
+    }
+}
+
+
+extension NIOHTTP2Handler {
+#if swift(>=5.7)
+    /// The type of all `inboundStreamInitializer` callbacks.
+    public typealias StreamInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
+#else
+    /// The type of all `inboundStreamInitializer` callbacks.
+    public typealias StreamInitializer = (Channel) -> EventLoopFuture<Void>
+#endif
+
+    /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer. (i.e. using
+    /// ``StreamMultiplexer``.)
+    ///
+    /// Frames on the root stream will continue to be passed down the main channel, whereas those intended for other streams will be forwarded to the appropriate child channel.
+    ///
+    /// The optional `streamDelegate` will be notified of stream creation and
+    /// close events.
+    public convenience init(
+        mode: ParserMode,
+        connectionConfiguration: ConnectionConfiguration = .init(),
+        streamConfiguration: StreamConfiguration = .init(),
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        inboundStreamInitializer: @escaping StreamInitializer
+    ) {
+        self.init(mode: mode,
+                  initialSettings: connectionConfiguration.initialSettings,
+                  headerBlockValidation: connectionConfiguration.headerBlockValidation,
+                  contentLengthValidation: connectionConfiguration.contentLengthValidation,
+                  maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
+                  maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
+        )
+        self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer)
+    }
+
+    /// Connection-level configuration.
+    public struct ConnectionConfiguration: Hashable, Sendable {
+        public var initialSettings: HTTP2Settings = nioDefaultSettings
+        public var headerBlockValidation: ValidationState = .enabled
+        public var contentLengthValidation: ValidationState = .enabled
+        public var maximumSequentialEmptyDataFrames: Int = 1
+        public var maximumBufferedControlFrames: Int = 10000
+        public init() {}
+    }
+
+    /// Stream-level configuration.
+    public struct StreamConfiguration: Hashable, Sendable {
+        public var targetWindowSize: Int = 65535
+        public var outboundBufferSizeHighWatermark: Int = 8196
+        public var outboundBufferSizeLowWatermark: Int = 4092
+        public init() {}
     }
 }

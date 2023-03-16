@@ -176,6 +176,21 @@ extension EmbeddedChannel {
 
         return receivedFrames
     }
+
+    /// Retrieve all sent frames.
+    func decodedSentFrames(file: StaticString = #filePath, line: UInt = #line) throws -> [HTTP2Frame] {
+        var receivedFrames: [HTTP2Frame] = Array()
+
+        var frameDecoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        while let buffer = try assertNoThrowWithValue(self.readOutbound(as: ByteBuffer.self), file: (file), line: line) {
+            frameDecoder.append(bytes: buffer)
+            if let (frame, _) = try frameDecoder.nextFrame() {
+                receivedFrames.append(frame)
+            }
+        }
+
+        return receivedFrames
+    }
 }
 
 extension HTTP2Frame {
