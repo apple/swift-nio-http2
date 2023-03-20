@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2019-2021 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2019-2023 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -21,20 +21,7 @@ import NIOHTTP1
 import NIOHTTP2
 import NIOTLS
 
-/// A simple channel handler that can be inserted in a pipeline to ensure that it never sees a write.
-///
-/// Fails if it receives a write call.
-class FailOnWriteHandler: ChannelOutboundHandler {
-    typealias OutboundIn = Never
-    typealias OutboundOut = Never
-
-    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        XCTFail("Write received")
-        context.write(data, promise: promise)
-    }
-}
-
-class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
+class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
     var serverChannel: EmbeddedChannel!
 
@@ -50,8 +37,8 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
 
     func testBasicPipelineCommunicates() throws {
         let serverRecorder = InboundFramePayloadRecorder()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
+        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 
@@ -89,8 +76,8 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
     
     func testBasicPipelineCommunicatesWithTargetWindowSize() throws {
         let serverRecorder = InboundFramePayloadRecorder()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535, inboundStreamInitializer: nil).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535) { channel in
+        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 
@@ -128,8 +115,8 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
 
     func testPipelineRespectsPositionRequest() throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(FailOnWriteHandler()).wait())
-        XCTAssertNoThrow(try self.clientChannel.configureHTTP2Pipeline(mode: .client, position: .first, inboundStreamInitializer: nil).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, inboundStreamInitializer: nil).wait())
+        XCTAssertNoThrow(try self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), position: .first, inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -145,8 +132,8 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
 
     func testPipelineRespectsPositionRequestWithTargetWindowSize() throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(FailOnWriteHandler()).wait())
-        XCTAssertNoThrow(try self.clientChannel.configureHTTP2Pipeline(mode: .client, position: .first, targetWindowSize: 65535, inboundStreamInitializer: nil).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535, inboundStreamInitializer: nil).wait())
+        XCTAssertNoThrow(try self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), position: .first, inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -169,7 +156,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            self.serverChannel.configureHTTP2Pipeline(mode: .server, inboundStreamInitializer: nil)
+            self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} )
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -202,7 +189,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535, inboundStreamInitializer: nil)
+            self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} )
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -242,8 +229,8 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
             }
         }
 
-        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, inboundStreamInitializer: nil).wait())
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -285,8 +272,8 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
             }
         }
 
-        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535, inboundStreamInitializer: nil).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535, inboundStreamInitializer: nil).wait())
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -333,9 +320,14 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         }
 
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait())
+        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
-        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
+        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.pipeline.addHandler(ErrorHandler())
+        } inboundStreamInitializer: { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 
@@ -383,7 +375,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
-    
+
     func testNegotiatedHTTP2BasicPipelineCommunicatesWithTargetWindowSize() throws {
         final class ErrorHandler: ChannelInboundHandler {
             typealias InboundIn = Never
@@ -394,9 +386,14 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         }
 
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535, inboundStreamInitializer: nil).wait())
+        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
-        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
+        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.pipeline.addHandler(ErrorHandler())
+        } inboundStreamInitializer: { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 
@@ -456,7 +453,13 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHTTPClientHandlers().wait())
         
-        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
+
+        XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.pipeline.addHandler(ErrorHandler())
+        } inboundStreamInitializer: { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 

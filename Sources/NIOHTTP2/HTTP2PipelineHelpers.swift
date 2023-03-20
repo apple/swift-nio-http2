@@ -162,6 +162,38 @@ extension Channel {
         return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
     }
 
+    /// Configures a `ChannelPipeline` to speak HTTP/2.
+    ///
+    /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
+    /// Instead, this simply adds the handler required to speak HTTP/2 after negotiation has completed, or when agreed by prior knowledge.
+    /// Whenever possible use this function to setup a HTTP/2 server pipeline, as it allows that pipeline to evolve without breaking your code.
+    ///
+    /// - parameters:
+    ///     - mode: The mode this pipeline will operate in, server or client.
+    ///     - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///     - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
+    ///     - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///     - position: The position in the pipeline into which to insert this handler.
+    ///     - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    /// - returns: An `EventLoopFuture` containing the `StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
+                                       connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
+                                       streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
+                                       streamDelegate: NIOHTTP2StreamDelegate? = nil,
+                                       position: ChannelPipeline.Position = .last,
+                                       inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<NIOHTTP2Handler.StreamMultiplexer> {
+        if self.eventLoop.inEventLoop {
+            return self.eventLoop.makeCompletedFuture {
+                return try self.pipeline.syncOperations.configureHTTP2Pipeline(mode: mode, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate, position: position, inboundStreamInitializer: inboundStreamInitializer)
+            }
+        } else {
+            return self.eventLoop.submit {
+                return try self.pipeline.syncOperations.configureHTTP2Pipeline(mode: mode, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate, position: position, inboundStreamInitializer: inboundStreamInitializer)
+            }
+        }
+    }
+
     /// Configures a channel to perform a HTTP/2 secure upgrade.
     ///
     /// HTTP/2 secure upgrade uses the Application Layer Protocol Negotiation TLS extension to
@@ -272,4 +304,82 @@ extension Channel {
                                                 http1ChannelConfigurator: http1ChannelConfigurator)
     }
 
+    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
+    ///
+    /// This helper takes care of configuring the server pipeline such that it negotiates whether to
+    /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotiated, the
+    /// provided callback will configure the application-specific handlers in a protocol-agnostic way.
+    ///
+    /// This function doesn't configure the TLS handler. Callers of this function need to add a TLS
+    /// handler appropriately configured to perform protocol negotiation.
+    ///
+    /// - parameters:
+    ///     - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///     - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
+    ///     - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///     - h2ConnectionChannelConfigurator: An optional callback that will be invoked only
+    ///         when the negotiated protocol is H2 to configure the connection channel.
+    ///     - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    /// - returns: `EventLoopFuture<Void>` that completes when the channel is ready.
+    public func configureCommonHTTPServerPipeline(
+        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
+        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
+        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<Void> {
+        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+            channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate) { streamChannel -> EventLoopFuture<Void> in
+                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
+                    inboundStreamInitializer(streamChannel)
+                }
+            }.flatMap { (_: NIOHTTP2Handler.StreamMultiplexer) in
+                if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
+                    return h2ConnectionChannelConfigurator(channel)
+                } else {
+                    return channel.eventLoop.makeSucceededFuture(())
+                }
+            }
+        }
+        let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
+                inboundStreamInitializer(channel)
+            }
+        }
+        return self.configureHTTP2SecureUpgrade(h2ChannelConfigurator: h2ChannelConfigurator,
+                                                http1ChannelConfigurator: http1ChannelConfigurator)
+    }
+}
+
+extension ChannelPipeline.SynchronousOperations {
+    /// Synchronously configures a `ChannelPipeline` to speak HTTP/2.
+    ///
+    /// This operation **must** be called on the event loop.
+    ///
+    /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
+    /// Instead, this simply adds the handler required to speak HTTP/2 after negotiation has completed, or when agreed by prior knowledge.
+    /// Whenever possible use this function to setup a HTTP/2 server pipeline, as it allows that pipeline to evolve without breaking your code.
+    ///
+    /// - parameters:
+    ///     - mode: The mode this pipeline will operate in, server or client.
+    ///     - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///     - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
+    ///     - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///     - position: The position in the pipeline into which to insert this handler.
+    ///     - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    /// - returns: The `StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
+                                       connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
+                                       streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
+                                       streamDelegate: NIOHTTP2StreamDelegate? = nil,
+                                       position: ChannelPipeline.Position = .last,
+                                       inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) throws -> NIOHTTP2Handler.StreamMultiplexer {
+        let handler = NIOHTTP2Handler(mode: mode, eventLoop: self.eventLoop, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate, inboundStreamInitializer: inboundStreamInitializer)
+
+        try self.addHandler(handler, position: position)
+
+        // `multiplexer` will always be non-nil when we are initializing with an `inboundStreamInitializer`
+        return try handler.multiplexer.wait()
+    }
 }
