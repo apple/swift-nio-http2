@@ -113,9 +113,14 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// It has three states to allow us to stash the config required for the 'inline' case without cluttering the ``NIOHTTP2Handler``
     /// - For legacy multiplexing this begins as`.uninitializedLegacy`, becomes `.initialized` on `handlerAdded` and moves to to `.deinitialized` on `handlerRemoved`.
     /// - For inline multiplexing the behavior is the same with the modification that it begins as `.uninitializedInline` state when the ``NIOHTTP2Handler`` is initialized to hold the config until `handlerAdded`.
+    /// It contains as associated values:
+    /// - `StreamConfiguration`: Stream configuration for use in the inline stream multiplexer.
+    /// - `InboundStreamInitializer`: Callback invoked when new inbound streams are created.
+    /// - `NIOHTTP2StreamDelegate`: The delegate to be notified upon stream creation and close.
+    /// - `InboundStreamMultiplexer`: The component responsible for (de)multiplexing inbound streams.
     private enum InboundStreamMultiplexerState {
         case uninitializedLegacy
-        case uninitializedInline(StreamConfiguration, StreamInitializer)
+        case uninitializedInline(StreamConfiguration, StreamInitializer, NIOHTTP2StreamDelegate?)
         case initialized(InboundStreamMultiplexer)
         case deinitialized
 
@@ -135,7 +140,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             case .uninitializedLegacy:
                 self = .initialized(.legacy(LegacyInboundStreamMultiplexer(context: context)))
 
-            case .uninitializedInline(let streamConfiguration, let inboundStreamInitializer):
+            case .uninitializedInline(let streamConfiguration, let inboundStreamInitializer, let streamDelegate):
                 self = .initialized(.inline(
                     InlineStreamMultiplexer(
                         context: context,
@@ -145,7 +150,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                         targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
                         streamChannelOutboundBytesHighWatermark: streamConfiguration.outboundBufferSizeHighWatermark,
                         streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
-                        streamDelegate: nil
+                        streamDelegate: streamDelegate
                     )
                 ))
 
@@ -1009,7 +1014,7 @@ extension NIOHTTP2Handler {
                   maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
         )
-        self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer)
+        self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer, streamDelegate)
     }
 
     /// Connection-level configuration.

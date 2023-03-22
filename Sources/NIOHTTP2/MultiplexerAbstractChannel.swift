@@ -24,7 +24,7 @@ import NIOCore
 /// Note that while this is a `struct`, this `struct` has _reference semantics_.
 /// The implementation of `Equatable` & `Hashable` on this type reinforces that requirement.
 struct MultiplexerAbstractChannel {
-    private var baseChannel: HTTP2StreamChannel
+    private(set) var baseChannel: HTTP2StreamChannel
 
     init(allocator: ByteBufferAllocator,
          parent: Channel,
