@@ -28,20 +28,12 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public typealias OutboundIn = HTTP2Frame
     public typealias OutboundOut = HTTP2Frame
 
-    // Streams which have a stream ID.
-    private var streams: [HTTP2StreamID: MultiplexerAbstractChannel] = [:]
-    // Streams which don't yet have a stream ID assigned to them.
-    private var pendingStreams: [ObjectIdentifier: MultiplexerAbstractChannel] = [:]
-    private let inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer
     private let channel: Channel
     private var context: ChannelHandlerContext!
-    private var nextOutboundStreamID: HTTP2StreamID
-    private var connectionFlowControlManager: InboundWindowManager
+
+    private let commonStreamMultiplexer: HTTP2CommonInboundStreamMultiplexer
+
     private var flushState: FlushState = .notReading
-    private var didReadChannels: StreamChannelList = StreamChannelList()
-    private let streamChannelOutboundBytesHighWatermark: Int
-    private let streamChannelOutboundBytesLowWatermark: Int
-    private let targetWindowSize: Int
 
     public func handlerAdded(context: ChannelHandlerContext) {
         // We now need to check that we're on the same event loop as the one we were originally given.
@@ -52,64 +44,17 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
     public func handlerRemoved(context: ChannelHandlerContext) {
         self.context = nil
-        self.didReadChannels.removeAll()
+        self.commonStreamMultiplexer.clearDidReadChannels()
     }
 
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let frame = self.unwrapInboundIn(data)
-        let streamID = frame.streamID
-
         self.flushState.startReading()
-
-        guard streamID != .rootStream else {
-            // For stream 0 we forward all frames on to the main channel.
-            context.fireChannelRead(data)
-            return
-        }
-
-        if case .priority = frame.payload {
-            // Priority frames are special cases, and are always forwarded to the parent stream.
-            context.fireChannelRead(data)
-            return
-        }
-
-        if let channel = self.streams[streamID] {
-            channel.receiveInboundFrame(frame)
-            if !channel.inList {
-                self.didReadChannels.append(channel)
-            }
-        } else if case .headers = frame.payload {
-            let channel = MultiplexerAbstractChannel(
-                allocator: self.channel.allocator,
-                parent: self.channel,
-                multiplexer: self,
-                streamID: streamID,
-                targetWindowSize: Int32(self.targetWindowSize),
-                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
-                inboundStreamStateInitializer: self.inboundStreamStateInitializer
-            )
-
-            self.streams[streamID] = channel
-            channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
-            channel.receiveInboundFrame(frame)
-
-            if !channel.inList {
-                self.didReadChannels.append(channel)
-            }
-        } else {
-            // This frame is for a stream we know nothing about. We can't do much about it, so we
-            // are going to fire an error and drop the frame.
-            let error = NIOHTTP2Errors.noSuchStream(streamID: streamID)
-            context.fireErrorCaught(error)
-        }
+        let frame = self.unwrapInboundIn(data)
+        self.commonStreamMultiplexer.receivedFrame(frame, context: context, multiplexer:  .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)))
     }
 
     public func channelReadComplete(context: ChannelHandlerContext) {
-        // Call channelReadComplete on the children until this has been propagated enough.
-        while let channel = self.didReadChannels.removeFirst() {
-            channel.receiveParentChannelReadComplete()
-        }
+        self.commonStreamMultiplexer.propagateReadComplete()
 
         if case .flushPending = self.flushState {
             self.flushState = .notReading
@@ -137,29 +82,14 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
 
     public func channelActive(context: ChannelHandlerContext) {
         // We just got channelActive. Any previously existing channels may be marked active.
-        self.activateChannels(self.streams.values, context: context)
-        self.activateChannels(self.pendingStreams.values, context: context)
+        self.commonStreamMultiplexer.propagateChannelActive(context: context)
 
         context.fireChannelActive()
     }
 
-    private func activateChannels<Channels: Sequence>(_ channels: Channels, context: ChannelHandlerContext) where Channels.Element == MultiplexerAbstractChannel {
-        for channel in channels {
-            // We double-check the channel activity here, because it's possible action taken during
-            // the activation of one of the child channels will cause the parent to close!
-            if context.channel.isActive {
-                channel.performActivation()
-            }
-        }
-    }
 
     public func channelInactive(context: ChannelHandlerContext) {
-        for channel in self.streams.values {
-            channel.receiveStreamClosed(nil)
-        }
-        for channel in self.pendingStreams.values {
-            channel.receiveStreamClosed(nil)
-        }
+        self.commonStreamMultiplexer.propagateChannelInactive()
 
         context.fireChannelInactive()
     }
@@ -167,27 +97,16 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case let evt as StreamClosedEvent:
-            if let channel = self.streams[evt.streamID] {
-                channel.receiveStreamClosed(evt.reason)
-            }
+            self.commonStreamMultiplexer.streamClosed(event: evt)
         case let evt as NIOHTTP2WindowUpdatedEvent where evt.streamID == .rootStream:
             // This force-unwrap is safe: we always have a connection window.
             self.newConnectionWindowSize(newSize: evt.inboundWindowSize!, context: context)
         case let evt as NIOHTTP2WindowUpdatedEvent:
-            if let channel = self.streams[evt.streamID], let windowSize = evt.inboundWindowSize {
-                channel.receiveWindowUpdatedEvent(windowSize)
-            }
+            self.commonStreamMultiplexer.childStreamWindowUpdated(event: evt)
         case let evt as NIOHTTP2BulkStreamWindowChangeEvent:
-            // Here we need to pull the channels out so we aren't holding the streams dict mutably. This is because it
-            // will trigger an overlapping access violation if we do.
-            let channels = self.streams.values
-            for channel in channels {
-                channel.initialWindowSizeChanged(delta: evt.delta)
-            }
+            self.commonStreamMultiplexer.initialStreamWindowChanged(event: evt)
         case let evt as NIOHTTP2StreamCreatedEvent:
-            if let channel = self.streams[evt.streamID] {
-                channel.networkActivationReceived()
-            }
+            self.commonStreamMultiplexer.streamCreated(event: evt)
         default:
             break
         }
@@ -196,27 +115,19 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     }
 
     public func channelWritabilityChanged(context: ChannelHandlerContext) {
-        for channel in self.streams.values {
-            channel.parentChannelWritabilityChanged(newValue: context.channel.isWritable)
-        }
-        for channel in self.pendingStreams.values {
-            channel.parentChannelWritabilityChanged(newValue: context.channel.isWritable)
-        }
+        self.commonStreamMultiplexer.propagateChannelWritabilityChanged(context: context)
 
         context.fireChannelWritabilityChanged()
     }
 
     public func errorCaught(context: ChannelHandlerContext, error: Error) {
-        if let streamError = error as? NIOHTTP2Errors.StreamError,
-           let channel = self.streams[streamError.streamID] {
-            channel.receiveStreamError(streamError)
+        if let streamError = error as? NIOHTTP2Errors.StreamError {
+            self.commonStreamMultiplexer.streamError(context: context, streamError)
         }
-
-        context.fireErrorCaught(error)
     }
 
     private func newConnectionWindowSize(newSize: Int, context: ChannelHandlerContext) {
-        guard let increment = self.connectionFlowControlManager.newWindowSize(newSize) else {
+        guard let increment = self.commonStreamMultiplexer.newConnectionWindowSize(newSize) else {
             return
         }
 
@@ -315,19 +226,16 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                  outboundBufferSizeHighWatermark: Int,
                  outboundBufferSizeLowWatermark: Int,
                  inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer) {
-        self.inboundStreamStateInitializer = inboundStreamStateInitializer
         self.channel = channel
-        self.targetWindowSize = max(0, min(targetWindowSize, Int(Int32.max)))
-        self.connectionFlowControlManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
-        self.streamChannelOutboundBytesHighWatermark = outboundBufferSizeHighWatermark
-        self.streamChannelOutboundBytesLowWatermark = outboundBufferSizeLowWatermark
 
-        switch mode {
-        case .client:
-            self.nextOutboundStreamID = 1
-        case .server:
-            self.nextOutboundStreamID = 2
-        }
+        self.commonStreamMultiplexer = HTTP2CommonInboundStreamMultiplexer(
+            mode: mode,
+            channel: channel,
+            inboundStreamStateInitializer: inboundStreamStateInitializer,
+            targetWindowSize: targetWindowSize,
+            streamChannelOutboundBytesHighWatermark: outboundBufferSizeHighWatermark,
+            streamChannelOutboundBytesLowWatermark: outboundBufferSizeLowWatermark
+        )
     }
 }
 
@@ -371,20 +279,7 @@ extension HTTP2StreamMultiplexer {
     ///     - streamStateInitializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) {
-        self.channel.eventLoop.execute {
-            let channel = MultiplexerAbstractChannel(
-                allocator: self.channel.allocator,
-                parent: self.channel,
-                multiplexer: self,
-                streamID: nil,
-                targetWindowSize: Int32(self.targetWindowSize),
-                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
-                inboundStreamStateInitializer: .excludesStreamID(nil)
-            )
-            self.pendingStreams[channel.channelID] = channel
-            channel.configure(initializer: streamStateInitializer, userPromise: promise)
-        }
+        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)), promise: promise, streamStateInitializer)
     }
 
     /// Create a new `Channel` for a new stream initiated by this peer.
@@ -401,27 +296,7 @@ extension HTTP2StreamMultiplexer {
     ///         `ChannelPipeline` for the newly created channel.
     @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
-        self.channel.eventLoop.execute {
-            let streamID = self.nextStreamID()
-            let channel = MultiplexerAbstractChannel(
-                allocator: self.channel.allocator,
-                parent: self.channel,
-                multiplexer: self,
-                streamID: streamID,
-                targetWindowSize: Int32(self.targetWindowSize),
-                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
-                inboundStreamStateInitializer: .includesStreamID(nil)
-            )
-            self.streams[streamID] = channel
-            channel.configure(initializer: streamStateInitializer, userPromise: promise)
-        }
-    }
-
-    private func nextStreamID() -> HTTP2StreamID {
-        let streamID = self.nextOutboundStreamID
-        self.nextOutboundStreamID = HTTP2StreamID(Int32(streamID) + 2)
-        return streamID
+        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)), promise: promise, streamStateInitializer)
     }
 }
 
@@ -429,11 +304,11 @@ extension HTTP2StreamMultiplexer {
 // MARK:- Child to parent calls
 extension HTTP2StreamMultiplexer {
     internal func childChannelClosed(streamID: HTTP2StreamID) {
-        self.streams.removeValue(forKey: streamID)
+        self.commonStreamMultiplexer.childChannelClosed(streamID: streamID)
     }
 
     internal func childChannelClosed(channelID: ObjectIdentifier) {
-        self.pendingStreams.removeValue(forKey: channelID)
+        self.commonStreamMultiplexer.childChannelClosed(channelID: channelID)
     }
 
     internal func childChannelWrite(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
@@ -448,17 +323,6 @@ extension HTTP2StreamMultiplexer {
     ///
     /// - Precondition: The `channel` must not already have a `streamID`.
     internal func requestStreamID(forChannel channel: Channel) -> HTTP2StreamID {
-        let channelID = ObjectIdentifier(channel)
-
-        // This unwrap shouldn't fail: the multiplexer owns the stream and the stream only requests
-        // a streamID once.
-        guard let abstractChannel = self.pendingStreams.removeValue(forKey: channelID) else {
-            preconditionFailure("No pending streams have channelID \(channelID)")
-        }
-        assert(abstractChannel.channelID == channelID)
-
-        let streamID = self.nextStreamID()
-        self.streams[streamID] = abstractChannel
-        return streamID
+        self.commonStreamMultiplexer.requestStreamID(forChannel: channel)
     }
 }

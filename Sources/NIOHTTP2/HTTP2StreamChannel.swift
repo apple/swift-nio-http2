@@ -151,7 +151,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     internal init(allocator: ByteBufferAllocator,
                   parent: Channel,
-                  multiplexer: HTTP2StreamMultiplexer,
+                  multiplexer: OutboundStreamMultiplexer,
                   streamID: HTTP2StreamID?,
                   targetWindowSize: Int32,
                   outboundBytesHighWatermark: Int,
@@ -164,7 +164,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self.parent = parent
         self.eventLoop = parent.eventLoop
         self.streamID = streamID
-        self.multiplexer = .legacy(LegacyOutboundStreamMultiplexer(multiplexer: multiplexer))
+        self.multiplexer = multiplexer
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
         self._isActiveAtomic = .init(false)
         self._isWritable = .init(true)
