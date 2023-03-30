@@ -118,6 +118,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         if let streamError = error as? NIOHTTP2Errors.StreamError {
             self.commonStreamMultiplexer.streamError(context: context, streamError)
         }
+        context.fireErrorCaught(error)
     }
 
     private func newConnectionWindowSize(newSize: Int, context: ChannelHandlerContext) {
