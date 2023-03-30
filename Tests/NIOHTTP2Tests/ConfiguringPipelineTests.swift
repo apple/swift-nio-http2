@@ -337,7 +337,7 @@ class ConfiguringPipelineTests: XCTestCase {
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 
-        // Let's pretent the TLS handler did protocol negotiation for us
+        // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered (TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2"))
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
@@ -400,7 +400,7 @@ class ConfiguringPipelineTests: XCTestCase {
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
 
-        // Let's pretent the TLS handler did protocol negotiation for us
+        // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered (TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2"))
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))

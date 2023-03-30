@@ -35,6 +35,7 @@ class LinuxMainRunner {
              testCase(CircularBufferExtensionsTests.allTests),
              testCase(CompoundOutboundBufferTest.allTests),
              testCase(ConcurrentStreamBufferTests.allTests),
+             testCase(ConfiguringPipelineInlineMultiplexerTests.allTests),
              testCase(ConfiguringPipelineTests.allTests),
              testCase(ConfiguringPipelineWithFramePayloadStreamsTests.allTests),
              testCase(ConnectionStateMachineTests.allTests),
