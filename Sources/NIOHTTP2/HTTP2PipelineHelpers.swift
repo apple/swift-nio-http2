@@ -282,12 +282,20 @@ extension Channel {
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
         targetWindowSize: Int,
         _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
-        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { streamChannel -> EventLoopFuture<Void> in
-                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
-                    configurator(streamChannel)
+            return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
+                channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { streamChannel -> EventLoopFuture<Void> in
+                    streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
+                        configurator(streamChannel)
+                    }
                 }
-            }.flatMap { (_: HTTP2StreamMultiplexer) in
+            }
+    }
+
+    private func _commonHTTPServerPipeline<T>(configurator: @escaping (Channel) -> EventLoopFuture<Void>,
+                                              h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)?,
+                                              configureHTTP2Pipeline: @escaping (Channel) -> EventLoopFuture<T>) -> EventLoopFuture<Void> {
+        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+            configureHTTP2Pipeline(channel).flatMap { (_: T) in
                 if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
                     return h2ConnectionChannelConfigurator(channel)
                 } else {
@@ -327,27 +335,14 @@ extension Channel {
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
-        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<Void> {
-        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate) { streamChannel -> EventLoopFuture<Void> in
-                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
-                    inboundStreamInitializer(streamChannel)
-                }
-            }.flatMap { (_: NIOHTTP2Handler.StreamMultiplexer) in
-                if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
-                    return h2ConnectionChannelConfigurator(channel)
-                } else {
-                    return channel.eventLoop.makeSucceededFuture(())
+        configurator: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<Void> {
+            return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
+                channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate) { streamChannel -> EventLoopFuture<Void> in
+                    streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
+                        configurator(streamChannel)
+                    }
                 }
             }
-        }
-        let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
-                inboundStreamInitializer(channel)
-            }
-        }
-        return self.configureHTTP2SecureUpgrade(h2ChannelConfigurator: h2ChannelConfigurator,
-                                                http1ChannelConfigurator: http1ChannelConfigurator)
     }
 }
 
