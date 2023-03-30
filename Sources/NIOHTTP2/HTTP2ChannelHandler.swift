@@ -1007,28 +1007,34 @@ extension NIOHTTP2Handler {
 
     /// An `EventLoopFuture` which returns a ``StreamMultiplexer`` which can be used to create new outbound HTTP/2 streams.
     ///
-    /// > Note: This is only safe to call if the ``NIOHTTP2Handler`` uses a local multiplexer,
+    /// > Note: This is only safe to get if the ``NIOHTTP2Handler`` uses a local multiplexer,
     /// i.e. it was initialized with an `inboundStreamInitializer`.
-    public func multiplexer() -> EventLoopFuture<StreamMultiplexer> {
+    public var multiplexer: EventLoopFuture<StreamMultiplexer> {
         // We need to return a future here so that we can synchronize access on the underlying `self.inboundStreamMultiplexer`
         if self.eventLoop!.inEventLoop {
             return self.eventLoop!.makeCompletedFuture {
-                switch self.inboundStreamMultiplexer {
-                case let .some(.inline(multiplexer)):
-                    return StreamMultiplexer(multiplexer)
-                case .some(.legacy), .none:
-                    throw NIOHTTP2Errors.missingMultiplexer()
-                }
+                return try self.syncMultiplexer()
             }
         } else {
             return self.eventLoop!.submit {
-                switch self.inboundStreamMultiplexer {
-                case let .some(.inline(multiplexer)):
-                    return StreamMultiplexer(multiplexer)
-                case .some(.legacy), .none:
-                    throw NIOHTTP2Errors.missingMultiplexer()
-                }
+                return try self.syncMultiplexer()
             }
+        }
+    }
+
+    /// Synchronously return a ``StreamMultiplexer`` which can be used to create new outbound HTTP/2 streams.
+    ///
+    /// > Note: This is only safe to call if both:
+    /// > - The ``NIOHTTP2Handler`` uses a local multiplexer, i.e. it was initialized with an `inboundStreamInitializer`.
+    /// > - The caller is already on the correct event loop.
+    public func syncMultiplexer() throws -> StreamMultiplexer {
+        self.eventLoop!.preconditionInEventLoop()
+
+        switch self.inboundStreamMultiplexer {
+        case let .some(.inline(multiplexer)):
+            return StreamMultiplexer(multiplexer)
+        case .some(.legacy), .none:
+            throw NIOHTTP2Errors.missingMultiplexer()
         }
     }
 }
