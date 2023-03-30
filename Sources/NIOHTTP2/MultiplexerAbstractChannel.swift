@@ -28,7 +28,7 @@ struct MultiplexerAbstractChannel {
 
     init(allocator: ByteBufferAllocator,
          parent: Channel,
-         multiplexer: HTTP2StreamMultiplexer,
+         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
          streamID: HTTP2StreamID?,
          targetWindowSize: Int32,
          outboundBytesHighWatermark: Int,

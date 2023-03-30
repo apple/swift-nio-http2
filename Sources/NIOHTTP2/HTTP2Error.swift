@@ -284,6 +284,11 @@ public enum NIOHTTP2Errors {
         return NoStreamIDAvailable(file: file, line: line)
     }
 
+    /// Creates a ``MissingMultiplexer`` error with appropriate source context.
+    public static func missingMultiplexer(file: String = #fileID, line: UInt = #line) -> MissingMultiplexer {
+        return MissingMultiplexer(file: file, line: line)
+    }
+
     /// Creates a ``StreamError`` error with appropriate source context.
     ///
     /// - parameters:
@@ -1639,6 +1644,26 @@ public enum NIOHTTP2Errors {
             } else {
                 return "Error during inactivation: in state \(self.state)"
             }
+        }
+    }
+
+    /// The ``HTTP2ChannelHandler`` does not have a multiplexer but one has been accessed.
+    public struct MissingMultiplexer: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            return _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func ==(lhs: Self, rhs: Self) -> Bool {
+            return true
         }
     }
 }

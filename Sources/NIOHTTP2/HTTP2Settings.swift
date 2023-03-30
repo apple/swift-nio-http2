@@ -104,3 +104,10 @@ extension HTTP2Setting: Equatable {
         return lhs.parameter == rhs.parameter && lhs._value == rhs._value
     }
 }
+
+extension HTTP2Setting: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(self.parameter)
+        hasher.combine(self._value)
+    }
+}
