@@ -47,12 +47,14 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         clientConnectionConfiguration.initialSettings = clientSettings
         clientConnectionConfiguration.maximumBufferedControlFrames = maximumBufferedControlFrames
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client,
+                                                                                    eventLoop: self.clientChannel.eventLoop,
                                                                                     connectionConfiguration: clientConnectionConfiguration,
                                                                                     inboundStreamInitializer: multiplexerCallback)).wait())
         var serverConnectionConfiguration = NIOHTTP2Handler.ConnectionConfiguration()
         serverConnectionConfiguration.initialSettings = serverSettings
         serverConnectionConfiguration.maximumBufferedControlFrames = maximumBufferedControlFrames
         XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server,
+                                                                                    eventLoop: self.serverChannel.eventLoop,
                                                                                     connectionConfiguration: serverConnectionConfiguration,
                                                                                     inboundStreamInitializer: multiplexerCallback)).wait())
 
@@ -83,7 +85,8 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
             let clientHandler = InboundFramePayloadRecorder()
             let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
-            try (self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler as! NIOHTTP2Handler).multiplexer?.createStreamChannel(promise: childChannelPromise) { channel in
+            let multiplexer = try (self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler as! NIOHTTP2Handler).multiplexer().wait()
+            multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
                 return channel.pipeline.addHandler(clientHandler)
             }
             (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
@@ -140,7 +143,8 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler as! NIOHTTP2Handler
         let childHandler = InboundFramePayloadRecorder()
-        handler.multiplexer?.createStreamChannel(promise: nil) { channel in
+        let multiplexer = try handler.multiplexer().wait()
+        multiplexer.createStreamChannel(promise: nil) { channel in
             let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
             channel.write(reqFramePayload, promise: nil)
 
@@ -204,8 +208,8 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
         // We need END_STREAM set here, because that will force the stream to be closed on the response.
         let reqFrame = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: true))
-
-        handler.multiplexer?.createStreamChannel(promise: nil) { channel in
+        let multiplexer = try handler.multiplexer().wait()
+        multiplexer.createStreamChannel(promise: nil) { channel in
             channel.writeAndFlush(reqFrame, promise: nil)
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -243,8 +247,8 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
-
-        handler.multiplexer?.createStreamChannel(promise: nil) { channel in
+        let multiplexer = try handler.multiplexer().wait()
+        multiplexer.createStreamChannel(promise: nil) { channel in
             let reqFrame = HTTP2Frame.FramePayload.headers(.init(headers: headers))
             channel.write(reqFrame, promise: nil)
 
@@ -277,7 +281,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
     func testStreamCreationOrder() throws {
         try self.basicHTTP2Connection()
         let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
-        let multiplexer = handler.multiplexer!
+        let multiplexer = try handler.multiplexer().wait()
 
         let streamAPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamAPromise) { channel in
@@ -308,7 +312,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
     func testWriteWithAlreadyCompletedPromise() throws {
         try self.basicHTTP2Connection()
         let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
-        let multiplexer = handler.multiplexer!
+        let multiplexer = try handler.multiplexer().wait()
 
         let streamPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamPromise) { channel in

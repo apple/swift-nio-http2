@@ -40,6 +40,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// The magic string sent by clients at the start of a HTTP/2 connection.
     private static let clientMagic: StaticString = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
+    /// The event loop on which this handler will do work.
+    private var eventLoop: EventLoop?
+
     /// The connection state machine. We always have one of these.
     private var stateMachine: HTTP2ConnectionStateMachine
 
@@ -967,6 +970,7 @@ extension NIOHTTP2Handler {
     /// close events.
     public convenience init(
         mode: ParserMode,
+        eventLoop: EventLoop,
         connectionConfiguration: ConnectionConfiguration = .init(),
         streamConfiguration: StreamConfiguration = .init(),
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
@@ -979,6 +983,7 @@ extension NIOHTTP2Handler {
                   maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
         )
+        self.eventLoop = eventLoop
         self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer)
     }
 
@@ -998,5 +1003,32 @@ extension NIOHTTP2Handler {
         public var outboundBufferSizeHighWatermark: Int = 8196
         public var outboundBufferSizeLowWatermark: Int = 4092
         public init() {}
+    }
+
+    /// An `EventLoopFuture` which returns a ``StreamMultiplexer`` which can be used to create new outbound HTTP/2 streams.
+    ///
+    /// > Note: This is only safe to call if the ``NIOHTTP2Handler`` uses a local multiplexer,
+    /// i.e. it was initialized with an `inboundStreamInitializer`.
+    public func multiplexer() -> EventLoopFuture<StreamMultiplexer> {
+        // We need to return a future here so that we can synchronize access on the underlying `self.inboundStreamMultiplexer`
+        if self.eventLoop!.inEventLoop {
+            return self.eventLoop!.makeCompletedFuture {
+                switch self.inboundStreamMultiplexer {
+                case let .some(.inline(multiplexer)):
+                    return StreamMultiplexer(multiplexer)
+                case .some(.legacy), .none:
+                    throw NIOHTTP2Errors.missingMultiplexer()
+                }
+            }
+        } else {
+            return self.eventLoop!.submit {
+                switch self.inboundStreamMultiplexer {
+                case let .some(.inline(multiplexer)):
+                    return StreamMultiplexer(multiplexer)
+                case .some(.legacy), .none:
+                    throw NIOHTTP2Errors.missingMultiplexer()
+                }
+            }
+        }
     }
 }

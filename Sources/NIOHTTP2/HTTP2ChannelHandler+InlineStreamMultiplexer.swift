@@ -151,7 +151,9 @@ extension NIOHTTP2Handler {
     /// on ``HTTP2Frame/FramePayload`` objects as their base communication
     /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
     /// and `IOData`.
-    public struct StreamMultiplexer {
+    public struct StreamMultiplexer: @unchecked Sendable {
+        // '@unchecked Sendable' because this state is not intrinsically `Sendable`
+        // but it is only accessed in `createStreamChannel` which executes the work on the right event loop
         private let inlineStreamMultiplexer: InlineStreamMultiplexer
 
         /// Cannot be created by users.
@@ -187,19 +189,6 @@ extension NIOHTTP2Handler {
         /// - Returns: An `EventLoopFuture` containing the created `Channel`, fulfilled after the supplied `streamStateInitializer` has been executed on it.
         public func createStreamChannel(_ streamStateInitializer: @escaping StreamInitializer) -> EventLoopFuture<Channel> {
             self.inlineStreamMultiplexer.createStreamChannel(streamStateInitializer)
-        }
-    }
-
-    /// A ``StreamMultiplexer`` which can be used to create new outbound HTTP/2 streams.
-    ///
-    /// > Note: The ``NIOHTTP2Handler`` must have been initialized with a ``StreamConfiguration``
-    /// for this value to be non-nil.
-    public var multiplexer: StreamMultiplexer? {
-        switch self.inboundStreamMultiplexer {
-        case let .some(.inline(multiplexer)):
-            return StreamMultiplexer(multiplexer)
-        case .some(.legacy), .none:
-            return nil
         }
     }
 }
