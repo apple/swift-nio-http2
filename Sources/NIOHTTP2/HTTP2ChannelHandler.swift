@@ -41,7 +41,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     private static let clientMagic: StaticString = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
     /// The event loop on which this handler will do work.
-    private var eventLoop: EventLoop?
+    private let eventLoop: EventLoop?
 
     /// The connection state machine. We always have one of these.
     private var stateMachine: HTTP2ConnectionStateMachine
@@ -185,6 +185,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                             headerBlockValidation: ValidationState = .enabled,
                             contentLengthValidation: ValidationState = .enabled) {
         self.init(mode: mode,
+                  eventLoop: nil,
                   initialSettings: initialSettings,
                   headerBlockValidation: headerBlockValidation,
                   contentLengthValidation: contentLengthValidation,
@@ -204,12 +205,30 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///     - maximumBufferedControlFrames: Controls the maximum buffer size of buffered outbound control frames. If we are unable to send control frames as
     ///         fast as we produce them we risk building up an unbounded buffer and exhausting our memory. To protect against this DoS vector, we put an
     ///         upper limit on the depth of this queue. Defaults to 10,000.
-    public init(mode: ParserMode,
-                initialSettings: HTTP2Settings = nioDefaultSettings,
-                headerBlockValidation: ValidationState = .enabled,
-                contentLengthValidation: ValidationState = .enabled,
-                maximumSequentialEmptyDataFrames: Int = 1,
-                maximumBufferedControlFrames: Int = 10000) {
+    public convenience init(mode: ParserMode,
+                            initialSettings: HTTP2Settings = nioDefaultSettings,
+                            headerBlockValidation: ValidationState = .enabled,
+                            contentLengthValidation: ValidationState = .enabled,
+                            maximumSequentialEmptyDataFrames: Int = 1,
+                            maximumBufferedControlFrames: Int = 10000) {
+        self.init(mode: mode,
+                  eventLoop: nil,
+                  initialSettings: initialSettings,
+                  headerBlockValidation: headerBlockValidation,
+                  contentLengthValidation: contentLengthValidation,
+                  maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
+                  maximumBufferedControlFrames: maximumBufferedControlFrames)
+
+    }
+
+    private init(mode: ParserMode,
+                 eventLoop: EventLoop?,
+                 initialSettings: HTTP2Settings,
+                 headerBlockValidation: ValidationState,
+                 contentLengthValidation: ValidationState,
+                 maximumSequentialEmptyDataFrames: Int,
+                 maximumBufferedControlFrames: Int) {
+        self.eventLoop = eventLoop
         self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
         self.mode = mode
         self.initialSettings = initialSettings
@@ -242,6 +261,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   tolerateImpossibleStateTransitionsInDebugMode: Bool = false) {
         self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
         self.mode = mode
+        self.eventLoop = nil
         self.initialSettings = initialSettings
         self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
         self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames)
@@ -964,7 +984,12 @@ extension NIOHTTP2Handler {
     /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer. (i.e. using
     /// ``StreamMultiplexer``.)
     ///
-    /// Frames on the root stream will continue to be passed down the main channel, whereas those intended for other streams will be forwarded to the appropriate child channel.
+    /// Frames on the root stream will continue to be passed down the main channel, whereas those intended for
+    /// other streams will be forwarded to the appropriate child channel.
+    ///
+    /// To create streams using the local multiplexer, first obtain it via the computed property (`multiplexer`)
+    /// and then invoke one of the `multiplexer.createStreamChannel` methods. If possible the multiplexer should be
+    /// stored and used across multiple invocations because obtaining it requires synchronizing on the event loop.
     ///
     /// The optional `streamDelegate` will be notified of stream creation and
     /// close events.
@@ -977,13 +1002,13 @@ extension NIOHTTP2Handler {
         inboundStreamInitializer: @escaping StreamInitializer
     ) {
         self.init(mode: mode,
+                  eventLoop: eventLoop,
                   initialSettings: connectionConfiguration.initialSettings,
                   headerBlockValidation: connectionConfiguration.headerBlockValidation,
                   contentLengthValidation: connectionConfiguration.contentLengthValidation,
                   maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
         )
-        self.eventLoop = eventLoop
         self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer)
     }
 
