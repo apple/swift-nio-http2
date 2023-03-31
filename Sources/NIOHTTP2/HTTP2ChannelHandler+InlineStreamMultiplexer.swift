@@ -34,6 +34,7 @@ internal struct InlineStreamMultiplexer {
             streamChannelOutboundBytesLowWatermark: streamChannelOutboundBytesLowWatermark
         )
         self.outboundView = outboundView
+        self.streamDelegate = streamDelegate
     }
 }
 
@@ -48,11 +49,15 @@ extension InlineStreamMultiplexer: HTTP2InboundStreamMultiplexer {
     }
 
     func streamCreated(event: NIOHTTP2StreamCreatedEvent) {
-        self.commonStreamMultiplexer.streamCreated(event: event)
+        if let childChannel = self.commonStreamMultiplexer.streamCreated(event: event) {
+            self.streamDelegate?.streamCreated(event.streamID, channel: childChannel)
+        }
     }
 
     func streamClosed(event: StreamClosedEvent) {
-        self.commonStreamMultiplexer.streamClosed(event: event)
+        if let childChannel = self.commonStreamMultiplexer.streamClosed(event: event) {
+            self.streamDelegate?.streamClosed(event.streamID, channel: childChannel)
+        }
     }
 
     func streamWindowUpdated(event: NIOHTTP2WindowUpdatedEvent) {

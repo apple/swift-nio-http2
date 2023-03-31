@@ -113,14 +113,22 @@ extension HTTP2CommonInboundStreamMultiplexer {
         context.fireErrorCaught(streamError.baseError)
     }
 
-    func streamCreated(event: NIOHTTP2StreamCreatedEvent) {
+    func streamCreated(event: NIOHTTP2StreamCreatedEvent) -> Channel? {
         self.channel.eventLoop.preconditionInEventLoop()
-        self.streams[event.streamID]?.networkActivationReceived()
+        if let channel = self.streams[event.streamID] {
+            channel.networkActivationReceived()
+            return channel.baseChannel
+        }
+        return nil
     }
 
-    func streamClosed(event: StreamClosedEvent) {
+    func streamClosed(event: StreamClosedEvent) -> Channel? {
         self.channel.eventLoop.preconditionInEventLoop()
-        self.streams[event.streamID]?.receiveStreamClosed(event.reason)
+        if let channel = self.streams[event.streamID] {
+            channel.receiveStreamClosed(event.reason)
+            return channel.baseChannel
+        }
+        return nil
     }
 
     func newConnectionWindowSize(_ newSize: Int) -> Int? {

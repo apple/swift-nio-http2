@@ -72,6 +72,8 @@ extension HTTP2InlineStreamMultiplexerTests {
                 ("testStreamChannelSupportsSyncOptions", testStreamChannelSupportsSyncOptions),
                 ("testStreamErrorIsDeliveredToChannel", testStreamErrorIsDeliveredToChannel),
                 ("testPendingReadsAreFlushedEvenWithoutUnsatisfiedReadOnChannelInactive", testPendingReadsAreFlushedEvenWithoutUnsatisfiedReadOnChannelInactive),
+                ("testDelegateReceivesCreationAndCloseNotifications", testDelegateReceivesCreationAndCloseNotifications),
+                ("testDelegateReceivesOutboundCreationAndCloseNotifications", testDelegateReceivesOutboundCreationAndCloseNotifications),
            ]
    }
 }

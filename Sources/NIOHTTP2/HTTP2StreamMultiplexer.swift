@@ -91,7 +91,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         switch event {
         case let evt as StreamClosedEvent:
-            self.commonStreamMultiplexer.streamClosed(event: evt)
+            _ = self.commonStreamMultiplexer.streamClosed(event: evt)
         case let evt as NIOHTTP2WindowUpdatedEvent where evt.streamID == .rootStream:
             // This force-unwrap is safe: we always have a connection window.
             self.newConnectionWindowSize(newSize: evt.inboundWindowSize!, context: context)
@@ -100,7 +100,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         case let evt as NIOHTTP2BulkStreamWindowChangeEvent:
             self.commonStreamMultiplexer.initialStreamWindowChanged(event: evt)
         case let evt as NIOHTTP2StreamCreatedEvent:
-            self.commonStreamMultiplexer.streamCreated(event: evt)
+            _ = self.commonStreamMultiplexer.streamCreated(event: evt)
         default:
             break
         }

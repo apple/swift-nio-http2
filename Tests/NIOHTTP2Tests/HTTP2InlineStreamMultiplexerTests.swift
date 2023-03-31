@@ -158,7 +158,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let completedChannelCount = ManagedAtomic<Int>(0)
         let http2Handler = NIOHTTP2Handler(mode: .server, eventLoop: self.channel.eventLoop) { channel in
             channel.closeFuture.whenSuccess { completedChannelCount.wrappingIncrement(ordering: .sequentiallyConsistent) }
-            return channel.pipeline.addHandler(TestHookHandler() { context, payload in
+            return channel.pipeline.addHandler(TestHookHandler { context, payload in
                 guard case .headers(let requestHeaders) = payload else {
                     preconditionFailure("Expected request headers.")
                 }
@@ -669,7 +669,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             childChannel.withLockedValue { childChannel in
                 childChannel = channel
             }
-            return channel.pipeline.addHandler(TestHookHandler() { context, payload in
+            return channel.pipeline.addHandler(TestHookHandler { context, payload in
                 guard case .headers(let requestHeaders) = payload else {
                     preconditionFailure("Expected request headers.")
                 }
@@ -947,7 +947,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let http2Handler = NIOHTTP2Handler(mode: .server, eventLoop: self.channel.eventLoop) { channel in
             return channel.pipeline.addHandlers([
                 HandlerRemovedHandler(removedPromise: handlerRemovedPromise),
-                TestHookHandler() { context, payload in
+                TestHookHandler { context, payload in
                     guard case .headers(let requestHeaders) = payload else {
                         preconditionFailure("Expected request headers.")
                     }
@@ -983,7 +983,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let http2Handler = NIOHTTP2Handler(mode: .server, eventLoop: self.channel.eventLoop)  { channel in
             return channel.pipeline.addHandlers([
                 HandlerRemovedHandler(removedPromise: handlerRemovedPromise),
-                TestHookHandler() { context, payload in
+                TestHookHandler { context, payload in
                     guard case .headers(let requestHeaders) = payload else {
                         preconditionFailure("Expected request headers.")
                     }
@@ -1888,6 +1888,164 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(consumer.readCount, 3)
         XCTAssertEqual(consumer.channelInactiveCount, 1)
         XCTAssertEqual(consumer.readPending, true)
+    }
+
+    fileprivate struct CountingStreamDelegate: NIOHTTP2StreamDelegate, @unchecked Sendable {
+        private let store = NIOLockedValueBox<Store>(Store())
+
+        func streamCreated(_ id: NIOHTTP2.HTTP2StreamID, channel: NIOCore.Channel) {
+            self.store.withLockedValue { store in
+                store.created+=1
+                store.open+=1
+            }
+        }
+
+        func streamClosed(_ id: NIOHTTP2.HTTP2StreamID, channel: NIOCore.Channel) {
+            self.store.withLockedValue { store in
+                store.closed+=1
+                store.open-=1
+            }
+        }
+
+        var created: Int {
+            self.store.withLockedValue { store in
+                store.created
+            }
+        }
+
+        var closed: Int {
+            self.store.withLockedValue { store in
+                store.closed
+            }
+        }
+
+        var open: Int {
+            self.store.withLockedValue { store in
+                store.open
+            }
+        }
+
+        class Store {
+            var created: Int = 0
+            var closed: Int = 0
+            var open: Int = 0
+        }
+    }
+
+    func testDelegateReceivesCreationAndCloseNotifications() throws {
+        let streamDelegate = CountingStreamDelegate()
+        let completedChannelCount = ManagedAtomic<Int>(0)
+        let http2Handler = NIOHTTP2Handler(mode: .server, eventLoop: self.channel.eventLoop, streamDelegate: streamDelegate) { channel in
+            channel.closeFuture.whenSuccess { completedChannelCount.wrappingIncrement(ordering: .sequentiallyConsistent) }
+            return channel.pipeline.addHandler(TestHookHandler { context, payload in
+                if case .headers(let requestHeaders) = payload {
+                    XCTAssertEqual(requestHeaders.headers, .basicRequestHeaders)
+
+                    let headers = HTTP2Frame.FramePayload.headers(.init(headers: .basicResponseHeaders, endStream: true))
+                    context.writeAndFlush(NIOAny(headers), promise: nil)
+                }
+            })
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
+        XCTAssertNoThrow(try connectionSetup())
+
+        // Let's send a bunch of headers frames. This should open some streams.
+        let headers = HTTP2Frame.FramePayload.headers(.init(headers: .basicRequestHeaders, endStream: false))
+        let streamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID($0) }
+        for streamID in streamIDs {
+            XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: headers).encode()))
+        }
+        XCTAssertEqual(completedChannelCount.load(ordering: .sequentiallyConsistent), 0)
+        XCTAssertEqual(streamDelegate.created, 50)
+        XCTAssertEqual(streamDelegate.closed, 0)
+        XCTAssertEqual(streamDelegate.open, 50)
+
+        // Let's some data with endStream to close the streams.
+        for streamID in streamIDs {
+            let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(ByteBuffer(string: "Hello, world!")), endStream: true)))
+            XCTAssertNoThrow(try self.channel.writeInbound(dataFrame.encode()))
+        }
+        XCTAssertEqual(completedChannelCount.load(ordering: .sequentiallyConsistent), 0)
+        XCTAssertEqual(streamDelegate.created, 50)
+        XCTAssertEqual(streamDelegate.closed, 50)
+        XCTAssertEqual(streamDelegate.open, 0)
+
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+
+        // At this stage all the promises should be completed, all the streams should be closed.
+        XCTAssertEqual(completedChannelCount.load(ordering: .sequentiallyConsistent), 50)
+        XCTAssertEqual(streamDelegate.created, 50)
+        XCTAssertEqual(streamDelegate.closed, 50)
+        XCTAssertEqual(streamDelegate.open, 0)
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testDelegateReceivesOutboundCreationAndCloseNotifications() throws {
+        let streamDelegate = CountingStreamDelegate()
+        let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
+        let createdChannelCount = ManagedAtomic<Int>(0)
+        var configuredChannelCount = 0
+        var streamIDs = Array<HTTP2StreamID>()
+        let http2Handler = NIOHTTP2Handler(mode: .client, eventLoop: self.channel.eventLoop, streamDelegate: streamDelegate) { _ in
+            XCTFail("Must not be called")
+            return self.channel.eventLoop.makeFailedFuture(MyError())
+        }
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
+        try connectionSetup(mode: .client)
+
+        let multiplexer = try http2Handler.multiplexer.wait()
+        for _ in 0..<3 {
+            let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
+            multiplexer.createStreamChannel(promise: channelPromise) { channel in
+                createdChannelCount.wrappingIncrement(ordering: .sequentiallyConsistent)
+                return configurePromise.futureResult
+            }
+            channelPromise.futureResult.whenSuccess { channel in
+                configuredChannelCount += 1
+                // Write some headers: the flush will trigger a stream ID to be assigned to the channel.
+                channel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: .basicRequestHeaders, endStream: true))).whenSuccess {
+                    channel.getOption(HTTP2StreamChannelOptions.streamID).whenSuccess { streamID in
+                        streamIDs.append(streamID)
+                    }
+                }
+            }
+        }
+
+        XCTAssertEqual(createdChannelCount.load(ordering: .sequentiallyConsistent), 0)
+        XCTAssertEqual(configuredChannelCount, 0)
+        XCTAssertEqual(streamIDs.count, 0)
+        XCTAssertEqual(streamDelegate.created, 0)
+        XCTAssertEqual(streamDelegate.closed, 0)
+        XCTAssertEqual(streamDelegate.open, 0)
+
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertEqual(createdChannelCount.load(ordering: .sequentiallyConsistent), 3)
+        XCTAssertEqual(configuredChannelCount, 0)
+        XCTAssertEqual(streamIDs.count, 0)
+        XCTAssertEqual(streamDelegate.created, 0)
+        XCTAssertEqual(streamDelegate.closed, 0)
+        XCTAssertEqual(streamDelegate.open, 0)
+
+        configurePromise.succeed(())
+        XCTAssertEqual(createdChannelCount.load(ordering: .sequentiallyConsistent), 3)
+        XCTAssertEqual(configuredChannelCount, 3)
+        XCTAssertEqual(streamIDs, [1, 3, 5].map { HTTP2StreamID($0) })
+        XCTAssertEqual(streamDelegate.created, 3)
+        XCTAssertEqual(streamDelegate.closed,0)
+        XCTAssertEqual(streamDelegate.open, 3)
+
+        // write a response to allow the streams to fully closes
+        for id in streamIDs {
+            let headers = HTTP2Frame(streamID: id, payload: .headers(.init(headers: .basicResponseHeaders, endStream: true)))
+            XCTAssertNoThrow(try self.channel.writeInbound(headers.encode()))
+        }
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+
+        XCTAssertEqual(streamDelegate.created, 3)
+        XCTAssertEqual(streamDelegate.closed,3)
+        XCTAssertEqual(streamDelegate.open, 0)
+
+        XCTAssertNoThrow(try self.channel.finish())
     }
 }
 
