@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2020-2021 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2020-2023 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -16,6 +16,7 @@ import NIOCore
 import NIOEmbedded
 import NIOHPACK
 import NIOHTTP2
+import Atomics
 
 struct StreamTeardownBenchmark {
     private let concurrentStreams: Int
@@ -87,12 +88,9 @@ struct StreamTeardownBenchmark {
         self.concurrentStreams = concurrentStreams
     }
 
-    func createChannel() throws -> EmbeddedChannel {
+    private func createChannel(pipelineConfigurator: (Channel, Int) throws -> ()) throws -> EmbeddedChannel {
         let channel = EmbeddedChannel()
-        _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(DoNothingServer())
-        }.wait()
-        try channel.pipeline.addHandler(SendGoawayHandler(expectedStreams: self.concurrentStreams)).wait()
+        try! pipelineConfigurator(channel, self.concurrentStreams)
 
         try channel.connect(to: .init(unixDomainSocketPath: "/fake"), promise: nil)
 
@@ -111,11 +109,11 @@ struct StreamTeardownBenchmark {
         _ = try channel.finish()
     }
 
-    mutating func run() throws -> Int {
+    fileprivate mutating func run(pipelineConfigurator: (Channel, Int) throws -> ()) throws -> Int {
         var bodyByteCount = 0
         var completedIterations = 0
         while completedIterations < 10_000 {
-            let channel = try self.createChannel()
+            let channel = try self.createChannel(pipelineConfigurator: pipelineConfigurator)
             bodyByteCount &+= try self.sendInterleavedRequestsAndTerminate(self.concurrentStreams, channel)
             completedIterations += self.concurrentStreams
             try self.destroyChannel(channel)
@@ -158,17 +156,16 @@ fileprivate class SendGoawayHandler: ChannelInboundHandler {
     )
 
     private let expectedStreams: Int
-    private var seenStreams: Int
+    private let seenStreams = ManagedAtomic<Int>(0)
 
     init(expectedStreams: Int) {
         self.expectedStreams = expectedStreams
-        self.seenStreams = 0
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         if event is NIOHTTP2StreamCreatedEvent {
-            self.seenStreams += 1
-            if self.seenStreams == self.expectedStreams {
+            self.seenStreams.wrappingIncrement(ordering: .sequentiallyConsistent)
+            if seenStreams.load(ordering: .sequentiallyConsistent) == self.expectedStreams {
                 // Send a GOAWAY to tear all streams down.
                 context.writeAndFlush(self.wrapOutboundOut(SendGoawayHandler.goawayFrame), promise: nil)
             }
@@ -176,11 +173,51 @@ fileprivate class SendGoawayHandler: ChannelInboundHandler {
     }
 }
 
+fileprivate struct SendGoawayDelegate: @unchecked Sendable {
+    private static let goawayFrame: HTTP2Frame = HTTP2Frame(
+        streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .enhanceYourCalm, opaqueData: nil)
+    )
+
+    private let expectedStreams: Int
+    private let seenStreams = ManagedAtomic<Int>(0)
+
+    init(expectedStreams: Int) {
+        self.expectedStreams = expectedStreams
+    }
+}
+
+extension SendGoawayDelegate: NIOHTTP2StreamDelegate {
+    func streamCreated(_ id: HTTP2StreamID, channel: Channel) {
+        self.seenStreams.wrappingIncrement(ordering: .sequentiallyConsistent)
+        if seenStreams.load(ordering: .sequentiallyConsistent) == self.expectedStreams {
+            // Send a GOAWAY to tear all streams down.
+            channel.parent!.writeAndFlush(NIOAny(SendGoawayDelegate.goawayFrame), promise: nil)
+        }
+    }
+
+    func streamClosed(_ id: HTTP2StreamID, channel: Channel) {
+        // do nothing
+    }
+}
+
 func run(identifier: String) {
     var benchmark = StreamTeardownBenchmark(concurrentStreams: 100)
 
     measure(identifier: identifier) {
-        return try! benchmark.run()
+        return try! benchmark.run() { channel, concurrentStreams in
+            _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+                return streamChannel.pipeline.addHandler(DoNothingServer())
+            }.wait()
+            try channel.pipeline.addHandler(SendGoawayHandler(expectedStreams: concurrentStreams)).wait()
+        }
+    }
+
+    measure(identifier: identifier + "_inline") {
+        return try! benchmark.run() { channel, concurrentStreams in
+            _ = try channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), streamDelegate: SendGoawayDelegate(expectedStreams: concurrentStreams)) { streamChannel -> EventLoopFuture<Void> in
+                return streamChannel.pipeline.addHandler(DoNothingServer())
+            }.wait()
+        }
     }
 }
 

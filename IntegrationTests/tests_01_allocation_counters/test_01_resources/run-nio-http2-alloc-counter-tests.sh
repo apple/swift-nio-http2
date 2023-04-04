@@ -50,6 +50,7 @@ fi
     -m NIOPosix \
     -m NIOHTTP1 \
     -m NIOHTTP2 \
+    -s "$here/shared.swift" \
     -t "$tmp_dir" \
     -d <( echo '.package(url: "https://github.com/apple/swift-nio.git", from: "2.32.0"),' ) \
     "${tests_to_run[@]}"
