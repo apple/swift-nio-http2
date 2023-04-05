@@ -221,7 +221,7 @@ func run(identifier: String) {
     noninterleaved.tearDown()
 
     //
-    //MARK: - Inline HTTP2 multiplexer tests
+    // MARK: - Inline HTTP2 multiplexer tests
     var inlineInterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100) { channel in
         _ = try channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { streamChannel -> EventLoopFuture<Void> in
             return streamChannel.pipeline.addHandler(TestServer())

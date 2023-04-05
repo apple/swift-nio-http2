@@ -100,7 +100,7 @@ func run(identifier: String) {
     }
 
     //
-    //MARK: - Inline HTTP2 multiplexer tests
+    // MARK: - Inline HTTP2 multiplexer tests
     testRun(identifier: identifier + "_inline") { clientChannel in
         return try! clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
             return channel.eventLoop.makeSucceededVoidFuture()

@@ -31,7 +31,7 @@ func run(identifier: String) {
     }
 
     //
-    //MARK: - Inline HTTP2 multiplexer tests
+    // MARK: - Inline HTTP2 multiplexer tests
     testRun(identifier: identifier + "_inline") { channel in
         let http2Handler = NIOHTTP2Handler(mode: .client, eventLoop: channel.eventLoop) { channel in
             return channel.eventLoop.makeSucceededVoidFuture()

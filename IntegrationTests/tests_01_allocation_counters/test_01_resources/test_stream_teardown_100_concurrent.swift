@@ -164,8 +164,7 @@ fileprivate class SendGoawayHandler: ChannelInboundHandler {
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         if event is NIOHTTP2StreamCreatedEvent {
-            self.seenStreams.wrappingIncrement(ordering: .sequentiallyConsistent)
-            if seenStreams.load(ordering: .sequentiallyConsistent) == self.expectedStreams {
+            if seenStreams.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent) == self.expectedStreams {
                 // Send a GOAWAY to tear all streams down.
                 context.writeAndFlush(self.wrapOutboundOut(SendGoawayHandler.goawayFrame), promise: nil)
             }
@@ -188,8 +187,7 @@ fileprivate struct SendGoawayDelegate: @unchecked Sendable {
 
 extension SendGoawayDelegate: NIOHTTP2StreamDelegate {
     func streamCreated(_ id: HTTP2StreamID, channel: Channel) {
-        self.seenStreams.wrappingIncrement(ordering: .sequentiallyConsistent)
-        if seenStreams.load(ordering: .sequentiallyConsistent) == self.expectedStreams {
+        if seenStreams.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent) == self.expectedStreams {
             // Send a GOAWAY to tear all streams down.
             channel.parent!.writeAndFlush(NIOAny(SendGoawayDelegate.goawayFrame), promise: nil)
         }
@@ -214,7 +212,12 @@ func run(identifier: String) {
 
     measure(identifier: identifier + "_inline") {
         return try! benchmark.run() { channel, concurrentStreams in
-            _ = try channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init(), streamDelegate: SendGoawayDelegate(expectedStreams: concurrentStreams)) { streamChannel -> EventLoopFuture<Void> in
+            _ = try channel.configureHTTP2Pipeline(
+                mode: .server,
+                connectionConfiguration: .init(),
+                streamConfiguration: .init(),
+                streamDelegate: SendGoawayDelegate(expectedStreams: concurrentStreams)
+            ) { streamChannel -> EventLoopFuture<Void> in
                 return streamChannel.pipeline.addHandler(DoNothingServer())
             }.wait()
         }
