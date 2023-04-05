@@ -156,15 +156,17 @@ fileprivate class SendGoawayHandler: ChannelInboundHandler {
     )
 
     private let expectedStreams: Int
-    private let seenStreams = ManagedAtomic<Int>(0)
+    private var seenStreams: Int
 
     init(expectedStreams: Int) {
         self.expectedStreams = expectedStreams
+        self.seenStreams = 0
     }
 
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         if event is NIOHTTP2StreamCreatedEvent {
-            if seenStreams.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent) == self.expectedStreams {
+            self.seenStreams += 1
+            if self.seenStreams == self.expectedStreams {
                 // Send a GOAWAY to tear all streams down.
                 context.writeAndFlush(self.wrapOutboundOut(SendGoawayHandler.goawayFrame), promise: nil)
             }
@@ -172,22 +174,24 @@ fileprivate class SendGoawayHandler: ChannelInboundHandler {
     }
 }
 
-fileprivate struct SendGoawayDelegate: @unchecked Sendable {
+fileprivate class SendGoawayDelegate {
     private static let goawayFrame: HTTP2Frame = HTTP2Frame(
         streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .enhanceYourCalm, opaqueData: nil)
     )
 
     private let expectedStreams: Int
-    private let seenStreams = ManagedAtomic<Int>(0)
+    private var seenStreams: Int
 
     init(expectedStreams: Int) {
         self.expectedStreams = expectedStreams
+        self.seenStreams = 0
     }
 }
 
 extension SendGoawayDelegate: NIOHTTP2StreamDelegate {
     func streamCreated(_ id: HTTP2StreamID, channel: Channel) {
-        if seenStreams.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent) == self.expectedStreams {
+        self.seenStreams += 1
+        if self.seenStreams == self.expectedStreams {
             // Send a GOAWAY to tear all streams down.
             channel.parent!.writeAndFlush(NIOAny(SendGoawayDelegate.goawayFrame), promise: nil)
         }
