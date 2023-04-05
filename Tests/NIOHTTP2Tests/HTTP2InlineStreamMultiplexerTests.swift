@@ -1890,39 +1890,29 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(consumer.readPending, true)
     }
 
-    fileprivate struct CountingStreamDelegate: NIOHTTP2StreamDelegate, @unchecked Sendable {
-        private let store = NIOLockedValueBox<Store>(Store())
+    fileprivate struct CountingStreamDelegate: NIOHTTP2StreamDelegate {
+        private var store = Store()
 
         func streamCreated(_ id: NIOHTTP2.HTTP2StreamID, channel: NIOCore.Channel) {
-            self.store.withLockedValue { store in
-                store.created+=1
-                store.open+=1
-            }
+            self.store.created+=1
+            self.store.open+=1
         }
 
         func streamClosed(_ id: NIOHTTP2.HTTP2StreamID, channel: NIOCore.Channel) {
-            self.store.withLockedValue { store in
-                store.closed+=1
-                store.open-=1
-            }
+            self.store.closed+=1
+            self.store.open-=1
         }
 
         var created: Int {
-            self.store.withLockedValue { store in
-                store.created
-            }
+            self.store.created
         }
 
         var closed: Int {
-            self.store.withLockedValue { store in
-                store.closed
-            }
+            self.store.closed
         }
 
         var open: Int {
-            self.store.withLockedValue { store in
-                store.open
-            }
+            self.store.open
         }
 
         class Store {
