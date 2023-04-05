@@ -27,6 +27,7 @@ extension NIOHTTP2Handler.StreamMultiplexer: MultiplexerChannelCreator { }
 /// Have two `EmbeddedChannel` objects send and receive data from each other until
 /// they make no forward progress.
 func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel) throws {
+    precondition(first.eventLoop === second.eventLoop, "interactInMemory assumes both channels are on the same event loop.")
     var operated: Bool
 
     func readBytesFromChannel(_ channel: EmbeddedChannel) throws -> ByteBuffer? {
