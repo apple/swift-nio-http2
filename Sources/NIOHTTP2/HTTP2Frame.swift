@@ -317,33 +317,19 @@ public struct HTTP2Frame: Sendable {
 extension HTTP2Frame.FramePayload {
     /// A shorthand heuristic for how many bytes we assume a frame contributes to flow control calculations.
     ///
-    /// Here we concern ourselves only with per-stream frames: that is, `HEADERS`, `DATA`,
-    /// `WINDOW_UDPATE`, `RST_STREAM`, and I guess `PRIORITY`. As a simple heuristic we
-    /// hard code fixed lengths for fixed length frames, use a calculated length for
-    /// variable length frames, and just ignore encoded headers because it's not worth doing a better
-    /// job.
+    /// Here we concern ourselves only with per-stream `DATA` frames.
+    ///
     /// Flow control does not take into account the 9-byte frame header (https://www.rfc-editor.org/rfc/rfc9113.html#section-6.9.1).
     var flowControlledSize: Int {
         switch self {
         case .data(let d):
             let paddingBytes = d.paddingBytes.map { $0 + 1 } ?? 0
             return d.data.readableBytes + paddingBytes
-        case .headers(let h):
-            let paddingBytes = h.paddingBytes.map { $0 + 1 } ?? 0
-            return paddingBytes
-        case .priority:
-            return 5
-        case .pushPromise(let p):
-            // Like headers, this is variably size, and we just ignore the encoded headers because
-            // it's not worth having a heuristic.
-            let paddingBytes = p.paddingBytes.map { $0 + 1 } ?? 0
-            return paddingBytes
-        case .rstStream:
-            return 4
-        case .windowUpdate:
-            return 4
+        case .headers, .priority, .pushPromise, .rstStream, .windowUpdate:
+            //  say 0 bytes because flow control only cares about DATA frames
+            return 0
         default:
-            // Unknown or unexpected control frame: say 0 bytes because we ignore the 9-byte header for flow control purposes.
+            // Unknown or unexpected control frame: say 0 bytes because flow control only cares about DATA frames
             return 0
         }
     }
