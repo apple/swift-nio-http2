@@ -68,8 +68,14 @@ extension CompoundOutboundBuffer {
 // Note that this does not quite conform to OutboundFrameBuffer. This is because the implementation of nextFlushedWritableFrame may in principle
 // cause an error that requires us to error out on a frame, and we cannot make outcalls from this structure.
 extension CompoundOutboundBuffer {
+    /// MarkedCircularBuffer always allocates on init even with an initial capacity of zero (CircularBuffer, on
+    /// which MarkedCircularBuffer is based, has internal invariants which require it to have a non-zero capacity).
+    /// This static empty buffer allows us to avoid that allocation in each `processOutboundFrame` call when there
+    /// are no frames to drop.
+    private static let emptyFramesToDrop = MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>(initialCapacity: 0)
+
     mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?, channelWritable: Bool) throws -> OutboundFrameAction {
-        var framesToDrop: MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)> = MarkedCircularBuffer(initialCapacity: 0)
+        var framesToDrop = Self.emptyFramesToDrop
         var error: NIOHTTP2Errors.StreamClosed? = nil
 
         // The outbound frames pass through the buffers in order, with the following logic:
