@@ -307,3 +307,11 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
     }
 }
+
+extension HTTP2CommonInboundStreamMultiplexer {
+    internal func processedFrame(streamID: HTTP2StreamID, size: Int) {
+        if let channel = self.streams[streamID] {
+            channel.wroteBytes(size)
+        }
+    }
+}

@@ -476,9 +476,15 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         fatalError("not implemented \(#function)")
     }
 
-    public func write0(_ data: NIOAny, promise: EventLoopPromise<Void>?) {
+    func wroteBytes(_ writeSize: Int) {
+        if case .changed(newValue: let value) = self.writabilityManager.wroteBytes(writeSize) {
+            self.changeWritability(to: value)
+        }
+    }
+
+    public func write0(_ data: NIOAny, promise userPromise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
-            promise?.fail(ChannelError.ioOnClosedChannel)
+            userPromise?.fail(ChannelError.ioOnClosedChannel)
             return
         }
 
@@ -490,19 +496,30 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             streamData = .framePayload(self.unwrapData(data))
         }
 
-        // We need a promise to attach our flow control callback to.
+        // For the legacy case we need a promise to attach our flow control callback to.
+        //
+        // This is no longer needed for the `.inline` stream multiplexer case for which this
+        // is all dealt with within the ```NIOHTTP2Handler``` so we can just
+        // call the `writabilityManager` directly.
+        //
         // Regardless of whether the write succeeded or failed, we don't count
         // the bytes any longer.
-        let promise = promise ?? self.eventLoop.makePromise()
+        let promise: EventLoopPromise<Void>?
         let writeSize = streamData.flowControlledSize
 
-        // Right now we deal with this math by just attaching a callback to all promises. This is going
-        // to be annoyingly expensive, but for now it's the most straightforward approach.
-        promise.futureResult.hop(to: self.eventLoop).whenComplete { (_: Result<Void, Error>) in
-            if case .changed(newValue: let value) = self.writabilityManager.wroteBytes(writeSize) {
-                self.changeWritability(to: value)
+        switch self.multiplexer {
+        case .inline:
+            promise = userPromise
+            break // do nothing at this stage, we'll be called back
+        case .legacy:
+            promise = userPromise ?? self.eventLoop.makePromise()
+            promise!.futureResult.hop(to: self.eventLoop).whenComplete { (_: Result<Void, Error>) in
+                if case .changed(newValue: let value) = self.writabilityManager.wroteBytes(writeSize) {
+                    self.changeWritability(to: value)
+                }
             }
         }
+
         self.pendingWrites.append((streamData, promise))
 
         // Ok, we can make an outcall now, which means we can safely deal with the flow control.
