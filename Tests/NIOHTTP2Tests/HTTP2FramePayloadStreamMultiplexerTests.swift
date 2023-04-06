@@ -1524,20 +1524,28 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let childChannel = try assertNoThrowWithValue(childChannelPromise.futureResult.wait())
         XCTAssertTrue(childChannel.isWritable)
 
-        // We're going to write a HEADERS frame (9 bytes) and an 81 byte DATA frame (90 bytes). This will not flip the
+        // We're going to write a HEADERS frame (not counted towards flow control calculations) and a 90 byte DATA frame (90 bytes). This will not flip the
         // writability state.
         let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
-        let headersFrame = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
+        let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
 
-        var dataBuffer = childChannel.allocator.buffer(capacity: 81)
-        dataBuffer.writeBytes(repeatElement(0, count: 81))
-        let dataFrame = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(dataBuffer), endStream: false))
+        var dataBuffer = childChannel.allocator.buffer(capacity: 90)
+        dataBuffer.writeBytes(repeatElement(0, count: 90))
+        let dataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(dataBuffer), endStream: false))
 
-        childChannel.write(headersFrame, promise: nil)
-        childChannel.write(dataFrame, promise: nil)
+        childChannel.write(headersPayload, promise: nil)
+        childChannel.write(dataPayload, promise: nil)
         XCTAssertTrue(childChannel.isWritable)
 
-        // Now we're going to send another HEADERS frame (for trailers). This should flip the channel writability.
+        // We're going to write another 20 byte DATA frame (20 bytes). This should flip the channel writability.
+        dataBuffer = childChannel.allocator.buffer(capacity: 20)
+        dataBuffer.writeBytes(repeatElement(0, count: 20))
+        let secondDataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(dataBuffer), endStream: false))
+
+        childChannel.write(secondDataPayload, promise: nil)
+        XCTAssertFalse(childChannel.isWritable)
+
+        // Now we're going to send another HEADERS frame (for trailers). This should not affect the channel writability.
         let trailers = HPACKHeaders([])
         let trailersFrame = HTTP2Frame.FramePayload.headers(.init(headers: trailers, endStream: true))
         childChannel.write(trailersFrame, promise: nil)
@@ -1625,20 +1633,28 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         self.activateStream(1)
         XCTAssertTrue(childChannel.isWritable)
 
-        // We're going to write a HEADERS frame (9 bytes) and an 81 byte DATA frame (90 bytes). This will not flip the
+        // We're going to write a HEADERS frame (not counted towards flow control calculations) and a 90 byte DATA frame (90 bytes). This will not flip the
         // writability state.
         let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
         let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
 
-        var dataBuffer = childChannel.allocator.buffer(capacity: 81)
-        dataBuffer.writeBytes(repeatElement(0, count: 81))
+        var dataBuffer = childChannel.allocator.buffer(capacity: 90)
+        dataBuffer.writeBytes(repeatElement(0, count: 90))
         let dataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(dataBuffer), endStream: false))
 
         childChannel.write(headersPayload, promise: nil)
         childChannel.write(dataPayload, promise: nil)
         XCTAssertTrue(childChannel.isWritable)
 
-        // Now we're going to send another HEADERS frame (for trailers). This should flip the channel writability.
+        // We're going to write another 20 byte DATA frame (20 bytes). This should flip the channel writability.
+        dataBuffer = childChannel.allocator.buffer(capacity: 20)
+        dataBuffer.writeBytes(repeatElement(0, count: 20))
+        let secondDataPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(dataBuffer), endStream: false))
+
+        childChannel.write(secondDataPayload, promise: nil)
+        XCTAssertFalse(childChannel.isWritable)
+
+        // Now we're going to send another HEADERS frame (for trailers). This should not affect the channel writability.
         let trailers = HPACKHeaders([])
         let trailersPayload = HTTP2Frame.FramePayload.headers(.init(headers: trailers, endStream: true))
         childChannel.write(trailersPayload, promise: nil)

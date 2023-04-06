@@ -135,12 +135,12 @@ private enum HTTP2StreamData {
     case frame(HTTP2Frame)
     case framePayload(HTTP2Frame.FramePayload)
 
-    var estimatedFrameSize: Int {
+    var flowControlledSize: Int {
         switch self {
         case .frame(let frame):
-            return frame.payload.estimatedFrameSize
+            return frame.payload.flowControlledSize
         case .framePayload(let payload):
-            return payload.estimatedFrameSize
+            return payload.flowControlledSize
         }
     }
 }
@@ -494,7 +494,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // Regardless of whether the write succeeded or failed, we don't count
         // the bytes any longer.
         let promise = promise ?? self.eventLoop.makePromise()
-        let writeSize = streamData.estimatedFrameSize
+        let writeSize = streamData.flowControlledSize
 
         // Right now we deal with this math by just attaching a callback to all promises. This is going
         // to be annoyingly expensive, but for now it's the most straightforward approach.
