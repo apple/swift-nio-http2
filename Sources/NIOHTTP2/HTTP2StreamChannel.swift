@@ -477,6 +477,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     func wroteBytes(_ writeSize: Int) {
+        self.eventLoop.preconditionInEventLoop()
         if case .changed(newValue: let value) = self.writabilityManager.wroteBytes(writeSize) {
             self.changeWritability(to: value)
         }
@@ -499,8 +500,8 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         // For the legacy case we need a promise to attach our flow control callback to.
         //
         // This is no longer needed for the `.inline` stream multiplexer case for which this
-        // is all dealt with within the ```NIOHTTP2Handler``` so we can just
-        // call the `writabilityManager` directly.
+        // is all dealt with within the `NIOHTTP2Handler` which calls us back directly
+        // via `wroteBytes`.
         //
         // Regardless of whether the write succeeded or failed, we don't count
         // the bytes any longer.
@@ -514,9 +515,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         case .legacy:
             promise = userPromise ?? self.eventLoop.makePromise()
             promise!.futureResult.hop(to: self.eventLoop).whenComplete { (_: Result<Void, Error>) in
-                if case .changed(newValue: let value) = self.writabilityManager.wroteBytes(writeSize) {
-                    self.changeWritability(to: value)
-                }
+                self.wroteBytes(writeSize)
             }
         }
 
