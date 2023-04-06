@@ -136,10 +136,10 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         }
     }
 
-    func processedFrame(streamID: HTTP2StreamID, size: Int) {
+    func processedFrame(_ frame: HTTP2Frame) {
         switch self {
         case .inline(let inlineStreamMultiplexer):
-            inlineStreamMultiplexer.processedFrame(streamID: streamID, size: size)
+            inlineStreamMultiplexer.processedFrame(frame: frame)
         case .legacy:
             break // do nothing
         }
