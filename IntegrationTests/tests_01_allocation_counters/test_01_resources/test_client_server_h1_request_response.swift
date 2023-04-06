@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2020-2021 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2020-2023 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -17,30 +17,6 @@ import NIOEmbedded
 import NIOHPACK
 import NIOHTTP1
 import NIOHTTP2
-
-/// Have two `EmbeddedChannel` objects send and receive data from each other until
-/// they make no forward progress.
-func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel) throws {
-    var operated: Bool
-
-    func readBytesFromChannel(_ channel: EmbeddedChannel) throws -> ByteBuffer? {
-        return try channel.readOutbound(as: ByteBuffer.self)
-    }
-
-    repeat {
-        operated = false
-        first.embeddedEventLoop.run()
-
-        if let data = try readBytesFromChannel(first) {
-            operated = true
-            try second.writeInbound(data)
-        }
-        if let data = try readBytesFromChannel(second) {
-            operated = true
-            try first.writeInbound(data)
-        }
-    } while operated
-}
 
 final class ServerHandler: ChannelInboundHandler {
     typealias InboundIn = HTTPServerRequestPart
@@ -77,6 +53,28 @@ final class ClientHandler: ChannelInboundHandler {
 }
 
 func run(identifier: String) {
+    testRun(identifier: identifier) { clientChannel in
+        return try! clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait()
+    } serverPipelineConfigurator: { serverChannel in
+        _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
+            return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
+        }.wait()
+    }
+
+    //
+    // MARK: - Inline HTTP2 multiplexer tests
+    testRun(identifier: identifier + "_inline") { clientChannel in
+        return try! clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
+            return channel.eventLoop.makeSucceededVoidFuture()
+        }.wait()
+    } serverPipelineConfigurator: { serverChannel in
+        _ = try! serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
+            return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
+        }.wait()
+    }
+}
+
+private func testRun(identifier: String, clientPipelineConfigurator: (Channel) throws -> MultiplexerChannelCreator, serverPipelineConfigurator: (Channel) throws -> ()) {
     let loop = EmbeddedEventLoop()
 
     measure(identifier: identifier) {
@@ -86,10 +84,8 @@ func run(identifier: String) {
             let clientChannel = EmbeddedChannel(loop: loop)
             let serverChannel = EmbeddedChannel(loop: loop)
 
-            let clientMultiplexer = try! clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait()
-            _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
-                return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
-            }.wait()
+            let clientMultiplexer = try! clientPipelineConfigurator(clientChannel)
+            try! serverPipelineConfigurator(serverChannel)
             try! clientChannel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5678)).wait()
             try! serverChannel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5678)).wait()
 

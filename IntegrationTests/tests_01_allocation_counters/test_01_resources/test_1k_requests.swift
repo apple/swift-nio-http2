@@ -108,13 +108,11 @@ struct ServerOnly1KRequestsBenchmark {
         return settingsCopy
     }
 
-    init(concurrentStreams: Int) throws {
+    init(concurrentStreams: Int, pipelineConfigurator: (Channel) throws -> ()) throws {
         self.concurrentStreams = concurrentStreams
 
         self.channel = EmbeddedChannel()
-        _ = try self.channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
-        }.wait()
+        try pipelineConfigurator(self.channel)
 
         try self.channel.connect(to: .init(unixDomainSocketPath: "/fake"), promise: nil)
 
@@ -198,7 +196,11 @@ fileprivate class TestServer: ChannelInboundHandler {
 }
 
 func run(identifier: String) {
-    var interleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100)
+    var interleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100) { channel in
+        _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+            return streamChannel.pipeline.addHandler(TestServer())
+        }.wait()
+    }
 
     measure(identifier: identifier + "_interleaved") {
         return try! interleaved.run()
@@ -206,11 +208,41 @@ func run(identifier: String) {
 
     interleaved.tearDown()
 
-    var noninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1)
+    var noninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1) { channel in
+        _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+            return streamChannel.pipeline.addHandler(TestServer())
+        }.wait()
+    }
 
     measure(identifier: identifier + "_noninterleaved") {
         return try! noninterleaved.run()
     }
 
     noninterleaved.tearDown()
+
+    //
+    // MARK: - Inline HTTP2 multiplexer tests
+    var inlineInterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100) { channel in
+        _ = try channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { streamChannel -> EventLoopFuture<Void> in
+            return streamChannel.pipeline.addHandler(TestServer())
+        }.wait()
+    }
+
+    measure(identifier: identifier + "_inline_interleaved") {
+        return try! inlineInterleaved.run()
+    }
+
+    inlineInterleaved.tearDown()
+
+    var inlineNoninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1) { channel in
+        _ = try channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { streamChannel -> EventLoopFuture<Void> in
+            return streamChannel.pipeline.addHandler(TestServer())
+        }.wait()
+    }
+
+    measure(identifier: identifier + "_inline_noninterleaved") {
+        return try! inlineNoninterleaved.run()
+    }
+
+    inlineNoninterleaved.tearDown()
 }
