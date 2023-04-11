@@ -22,6 +22,9 @@ services:
   h2spec:
     image: swift-nio-http2:22.04-5.7
 
+  documentation-check:
+    image: swift-nio-http2:22.04-5.7
+
   test:
     image: swift-nio-http2:22.04-5.7
     environment:

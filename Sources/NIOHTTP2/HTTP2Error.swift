@@ -1647,7 +1647,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// The ``HTTP2ChannelHandler`` does not have a multiplexer but one has been accessed.
+    /// The ``NIOHTTP2Handler`` does not have a multiplexer but one has been accessed.
     public struct MissingMultiplexer: NIOHTTP2Error {
         private let file: String
         private let line: UInt
