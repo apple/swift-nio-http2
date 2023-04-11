@@ -642,20 +642,25 @@ extension NIOHTTP2Handler {
             case .forwardAndDrop(let framesToDrop, let error):
                 // We need to forward this frame, and then fail these promises.
                 self.processOutboundFrame(context: context, frame: frame, promise: promise)
-                for (_, promise) in framesToDrop {
+                for (droppedFrame, promise) in framesToDrop {
+                    self.inboundStreamMultiplexer?.processedFrame(droppedFrame)
                     promise?.fail(error)
                 }
             case .succeedAndDrop(let framesToDrop, let error):
                 // We need to succeed this frame promise and fail the others. We fail the others first to keep the
                 // promises in order.
-                for (_, promise) in framesToDrop {
+                for (droppedFrame, promise) in framesToDrop {
+                    self.inboundStreamMultiplexer?.processedFrame(droppedFrame)
                     promise?.fail(error)
                 }
+                self.inboundStreamMultiplexer?.processedFrame(frame)
                 promise?.succeed(())
             }
         } catch let error where error is NIOHTTP2Errors.ExcessiveOutboundFrameBuffering {
+            self.inboundStreamMultiplexer?.processedFrame(frame)
             self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .enhanceYourCalm)
         } catch {
+            self.inboundStreamMultiplexer?.processedFrame(frame)
             promise?.fail(error)
         }
     }
@@ -702,6 +707,10 @@ extension NIOHTTP2Handler {
         }
 
         self.processStateChange(result.effect)
+
+        // From this point on this will either error or go into `context.write`
+        // Once the frame data is out of the HTTP2 handler we consider this 'written'
+        self.inboundStreamMultiplexer?.processedFrame(frame)
 
         switch result.result {
         case .ignoreFrame:

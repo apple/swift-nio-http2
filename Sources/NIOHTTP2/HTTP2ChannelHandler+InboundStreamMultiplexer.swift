@@ -135,6 +135,15 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
             break // do nothing
         }
     }
+
+    func processedFrame(_ frame: HTTP2Frame) {
+        switch self {
+        case .inline(let inlineStreamMultiplexer):
+            inlineStreamMultiplexer.processedFrame(frame: frame)
+        case .legacy:
+            break // do nothing
+        }
+    }
 }
 
 /// Provides an inbound stream multiplexer interface for legacy compatibility.

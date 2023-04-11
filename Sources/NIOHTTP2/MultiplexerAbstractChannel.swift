@@ -141,6 +141,10 @@ extension MultiplexerAbstractChannel {
     func receiveStreamError(_ error: NIOHTTP2Errors.StreamError) {
         self.baseChannel.receiveStreamError(error)
     }
+
+    func wroteBytes(_ size: Int) {
+        self.baseChannel.wroteBytes(size)
+    }
 }
 
 extension MultiplexerAbstractChannel: Equatable {

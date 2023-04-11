@@ -133,6 +133,10 @@ extension InlineStreamMultiplexer {
             break
         }
     }
+
+    internal func processedFrame(frame: HTTP2Frame) {
+        self.commonStreamMultiplexer.processedFrame(streamID: frame.streamID, size: frame.payload.flowControlledSize)
+    }
 }
 
 extension InlineStreamMultiplexer {
