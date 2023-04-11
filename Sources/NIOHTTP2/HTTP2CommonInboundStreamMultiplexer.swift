@@ -309,6 +309,12 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
+    /// Mark the bytes as written
+    ///
+    /// > This is only to be called from the inline multiplexer
+    ///
+    /// Mark bytes as written in the `HTTP2StreamChannel` writability manager directly, as used by the inline stream multiplexer.
+    /// This is taken care of separately via a promise in the legacy case.
     internal func processedFrame(streamID: HTTP2StreamID, size: Int) {
         if let channel = self.streams[streamID] {
             channel.wroteBytes(size)
