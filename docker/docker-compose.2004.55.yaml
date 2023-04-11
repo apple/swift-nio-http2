@@ -23,6 +23,9 @@ services:
   h2spec:
     image: swift-nio-http2:20.04-5.5
 
+  documentation-check:
+    image: swift-nio-http2:20.04-5.5
+
   test:
     image: swift-nio-http2:20.04-5.5
     command: /bin/bash -xcl "swift test -Xswiftc -warnings-as-errors $${SANITIZER_ARG-} && ./scripts/integration_tests.sh && ./scripts/test_h2spec.sh $${SANITIZER_ARG-}"
