@@ -2,7 +2,9 @@
 
 This project contains HTTP/2 support for Swift projects using SwiftNIO.
 
-## Getting Started
+## Overview
+
+### Getting Started
 
 ``NIOHTTP2`` provides a number of types that make working with HTTP/2 practical using SwiftNIO. The simplest way to get started is to use the helpers provided to configure a HTTP/2 `ChannelPipeline`. As an example, to configure a HTTP/2 server, you can use `Channel.configureHTTP2Pipeline`:
 

@@ -270,7 +270,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
 
     /// Return a sequence of header values for the header field named `name`.
     ///
-    /// See also ``subscript(name:)`` and ``subscript(canonicalForm:)``.
+    /// See also ``HPACKHeaders/subscript(_:)-8qnm8`` and ``HPACKHeaders/subscript(canonicalForm:)``.
     ///
     /// - Parameters:
     ///   - name: The name of the header field whose values should be iterated.

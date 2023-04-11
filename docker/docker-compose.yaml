@@ -38,6 +38,10 @@ services:
     <<: *common
     command: /bin/bash -xcl "swift build -c release && ./.build/release/NIOHTTP2PerformanceTester"
 
+  documentation-check:
+    <<: *common
+    command: /bin/bash -xcl "./scripts/check-docs.sh"
+
   h2spec:
     <<: *common
     command: /bin/bash -xcl "./scripts/test_h2spec.sh"
