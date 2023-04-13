@@ -37,6 +37,12 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public typealias OutboundIn = HTTP2Frame
     public typealias OutboundOut = IOData
 
+    // MARK: Proxyman Code - Start
+
+    public var clientHTTP2SettingsCallback: ((HTTP2Settings) -> Void)?
+
+    // MARK: Proxyman Code - End
+
     /// The magic string sent by clients at the start of a HTTP/2 connection.
     private static let clientMagic: StaticString = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
@@ -514,6 +520,20 @@ extension NIOHTTP2Handler {
             let (stateMachineResult, postSettingsOperation) = self.stateMachine.receiveSettings(newSettings,
                                                                                                 frameEncoder: &self.frameEncoder,
                                                                                                 frameDecoder: &self.frameDecoder)
+
+            // Retreive the HTTP2 Frame setting from the Client
+            // Then sending back to the SSLHandler
+            // It's important to send the same HTTP2 Setting from Proxyman -> Server
+            // https://github.com/ProxymanApp/Proxyman/issues/416#issuecomment-1443037135
+            if self.mode == .server, let callback = self.clientHTTP2SettingsCallback {
+                switch newSettings {
+                case .settings(let newSettings):
+                    callback(newSettings)
+                default:
+                    break
+                }
+            }
+
             result = stateMachineResult
             switch postSettingsOperation {
             case .nothing:
