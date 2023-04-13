@@ -529,6 +529,8 @@ extension NIOHTTP2Handler {
                 switch newSettings {
                 case .settings(let newSettings):
                     callback(newSettings)
+                    // One time call
+                    self.clientHTTP2SettingsCallback = nil
                 default:
                     break
                 }
