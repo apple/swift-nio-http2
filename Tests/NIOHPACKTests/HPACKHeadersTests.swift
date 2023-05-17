@@ -180,4 +180,30 @@ final class HPACKHeadersTests: XCTestCase {
             }
         }
     }
+
+    func testRemoveAll() {
+        let original: HPACKHeaders = [
+            "foo": "bar",
+            "bar": "foo",
+            "foo": "baz",
+            "foo": "bar,baz",
+            "foo": " bar ,baz ,,",
+            "bar": "foo"
+        ]
+
+        XCTAssertEqual(original.capacity, 6)
+        var keepCapacity = original
+        XCTAssertEqual(keepCapacity.count, 6)
+        XCTAssertEqual(keepCapacity.capacity, 6)
+        keepCapacity.removeAll(keepingCapacity: true)
+        XCTAssertEqual(keepCapacity.count, 0)
+        XCTAssertEqual(keepCapacity.capacity, 6)
+
+        var lowerCapacity = original
+        XCTAssertEqual(lowerCapacity.count, 6)
+        XCTAssertEqual(lowerCapacity.capacity, 6)
+        lowerCapacity.removeAll(keepingCapacity: false)
+        XCTAssertEqual(lowerCapacity.count, 0)
+        XCTAssertEqual(lowerCapacity.capacity, 0)
+    }
 }
