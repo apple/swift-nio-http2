@@ -426,9 +426,9 @@ extension HPACKHeaders {
         self.headers.reserveCapacity(minimumCapacity)
     }
 
-    /// Removes all headers whist optionally keeping the capacity.
+    /// Removes all headers whilst optionally keeping the capacity.
     ///
-    /// - Parameter keepingCapacity: Wether to keep the underlying memory or not. Use this flag to
+    /// - Parameter keepingCapacity: Whether to keep the underlying memory or not. Use this flag to
     ///                              reduce allocations when reusing the header collection.
     @inlinable
     public mutating func removeAll(keepingCapacity: Bool = false) {
