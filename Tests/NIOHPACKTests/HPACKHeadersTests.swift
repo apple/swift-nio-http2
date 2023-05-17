@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2022 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2022-2023 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -179,5 +179,31 @@ final class HPACKHeadersTests: XCTestCase {
                 XCTAssertEqual(values, expected.map { $0[...] })
             }
         }
+    }
+
+    func testRemoveAll() {
+        let original: HPACKHeaders = [
+            "foo": "bar",
+            "bar": "foo",
+            "foo": "baz",
+            "foo": "bar,baz",
+            "foo": " bar ,baz ,,",
+            "bar": "foo"
+        ]
+
+        XCTAssertEqual(original.capacity, 6)
+        var keepCapacity = original
+        XCTAssertEqual(keepCapacity.count, 6)
+        XCTAssertEqual(keepCapacity.capacity, 6)
+        keepCapacity.removeAll(keepingCapacity: true)
+        XCTAssertEqual(keepCapacity.count, 0)
+        XCTAssertEqual(keepCapacity.capacity, 6)
+
+        var lowerCapacity = original
+        XCTAssertEqual(lowerCapacity.count, 6)
+        XCTAssertEqual(lowerCapacity.capacity, 6)
+        lowerCapacity.removeAll(keepingCapacity: false)
+        XCTAssertEqual(lowerCapacity.count, 0)
+        XCTAssertEqual(lowerCapacity.capacity, 0)
     }
 }

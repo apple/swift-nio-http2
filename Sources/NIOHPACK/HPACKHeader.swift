@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2017-2021 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2017-2023 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -424,6 +424,15 @@ extension HPACKHeaders {
     @inlinable
     public mutating func reserveCapacity(_ minimumCapacity: Int) {
         self.headers.reserveCapacity(minimumCapacity)
+    }
+
+    /// Removes all headers whilst optionally keeping the capacity.
+    ///
+    /// - Parameter keepingCapacity: Whether to keep the underlying memory or not. Use this flag to
+    ///                              reduce allocations when reusing the header collection.
+    @inlinable
+    public mutating func removeAll(keepingCapacity: Bool = false) {
+        self.headers.removeAll(keepingCapacity: keepingCapacity)
     }
 }
 
