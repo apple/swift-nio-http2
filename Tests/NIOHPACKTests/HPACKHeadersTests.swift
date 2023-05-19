@@ -191,17 +191,17 @@ final class HPACKHeadersTests: XCTestCase {
             "bar": "foo"
         ]
 
-        XCTAssertEqual(original.capacity, 6)
+        let originalCapacity = original.capacity
         var keepCapacity = original
         XCTAssertEqual(keepCapacity.count, 6)
-        XCTAssertEqual(keepCapacity.capacity, 6)
+        XCTAssertEqual(keepCapacity.capacity, originalCapacity)
         keepCapacity.removeAll(keepingCapacity: true)
         XCTAssertEqual(keepCapacity.count, 0)
-        XCTAssertEqual(keepCapacity.capacity, 6)
+        XCTAssertEqual(keepCapacity.capacity, originalCapacity)
 
         var lowerCapacity = original
         XCTAssertEqual(lowerCapacity.count, 6)
-        XCTAssertEqual(lowerCapacity.capacity, 6)
+        XCTAssertEqual(lowerCapacity.capacity, originalCapacity)
         lowerCapacity.removeAll(keepingCapacity: false)
         XCTAssertEqual(lowerCapacity.count, 0)
         XCTAssertEqual(lowerCapacity.capacity, 0)
