@@ -375,6 +375,6 @@ extension ChannelPipeline.SynchronousOperations {
         try self.addHandler(handler, position: position)
 
         // `multiplexer` will always be non-nil when we are initializing with an `inboundStreamInitializer`
-        return try handler.multiplexer.wait()
+        return try handler.syncMultiplexer()
     }
 }
