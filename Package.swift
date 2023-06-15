@@ -17,6 +17,9 @@ import PackageDescription
 
 let package = Package(
     name: "swift-nio-http2",
+    platforms: [
+        .macOS("10.15")
+    ],
     products: [
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
     ],
