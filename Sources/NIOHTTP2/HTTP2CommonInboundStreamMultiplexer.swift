@@ -354,11 +354,11 @@ internal protocol ContinuationSanitizer {
 /// `StreamChannels` is a wrapper for a generic `AsyncThrowingStream` which holds the inbound HTTP2 stream channels.
 struct StreamChannels<StreamChannelType>: ContinuationSanitizer {
     var continuation: AsyncThrowingStream<StreamChannelType, Error>.Continuation
-    private let streamInitializer: (Channel) -> StreamChannelType
+    private let streamInitializer: (Channel) -> EventLoopFuture<StreamChannelType>
 
     private init(
         continuation: AsyncThrowingStream<StreamChannelType, Error>.Continuation,
-        streamInitializer: @escaping (Channel) -> StreamChannelType
+        streamInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>
     ) {
         self.continuation = continuation
         self.streamInitializer = streamInitializer
@@ -373,7 +373,7 @@ struct StreamChannels<StreamChannelType>: ContinuationSanitizer {
     ///   have a `StreamChannelType` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
     ///   per-stream protocol negotiation where `StreamChannelType` would be some form of `NIOProtocolNegotiationResult`.
     static func initialize(
-        with streamInitializer: @escaping (Channel) -> StreamChannelType
+        with streamInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>
     ) -> (StreamChannels<StreamChannelType>, AsyncThrowingStream<StreamChannelType, Error>) {
         var stashContinuation: AsyncThrowingStream<StreamChannelType, Error>.Continuation? = nil
         let stream = AsyncThrowingStream { continuation in
@@ -385,19 +385,21 @@ struct StreamChannels<StreamChannelType>: ContinuationSanitizer {
     /// `yield` takes a channel, executes the stored `streamInitializer` upon it and then yields the *derived* type to
     /// the wrapped `AsyncThrowingStream`.
     func yield(channel: Channel) {
-        let yieldResult = self.continuation.yield(self.streamInitializer(channel))
-        switch yieldResult {
-        case .enqueued:
-            break // success, nothing to do
-        case .dropped:
-            // TODO: at the moment this won't be hit because the policy is 'unbounded' meaning the AsyncThrowingStream can't be over capacity - is this a good thing?
-            channel.close(mode: .all, promise: nil)
-        case .terminated:
-            channel.close(mode: .all, promise: nil)
-            assertionFailure("Attempted to yield channel to AsyncThrowingStream in terminated state.")
-        default:
-            channel.close(mode: .all, promise: nil)
-            assertionFailure("Attempt to yield channel to AsyncThrowingStream failed for unhandled reason.")
+        self.streamInitializer(channel).whenSuccess{ streamChannel in
+            let yieldResult = self.continuation.yield(streamChannel)
+            switch yieldResult {
+            case .enqueued:
+                break // success, nothing to do
+            case .dropped:
+                // TODO: at the moment this won't be hit because the policy is 'unbounded' meaning the AsyncThrowingStream can't be over capacity - is this a good thing?
+                channel.close(mode: .all, promise: nil)
+            case .terminated:
+                channel.close(mode: .all, promise: nil)
+                assertionFailure("Attempted to yield channel to AsyncThrowingStream in terminated state.")
+            default:
+                channel.close(mode: .all, promise: nil)
+                assertionFailure("Attempt to yield channel to AsyncThrowingStream failed for unhandled reason.")
+            }
         }
     }
 

@@ -201,3 +201,42 @@ extension NIOHTTP2Handler {
         }
     }
 }
+
+extension InlineStreamMultiplexer {
+    func setStreamChannels(_ streamChannels: any ContinuationSanitizer) {
+        self.commonStreamMultiplexer.setStreamChannels(streamChannels)
+    }
+}
+
+extension NIOHTTP2Handler {
+    /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream and yields it to the supplied async continuation.
+
+    /// In general in NIO applications it is helpful to consider each HTTP/2 stream as an
+    /// independent stream of HTTP/2 frames. This multiplexer achieves this by creating a
+    /// number of in-memory `HTTP2StreamChannel` objects, one for each stream. These operate
+    /// on ``HTTP2Frame/FramePayload`` objects as their base communication
+    /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
+    /// and `IOData`.
+    ///
+    /// The stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
+    /// `StreamChannelType` which must match the communication atom (final handler's InboundOut/OutboundIn types). This type may
+    /// still be `HTTP2Frame` or changed to any other type.
+    @_spi(AsyncChannel)
+    public struct AsyncStreamMultiplexer {
+        private let inlineStreamMultiplexer: InlineStreamMultiplexer
+
+        /// Cannot be created by users.
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ContinuationSanitizer) {
+            self.inlineStreamMultiplexer = inlineStreamMultiplexer
+            self.inlineStreamMultiplexer.setStreamChannels(continuation)
+        }
+
+        public func createStreamChannel<StreamChannelType>(_ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>) -> EventLoopFuture<StreamChannelType> {
+            return self.inlineStreamMultiplexer.createStreamChannel { channel in
+                channel.eventLoop.makeSucceededVoidFuture()
+            }.flatMap { channel in
+                streamStateInitializer(channel)
+            }
+        }
+    }
+}

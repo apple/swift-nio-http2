@@ -1076,4 +1076,15 @@ extension NIOHTTP2Handler {
             throw NIOHTTP2Errors.missingMultiplexer()
         }
     }
+
+    internal func syncAsyncStreamMultiplexer(continuation: any ContinuationSanitizer) throws -> AsyncStreamMultiplexer {
+        self.eventLoop!.preconditionInEventLoop()
+
+        switch self.inboundStreamMultiplexer {
+        case let .some(.inline(multiplexer)):
+            return AsyncStreamMultiplexer(multiplexer, continuation: continuation)
+        case .some(.legacy), .none:
+            throw NIOHTTP2Errors.missingMultiplexer()
+        }
+    }
 }
