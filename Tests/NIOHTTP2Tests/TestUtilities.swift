@@ -62,6 +62,32 @@ extension XCTestCase {
         } while operated
     }
 
+    /// Have two `NIOAsyncTestingChannel` objects send and receive data from each other until
+    /// they make no forward progress.
+    func interactInMemory(_ first: NIOAsyncTestingChannel, _ second: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
+        var operated: Bool
+
+        func readBytesFromChannel(_ channel: NIOAsyncTestingChannel) async -> ByteBuffer? {
+            guard let data = try? await assertNoThrowWithValue(await channel.readOutbound(as: ByteBuffer.self)) else {
+                return nil
+            }
+            return data
+        }
+
+        repeat {
+            operated = false
+
+            if let data = await readBytesFromChannel(first) {
+                operated = true
+                try await assertNoThrow(try await second.writeInbound(data), file: (file), line: line)
+            }
+            if let data = await readBytesFromChannel(second) {
+                operated = true
+                try await assertNoThrow(try await first.writeInbound(data), file: (file), line: line)
+            }
+        } while operated
+    }
+
     /// Deliver all the bytes currently flushed on `sourceChannel` to `targetChannel`.
     func deliverAllBytes(from sourceChannel: EmbeddedChannel, to targetChannel: EmbeddedChannel, file: StaticString = #filePath, line: UInt = #line) {
         // Collect the serialized data.
@@ -108,6 +134,43 @@ extension XCTestCase {
 
         client.assertNoFramesReceived(file: (file), line: line)
         server.assertNoFramesReceived(file: (file), line: line)
+    }
+
+    /// Given two `NIOAsyncTestingChannel` objects, verify that each one performs the handshake: specifically,
+    /// that each receives a SETTINGS frame from its peer and a SETTINGS ACK for its own settings frame.
+    ///
+    /// If the handshake has not occurred, this will definitely call `XCTFail`. It may also throw if the
+    /// channel is now in an indeterminate state.
+    func assertDoHandshake(client: NIOAsyncTestingChannel, server: NIOAsyncTestingChannel,
+                           clientSettings: [HTTP2Setting] = nioDefaultSettings, serverSettings: [HTTP2Setting] = nioDefaultSettings,
+                           file: StaticString = #filePath, line: UInt = #line) async throws {
+        // This connects are not semantically right, but are required in order to activate the
+        // channels.
+        //! FIXME: Replace with registerAlreadyConfigured0 once EmbeddedChannel propagates this
+        //         call to its channelcore.
+        let socket = try SocketAddress(unixDomainSocketPath: "/fake")
+        _ = try await client.connect(to: socket).get()
+        _ = try await server.connect(to: socket).get()
+
+        // First the channels need to interact.
+        try await self.interactInMemory(client, server, file: (file), line: line)
+
+        // Now keep an eye on things. Each channel should first have been sent a SETTINGS frame.
+        let clientReceivedSettings = try await client.assertReceivedFrame(file: (file), line: line)
+        let serverReceivedSettings = try await server.assertReceivedFrame(file: (file), line: line)
+
+        // Each channel should also have a settings ACK.
+        let clientReceivedSettingsAck = try await client.assertReceivedFrame(file: (file), line: line)
+        let serverReceivedSettingsAck = try await server.assertReceivedFrame(file: (file), line: line)
+
+        // Check that these SETTINGS frames are ok.
+        clientReceivedSettings.assertSettingsFrame(expectedSettings: serverSettings, ack: false, file: (file), line: line)
+        serverReceivedSettings.assertSettingsFrame(expectedSettings: clientSettings, ack: false, file: (file), line: line)
+        clientReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: (file), line: line)
+        serverReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: (file), line: line)
+
+        await client.assertNoFramesReceived(file: (file), line: line)
+        await server.assertNoFramesReceived(file: (file), line: line)
     }
 
     /// Assert that sending the given `frames` into `sender` causes them all to pop back out again at `receiver`,
@@ -183,6 +246,53 @@ extension EmbeddedChannel {
 
         var frameDecoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
         while let buffer = try assertNoThrowWithValue(self.readOutbound(as: ByteBuffer.self), file: (file), line: line) {
+            frameDecoder.append(bytes: buffer)
+            if let (frame, _) = try frameDecoder.nextFrame() {
+                receivedFrames.append(frame)
+            }
+        }
+
+        return receivedFrames
+    }
+}
+
+extension NIOAsyncTestingChannel {
+    /// This function attempts to obtain a HTTP/2 frame from a connection. It must already have been
+    /// sent, as this function does not call `interactInMemory`. If no frame has been received, this
+    /// will call `XCTFail` and then throw: this will ensure that the test will not proceed past
+    /// this point if no frame was received.
+    func assertReceivedFrame(file: StaticString = #filePath, line: UInt = #line) async throws -> HTTP2Frame {
+        guard let frame: HTTP2Frame = try await assertNoThrowWithValue(await self.readInbound()) else {
+            XCTFail("Did not receive frame", file: (file), line: line)
+            throw NoFrameReceived()
+        }
+
+        return frame
+    }
+
+    /// Asserts that the connection has not received a HTTP/2 frame at this time.
+    func assertNoFramesReceived(file: StaticString = #filePath, line: UInt = #line) async {
+        let content: HTTP2Frame? = try? await assertNoThrowWithValue(await self.readInbound())
+        XCTAssertNil(content, "Received unexpected content: \(content!)", file: (file), line: line)
+    }
+
+    /// Retrieve all sent frames.
+    func sentFrames(file: StaticString = #filePath, line: UInt = #line) async throws -> [HTTP2Frame] {
+        var receivedFrames: [HTTP2Frame] = Array()
+
+        while let frame = try await assertNoThrowWithValue(await self.readOutbound(as: HTTP2Frame.self), file: (file), line: line) {
+            receivedFrames.append(frame)
+        }
+
+        return receivedFrames
+    }
+
+    /// Retrieve all sent frames.
+    func decodedSentFrames(file: StaticString = #filePath, line: UInt = #line) async throws -> [HTTP2Frame] {
+        var receivedFrames: [HTTP2Frame] = Array()
+
+        var frameDecoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        while let buffer = try await assertNoThrowWithValue(await self.readOutbound(as: ByteBuffer.self), file: (file), line: line) {
             frameDecoder.append(bytes: buffer)
             if let (frame, _) = try frameDecoder.nextFrame() {
                 receivedFrames.append(frame)
@@ -787,6 +897,53 @@ func assertNoThrowWithValue<T>(_ body: @autoclosure () throws -> T, defaultValue
         } else {
             throw error
         }
+    }
+}
+
+func assertNoThrowWithValue<T>(_ body: @autoclosure () async throws -> T, defaultValue: T? = nil, message: String? = nil, file: StaticString = #filePath, line: UInt = #line) async throws -> T {
+    do {
+        return try await body()
+    } catch {
+        XCTFail("\(message.map { $0 + ": " } ?? "")unexpected error \(error) thrown", file: (file), line: line)
+        if let defaultValue = defaultValue {
+            return defaultValue
+        } else {
+            throw error
+        }
+    }
+}
+
+func assertNoThrow<T>(_ body: @autoclosure () async throws -> T, defaultValue: T? = nil, message: String? = nil, file: StaticString = #filePath, line: UInt = #line) async throws {
+    do {
+        try await _ = body()
+    } catch {
+        XCTFail("\(message.map { $0 + ": " } ?? "")unexpected error \(error) thrown", file: (file), line: line)
+        throw error
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+internal func assertNil(
+    _ expression: @autoclosure () async throws -> Any?,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async rethrows {
+    let result = try await expression()
+    XCTAssertNil(result, file: file, line: line)
+}
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+internal func assertThrowsError<T>(
+    _ expression: @autoclosure () async throws -> T,
+    verify: (Error) -> Void = { _ in },
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expression did not throw error", file: file, line: line)
+    } catch {
+        verify(error)
     }
 }
 
