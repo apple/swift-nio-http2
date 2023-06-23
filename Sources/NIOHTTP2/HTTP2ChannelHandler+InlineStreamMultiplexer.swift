@@ -147,6 +147,10 @@ extension InlineStreamMultiplexer {
     internal func createStreamChannel(_ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), streamStateInitializer)
     }
+
+    internal func createStreamChannel() -> EventLoopFuture<Channel> {
+        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self))
+    }
 }
 
 extension NIOHTTP2Handler {
@@ -231,12 +235,20 @@ extension NIOHTTP2Handler {
             self.inlineStreamMultiplexer.setStreamChannels(continuation)
         }
 
-        public func createStreamChannel<StreamChannelType>(_ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>) -> EventLoopFuture<StreamChannelType> {
-            return self.inlineStreamMultiplexer.createStreamChannel { channel in
-                channel.eventLoop.makeSucceededVoidFuture()
-            }.flatMap { channel in
-                streamStateInitializer(channel)
-            }
+        public func createStreamChannel<StreamChannelType>(_ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>) async throws -> StreamChannelType {
+            return try await self.inlineStreamMultiplexer.createStreamChannel().flatMap { channel in
+                streamStateInitializer(channel).flatMap { streamChannel in
+                    let promise = channel.eventLoop.makePromise(of: Channel.self)
+                    if let http2StreamChannel = channel as? HTTP2StreamChannel {
+                        http2StreamChannel.configure(initializer: { channel in channel.eventLoop.makeSucceededVoidFuture() }, userPromise: promise)
+                    } else {
+                        promise.succeed(channel)
+                    }
+                    return promise.futureResult.map() { _ in
+                        streamChannel
+                    }
+                }
+            }.get()
         }
     }
 }

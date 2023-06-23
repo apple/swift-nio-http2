@@ -69,6 +69,7 @@ internal class HTTP2CommonInboundStreamMultiplexer {
 extension HTTP2CommonInboundStreamMultiplexer {
     func receivedFrame(_ frame: HTTP2Frame, context: ChannelHandlerContext, multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer) {
         self.channel.eventLoop.preconditionInEventLoop()
+
         self.isReading = true
         let streamID = frame.streamID
         if streamID == .rootStream {
@@ -193,6 +194,8 @@ extension HTTP2CommonInboundStreamMultiplexer {
         for channel in self.pendingStreams.values {
             channel.receiveStreamClosed(nil)
         }
+        // there cannot be any more inbound streams now that the connection channel is inactive
+        self.streamChannels?.finish()
     }
 
     internal func propagateChannelWritabilityChanged(context: ChannelHandlerContext) {
@@ -280,6 +283,23 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
+    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?) {
+        self.channel.eventLoop.execute {
+            let channel = MultiplexerAbstractChannel(
+                allocator: self.channel.allocator,
+                parent: self.channel,
+                multiplexer: multiplexer,
+                streamID: nil,
+                targetWindowSize: Int32(self.targetWindowSize),
+                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
+                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
+                inboundStreamStateInitializer: .excludesStreamID(nil)
+            )
+            self.pendingStreams[channel.channelID] = channel
+            promise?.succeed(channel.baseChannel)
+        }
+    }
+
     internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) {
         self.channel.eventLoop.execute {
             let channel = MultiplexerAbstractChannel(
@@ -300,6 +320,12 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
         let promise = self.channel.eventLoop.makePromise(of: Channel.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
+        return promise.futureResult
+    }
+
+    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer) -> EventLoopFuture<Channel> {
+        let promise = self.channel.eventLoop.makePromise(of: Channel.self)
+        self.createStreamChannel(multiplexer: multiplexer, promise: promise)
         return promise.futureResult
     }
 
