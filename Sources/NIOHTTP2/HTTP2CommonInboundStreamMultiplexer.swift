@@ -104,7 +104,9 @@ extension HTTP2CommonInboundStreamMultiplexer {
             self.streams[streamID] = channel
 
             // If we have an async sequence of inbound stream channels yield the channel to it
-            // This also implicitly performs the stream initialization step
+            // This also implicitly performs the stream initialization step.
+            // Note that in this case the API is constructed such that `self.inboundStreamStateInitializer`
+            // does no actual work.
             self.streamChannels?.yield(channel: channel.baseChannel)
 
             channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
@@ -281,7 +283,9 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
-    internal func _createStreamChannel(_ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ promise: EventLoopPromise<Channel>?) {
+    internal func _createStreamChannel<Output>(_ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ promise: EventLoopPromise<Output>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) {
+        self.channel.eventLoop.assertInEventLoop()
+
         let channel = MultiplexerAbstractChannel(
             allocator: self.channel.allocator,
             parent: self.channel,
@@ -293,22 +297,22 @@ extension HTTP2CommonInboundStreamMultiplexer {
             inboundStreamStateInitializer: .excludesStreamID(nil)
         )
         self.pendingStreams[channel.channelID] = channel
-        promise?.succeed(channel.baseChannel)
+        channel.configure(initializer: streamStateInitializer, userPromise: promise)
     }
 
-    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?) {
+    internal func createStreamChannel<Output>(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Output>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) {
         if self.channel.eventLoop.inEventLoop {
-            self._createStreamChannel(multiplexer, promise)
+            self._createStreamChannel(multiplexer, promise, streamStateInitializer)
         } else {
             self.channel.eventLoop.execute {
-                self._createStreamChannel(multiplexer, promise)
+                self._createStreamChannel(multiplexer, promise, streamStateInitializer)
             }
         }
     }
 
-    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer) -> EventLoopFuture<Channel> {
-        let promise = self.channel.eventLoop.makePromise(of: Channel.self)
-        self.createStreamChannel(multiplexer: multiplexer, promise: promise)
+    internal func createStreamChannel<Output>(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+        let promise = self.channel.eventLoop.makePromise(of: Output.self)
+        self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
         return promise.futureResult
     }
 
@@ -379,6 +383,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
 extension HTTP2CommonInboundStreamMultiplexer {
     func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
+        self.channel.eventLoop.assertInEventLoop()
         self.streamChannels = streamChannels
     }
 }
@@ -462,26 +467,26 @@ public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
     public struct AsyncIterator: AsyncIteratorProtocol {
         public typealias Element = Output
 
-        internal var iterator: AsyncThrowingStream<Output, Error>.AsyncIterator
-
-        public mutating func next() async throws -> Output? {
-            try await self.iterator.next()
-        }
+        private var iterator: AsyncThrowingStream<Output, Error>.AsyncIterator
 
         init(_ iterator: AsyncThrowingStream<Output, Error>.AsyncIterator) {
             self.iterator = iterator
+        }
+
+        public mutating func next() async throws -> Output? {
+            try await self.iterator.next()
         }
     }
 
     public typealias Element = Output
 
-    public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(self.asyncThrowingStream.makeAsyncIterator())
-    }
-
-    let asyncThrowingStream: AsyncThrowingStream<Output, Error>
+    private let asyncThrowingStream: AsyncThrowingStream<Output, Error>
 
     init(_ asyncThrowingStream: AsyncThrowingStream<Output, Error>) {
         self.asyncThrowingStream = asyncThrowingStream
+    }
+
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(self.asyncThrowingStream.makeAsyncIterator())
     }
 }

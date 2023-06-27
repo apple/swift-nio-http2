@@ -106,6 +106,10 @@ extension MultiplexerAbstractChannel {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
+    func configure<Output>(initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>, userPromise promise: EventLoopPromise<Output>?) {
+        self.baseChannel.configure(initializer: initializer, userPromise: promise)
+    }
+
     func performActivation() {
         self.baseChannel.performActivation()
     }

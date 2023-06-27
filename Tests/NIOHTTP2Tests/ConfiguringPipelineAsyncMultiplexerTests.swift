@@ -91,16 +91,16 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         var serverRecorderIterator = serverRecorderStream.makeAsyncIterator()
 
         let clientMultiplexer = try await assertNoThrowWithValue(
-            try await self.clientChannel.configureHTTP2PipelineAsync(
+            try await self.clientChannel.configureAsyncHTTP2Pipeline(
                 mode: .client, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in self.serverChannel.eventLoop.makeSucceededFuture(channel) }.get()
         )
 
         let serverMultiplexer = try await assertNoThrowWithValue(
-            try await self.serverChannel.configureHTTP2PipelineAsync(
+            try await self.serverChannel.configureAsyncHTTP2Pipeline(
                 mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
                     let serverRecorder = InboundFramePayloadRecorder()
                     serverRecorderContinuation.yield(serverRecorder)
-                    return channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
+                    return channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in return channel }
                 }.get()
         )
 
