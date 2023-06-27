@@ -223,22 +223,22 @@ extension NIOHTTP2Handler {
     /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
     /// and `IOData`.
     ///
-    /// The stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
-    /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
+    /// Outbound stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
+    /// `OutboundStreamOutput`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
-    public struct AsyncStreamMultiplexer<Output> {
+    public struct AsyncStreamMultiplexer<InboundStreamOutput> {
         private let inlineStreamMultiplexer: InlineStreamMultiplexer
-        public let inbound: NIOHTTP2InboundStreamChannels<Output>
+        public let inbound: NIOHTTP2InboundStreamChannels<InboundStreamOutput>
 
         // Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) {
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
             self.inlineStreamMultiplexer = inlineStreamMultiplexer
             self.inlineStreamMultiplexer.setChannelContinuation(continuation)
             self.inbound = inboundStreamChannels
         }
 
-        public func createStreamChannel<Output>(_ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) async throws -> Output {
+        public func createStreamChannel<OutboundStreamOutput>(_ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
             return try await self.inlineStreamMultiplexer.createStreamChannel(streamStateInitializer).get()
         }
     }
