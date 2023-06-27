@@ -240,6 +240,35 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
+    internal func configure<Output>(initializer: @escaping @Sendable (Channel) -> EventLoopFuture<Output>, userPromise promise: EventLoopPromise<Output>?) {
+        assert(self.streamDataType == .framePayload)
+        // We need to configure this channel. This involves doing four things:
+        // 1. Setting our autoRead state from the parent
+        // 2. Calling the initializer, if provided.
+        // 3. Activating when complete.
+        // 4. Catching errors if they occur.
+        self.getAutoReadFromParent { autoReadResult in
+            switch autoReadResult {
+            case .success(let autoRead):
+                self.autoRead = autoRead
+                initializer(self).whenComplete { result in
+                    switch result {
+                    case .success(let output):
+                        self.postInitializerActivate(promise: nil)
+                        promise?.succeed(output)
+                    case .failure(let error):
+                        self.configurationFailed(withError: error, promise: nil)
+                        promise?.fail(error)
+                    }
+                }
+            case .failure(let error):
+                self.configurationFailed(withError: error, promise: nil)
+                promise?.fail(error)
+            }
+        }
+
+    }
+
     /// Gets the 'autoRead' option from the parent channel and invokes the `body` closure with the
     /// result. This may be done synchronously if the parent `Channel` supports synchronous options.
     private func getAutoReadFromParent(_ body: @escaping (Result<Bool, Error>) -> Void) {

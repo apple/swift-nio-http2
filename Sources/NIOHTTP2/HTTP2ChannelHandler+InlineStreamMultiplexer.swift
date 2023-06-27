@@ -207,14 +207,14 @@ extension NIOHTTP2Handler {
 }
 
 extension InlineStreamMultiplexer {
-    func setStreamChannels(_ streamChannels: any ContinuationSanitizer) {
-        self.commonStreamMultiplexer.setStreamChannels(streamChannels)
+    func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
+        self.commonStreamMultiplexer.setChannelContinuation(streamChannels)
     }
 }
 
 extension NIOHTTP2Handler {
-    /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream and yields it to the supplied async continuation.
-
+    /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream.
+    ///
     /// In general in NIO applications it is helpful to consider each HTTP/2 stream as an
     /// independent stream of HTTP/2 frames. This multiplexer achieves this by creating a
     /// number of in-memory `HTTP2StreamChannel` objects, one for each stream. These operate
@@ -223,31 +223,24 @@ extension NIOHTTP2Handler {
     /// and `IOData`.
     ///
     /// The stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
-    /// `StreamChannelType` which must match the communication atom (final handler's InboundOut/OutboundIn types). This type may
-    /// still be `HTTP2Frame` or changed to any other type.
+    /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
     public struct AsyncStreamMultiplexer {
         private let inlineStreamMultiplexer: InlineStreamMultiplexer
 
-        /// Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ContinuationSanitizer) {
+        // Cannot be created by users.
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ChannelContinuation) {
             self.inlineStreamMultiplexer = inlineStreamMultiplexer
-            self.inlineStreamMultiplexer.setStreamChannels(continuation)
+            self.inlineStreamMultiplexer.setChannelContinuation(continuation)
         }
 
-        public func createStreamChannel<StreamChannelType>(_ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>) async throws -> StreamChannelType {
-            return try await self.inlineStreamMultiplexer.createStreamChannel().flatMap { channel in
-                streamStateInitializer(channel).flatMap { streamChannel in
-                    let promise = channel.eventLoop.makePromise(of: Channel.self)
-                    if let http2StreamChannel = channel as? HTTP2StreamChannel {
-                        http2StreamChannel.configure(initializer: { channel in channel.eventLoop.makeSucceededVoidFuture() }, userPromise: promise)
-                    } else {
-                        promise.succeed(channel)
-                    }
-                    return promise.futureResult.map() { _ in
-                        streamChannel
-                    }
-                }
+        public func createStreamChannel<Output>(_ streamStateInitializer: @escaping @Sendable (Channel) -> EventLoopFuture<Output>) async throws -> Output {
+            return try await self.inlineStreamMultiplexer.createStreamChannel().flatMap { streamChannel in
+                let http2StreamChannel = streamChannel as! HTTP2StreamChannel
+                let promise = streamChannel.eventLoop.makePromise(of: Output.self)
+                http2StreamChannel.configure(initializer: streamStateInitializer, userPromise: promise)
+                return promise.futureResult
             }.get()
         }
     }

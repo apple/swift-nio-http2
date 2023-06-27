@@ -38,7 +38,7 @@ internal class HTTP2CommonInboundStreamMultiplexer {
     private var isReading = false
     private var flushPending = false
 
-    var streamChannels: (any ContinuationSanitizer)?
+    var streamChannels: (any ChannelContinuation)?
 
     init(
         mode: NIOHTTP2Handler.ParserMode,
@@ -108,8 +108,6 @@ extension HTTP2CommonInboundStreamMultiplexer {
             self.streamChannels?.yield(channel: channel.baseChannel)
 
             channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
-
-
             channel.receiveInboundFrame(frame)
 
             if !channel.inList {
@@ -283,49 +281,65 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
+    internal func _createStreamChannel(_ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ promise: EventLoopPromise<Channel>?) {
+        let channel = MultiplexerAbstractChannel(
+            allocator: self.channel.allocator,
+            parent: self.channel,
+            multiplexer: multiplexer,
+            streamID: nil,
+            targetWindowSize: Int32(self.targetWindowSize),
+            outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
+            outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
+            inboundStreamStateInitializer: .excludesStreamID(nil)
+        )
+        self.pendingStreams[channel.channelID] = channel
+        promise?.succeed(channel.baseChannel)
+    }
+
     internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?) {
-        self.channel.eventLoop.execute {
-            let channel = MultiplexerAbstractChannel(
-                allocator: self.channel.allocator,
-                parent: self.channel,
-                multiplexer: multiplexer,
-                streamID: nil,
-                targetWindowSize: Int32(self.targetWindowSize),
-                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
-                inboundStreamStateInitializer: .excludesStreamID(nil)
-            )
-            self.pendingStreams[channel.channelID] = channel
-            promise?.succeed(channel.baseChannel)
+        if self.channel.eventLoop.inEventLoop {
+            self._createStreamChannel(multiplexer, promise)
+        } else {
+            self.channel.eventLoop.execute {
+                self._createStreamChannel(multiplexer, promise)
+            }
         }
     }
 
+    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer) -> EventLoopFuture<Channel> {
+        let promise = self.channel.eventLoop.makePromise(of: Channel.self)
+        self.createStreamChannel(multiplexer: multiplexer, promise: promise)
+        return promise.futureResult
+    }
+
+    internal func _createStreamChannel(_ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) {
+        let channel = MultiplexerAbstractChannel(
+            allocator: self.channel.allocator,
+            parent: self.channel,
+            multiplexer: multiplexer,
+            streamID: nil,
+            targetWindowSize: Int32(self.targetWindowSize),
+            outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
+            outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
+            inboundStreamStateInitializer: .excludesStreamID(nil)
+        )
+        self.pendingStreams[channel.channelID] = channel
+        channel.configure(initializer: streamStateInitializer, userPromise: promise)
+    }
+
     internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) {
-        self.channel.eventLoop.execute {
-            let channel = MultiplexerAbstractChannel(
-                allocator: self.channel.allocator,
-                parent: self.channel,
-                multiplexer: multiplexer,
-                streamID: nil,
-                targetWindowSize: Int32(self.targetWindowSize),
-                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
-                inboundStreamStateInitializer: .excludesStreamID(nil)
-            )
-            self.pendingStreams[channel.channelID] = channel
-            channel.configure(initializer: streamStateInitializer, userPromise: promise)
+        if self.channel.eventLoop.inEventLoop {
+            self._createStreamChannel(multiplexer, promise, streamStateInitializer)
+        } else {
+            self.channel.eventLoop.execute {
+                self._createStreamChannel(multiplexer, promise, streamStateInitializer)
+            }
         }
     }
 
     internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
         let promise = self.channel.eventLoop.makePromise(of: Channel.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
-        return promise.futureResult
-    }
-
-    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer) -> EventLoopFuture<Channel> {
-        let promise = self.channel.eventLoop.makePromise(of: Channel.self)
-        self.createStreamChannel(multiplexer: multiplexer, promise: promise)
         return promise.futureResult
     }
 
@@ -364,30 +378,33 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
-    func setStreamChannels(_ streamChannels: any ContinuationSanitizer) {
+    func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
         self.streamChannels = streamChannels
     }
 }
 
-/// `ContinuationSanitizer` is used to type-erase generic async-sequence-like objects. This is so that they may be held
+/// `ChannelContinuation` is used to generic async-sequence-like objects to deal with `Channel`s. This is so that they may be held
 /// by the `HTTP2ChannelHandler` without causing it to become generic itself.
-internal protocol ContinuationSanitizer {
+internal protocol ChannelContinuation {
     func yield(channel: Channel)
     func finish()
     func finish(throwing error: Error)
 }
 
-/// `StreamChannels` is a wrapper for a generic `AsyncThrowingStream` which holds the inbound HTTP2 stream channels.
-struct StreamChannels<StreamChannelType>: ContinuationSanitizer {
-    var continuation: AsyncThrowingStream<StreamChannelType, Error>.Continuation
-    private let streamInitializer: (Channel) -> EventLoopFuture<StreamChannelType>
+
+/// `StreamChannelContinuation` is a wrapper for a generic `AsyncThrowingStream` which holds the inbound HTTP2 stream channels.
+///
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+struct StreamChannelContinuation<Output>: ChannelContinuation {
+    private var continuation: AsyncThrowingStream<Output, Error>.Continuation
+    private let streamStateInitializer: (Channel) -> EventLoopFuture<Output>
 
     private init(
-        continuation: AsyncThrowingStream<StreamChannelType, Error>.Continuation,
-        streamInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>
+        continuation: AsyncThrowingStream<Output, Error>.Continuation,
+        streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Output>
     ) {
         self.continuation = continuation
-        self.streamInitializer = streamInitializer
+        self.streamStateInitializer = streamStateInitializer
     }
 
     /// `initialize` creates a new `StreamChannels` object and returns it along with its backing `AsyncThrowingStream`.
@@ -395,30 +412,28 @@ struct StreamChannels<StreamChannelType>: ContinuationSanitizer {
     /// - Parameters:
     ///   - streamInitializer: A closure which initializes the newly-created inbound stream channel and returns a generic.
     ///   The returned type corresponds to the output of the channel once the operations in the initializer have been performed.
-    ///   For example a `streamInitializer` which inserts handlers before wrapping the channel in a `NIOAsyncChannel` would
-    ///   have a `StreamChannelType` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
-    ///   per-stream protocol negotiation where `StreamChannelType` would be some form of `NIOProtocolNegotiationResult`.
+    ///   For example a `streamStateInitializer` which inserts handlers before wrapping the channel in a `NIOAsyncChannel` would
+    ///   have a `Output` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
+    ///   per-stream protocol negotiation where `Output` would be some form of `NIOProtocolNegotiationResult`.
     static func initialize(
-        with streamInitializer: @escaping (Channel) -> EventLoopFuture<StreamChannelType>
-    ) -> (StreamChannels<StreamChannelType>, AsyncThrowingStream<StreamChannelType, Error>) {
-        var stashContinuation: AsyncThrowingStream<StreamChannelType, Error>.Continuation? = nil
-        let stream = AsyncThrowingStream { continuation in
-            stashContinuation = continuation
-        }
-        return (StreamChannels(continuation: stashContinuation!, streamInitializer: streamInitializer), stream)
+        with streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Output>
+    ) -> (StreamChannelContinuation<Output>, AsyncThrowingStream<Output, Error>) {
+        var continuation: AsyncThrowingStream<Output, Error>.Continuation? = nil
+        let stream = AsyncThrowingStream { continuation = $0 }
+        return (StreamChannelContinuation(continuation: continuation!, streamStateInitializer: streamStateInitializer), stream)
     }
 
     /// `yield` takes a channel, executes the stored `streamInitializer` upon it and then yields the *derived* type to
     /// the wrapped `AsyncThrowingStream`.
     func yield(channel: Channel) {
-        self.streamInitializer(channel).whenSuccess{ streamChannel in
+        channel.eventLoop.assertInEventLoop()
+        self.streamStateInitializer(channel).whenSuccess{ streamChannel in
             let yieldResult = self.continuation.yield(streamChannel)
             switch yieldResult {
             case .enqueued:
                 break // success, nothing to do
             case .dropped:
-                // TODO: at the moment this won't be hit because the policy is 'unbounded' meaning the AsyncThrowingStream can't be over capacity - is this a good thing?
-                channel.close(mode: .all, promise: nil)
+                preconditionFailure("Attempted to yield channel when AsyncThrowingStream is over capacity. This shouldn't be possible for an unbounded stream.")
             case .terminated:
                 channel.close(mode: .all, promise: nil)
                 assertionFailure("Attempted to yield channel to AsyncThrowingStream in terminated state.")
