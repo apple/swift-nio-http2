@@ -37,7 +37,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
 
     func testBasicPipelineCommunicates() throws {
         let serverRecorder = InboundFramePayloadRecorder()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
         XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
@@ -48,7 +48,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         let requestPromise = self.clientChannel.eventLoop.makePromise(of: Void.self)
         let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/")]), endStream: true)))
 
-        clientHandler.createStreamChannel(promise: nil) { channel in
+        clientMultiplexer.createStreamChannel(promise: nil) { channel in
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -76,7 +76,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
 
     func testBasicPipelineCommunicatesWithTargetWindowSize() throws {
         let serverRecorder = InboundFramePayloadRecorder()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
         XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
@@ -87,7 +87,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         let requestPromise = self.clientChannel.eventLoop.makePromise(of: Void.self)
         let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/")]), endStream: true)))
 
-        clientHandler.createStreamChannel(promise: nil) { channel in
+        clientMultiplexer.createStreamChannel(promise: nil) { channel in
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -320,7 +320,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         }
 
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
         XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(
             connectionConfiguration: .init(),
@@ -340,7 +340,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         let requestPromise = self.clientChannel.eventLoop.makePromise(of: Void.self)
         let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/testH2toHTTP1")]), endStream: true)))
 
-        clientHandler.createStreamChannel(promise: nil) { channel in
+        clientMultiplexer.createStreamChannel(promise: nil) { channel in
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -386,7 +386,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         }
 
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
+        let clientMultiplexer = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init(), inboundStreamInitializer: {_ in self.clientChannel.eventLoop.makeSucceededVoidFuture()} ).wait())
 
         XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(
             connectionConfiguration: .init(),
@@ -406,7 +406,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         let requestPromise = self.clientChannel.eventLoop.makePromise(of: Void.self)
         let reqFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/testH2toHTTP1")]), endStream: true)))
 
-        clientHandler.createStreamChannel(promise: nil) { channel in
+        clientMultiplexer.createStreamChannel(promise: nil) { channel in
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }

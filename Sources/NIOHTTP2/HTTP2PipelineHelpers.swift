@@ -337,15 +337,15 @@ extension Channel {
                     streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
                         configurator(streamChannel)
                     }
-                }
+                }.map { _ in () }
             }
     }
 
-    private func _commonHTTPServerPipeline<T>(configurator: @escaping (Channel) -> EventLoopFuture<Void>,
+    private func _commonHTTPServerPipeline(configurator: @escaping (Channel) -> EventLoopFuture<Void>,
                                               h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)?,
-                                              configureHTTP2Pipeline: @escaping (Channel) -> EventLoopFuture<T>) -> EventLoopFuture<Void> {
+                                              configureHTTP2Pipeline: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
         let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            configureHTTP2Pipeline(channel).flatMap { (_: T) in
+            configureHTTP2Pipeline(channel).flatMap { _ in
                 if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
                     return h2ConnectionChannelConfigurator(channel)
                 } else {
@@ -391,7 +391,7 @@ extension Channel {
                     streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
                         configurator(streamChannel)
                     }
-                }
+                }.map { _ in () }
             }
     }
 }
