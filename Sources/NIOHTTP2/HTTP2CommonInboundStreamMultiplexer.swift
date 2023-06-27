@@ -417,10 +417,10 @@ struct StreamChannelContinuation<Output>: ChannelContinuation {
     ///   per-stream protocol negotiation where `Output` would be some form of `NIOProtocolNegotiationResult`.
     static func initialize(
         with streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Output>
-    ) -> (StreamChannelContinuation<Output>, AsyncThrowingStream<Output, Error>) {
+    ) -> (StreamChannelContinuation<Output>, NIOHTTP2InboundStreamChannels<Output>) {
         var continuation: AsyncThrowingStream<Output, Error>.Continuation? = nil
         let stream = AsyncThrowingStream { continuation = $0 }
-        return (StreamChannelContinuation(continuation: continuation!, streamStateInitializer: streamStateInitializer), stream)
+        return (StreamChannelContinuation(continuation: continuation!, streamStateInitializer: streamStateInitializer), NIOHTTP2InboundStreamChannels(stream))
     }
 
     /// `yield` takes a channel, executes the stored `streamInitializer` upon it and then yields the *derived* type to
@@ -452,5 +452,36 @@ struct StreamChannelContinuation<Output>: ChannelContinuation {
     /// `finish` marks the continuation as finished with the supplied error.
     func finish(throwing error: Error) {
         self.continuation.finish(throwing: error)
+    }
+}
+
+/// `NIOHTTP2InboundStreamChannels` provides access to inbound stream channels as an `AsyncSequence`.
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+@_spi(AsyncChannel)
+public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        public typealias Element = Output
+
+        internal var iterator: AsyncThrowingStream<Output, Error>.AsyncIterator
+
+        public mutating func next() async throws -> Output? {
+            try await self.iterator.next()
+        }
+
+        init(_ iterator: AsyncThrowingStream<Output, Error>.AsyncIterator) {
+            self.iterator = iterator
+        }
+    }
+
+    public typealias Element = Output
+
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(self.asyncThrowingStream.makeAsyncIterator())
+    }
+
+    let asyncThrowingStream: AsyncThrowingStream<Output, Error>
+
+    init(_ asyncThrowingStream: AsyncThrowingStream<Output, Error>) {
+        self.asyncThrowingStream = asyncThrowingStream
     }
 }

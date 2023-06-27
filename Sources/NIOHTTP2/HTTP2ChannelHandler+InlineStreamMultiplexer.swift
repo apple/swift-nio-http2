@@ -213,7 +213,8 @@ extension InlineStreamMultiplexer {
 }
 
 extension NIOHTTP2Handler {
-    /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream.
+    /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream and
+    /// provides access to inbound HTTP/2 streams.
     ///
     /// In general in NIO applications it is helpful to consider each HTTP/2 stream as an
     /// independent stream of HTTP/2 frames. This multiplexer achieves this by creating a
@@ -226,13 +227,15 @@ extension NIOHTTP2Handler {
     /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
-    public struct AsyncStreamMultiplexer {
+    public struct AsyncStreamMultiplexer<Output> {
         private let inlineStreamMultiplexer: InlineStreamMultiplexer
+        public let inbound: NIOHTTP2InboundStreamChannels<Output>
 
         // Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ChannelContinuation) {
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) {
             self.inlineStreamMultiplexer = inlineStreamMultiplexer
             self.inlineStreamMultiplexer.setChannelContinuation(continuation)
+            self.inbound = inboundStreamChannels
         }
 
         public func createStreamChannel<Output>(_ streamStateInitializer: @escaping @Sendable (Channel) -> EventLoopFuture<Output>) async throws -> Output {

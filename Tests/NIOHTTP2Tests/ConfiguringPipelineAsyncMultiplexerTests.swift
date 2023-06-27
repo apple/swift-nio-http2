@@ -90,12 +90,12 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         let (serverRecorderStream, serverRecorderContinuation) = AsyncStream<InboundRecorder<HTTP2Frame.FramePayload>>.makeStream()
         var serverRecorderIterator = serverRecorderStream.makeAsyncIterator()
 
-        let (_, clientMultiplexer) = try await assertNoThrowWithValue(
+        let clientMultiplexer = try await assertNoThrowWithValue(
             try await self.clientChannel.configureHTTP2PipelineAsync(
                 mode: .client, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in self.serverChannel.eventLoop.makeSucceededFuture(channel) }.get()
         )
 
-        let (serverStreamChannels, _) = try await assertNoThrowWithValue(
+        let serverMultiplexer = try await assertNoThrowWithValue(
             try await self.serverChannel.configureHTTP2PipelineAsync(
                 mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
                     let serverRecorder = InboundFramePayloadRecorder()
@@ -114,7 +114,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // server
             group.addTask {
                 var serverInboundChannelCount = 0
-                for try await _ in serverStreamChannels {
+                for try await _ in serverMultiplexer.inbound {
                     serverInboundChannelCount += 1
                 }
                 return serverInboundChannelCount

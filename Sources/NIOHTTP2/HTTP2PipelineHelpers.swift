@@ -218,7 +218,7 @@ extension Channel {
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         position: ChannelPipeline.Position = .last,
         inboundStreamInitializer: @escaping @Sendable (Channel) -> EventLoopFuture<Output>
-    ) -> EventLoopFuture<(AsyncThrowingStream<Output, any Error>, NIOHTTP2Handler.AsyncStreamMultiplexer)> {
+    ) -> EventLoopFuture<NIOHTTP2Handler.AsyncStreamMultiplexer<Output>> {
         if self.eventLoop.inEventLoop {
             return self.eventLoop.makeCompletedFuture {
                 return try self.pipeline.syncOperations.configureHTTP2Pipeline(mode: mode, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate, position: position, inboundStreamInitializer: inboundStreamInitializer)
@@ -444,7 +444,7 @@ extension ChannelPipeline.SynchronousOperations {
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         position: ChannelPipeline.Position = .last,
         inboundStreamInitializer: @escaping @Sendable (Channel) -> EventLoopFuture<Output>
-    ) throws -> (AsyncThrowingStream<Output, Error>, NIOHTTP2Handler.AsyncStreamMultiplexer) {
+    ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<Output> {
         self.eventLoop.preconditionInEventLoop()
 
         let handler = NIOHTTP2Handler(
@@ -460,9 +460,7 @@ extension ChannelPipeline.SynchronousOperations {
 
         let (continuation, backingStream) = StreamChannelContinuation.initialize(with: inboundStreamInitializer)
 
-        let multiplexer = try handler.syncAsyncStreamMultiplexer(continuation: continuation)
-
-        return (backingStream, multiplexer)
+        return try handler.syncAsyncStreamMultiplexer(continuation: continuation, inboundStreamChannels: backingStream)
     }
 
 }

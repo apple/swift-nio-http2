@@ -1078,12 +1078,12 @@ extension NIOHTTP2Handler {
     }
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    internal func syncAsyncStreamMultiplexer(continuation: any ChannelContinuation) throws -> AsyncStreamMultiplexer {
+    internal func syncAsyncStreamMultiplexer<Output>(continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) throws -> AsyncStreamMultiplexer<Output> {
         self.eventLoop!.preconditionInEventLoop()
 
         switch self.inboundStreamMultiplexer {
         case let .some(.inline(multiplexer)):
-            return AsyncStreamMultiplexer(multiplexer, continuation: continuation)
+            return AsyncStreamMultiplexer(multiplexer, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
         case .some(.legacy), .none:
             throw NIOHTTP2Errors.missingMultiplexer()
         }
