@@ -248,7 +248,6 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
                 self.configurationFailed(withError: error, promise: promise)
             }
         }
-
     }
 
     func onInitializationResult<Output>(_ initializerResult: Result<Output, Error>, promise: EventLoopPromise<Output>?) {

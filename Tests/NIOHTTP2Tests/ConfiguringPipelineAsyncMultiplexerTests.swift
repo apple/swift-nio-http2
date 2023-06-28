@@ -27,9 +27,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
     override func setUp() {
         self.clientChannel = NIOAsyncTestingChannel()
-        XCTAssertNoThrow(try self.clientChannel.connect(to: .init(unixDomainSocketPath: "ignored")).wait())
         self.serverChannel = NIOAsyncTestingChannel()
-        XCTAssertNoThrow(try self.serverChannel.connect(to: .init(unixDomainSocketPath: "ignored")).wait())
     }
 
     override func tearDown() {
@@ -41,7 +39,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
     static let requestFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/")]), endStream: true))
     static let responseFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders([(":status", "200")]), endStream: true))
 
-    class OKResponder: ChannelInboundHandler {
+    final class OKResponder: ChannelInboundHandler {
         typealias InboundIn = HTTP2Frame.FramePayload
         func channelRead(context: ChannelHandlerContext, data: NIOAny) {
             let frame = self.unwrapInboundIn(data)
@@ -125,7 +123,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 // Let's try sending some requests
-                let streamChannel = try await clientMultiplexer.createStreamChannel() { channel -> EventLoopFuture<Channel> in
+                let streamChannel = try await clientMultiplexer.createStreamChannel { channel -> EventLoopFuture<Channel> in
                     let clientRecorder = InboundFramePayloadRecorder()
                     clientRecorderContinuation.yield(clientRecorder)
                     return channel.pipeline.addHandlers([SimpleRequest(), clientRecorder]).map {
@@ -134,25 +132,27 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
                 }
 
                 try await self.interactInMemory(self.clientChannel, self.serverChannel)
-
-                await self.clientChannel.testingEventLoop.run()
                 try await streamChannel.closeFuture.get()
 
                 let clientRecorder = await clientRecorderIterator.next()!
-                clientRecorder.receivedFrames.assertFramePayloadsMatch([ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload])
+                clientRecorder.framesLock.withLock {
+                    clientRecorder.receivedFrames.assertFramePayloadsMatch([ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload])
+                }
             }
 
             self.clientChannel.close(promise: nil)
             await self.clientChannel.testingEventLoop.run()
             group.cancelAll()
 
-            let serverInboundChannelCount =  try await assertNoThrowWithValue(try await group.next()!)
+            let serverInboundChannelCount = try await assertNoThrowWithValue(try await group.next()!)
             XCTAssertEqual(serverInboundChannelCount, requestCount, "We should have created one server-side channel as a result of the one HTTP/2 stream used.")
         }
 
         for _ in 0 ..< requestCount {
             let serverRecorder = await serverRecorderIterator.next()!
-            serverRecorder.receivedFrames.assertFramePayloadsMatch([ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload])
+            serverRecorder.framesLock.withLock {
+                serverRecorder.receivedFrames.assertFramePayloadsMatch([ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload])
+            }
         }
 
         await self.clientChannel.assertNoFramesReceived()

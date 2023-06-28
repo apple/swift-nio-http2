@@ -68,10 +68,7 @@ extension XCTestCase {
         var operated: Bool
 
         func readBytesFromChannel(_ channel: NIOAsyncTestingChannel) async -> ByteBuffer? {
-            guard let data = try? await assertNoThrowWithValue(await channel.readOutbound(as: ByteBuffer.self)) else {
-                return nil
-            }
-            return data
+            return try? await assertNoThrowWithValue(await channel.readOutbound(as: ByteBuffer.self))
         }
 
         repeat {
@@ -79,11 +76,11 @@ extension XCTestCase {
 
             if let data = await readBytesFromChannel(first) {
                 operated = true
-                try await assertNoThrow(try await second.writeInbound(data), file: (file), line: line)
+                try await assertNoThrow(try await second.writeInbound(data), file: file, line: line)
             }
             if let data = await readBytesFromChannel(second) {
                 operated = true
-                try await assertNoThrow(try await first.writeInbound(data), file: (file), line: line)
+                try await assertNoThrow(try await first.writeInbound(data), file: file, line: line)
             }
         } while operated
     }
@@ -153,24 +150,24 @@ extension XCTestCase {
         _ = try await server.connect(to: socket).get()
 
         // First the channels need to interact.
-        try await self.interactInMemory(client, server, file: (file), line: line)
+        try await self.interactInMemory(client, server, file: file, line: line)
 
         // Now keep an eye on things. Each channel should first have been sent a SETTINGS frame.
-        let clientReceivedSettings = try await client.assertReceivedFrame(file: (file), line: line)
-        let serverReceivedSettings = try await server.assertReceivedFrame(file: (file), line: line)
+        let clientReceivedSettings = try await client.assertReceivedFrame(file: file, line: line)
+        let serverReceivedSettings = try await server.assertReceivedFrame(file: file, line: line)
 
         // Each channel should also have a settings ACK.
-        let clientReceivedSettingsAck = try await client.assertReceivedFrame(file: (file), line: line)
-        let serverReceivedSettingsAck = try await server.assertReceivedFrame(file: (file), line: line)
+        let clientReceivedSettingsAck = try await client.assertReceivedFrame(file: file, line: line)
+        let serverReceivedSettingsAck = try await server.assertReceivedFrame(file: file, line: line)
 
         // Check that these SETTINGS frames are ok.
-        clientReceivedSettings.assertSettingsFrame(expectedSettings: serverSettings, ack: false, file: (file), line: line)
-        serverReceivedSettings.assertSettingsFrame(expectedSettings: clientSettings, ack: false, file: (file), line: line)
-        clientReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: (file), line: line)
-        serverReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: (file), line: line)
+        clientReceivedSettings.assertSettingsFrame(expectedSettings: serverSettings, ack: false, file: file, line: line)
+        serverReceivedSettings.assertSettingsFrame(expectedSettings: clientSettings, ack: false, file: file, line: line)
+        clientReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: file, line: line)
+        serverReceivedSettingsAck.assertSettingsFrame(expectedSettings: [], ack: true, file: file, line: line)
 
-        await client.assertNoFramesReceived(file: (file), line: line)
-        await server.assertNoFramesReceived(file: (file), line: line)
+        await client.assertNoFramesReceived(file: file, line: line)
+        await server.assertNoFramesReceived(file: file, line: line)
     }
 
     /// Assert that sending the given `frames` into `sender` causes them all to pop back out again at `receiver`,
@@ -263,7 +260,7 @@ extension NIOAsyncTestingChannel {
     /// this point if no frame was received.
     func assertReceivedFrame(file: StaticString = #filePath, line: UInt = #line) async throws -> HTTP2Frame {
         guard let frame: HTTP2Frame = try await assertNoThrowWithValue(await self.readInbound()) else {
-            XCTFail("Did not receive frame", file: (file), line: line)
+            XCTFail("Did not receive frame", file: file, line: line)
             throw NoFrameReceived()
         }
 
@@ -273,33 +270,7 @@ extension NIOAsyncTestingChannel {
     /// Asserts that the connection has not received a HTTP/2 frame at this time.
     func assertNoFramesReceived(file: StaticString = #filePath, line: UInt = #line) async {
         let content: HTTP2Frame? = try? await assertNoThrowWithValue(await self.readInbound())
-        XCTAssertNil(content, "Received unexpected content: \(content!)", file: (file), line: line)
-    }
-
-    /// Retrieve all sent frames.
-    func sentFrames(file: StaticString = #filePath, line: UInt = #line) async throws -> [HTTP2Frame] {
-        var receivedFrames: [HTTP2Frame] = Array()
-
-        while let frame = try await assertNoThrowWithValue(await self.readOutbound(as: HTTP2Frame.self), file: (file), line: line) {
-            receivedFrames.append(frame)
-        }
-
-        return receivedFrames
-    }
-
-    /// Retrieve all sent frames.
-    func decodedSentFrames(file: StaticString = #filePath, line: UInt = #line) async throws -> [HTTP2Frame] {
-        var receivedFrames: [HTTP2Frame] = Array()
-
-        var frameDecoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        while let buffer = try await assertNoThrowWithValue(await self.readOutbound(as: ByteBuffer.self), file: (file), line: line) {
-            frameDecoder.append(bytes: buffer)
-            if let (frame, _) = try frameDecoder.nextFrame() {
-                receivedFrames.append(frame)
-            }
-        }
-
-        return receivedFrames
+        XCTAssertNil(content, "Received unexpected content: \(content!)", file: file, line: line)
     }
 }
 
@@ -887,7 +858,13 @@ extension NIOCore.NIOFileHandle {
     }
 }
 
-func assertNoThrowWithValue<T>(_ body: @autoclosure () throws -> T, defaultValue: T? = nil, message: String? = nil, file: StaticString = #filePath, line: UInt = #line) throws -> T {
+func assertNoThrowWithValue<T>(
+    _ body: @autoclosure () throws -> T,
+    defaultValue: T? = nil,
+    message: String? = nil,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) throws -> T {
     do {
         return try body()
     } catch {
@@ -900,7 +877,13 @@ func assertNoThrowWithValue<T>(_ body: @autoclosure () throws -> T, defaultValue
     }
 }
 
-func assertNoThrowWithValue<T>(_ body: @autoclosure () async throws -> T, defaultValue: T? = nil, message: String? = nil, file: StaticString = #filePath, line: UInt = #line) async throws -> T {
+func assertNoThrowWithValue<T>(
+    _ body: @autoclosure () async throws -> T,
+    defaultValue: T? = nil,
+    message: String? = nil,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async throws -> T {
     do {
         return try await body()
     } catch {
@@ -913,7 +896,13 @@ func assertNoThrowWithValue<T>(_ body: @autoclosure () async throws -> T, defaul
     }
 }
 
-func assertNoThrow<T>(_ body: @autoclosure () async throws -> T, defaultValue: T? = nil, message: String? = nil, file: StaticString = #filePath, line: UInt = #line) async throws {
+func assertNoThrow<T>(
+    _ body: @autoclosure () async throws -> T,
+    defaultValue: T? = nil,
+    message: String? = nil,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async throws {
     do {
         try await _ = body()
     } catch {

@@ -198,7 +198,7 @@ extension Channel {
     ///
     /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
     /// Instead, this simply adds the handler required to speak HTTP/2 after negotiation has completed, or when agreed by prior knowledge.
-    /// Use this function to setup a HTTP/2 server pipeline if you wish to use async sequence abstractions over inbound and outbound streams, as it allows that pipeline to evolve without breaking your code.
+    /// Use this function to setup a HTTP/2 pipeline if you wish to use async sequence abstractions over inbound and outbound streams, as it allows that pipeline to evolve without breaking your code.
     ///
     /// - parameters:
     ///     - mode: The mode this pipeline will operate in, server or client.

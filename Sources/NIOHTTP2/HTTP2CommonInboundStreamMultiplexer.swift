@@ -38,7 +38,7 @@ internal class HTTP2CommonInboundStreamMultiplexer {
     private var isReading = false
     private var flushPending = false
 
-    var streamChannels: (any ChannelContinuation)?
+    var streamChannelContinuation: (any ChannelContinuation)?
 
     init(
         mode: NIOHTTP2Handler.ParserMode,
@@ -107,7 +107,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
             // This also implicitly performs the stream initialization step.
             // Note that in this case the API is constructed such that `self.inboundStreamStateInitializer`
             // does no actual work.
-            self.streamChannels?.yield(channel: channel.baseChannel)
+            self.streamChannelContinuation?.yield(channel: channel.baseChannel)
 
             channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
             channel.receiveInboundFrame(frame)
@@ -195,7 +195,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
             channel.receiveStreamClosed(nil)
         }
         // there cannot be any more inbound streams now that the connection channel is inactive
-        self.streamChannels?.finish()
+        self.streamChannelContinuation?.finish()
     }
 
     internal func propagateChannelWritabilityChanged(context: ChannelHandlerContext) {
@@ -283,7 +283,11 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
-    internal func _createStreamChannel<Output>(_ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ promise: EventLoopPromise<Output>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) {
+    internal func _createStreamChannel<Output>(
+        _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        _ promise: EventLoopPromise<Output>?,
+        _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+    ) {
         self.channel.eventLoop.assertInEventLoop()
 
         let channel = MultiplexerAbstractChannel(
@@ -300,7 +304,11 @@ extension HTTP2CommonInboundStreamMultiplexer {
         channel.configure(initializer: streamStateInitializer, userPromise: promise)
     }
 
-    internal func createStreamChannel<Output>(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Output>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) {
+    internal func createStreamChannel<Output>(
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        promise: EventLoopPromise<Output>?,
+        _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+    ) {
         if self.channel.eventLoop.inEventLoop {
             self._createStreamChannel(multiplexer, promise, streamStateInitializer)
         } else {
@@ -310,13 +318,20 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
     }
 
-    internal func createStreamChannel<Output>(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+    internal func createStreamChannel<Output>(
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+    ) -> EventLoopFuture<Output> {
         let promise = self.channel.eventLoop.makePromise(of: Output.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
         return promise.futureResult
     }
 
-    internal func _createStreamChannel(_ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) {
+    internal func _createStreamChannel(
+        _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        _ promise: EventLoopPromise<Channel>?,
+        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
+    ) {
         let channel = MultiplexerAbstractChannel(
             allocator: self.channel.allocator,
             parent: self.channel,
@@ -331,7 +346,11 @@ extension HTTP2CommonInboundStreamMultiplexer {
         channel.configure(initializer: streamStateInitializer, userPromise: promise)
     }
 
-    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) {
+    internal func createStreamChannel(
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        promise: EventLoopPromise<Channel>?,
+        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
+    ) {
         if self.channel.eventLoop.inEventLoop {
             self._createStreamChannel(multiplexer, promise, streamStateInitializer)
         } else {
@@ -341,14 +360,21 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
     }
 
-    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
+    internal func createStreamChannel(
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
+    ) -> EventLoopFuture<Channel> {
         let promise = self.channel.eventLoop.makePromise(of: Channel.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
         return promise.futureResult
     }
 
     @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
-    internal func createStreamChannel(multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer, promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
+    internal func createStreamChannel(
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        promise: EventLoopPromise<Channel>?,
+        _ streamStateInitializer: @escaping (Channel, HTTP2StreamID
+        ) -> EventLoopFuture<Void>) {
         self.channel.eventLoop.execute {
             let streamID = self.nextStreamID()
             let channel = MultiplexerAbstractChannel(
@@ -384,7 +410,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 extension HTTP2CommonInboundStreamMultiplexer {
     func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
         self.channel.eventLoop.assertInEventLoop()
-        self.streamChannels = streamChannels
+        self.streamChannelContinuation = streamChannels
     }
 }
 
@@ -398,41 +424,41 @@ internal protocol ChannelContinuation {
 
 
 /// `StreamChannelContinuation` is a wrapper for a generic `AsyncThrowingStream` which holds the inbound HTTP2 stream channels.
-///
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 struct StreamChannelContinuation<Output>: ChannelContinuation {
     private var continuation: AsyncThrowingStream<Output, Error>.Continuation
-    private let streamStateInitializer: (Channel) -> EventLoopFuture<Output>
+    private let inboundStreamInititializer: (Channel) -> EventLoopFuture<Output>
 
     private init(
         continuation: AsyncThrowingStream<Output, Error>.Continuation,
-        streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Output>
+        inboundStreamInititializer: @escaping (Channel) -> EventLoopFuture<Output>
     ) {
         self.continuation = continuation
-        self.streamStateInitializer = streamStateInitializer
+        self.inboundStreamInititializer = inboundStreamInititializer
     }
 
-    /// `initialize` creates a new `StreamChannels` object and returns it along with its backing `AsyncThrowingStream`.
+    /// `initialize` creates a new `StreamChannelContinuation` object and returns it along with its backing `AsyncThrowingStream`.
+    /// The `StreamChannelContinuation` provides access to the inbound HTTP2 stream channels.
     ///
     /// - Parameters:
-    ///   - streamInitializer: A closure which initializes the newly-created inbound stream channel and returns a generic.
+    ///   - inboundStreamInititializer: A closure which initializes the newly-created inbound stream channel and returns a generic.
     ///   The returned type corresponds to the output of the channel once the operations in the initializer have been performed.
-    ///   For example a `streamStateInitializer` which inserts handlers before wrapping the channel in a `NIOAsyncChannel` would
+    ///   For example an `inboundStreamInititializer` which inserts handlers before wrapping the channel in a `NIOAsyncChannel` would
     ///   have a `Output` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
     ///   per-stream protocol negotiation where `Output` would be some form of `NIOProtocolNegotiationResult`.
     static func initialize(
-        with streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Output>
+        with inboundStreamInititializer: @escaping (Channel) -> EventLoopFuture<Output>
     ) -> (StreamChannelContinuation<Output>, NIOHTTP2InboundStreamChannels<Output>) {
         var continuation: AsyncThrowingStream<Output, Error>.Continuation? = nil
         let stream = AsyncThrowingStream { continuation = $0 }
-        return (StreamChannelContinuation(continuation: continuation!, streamStateInitializer: streamStateInitializer), NIOHTTP2InboundStreamChannels(stream))
+        return (StreamChannelContinuation(continuation: continuation!, inboundStreamInititializer: inboundStreamInititializer), NIOHTTP2InboundStreamChannels(stream))
     }
 
     /// `yield` takes a channel, executes the stored `streamInitializer` upon it and then yields the *derived* type to
     /// the wrapped `AsyncThrowingStream`.
     func yield(channel: Channel) {
         channel.eventLoop.assertInEventLoop()
-        self.streamStateInitializer(channel).whenSuccess{ streamChannel in
+        self.inboundStreamInititializer(channel).whenSuccess { streamChannel in
             let yieldResult = self.continuation.yield(streamChannel)
             switch yieldResult {
             case .enqueued:
@@ -490,3 +516,6 @@ public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
         AsyncIterator(self.asyncThrowingStream.makeAsyncIterator())
     }
 }
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+extension NIOHTTP2InboundStreamChannels: Sendable where Output: Sendable {}
