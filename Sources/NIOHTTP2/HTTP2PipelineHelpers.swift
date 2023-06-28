@@ -468,9 +468,9 @@ extension ChannelPipeline.SynchronousOperations {
 
         try self.addHandler(handler, position: position)
 
-        let (continuation, backingStream) = StreamChannelContinuation.initialize(with: inboundStreamInitializer)
+        let (continuation, inboundStreamChannels) = StreamChannelContinuation.initialize(with: inboundStreamInitializer)
 
-        return try handler.syncAsyncStreamMultiplexer(continuation: continuation, inboundStreamChannels: backingStream)
+        return try handler.syncAsyncStreamMultiplexer(continuation: continuation, inboundStreamChannels: inboundStreamChannels)
     }
 
 }
