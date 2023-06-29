@@ -95,7 +95,7 @@ typealias FramePayloadWriteRecorder = WriteRecorder<HTTP2Frame.FramePayload>
 final class InboundRecorder<Frame>: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = Frame
 
-    let framesLock = NIOLock()
+    private let framesLock = NIOLock()
     private var _receivedFrames: [Frame] = []
     var receivedFrames: [Frame] {
         get {
