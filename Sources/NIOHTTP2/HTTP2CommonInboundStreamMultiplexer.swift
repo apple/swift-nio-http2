@@ -373,8 +373,8 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         promise: EventLoopPromise<Channel>?,
-        _ streamStateInitializer: @escaping (Channel, HTTP2StreamID
-        ) -> EventLoopFuture<Void>) {
+        _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>
+    ) {
         self.channel.eventLoop.execute {
             let streamID = self.nextStreamID()
             let channel = MultiplexerAbstractChannel(
@@ -449,17 +449,16 @@ struct StreamChannelContinuation<Output>: ChannelContinuation {
     static func initialize(
         with inboundStreamInititializer: @escaping (Channel) -> EventLoopFuture<Output>
     ) -> (StreamChannelContinuation<Output>, NIOHTTP2InboundStreamChannels<Output>) {
-        var continuation: AsyncThrowingStream<Output, Error>.Continuation? = nil
-        let stream = AsyncThrowingStream { continuation = $0 }
-        return (StreamChannelContinuation(continuation: continuation!, inboundStreamInititializer: inboundStreamInititializer), NIOHTTP2InboundStreamChannels(stream))
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: Output.self)
+        return (StreamChannelContinuation(continuation: continuation, inboundStreamInititializer: inboundStreamInititializer), NIOHTTP2InboundStreamChannels(stream))
     }
 
     /// `yield` takes a channel, executes the stored `streamInitializer` upon it and then yields the *derived* type to
     /// the wrapped `AsyncThrowingStream`.
     func yield(channel: Channel) {
         channel.eventLoop.assertInEventLoop()
-        self.inboundStreamInititializer(channel).whenSuccess { streamChannel in
-            let yieldResult = self.continuation.yield(streamChannel)
+        self.inboundStreamInititializer(channel).whenSuccess { output in
+            let yieldResult = self.continuation.yield(output)
             switch yieldResult {
             case .enqueued:
                 break // success, nothing to do
@@ -467,10 +466,10 @@ struct StreamChannelContinuation<Output>: ChannelContinuation {
                 preconditionFailure("Attempted to yield channel when AsyncThrowingStream is over capacity. This shouldn't be possible for an unbounded stream.")
             case .terminated:
                 channel.close(mode: .all, promise: nil)
-                assertionFailure("Attempted to yield channel to AsyncThrowingStream in terminated state.")
+                preconditionFailure("Attempted to yield channel to AsyncThrowingStream in terminated state.")
             default:
                 channel.close(mode: .all, promise: nil)
-                assertionFailure("Attempt to yield channel to AsyncThrowingStream failed for unhandled reason.")
+                preconditionFailure("Attempt to yield channel to AsyncThrowingStream failed for unhandled reason.")
             }
         }
     }
@@ -517,6 +516,9 @@ public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
     }
 }
 
+@available(*, unavailable)
+extension NIOHTTP2InboundStreamChannels.AsyncIterator: Sendable {}
+
 #if swift(>=5.7)
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension NIOHTTP2InboundStreamChannels: Sendable where Output: Sendable {}
@@ -525,4 +527,21 @@ extension NIOHTTP2InboundStreamChannels: Sendable where Output: Sendable {}
 // https://forums.swift.org/t/so-is-asyncstream-sendable-or-not/53148/2
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension NIOHTTP2InboundStreamChannels: @unchecked Sendable where Output: Sendable {}
+#endif
+
+
+#if swift(<5.9)
+// this should be available in the std lib from 5.9 onwards
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+extension AsyncThrowingStream {
+    public static func makeStream(
+        of elementType: Element.Type = Element.self,
+        throwing failureType: Failure.Type = Failure.self,
+        bufferingPolicy limit: Continuation.BufferingPolicy = .unbounded
+    ) -> (stream: AsyncThrowingStream<Element, Failure>, continuation: AsyncThrowingStream<Element, Failure>.Continuation) where Failure == Error {
+        var continuation: AsyncThrowingStream<Element, Failure>.Continuation!
+        let stream = AsyncThrowingStream<Element, Failure>(bufferingPolicy: limit) { continuation = $0 }
+        return (stream: stream, continuation: continuation!)
+    }
+}
 #endif

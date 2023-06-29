@@ -96,12 +96,22 @@ final class InboundRecorder<Frame>: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = Frame
 
     let framesLock = NIOLock()
-    var receivedFrames: [Frame] = []
+    private var _receivedFrames: [Frame] = []
+    var receivedFrames: [Frame] {
+        get {
+            self.framesLock.withLock {
+                self._receivedFrames
+            }
+        }
+        set {
+            self.framesLock.withLock {
+                self._receivedFrames = newValue
+            }
+        }
+    }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        self.framesLock.withLock {
-            self.receivedFrames.append(self.unwrapInboundIn(data))
-        }
+        self.receivedFrames.append(self.unwrapInboundIn(data))
     }
 }
 

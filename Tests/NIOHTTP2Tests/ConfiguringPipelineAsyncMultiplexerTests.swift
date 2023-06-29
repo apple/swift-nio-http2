@@ -56,7 +56,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         }
     }
 
-    class SimpleRequest: ChannelInboundHandler, ChannelOutboundHandler {
+    final class SimpleRequest: ChannelInboundHandler, ChannelOutboundHandler {
         typealias InboundIn = HTTP2Frame.FramePayload
         typealias OutboundIn = HTTP2Frame.FramePayload
 
@@ -67,17 +67,6 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         func channelActive(context: ChannelHandlerContext) {
             self.writeRequest(context: context)
             context.fireChannelActive()
-        }
-
-        func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-            let frame = self.unwrapInboundIn(data)
-            switch frame {
-            case .headers:
-                break
-            default:
-                fatalError("unexpected frame type: \(frame)")
-            }
-            context.fireChannelRead(data)
         }
     }
 
@@ -163,6 +152,8 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
     }
 }
 
+#if swift(<5.9)
+// this should be available in the std lib from 5.9 onwards
 extension AsyncStream {
     fileprivate static func makeStream(
         of elementType: Element.Type = Element.self,
@@ -173,3 +164,4 @@ extension AsyncStream {
         return (stream: stream, continuation: continuation!)
     }
 }
+#endif

@@ -238,8 +238,8 @@ extension NIOHTTP2Handler {
             self.inbound = inboundStreamChannels
         }
 
-        public func createStreamChannel<OutboundStreamOutput>(_ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
-            return try await self.inlineStreamMultiplexer.createStreamChannel(streamStateInitializer).get()
+        public func createStreamChannel<OutboundStreamOutput>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
+            return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
     }
 }
