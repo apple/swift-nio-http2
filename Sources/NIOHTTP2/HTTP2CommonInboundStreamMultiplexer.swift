@@ -517,5 +517,12 @@ public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
     }
 }
 
+#if swift(>=5.7)
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension NIOHTTP2InboundStreamChannels: Sendable where Output: Sendable {}
+#else
+// This wasn't marked as sendable in 5.6 however it should be fine
+// https://forums.swift.org/t/so-is-asyncstream-sendable-or-not/53148/2
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+extension NIOHTTP2InboundStreamChannels: @unchecked Sendable where Output: Sendable {}
+#endif
