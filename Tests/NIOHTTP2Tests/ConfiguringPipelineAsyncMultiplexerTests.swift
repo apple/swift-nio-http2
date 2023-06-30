@@ -61,7 +61,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         typealias OutboundIn = HTTP2Frame.FramePayload
 
         func writeRequest(context: ChannelHandlerContext) {
-            context.channel.writeAndFlush(requestFramePayload, promise: nil)
+            context.writeAndFlush(NIOAny(requestFramePayload), promise: nil)
         }
 
         func channelActive(context: ChannelHandlerContext) {

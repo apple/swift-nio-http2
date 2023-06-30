@@ -426,11 +426,11 @@ internal protocol ChannelContinuation {
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 struct StreamChannelContinuation<Output>: ChannelContinuation {
     private var continuation: AsyncThrowingStream<Output, Error>.Continuation
-    private let inboundStreamInititializer: (Channel) -> EventLoopFuture<Output>
+    private let inboundStreamInititializer: NIOHTTP2Handler.StreamInitializerWithOutput<Output>
 
     private init(
         continuation: AsyncThrowingStream<Output, Error>.Continuation,
-        inboundStreamInititializer: @escaping (Channel) -> EventLoopFuture<Output>
+        inboundStreamInititializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
     ) {
         self.continuation = continuation
         self.inboundStreamInititializer = inboundStreamInititializer
@@ -446,7 +446,7 @@ struct StreamChannelContinuation<Output>: ChannelContinuation {
     ///   have a `Output` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
     ///   per-stream protocol negotiation where `Output` would be some form of `NIOProtocolNegotiationResult`.
     static func initialize(
-        with inboundStreamInititializer: @escaping (Channel) -> EventLoopFuture<Output>
+        with inboundStreamInititializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
     ) -> (StreamChannelContinuation<Output>, NIOHTTP2InboundStreamChannels<Output>) {
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: Output.self)
         return (StreamChannelContinuation(continuation: continuation, inboundStreamInititializer: inboundStreamInititializer), NIOHTTP2InboundStreamChannels(stream))
