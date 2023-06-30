@@ -41,6 +41,8 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
     final class OKResponder: ChannelInboundHandler {
         typealias InboundIn = HTTP2Frame.FramePayload
+        typealias OutboundOut = HTTP2Frame.FramePayload
+
         func channelRead(context: ChannelHandlerContext, data: NIOAny) {
             let frame = self.unwrapInboundIn(data)
             switch frame {
@@ -50,18 +52,17 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
                 fatalError("unexpected frame type: \(frame)")
             }
 
-            context.channel.writeAndFlush(responseFramePayload, promise: nil)
-
+            context.writeAndFlush(self.wrapOutboundOut(responseFramePayload), promise: nil)
             context.fireChannelRead(data)
         }
     }
 
-    final class SimpleRequest: ChannelInboundHandler, ChannelOutboundHandler {
+    final class SimpleRequest: ChannelInboundHandler {
         typealias InboundIn = HTTP2Frame.FramePayload
-        typealias OutboundIn = HTTP2Frame.FramePayload
+        typealias OutboundOut = HTTP2Frame.FramePayload
 
         func writeRequest(context: ChannelHandlerContext) {
-            context.writeAndFlush(NIOAny(requestFramePayload), promise: nil)
+            context.writeAndFlush(self.wrapOutboundOut(requestFramePayload), promise: nil)
         }
 
         func channelActive(context: ChannelHandlerContext) {
