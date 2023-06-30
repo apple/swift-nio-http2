@@ -990,11 +990,15 @@ extension NIOHTTP2Handler {
 #if swift(>=5.7)
     /// The type of all `inboundStreamInitializer` callbacks.
     public typealias StreamInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
+    /// The type of all `connectionInitializer` callbacks.
+    public typealias ConnectionInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
     /// The type of `inboundStreamInitializer` callbacks which return non-void results.
     public typealias StreamInitializerWithOutput<Output> = @Sendable (Channel) -> EventLoopFuture<Output>
 #else
     /// The type of all `inboundStreamInitializer` callbacks.
     public typealias StreamInitializer = (Channel) -> EventLoopFuture<Void>
+    /// The type of all `connectionInitializer` callbacks.
+    public typealias ConnectionInitializer = (Channel) -> EventLoopFuture<Void>
     /// The type of `inboundStreamInitializer` callbacks which return non-void results.
     public typealias StreamInitializerWithOutput<Output> = (Channel) -> EventLoopFuture<Output>
 #endif
