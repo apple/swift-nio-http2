@@ -148,8 +148,8 @@ extension InlineStreamMultiplexer {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), streamStateInitializer)
     }
 
-    internal func createStreamChannel<Output>(_ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
-        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), streamStateInitializer)
+    internal func createStreamChannel<Output>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), initializer)
     }
 }
 

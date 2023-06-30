@@ -362,8 +362,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
-    ) -> EventLoopFuture<Channel> {
+        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
         let promise = self.channel.eventLoop.makePromise(of: Channel.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
         return promise.futureResult
