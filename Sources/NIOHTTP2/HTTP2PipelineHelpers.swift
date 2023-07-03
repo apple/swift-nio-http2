@@ -278,10 +278,10 @@ extension Channel {
     ///     - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
     ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
     ///     This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///     or `HTTP2Frame.Payload` if there are none.
+    ///     or ``HTTP2Frame/FramePayload`` if there are none.
     ///     - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for inbound stream channels.
     ///     This type must match the `OutboundIn` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///     or `HTTP2Frame.Payload` if there are none.
+    ///     or ``HTTP2Frame/FramePayload`` if there are none.
     ///     - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline which wraps
     /// inbound streams as `NIOAsyncChannels` after initialization. The multiplexer can be used to initiate new streams
@@ -511,10 +511,10 @@ extension Channel {
     ///     This type must match the `OutboundIn` type of the final handler in the connection channel.
     ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
     ///     This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///     or `HTTP2Frame.Payload` if there are none.
+    ///     or ``HTTP2Frame/FramePayload`` if there are none.
     ///     - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for inbound stream channels.
     ///     This type must match the `OutboundIn` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///     or `HTTP2Frame.Payload` if there are none.
+    ///     or ``HTTP2Frame/FramePayload`` if there are none.
     ///     - connectionInitializer: A closure that will be called once the `NIOHTTP2Handler` has been added to the pipeline.     
     ///     - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline which wraps
@@ -547,12 +547,11 @@ extension Channel {
             inboundStreamInitializer: inboundStreamInitializer
         ).flatMap { multiplexer in
             return connectionInitializer(self).flatMapThrowing { _ in
-                return try NIOAsyncChannel(
+                let connectionAsyncChannel = try NIOAsyncChannel(
                     synchronouslyWrapping: self,
                     inboundType: ConnectionInbound.self,
                     outboundType: ConnectionOutbound.self
                 )
-            }.map { connectionAsyncChannel in
                 return (connectionAsyncChannel, multiplexer)
             }
         }
@@ -663,10 +662,10 @@ extension ChannelPipeline.SynchronousOperations {
     ///     - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
     ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
     ///     This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///     or `HTTP2Frame.Payload` if there are none.
+    ///     or ``HTTP2Frame/FramePayload`` if there are none.
     ///     - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for inbound stream channels.
     ///     This type must match the `OutboundIn` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///     or `HTTP2Frame.Payload` if there are none.
+    ///     or ``HTTP2Frame/FramePayload`` if there are none.
     ///     - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline which wraps
     /// inbound streams as `NIOAsyncChannels` after initialization. The multiplexer can be used to initiate new streams
@@ -683,7 +682,7 @@ extension ChannelPipeline.SynchronousOperations {
         streamOutboundType: StreamOutbound.Type,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>> {
-        return try configureAsyncHTTP2Pipeline(
+        return try self.configureAsyncHTTP2Pipeline(
             mode: mode,
             connectionConfiguration: connectionConfiguration,
             streamConfiguration: streamConfiguration,

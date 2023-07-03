@@ -133,7 +133,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         serverRecorder.receivedFrames.assertFramePayloadsMatch(Array(repeating: ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload, count: requestCount))
     }
 
-    func testNIOAsyncChannelPipelineCommunicates() async throws {
+    func testNIOAsyncConnectionStreamChannelPipelineCommunicates() async throws {
         let requestCount = 100
 
         let (clientAsyncChannel, clientMultiplexer) = try await assertNoThrowWithValue(
@@ -148,7 +148,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             ) { channel in
                 channel.eventLoop.makeSucceededVoidFuture()
             } inboundStreamInitializer: { channel -> EventLoopFuture<Void> in
-                self.serverChannel.eventLoop.makeSucceededVoidFuture()
+                channel.eventLoop.makeSucceededVoidFuture()
             }.get()
         )
 
@@ -164,7 +164,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             ) { channel in
                 channel.eventLoop.makeSucceededVoidFuture()
             } inboundStreamInitializer: { channel -> EventLoopFuture<Void> in
-                self.serverChannel.eventLoop.makeSucceededVoidFuture()
+                channel.eventLoop.makeSucceededVoidFuture()
             }.get()
         )
 
@@ -209,6 +209,80 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
             clientAsyncChannel.outboundWriter.finish()
             serverAsyncChannel.outboundWriter.finish()
+
+            try await assertNoThrow(try await self.clientChannel.finish())
+            try await assertNoThrow(try await self.serverChannel.finish())
+
+            let serverInboundChannelCount = try await assertNoThrowWithValue(try await group.next()!)
+            XCTAssertEqual(serverInboundChannelCount, requestCount, "We should have created one server-side channel as a result of the one HTTP/2 stream used.")
+        }
+    }
+
+    func testNIOAsyncStreamChannelPipelineCommunicates() async throws {
+        let requestCount = 100
+
+        let clientMultiplexer = try await assertNoThrowWithValue(
+            try await self.clientChannel.configureAsyncHTTP2Pipeline(
+                mode: .client,
+                connectionConfiguration: .init(),
+                streamConfiguration: .init(),
+                streamInboundType: HTTP2Frame.FramePayload.self,
+                streamOutboundType: HTTP2Frame.FramePayload.self
+            ) { channel -> EventLoopFuture<Void> in
+                channel.eventLoop.makeSucceededVoidFuture()
+            }.get()
+        )
+
+        let serverMultiplexer = try await assertNoThrowWithValue(
+            try await self.serverChannel.configureAsyncHTTP2Pipeline(
+                mode: .server,
+                connectionConfiguration: .init(),
+                streamConfiguration: .init(),
+                streamInboundType: HTTP2Frame.FramePayload.self,
+                streamOutboundType: HTTP2Frame.FramePayload.self
+            ) { channel -> EventLoopFuture<Void> in
+                channel.eventLoop.makeSucceededVoidFuture()
+            }.get()
+        )
+
+        try await assertNoThrow(try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        try await withThrowingTaskGroup(of: Int.self, returning: Void.self) { group in
+            // server
+            group.addTask {
+                var serverInboundChannelCount = 0
+                for try await streamChannel in serverMultiplexer.inbound {
+                    for try await receivedFrame in streamChannel.inboundStream {
+                        receivedFrame.assertFramePayloadMatches(this: ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload)
+
+                        try await streamChannel.outboundWriter.write(ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload)
+                        streamChannel.outboundWriter.finish()
+
+                        try await self.interactInMemory(self.clientChannel, self.serverChannel)
+                    }
+                    serverInboundChannelCount += 1
+                }
+                return serverInboundChannelCount
+            }
+
+            // client
+            for _ in 0 ..< requestCount {
+                let streamChannel = try await clientMultiplexer.createStreamChannel(
+                    inboundType: HTTP2Frame.FramePayload.self,
+                    outboundType: HTTP2Frame.FramePayload.self
+                ) { channel -> EventLoopFuture<Void> in
+                    channel.eventLoop.makeSucceededVoidFuture()
+                }
+                // Let's try sending some requests
+                try await streamChannel.outboundWriter.write(ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload)
+                streamChannel.outboundWriter.finish()
+
+                try await self.interactInMemory(self.clientChannel, self.serverChannel)
+
+                for try await receivedFrame in streamChannel.inboundStream {
+                    receivedFrame.assertFramePayloadMatches(this: ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload)
+                }
+            }
 
             try await assertNoThrow(try await self.clientChannel.finish())
             try await assertNoThrow(try await self.serverChannel.finish())

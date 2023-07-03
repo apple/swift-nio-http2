@@ -246,17 +246,17 @@ extension NIOHTTP2Handler {
 
         /// Create a stream channel initialized with the provided closure and return it wrapped within a `NIOAsyncChannel`.
         /// - parameters:
-        ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for outbound stream channels.
+        ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for the created channel.
         ///     This type must match the `InboundOut` type of the final handler added to the stream channel by the `initializer`
-        ///     or `HTTP2Frame.Payload` if there are none.
-        ///     - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for outbound stream channels.
+        ///     or ``HTTP2Frame/FramePayload`` if there are none.
+        ///     - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for the created channel.
         ///     This type must match the `OutboundIn` type of the final handler added to the stream channel by the `initializer`
-        ///     or `HTTP2Frame.Payload` if there are none.
+        ///     or ``HTTP2Frame/FramePayload`` if there are none.
         ///     - initializer: A callback that will be invoked to allow you to configure the
         ///         `ChannelPipeline` for the newly created channel.
         public func createStreamChannel<Inbound, Outbound>(
-            inboundType: Inbound.Type = Inbound.self,
-            outboundType: Outbound.Type = Outbound.self,
+            inboundType: Inbound.Type,
+            outboundType: Outbound.Type,
             initializer: @escaping NIOHTTP2Handler.StreamInitializer
         ) async throws -> NIOAsyncChannel<Inbound, Outbound> {
             return try await self.createStreamChannel { channel in
