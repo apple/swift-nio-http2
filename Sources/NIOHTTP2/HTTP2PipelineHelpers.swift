@@ -321,7 +321,8 @@ extension Channel {
     /// - returns: `EventLoopFuture<Void>` that completes when the channel is ready.
     public func configureCommonHTTPServerPipeline(
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
-        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>
+    ) -> EventLoopFuture<Void> {
         return self.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator, targetWindowSize: 65535, configurator)
     }
     
@@ -345,14 +346,15 @@ extension Channel {
     public func configureCommonHTTPServerPipeline(
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
         targetWindowSize: Int,
-        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
-            return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
-                channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { streamChannel -> EventLoopFuture<Void> in
-                    streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
-                        configurator(streamChannel)
-                    }
-                }.map { _ in () }
-            }
+        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>
+    ) -> EventLoopFuture<Void> {
+        return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
+            channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { streamChannel -> EventLoopFuture<Void> in
+                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
+                    configurator(streamChannel)
+                }
+            }.map { _ in () }
+        }
     }
 
     private func _commonHTTPServerPipeline(
@@ -360,7 +362,7 @@ extension Channel {
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)?,
         configureHTTP2Pipeline: @escaping (Channel) -> EventLoopFuture<Void>
     ) -> EventLoopFuture<Void> {
-            let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
             configureHTTP2Pipeline(channel).flatMap { _ in
                 if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
                     return h2ConnectionChannelConfigurator(channel)
@@ -401,19 +403,20 @@ extension Channel {
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
-        configurator: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<Void> {
-            return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
-                channel.configureHTTP2Pipeline(
-                    mode: .server,
-                    connectionConfiguration: connectionConfiguration,
-                    streamConfiguration: streamConfiguration,
-                    streamDelegate: streamDelegate
-                ) { streamChannel -> EventLoopFuture<Void> in
-                    streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
-                        configurator(streamChannel)
-                    }
-                }.map { _ in () }
-            }
+        configurator: @escaping NIOHTTP2Handler.StreamInitializer
+    ) -> EventLoopFuture<Void> {
+        return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
+            channel.configureHTTP2Pipeline(
+                mode: .server,
+                connectionConfiguration: connectionConfiguration,
+                streamConfiguration: streamConfiguration,
+                streamDelegate: streamDelegate
+            ) { streamChannel -> EventLoopFuture<Void> in
+                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
+                    configurator(streamChannel)
+                }
+            }.map { _ in () }
+        }
     }
 }
 
