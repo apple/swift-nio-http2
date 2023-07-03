@@ -65,6 +65,7 @@ let package = Package(
             name: "NIOHTTP2Tests",
             dependencies: [
                 "NIOHTTP2",
+                .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOEmbedded", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),

@@ -1041,11 +1041,6 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(createdChannelCount.load(ordering: .sequentiallyConsistent), 0)
-        XCTAssertEqual(configuredChannelCount, 0)
-        XCTAssertEqual(streamIDs.count, 0)
-
-        (self.channel.eventLoop as! EmbeddedEventLoop).run()
         XCTAssertEqual(createdChannelCount.load(ordering: .sequentiallyConsistent), 3)
         XCTAssertEqual(configuredChannelCount, 0)
         XCTAssertEqual(streamIDs.count, 0)
@@ -2017,14 +2012,6 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(createdChannelCount.load(ordering: .sequentiallyConsistent), 0)
-        XCTAssertEqual(configuredChannelCount, 0)
-        XCTAssertEqual(streamIDs.count, 0)
-        XCTAssertEqual(streamDelegate.created, 0)
-        XCTAssertEqual(streamDelegate.closed, 0)
-        XCTAssertEqual(streamDelegate.open, 0)
-
-        (self.channel.eventLoop as! EmbeddedEventLoop).run()
         XCTAssertEqual(createdChannelCount.load(ordering: .sequentiallyConsistent), 3)
         XCTAssertEqual(configuredChannelCount, 0)
         XCTAssertEqual(streamIDs.count, 0)

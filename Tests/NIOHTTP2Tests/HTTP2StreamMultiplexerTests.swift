@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import XCTest
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHTTP1
@@ -91,10 +92,23 @@ typealias FramePayloadWriteRecorder = WriteRecorder<HTTP2Frame.FramePayload>
 
 
 /// A handler that keeps track of all reads made on a channel.
-final class InboundRecorder<Frame>: ChannelInboundHandler {
+final class InboundRecorder<Frame>: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = Frame
 
-    var receivedFrames: [Frame] = []
+    private let framesLock = NIOLock()
+    private var _receivedFrames: [Frame] = []
+    var receivedFrames: [Frame] {
+        get {
+            self.framesLock.withLock {
+                self._receivedFrames
+            }
+        }
+        set {
+            self.framesLock.withLock {
+                self._receivedFrames = newValue
+            }
+        }
+    }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         self.receivedFrames.append(self.unwrapInboundIn(data))

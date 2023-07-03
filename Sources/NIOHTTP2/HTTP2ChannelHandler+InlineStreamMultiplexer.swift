@@ -147,6 +147,10 @@ extension InlineStreamMultiplexer {
     internal func createStreamChannel(_ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), streamStateInitializer)
     }
+
+    internal func createStreamChannel<Output>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), initializer)
+    }
 }
 
 extension NIOHTTP2Handler {
@@ -198,6 +202,44 @@ extension NIOHTTP2Handler {
         /// - Returns: An `EventLoopFuture` containing the created `Channel`, fulfilled after the supplied `streamStateInitializer` has been executed on it.
         public func createStreamChannel(_ streamStateInitializer: @escaping StreamInitializer) -> EventLoopFuture<Channel> {
             self.inlineStreamMultiplexer.createStreamChannel(streamStateInitializer)
+        }
+    }
+}
+
+extension InlineStreamMultiplexer {
+    func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
+        self.commonStreamMultiplexer.setChannelContinuation(streamChannels)
+    }
+}
+
+extension NIOHTTP2Handler {
+    /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream and
+    /// provides access to inbound HTTP/2 streams.
+    ///
+    /// In general in NIO applications it is helpful to consider each HTTP/2 stream as an
+    /// independent stream of HTTP/2 frames. This multiplexer achieves this by creating a
+    /// number of in-memory `HTTP2StreamChannel` objects, one for each stream. These operate
+    /// on ``HTTP2Frame/FramePayload`` objects as their base communication
+    /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
+    /// and `IOData`.
+    ///
+    /// Outbound stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
+    /// `OutboundStreamOutput`. This type may be `HTTP2Frame` or changed to any other type.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    @_spi(AsyncChannel)
+    public struct AsyncStreamMultiplexer<InboundStreamOutput> {
+        private let inlineStreamMultiplexer: InlineStreamMultiplexer
+        public let inbound: NIOHTTP2InboundStreamChannels<InboundStreamOutput>
+
+        // Cannot be created by users.
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
+            self.inlineStreamMultiplexer = inlineStreamMultiplexer
+            self.inlineStreamMultiplexer.setChannelContinuation(continuation)
+            self.inbound = inboundStreamChannels
+        }
+
+        public func createStreamChannel<OutboundStreamOutput>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
+            return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
     }
 }
