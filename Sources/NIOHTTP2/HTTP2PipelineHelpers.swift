@@ -185,11 +185,25 @@ extension Channel {
                                        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<NIOHTTP2Handler.StreamMultiplexer> {
         if self.eventLoop.inEventLoop {
             return self.eventLoop.makeCompletedFuture {
-                return try self.pipeline.syncOperations.configureHTTP2Pipeline(mode: mode, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate, position: position, inboundStreamInitializer: inboundStreamInitializer)
+                return try self.pipeline.syncOperations.configureHTTP2Pipeline(
+                    mode: mode,
+                    connectionConfiguration: connectionConfiguration,
+                    streamConfiguration: streamConfiguration,
+                    streamDelegate: streamDelegate,
+                    position: position,
+                    inboundStreamInitializer: inboundStreamInitializer
+                )
             }
         } else {
             return self.eventLoop.submit {
-                return try self.pipeline.syncOperations.configureHTTP2Pipeline(mode: mode, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate, position: position, inboundStreamInitializer: inboundStreamInitializer)
+                return try self.pipeline.syncOperations.configureHTTP2Pipeline(
+                    mode: mode,
+                    connectionConfiguration: connectionConfiguration,
+                    streamConfiguration: streamConfiguration,
+                    streamDelegate: streamDelegate,
+                    position: position,
+                    inboundStreamInitializer: inboundStreamInitializer
+                )
             }
         }
     }
@@ -387,7 +401,12 @@ extension Channel {
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
         configurator: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<Void> {
             return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
-                channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate) { streamChannel -> EventLoopFuture<Void> in
+                channel.configureHTTP2Pipeline(
+                    mode: .server,
+                    connectionConfiguration: connectionConfiguration,
+                    streamConfiguration: streamConfiguration,
+                    streamDelegate: streamDelegate
+                ) { streamChannel -> EventLoopFuture<Void> in
                     streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
                         configurator(streamChannel)
                     }
@@ -420,7 +439,14 @@ extension ChannelPipeline.SynchronousOperations {
                                        streamDelegate: NIOHTTP2StreamDelegate? = nil,
                                        position: ChannelPipeline.Position = .last,
                                        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) throws -> NIOHTTP2Handler.StreamMultiplexer {
-        let handler = NIOHTTP2Handler(mode: mode, eventLoop: self.eventLoop, connectionConfiguration: connectionConfiguration, streamConfiguration: streamConfiguration, streamDelegate: streamDelegate, inboundStreamInitializer: inboundStreamInitializer)
+        let handler = NIOHTTP2Handler(
+            mode: mode,
+            eventLoop: self.eventLoop,
+            connectionConfiguration: connectionConfiguration,
+            streamConfiguration: streamConfiguration,
+            streamDelegate: streamDelegate,
+            inboundStreamInitializer: inboundStreamInitializer
+        )
 
         try self.addHandler(handler, position: position)
 
