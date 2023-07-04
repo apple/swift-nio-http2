@@ -258,10 +258,10 @@ extension NIOHTTP2Handler {
         @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
         @_spi(AsyncChannel)
         public func createStreamChannel<Inbound, Outbound>(
-            backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-            isOutboundHalfClosureEnabled: Bool = false,
             inboundType: Inbound.Type,
             outboundType: Outbound.Type,
+            backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+            isOutboundHalfClosureEnabled: Bool = false,
             initializer: @escaping NIOHTTP2Handler.StreamInitializer
         ) async throws -> NIOAsyncChannel<Inbound, Outbound> {
             return try await self.createStreamChannel { channel in

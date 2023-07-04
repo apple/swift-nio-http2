@@ -292,10 +292,10 @@ extension Channel {
         mode: NIOHTTP2Handler.ParserMode,
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
-        position: ChannelPipeline.Position = .last,
         streamInboundType: StreamInbound.Type,
         streamOutboundType: StreamOutbound.Type,
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        position: ChannelPipeline.Position = .last,
         inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         isInboundStreamOutboundHalfClosureEnabled: Bool = false,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
@@ -306,10 +306,10 @@ extension Channel {
                     mode: mode,
                     connectionConfiguration: connectionConfiguration,
                     streamConfiguration: streamConfiguration,
-                    streamDelegate: streamDelegate,
-                    position: position,
                     streamInboundType: streamInboundType,
                     streamOutboundType: streamOutboundType,
+                    streamDelegate: streamDelegate,
+                    position: position,
                     inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
                     isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
                     inboundStreamInitializer: inboundStreamInitializer
@@ -321,10 +321,10 @@ extension Channel {
                     mode: mode,
                     connectionConfiguration: connectionConfiguration,
                     streamConfiguration: streamConfiguration,
-                    streamDelegate: streamDelegate,
-                    position: position,
                     streamInboundType: streamInboundType,
                     streamOutboundType: streamOutboundType,
+                    streamDelegate: streamDelegate,
+                    position: position,
                     inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
                     isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
                     inboundStreamInitializer: inboundStreamInitializer
@@ -532,13 +532,13 @@ extension Channel {
         mode: NIOHTTP2Handler.ParserMode,
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
         connectionInboundType: ConnectionInbound.Type,
         connectionOutboundType: ConnectionOutbound.Type,
-        connectionBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        connectionIsOutboundHalfClosureEnabled: Bool = false,
         streamInboundType: StreamInbound.Type,
         streamOutboundType: StreamOutbound.Type,
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        connectionBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        isConnectionOutboundHalfClosureEnabled: Bool = false,
         inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         isInboundStreamOutboundHalfClosureEnabled: Bool = false,
         connectionInitializer: @escaping NIOHTTP2Handler.ConnectionInitializer,
@@ -551,9 +551,9 @@ extension Channel {
             mode: mode,
             connectionConfiguration: connectionConfiguration,
             streamConfiguration: streamConfiguration,
-            streamDelegate: streamDelegate,
             streamInboundType: streamInboundType,
             streamOutboundType: streamOutboundType,
+            streamDelegate: streamDelegate,
             inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
             isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
             inboundStreamInitializer: inboundStreamInitializer
@@ -562,7 +562,7 @@ extension Channel {
                 let connectionAsyncChannel = try NIOAsyncChannel(
                     synchronouslyWrapping: self,
                     backpressureStrategy: connectionBackpressureStrategy,
-                    isOutboundHalfClosureEnabled: connectionIsOutboundHalfClosureEnabled,
+                    isOutboundHalfClosureEnabled: isConnectionOutboundHalfClosureEnabled,
                     inboundType: ConnectionInbound.self,
                     outboundType: ConnectionOutbound.self
                 )
@@ -690,10 +690,10 @@ extension ChannelPipeline.SynchronousOperations {
         mode: NIOHTTP2Handler.ParserMode,
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
-        position: ChannelPipeline.Position = .last,
         streamInboundType: StreamInbound.Type,
         streamOutboundType: StreamOutbound.Type,
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        position: ChannelPipeline.Position = .last,
         inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         isInboundStreamOutboundHalfClosureEnabled: Bool = false,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
@@ -708,6 +708,8 @@ extension ChannelPipeline.SynchronousOperations {
             inboundStreamInitializer(channel).flatMapThrowing { _ in
                 return try NIOAsyncChannel(
                     synchronouslyWrapping: channel,
+                    backpressureStrategy: inboundStreamBackpressureStrategy,
+                    isOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
                     inboundType: StreamInbound.self,
                     outboundType: StreamOutbound.self
                 )
