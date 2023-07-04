@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOCore
+@_spi(AsyncChannel) import NIOCore
 
 internal struct InlineStreamMultiplexer {
     private let context: ChannelHandlerContext
@@ -238,8 +238,37 @@ extension NIOHTTP2Handler {
             self.inbound = inboundStreamChannels
         }
 
+        /// Create a stream channel initialized with the provided closure
         public func createStreamChannel<OutboundStreamOutput>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
             return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
+        }
+
+
+        /// Create a stream channel initialized with the provided closure and return it wrapped within a `NIOAsyncChannel`.
+        ///
+        /// - Parameters:
+        ///     - inboundType: The ``NIOAsyncChannel/inboundStream`` message type for the created channel.
+        ///       This type must match the `InboundOut` type of the final handler added to the stream channel by the `initializer`
+        ///       or ``HTTP2Frame/FramePayload`` if there are none.
+        ///     - outboundType: The ``NIOAsyncChannel/outboundWriter`` message type for the created channel.
+        ///       This type must match the `OutboundIn` type of the final handler added to the stream channel by the `initializer`
+        ///       or ``HTTP2Frame/FramePayload`` if there are none.
+        ///     - initializer: A callback that will be invoked to allow you to configure the
+        ///         `ChannelPipeline` for the newly created channel.
+        public func createStreamChannel<Inbound, Outbound>(
+            inboundType: Inbound.Type,
+            outboundType: Outbound.Type,
+            initializer: @escaping NIOHTTP2Handler.StreamInitializer
+        ) async throws -> NIOAsyncChannel<Inbound, Outbound> {
+            return try await self.createStreamChannel { channel in
+                initializer(channel).flatMapThrowing { _ in
+                    return try NIOAsyncChannel(
+                        synchronouslyWrapping: channel,
+                        inboundType: Inbound.self,
+                        outboundType: Outbound.self
+                    )
+                }
+            }
         }
     }
 }
