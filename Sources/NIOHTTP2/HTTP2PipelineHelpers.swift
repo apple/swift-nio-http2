@@ -276,6 +276,8 @@ extension Channel {
     ///     - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
     ///     - streamDelegate: The delegate to be notified in the event of stream creation and close.
     ///     - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
+    ///     - inboundStreamBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
+    ///     - isInboundStreamOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.     
     ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
     ///     This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
     ///     or ``HTTP2Frame/FramePayload`` if there are none.
@@ -292,12 +294,12 @@ extension Channel {
         mode: NIOHTTP2Handler.ParserMode,
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamInboundType: StreamInbound.Type,
-        streamOutboundType: StreamOutbound.Type,
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         position: ChannelPipeline.Position = .last,
         inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         isInboundStreamOutboundHalfClosureEnabled: Bool = false,
+        streamInboundType: StreamInbound.Type = StreamInbound.self,
+        streamOutboundType: StreamOutbound.Type = StreamOutbound.self,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
     ) throws -> EventLoopFuture<NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>>> {
         if self.eventLoop.inEventLoop {
@@ -306,12 +308,12 @@ extension Channel {
                     mode: mode,
                     connectionConfiguration: connectionConfiguration,
                     streamConfiguration: streamConfiguration,
-                    streamInboundType: streamInboundType,
-                    streamOutboundType: streamOutboundType,
                     streamDelegate: streamDelegate,
                     position: position,
                     inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
                     isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
+                    streamInboundType: streamInboundType,
+                    streamOutboundType: streamOutboundType,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
             }
@@ -321,12 +323,12 @@ extension Channel {
                     mode: mode,
                     connectionConfiguration: connectionConfiguration,
                     streamConfiguration: streamConfiguration,
-                    streamInboundType: streamInboundType,
-                    streamOutboundType: streamOutboundType,
                     streamDelegate: streamDelegate,
                     position: position,
                     inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
                     isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
+                    streamInboundType: streamInboundType,
+                    streamOutboundType: streamOutboundType,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
             }
@@ -511,10 +513,14 @@ extension Channel {
     ///     - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
     ///     - streamDelegate: The delegate to be notified in the event of stream creation and close.
     ///     - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
+    ///     - connectionBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel`` wrapping the HTTP/2 connection channel.
+    ///     - isConnectionOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel`` wrapping the HTTP/2 connection channel.
     ///     - connectionInboundType: The ``NIOAsyncChannel/inboundStream`` message type for the HTTP/2 connection channel.
     ///     This type must match the `InboundOut` type of the final handler in the connection channel.
     ///     - connectionOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for the HTTP/2 connection channel.
     ///     This type must match the `OutboundIn` type of the final handler in the connection channel.
+    ///     - inboundStreamBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
+    ///     - isInboundStreamOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
     ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
     ///     This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
     ///     or ``HTTP2Frame/FramePayload`` if there are none.
@@ -532,15 +538,15 @@ extension Channel {
         mode: NIOHTTP2Handler.ParserMode,
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        connectionInboundType: ConnectionInbound.Type,
-        connectionOutboundType: ConnectionOutbound.Type,
-        streamInboundType: StreamInbound.Type,
-        streamOutboundType: StreamOutbound.Type,
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         connectionBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         isConnectionOutboundHalfClosureEnabled: Bool = false,
+        connectionInboundType: ConnectionInbound.Type = ConnectionInbound.self,
+        connectionOutboundType: ConnectionOutbound.Type = ConnectionOutbound.self,
         inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         isInboundStreamOutboundHalfClosureEnabled: Bool = false,
+        streamInboundType: StreamInbound.Type = StreamInbound.self,
+        streamOutboundType: StreamOutbound.Type = StreamOutbound.self,
         connectionInitializer: @escaping NIOHTTP2Handler.ConnectionInitializer,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
     ) throws -> EventLoopFuture<(
@@ -551,11 +557,11 @@ extension Channel {
             mode: mode,
             connectionConfiguration: connectionConfiguration,
             streamConfiguration: streamConfiguration,
-            streamInboundType: streamInboundType,
-            streamOutboundType: streamOutboundType,
             streamDelegate: streamDelegate,
             inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
             isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
+            streamInboundType: streamInboundType,
+            streamOutboundType: streamOutboundType,
             inboundStreamInitializer: inboundStreamInitializer
         ).flatMap { multiplexer in
             return connectionInitializer(self).flatMapThrowing { _ in
@@ -674,6 +680,8 @@ extension ChannelPipeline.SynchronousOperations {
     ///     - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
     ///     - streamDelegate: The delegate to be notified in the event of stream creation and close.
     ///     - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
+    ///     - inboundStreamBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
+    ///     - isInboundStreamOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
     ///     - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
     ///     This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
     ///     or ``HTTP2Frame/FramePayload`` if there are none.
@@ -690,12 +698,12 @@ extension ChannelPipeline.SynchronousOperations {
         mode: NIOHTTP2Handler.ParserMode,
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamInboundType: StreamInbound.Type,
-        streamOutboundType: StreamOutbound.Type,
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         position: ChannelPipeline.Position = .last,
         inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
         isInboundStreamOutboundHalfClosureEnabled: Bool = false,
+        streamInboundType: StreamInbound.Type = StreamInbound.self,
+        streamOutboundType: StreamOutbound.Type = StreamOutbound.self,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>> {
         return try self.configureAsyncHTTP2Pipeline(
