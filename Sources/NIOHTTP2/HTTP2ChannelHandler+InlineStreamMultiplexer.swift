@@ -255,7 +255,11 @@ extension NIOHTTP2Handler {
         ///       or ``HTTP2Frame/FramePayload`` if there are none.
         ///     - initializer: A callback that will be invoked to allow you to configure the
         ///         `ChannelPipeline` for the newly created channel.
+        @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+        @_spi(AsyncChannel)
         public func createStreamChannel<Inbound, Outbound>(
+            backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+            isOutboundHalfClosureEnabled: Bool = false,
             inboundType: Inbound.Type,
             outboundType: Outbound.Type,
             initializer: @escaping NIOHTTP2Handler.StreamInitializer
@@ -264,6 +268,8 @@ extension NIOHTTP2Handler {
                 initializer(channel).flatMapThrowing { _ in
                     return try NIOAsyncChannel(
                         synchronouslyWrapping: channel,
+                        backpressureStrategy: backpressureStrategy,
+                        isOutboundHalfClosureEnabled: isOutboundHalfClosureEnabled,
                         inboundType: Inbound.self,
                         outboundType: Outbound.self
                     )

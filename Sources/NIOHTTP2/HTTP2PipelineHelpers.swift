@@ -296,6 +296,8 @@ extension Channel {
         position: ChannelPipeline.Position = .last,
         streamInboundType: StreamInbound.Type,
         streamOutboundType: StreamOutbound.Type,
+        inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        isInboundStreamOutboundHalfClosureEnabled: Bool = false,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
     ) throws -> EventLoopFuture<NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>>> {
         if self.eventLoop.inEventLoop {
@@ -308,6 +310,8 @@ extension Channel {
                     position: position,
                     streamInboundType: streamInboundType,
                     streamOutboundType: streamOutboundType,
+                    inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
+                    isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
             }
@@ -321,6 +325,8 @@ extension Channel {
                     position: position,
                     streamInboundType: streamInboundType,
                     streamOutboundType: streamOutboundType,
+                    inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
+                    isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
             }
@@ -529,8 +535,12 @@ extension Channel {
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         connectionInboundType: ConnectionInbound.Type,
         connectionOutboundType: ConnectionOutbound.Type,
+        connectionBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        connectionIsOutboundHalfClosureEnabled: Bool = false,
         streamInboundType: StreamInbound.Type,
         streamOutboundType: StreamOutbound.Type,
+        inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        isInboundStreamOutboundHalfClosureEnabled: Bool = false,
         connectionInitializer: @escaping NIOHTTP2Handler.ConnectionInitializer,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
     ) throws -> EventLoopFuture<(
@@ -544,11 +554,15 @@ extension Channel {
             streamDelegate: streamDelegate,
             streamInboundType: streamInboundType,
             streamOutboundType: streamOutboundType,
+            inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
+            isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
             inboundStreamInitializer: inboundStreamInitializer
         ).flatMap { multiplexer in
             return connectionInitializer(self).flatMapThrowing { _ in
                 let connectionAsyncChannel = try NIOAsyncChannel(
                     synchronouslyWrapping: self,
+                    backpressureStrategy: connectionBackpressureStrategy,
+                    isOutboundHalfClosureEnabled: connectionIsOutboundHalfClosureEnabled,
                     inboundType: ConnectionInbound.self,
                     outboundType: ConnectionOutbound.self
                 )
@@ -680,6 +694,8 @@ extension ChannelPipeline.SynchronousOperations {
         position: ChannelPipeline.Position = .last,
         streamInboundType: StreamInbound.Type,
         streamOutboundType: StreamOutbound.Type,
+        inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
+        isInboundStreamOutboundHalfClosureEnabled: Bool = false,
         inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>> {
         return try self.configureAsyncHTTP2Pipeline(
