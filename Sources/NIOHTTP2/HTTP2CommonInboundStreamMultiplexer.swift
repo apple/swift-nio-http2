@@ -515,10 +515,11 @@ public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
     }
 }
 
+#if swift(>=5.7)
+// This doesn't compile on 5.6 but the omission of Sendable is sufficient in any case
 @available(*, unavailable)
 extension NIOHTTP2InboundStreamChannels.AsyncIterator: Sendable {}
 
-#if swift(>=5.7)
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension NIOHTTP2InboundStreamChannels: Sendable where Output: Sendable {}
 #else
