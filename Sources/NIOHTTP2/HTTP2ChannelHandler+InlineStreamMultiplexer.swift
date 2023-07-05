@@ -181,10 +181,10 @@ extension NIOHTTP2Handler {
         ///
         /// > Note: Resources for the stream will be freed after it has been closed.
         ///
-        /// - parameters:
-        ///     - promise: An `EventLoopPromise` that will be succeeded with the new activated channel, or
+        /// - Parameters:
+        ///   - promise: An `EventLoopPromise` that will be succeeded with the new activated channel, or
         ///         failed if an error occurs.
-        ///     - streamStateInitializer: A callback that will be invoked to allow you to configure the
+        ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
         ///         `ChannelPipeline` for the newly created channel.
         public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping StreamInitializer) {
             self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
@@ -247,15 +247,15 @@ extension NIOHTTP2Handler {
         /// Create a stream channel initialized with the provided closure and return it wrapped within a `NIOAsyncChannel`.
         ///
         /// - Parameters:
-        ///     - backpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
-        ///     - isOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
-        ///     - inboundType: The ``NIOAsyncChannel/inboundStream`` message type for the created channel.
+        ///   - backpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
+        ///   - isOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
+        ///   - inboundType: The ``NIOAsyncChannel/inboundStream`` message type for the created channel.
         ///       This type must match the `InboundOut` type of the final handler added to the stream channel by the `initializer`
         ///       or ``HTTP2Frame/FramePayload`` if there are none.
-        ///     - outboundType: The ``NIOAsyncChannel/outboundWriter`` message type for the created channel.
+        ///   - outboundType: The ``NIOAsyncChannel/outboundWriter`` message type for the created channel.
         ///       This type must match the `OutboundIn` type of the final handler added to the stream channel by the `initializer`
         ///       or ``HTTP2Frame/FramePayload`` if there are none.
-        ///     - initializer: A callback that will be invoked to allow you to configure the
+        ///   - initializer: A callback that will be invoked to allow you to configure the
         ///         `ChannelPipeline` for the newly created channel.
         @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
         @_spi(AsyncChannel)

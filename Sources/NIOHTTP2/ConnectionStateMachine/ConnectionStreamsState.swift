@@ -74,10 +74,10 @@ struct ConnectionStreamState {
     /// Unlike with idle streams, which are served by `modifyStreamStateCreateIfNeeded`, for pushed streams we do not
     /// have to perform a modification operation. For this reason, we can use a simpler control flow.
     ///
-    /// - parameters:
-    ///     - streamID: The ID of the pushed stream.
-    ///     - remoteInitialWindowSize: The initial window size of the remote peer.
-    ///     - requestVerb: the HTTP method used on the request
+    /// - Parameters:
+    ///   - streamID: The ID of the pushed stream.
+    ///   - remoteInitialWindowSize: The initial window size of the remote peer.
+    ///   - requestVerb: the HTTP method used on the request
     /// - throws: If the stream ID is invalid.
     mutating func createRemotelyPushedStream(streamID: HTTP2StreamID, remoteInitialWindowSize: UInt32, requestVerb: String?) throws {
         try self.reserveServerStreamID(streamID)
@@ -90,9 +90,9 @@ struct ConnectionStreamState {
     /// Unlike with idle streams, which are served by `modifyStreamStateCreateIfNeeded`, for pushed streams we do not
     /// have to perform a modification operation. For this reason, we can use a simpler control flow.
     ///
-    /// - parameters:
-    ///     - streamID: The ID of the pushed stream.
-    ///     - localInitialWindowSize: Our initial window size..
+    /// - Parameters:
+    ///   - streamID: The ID of the pushed stream.
+    ///   - localInitialWindowSize: Our initial window size..
     /// - throws: If the stream ID is invalid.
     mutating func createLocallyPushedStream(streamID: HTTP2StreamID, localInitialWindowSize: UInt32, requestVerb: String?) throws {
         try self.reserveServerStreamID(streamID)
@@ -105,14 +105,14 @@ struct ConnectionStreamState {
     /// The `creator` block will be called if the stream does not exist already. The `modifier` block will be called
     /// if the stream was created, or if it was found in the map.
     ///
-    /// - parameters:
-    ///     - streamID: The ID of the stream to modify.
-    ///     - localRole: The connection role of the local peer.
-    ///     - localInitialWindowSize: The initial size of the local flow control window for new streams.
-    ///     - remoteInitialWindowSize: The initial size of the remote flow control window for new streams.
-    ///     - modifier: A block that will be invoked to modify the stream state, if present.
+    /// - Parameters:
+    ///   - streamID: The ID of the stream to modify.
+    ///   - localRole: The connection role of the local peer.
+    ///   - localInitialWindowSize: The initial size of the local flow control window for new streams.
+    ///   - remoteInitialWindowSize: The initial size of the remote flow control window for new streams.
+    ///   - modifier: A block that will be invoked to modify the stream state, if present.
     /// - throws: Any errors thrown from the creator.
-    /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
+    /// - Returns: The result of the state modification, as well as any state change that occurred to the stream.
     mutating func modifyStreamStateCreateIfNeeded(streamID: HTTP2StreamID,
                                                   localRole: HTTP2StreamStateMachine.StreamRole,
                                                   localInitialWindowSize: UInt32,
@@ -152,12 +152,12 @@ struct ConnectionStreamState {
     /// The block will be called so long as the stream exists in the currently active streams. If it does not, we will check
     /// whether the stream has been closed already.
     ///
-    /// - parameters:
-    ///     - streamID: The ID of the stream to modify.
-    ///     - ignoreRecentlyReset: Whether a recently reset stream should be ignored. Should be set to `true` when receiving frames.
-    ///     - ignoreClosed: Whether a closed stream should be ignored. Should be set to `true` when receiving window update or reset stream frames.
-    ///     - modifier: A block that will be invoked to modify the stream state, if present.
-    /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
+    /// - Parameters:
+    ///   - streamID: The ID of the stream to modify.
+    ///   - ignoreRecentlyReset: Whether a recently reset stream should be ignored. Should be set to `true` when receiving frames.
+    ///   - ignoreClosed: Whether a closed stream should be ignored. Should be set to `true` when receiving window update or reset stream frames.
+    ///   - modifier: A block that will be invoked to modify the stream state, if present.
+    /// - Returns: The result of the state modification, as well as any state change that occurred to the stream.
     mutating func modifyStreamState(streamID: HTTP2StreamID,
                                     ignoreRecentlyReset: Bool,
                                     ignoreClosed: Bool = false,
@@ -180,10 +180,10 @@ struct ConnectionStreamState {
     ///
     /// This block must close the stream. Failing to do so is a programming error.
     ///
-    /// - parameters:
-    ///     - streamID: The ID of the stream to modify.
-    ///     - modifier: A block that will be invoked to modify the stream state, if present.
-    /// - returns: The result of the state modification, as well as any state change that occurred to the stream.
+    /// - Parameters:
+    ///   - streamID: The ID of the stream to modify.
+    ///   - modifier: A block that will be invoked to modify the stream state, if present.
+    /// - Returns: The result of the state modification, as well as any state change that occurred to the stream.
     @inline(__always)
     mutating func locallyResetStreamState(streamID: HTTP2StreamID,
                                           _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect) -> StateMachineResultWithStreamEffect {
@@ -249,11 +249,11 @@ struct ConnectionStreamState {
 
     /// Drop all streams with stream IDs larger than the given stream ID that were initiated by the given role.
     ///
-    /// - parameters:
-    ///     - streamID: The last stream ID the remote peer is promising to handle.
-    ///     - droppedLocally: Whether this drop was caused by sending a GOAWAY frame or receiving it.
-    ///     - initiator: The peer that sent the GOAWAY frame.
-    /// - returns: the stream IDs closed by this operation.
+    /// - Parameters:
+    ///   - streamID: The last stream ID the remote peer is promising to handle.
+    ///   - droppedLocally: Whether this drop was caused by sending a GOAWAY frame or receiving it.
+    ///   - initiator: The peer that sent the GOAWAY frame.
+    /// - Returns: the stream IDs closed by this operation.
     mutating func dropAllStreamsWithIDHigherThan(_ streamID: HTTP2StreamID,
                                                  droppedLocally: Bool,
                                                  initiatedBy initiator: HTTP2ConnectionStateMachine.ConnectionRole) -> [HTTP2StreamID]? {
@@ -282,11 +282,11 @@ struct ConnectionStreamState {
 
     /// Determines the state machine result to generate when we've been asked to modify a missing stream.
     ///
-    /// - parameters:
-    ///     - streamID: The ID of the missing stream.
-    ///     - ignoreRecentlyReset: Whether a recently reset stream should be ignored.
-    ///     - ignoreClosed: Whether a closed stream should be ignored.
-    /// - returns: A `StateMachineResult` for this frame error.
+    /// - Parameters:
+    ///   - streamID: The ID of the missing stream.
+    ///   - ignoreRecentlyReset: Whether a recently reset stream should be ignored.
+    ///   - ignoreClosed: Whether a closed stream should be ignored.
+    /// - Returns: A `StateMachineResult` for this frame error.
     private func streamMissing(streamID: HTTP2StreamID, ignoreRecentlyReset: Bool, ignoreClosed: Bool) -> StateMachineResult {
         if ignoreRecentlyReset && self.recentlyResetStreams.contains(streamID) {
             return .ignoreFrame

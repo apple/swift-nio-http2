@@ -1612,9 +1612,9 @@ extension HTTP2ConnectionStateMachine {
 
     /// Validates a single HTTP/2 settings block.
     ///
-    /// - parameters:
-    ///     - settings: The HTTP/2 settings block to validate.
-    /// - returns: The result of the validation.
+    /// - Parameters:
+    ///   - settings: The HTTP/2 settings block to validate.
+    /// - Returns: The result of the validation.
     private func validateSettings(_ settings: HTTP2Settings) -> StateMachineResult {
         for setting in settings {
             switch setting.parameter {
