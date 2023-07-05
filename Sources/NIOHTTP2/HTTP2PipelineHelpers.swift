@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 @_spi(AsyncChannel) import NIOCore
-import NIOTLS
+@_spi(AsyncChannel) import NIOTLS
 
 /// The supported ALPN protocol tokens for NIO's HTTP/2 abstraction layer.
 ///
@@ -380,6 +380,63 @@ extension Channel {
         return self.pipeline.addHandler(alpnHandler)
     }
 
+
+    /// Configures a channel to perform a HTTP/2 secure upgrade with typed negotiation results.
+    ///
+    /// HTTP/2 secure upgrade uses the Application Layer Protocol Negotiation TLS extension to
+    /// negotiate the inner protocol as part of the TLS handshake. For this reason, until the TLS
+    /// handshake is complete, the ultimate configuration of the channel pipeline cannot be known.
+    ///
+    /// This function configures the channel with a pair of callbacks that will handle the result
+    /// of the negotiation. It explicitly **does not** configure a TLS handler to actually attempt
+    /// to negotiate ALPN. The supported ALPN protocols are provided in
+    /// `NIOHTTP2SupportedALPNProtocols`: please ensure that the TLS handler you are using for your
+    /// pipeline is appropriately configured to perform this protocol negotiation.
+    ///
+    /// If negotiation results in an unexpected protocol, the pipeline will close the connection
+    /// and no callback will fire.
+    ///
+    /// This configuration is acceptable for use on both client and server channel pipelines.
+    ///
+    /// - Parameters:
+    ///   - h2ChannelConfigurator: A callback that will be invoked if HTTP/2 has been negogiated, and that
+    ///         should configure the channel for HTTP/2 use. Must return a future that completes when the
+    ///         channel has been fully mutated.
+    ///   - http1ChannelConfigurator: A callback that will be invoked if HTTP/1.1 has been explicitly
+    ///         negotiated, or if no protocol was negotiated. Must return a future that completes when the
+    ///         channel has been fully mutated.
+    /// - Returns: An `EventLoopFuture` containing a ``NIOProtocolNegotiationResult`` that completes when the channel
+    ///     is ready to negotiate. The ``NIOProtocolNegotiationResult`` may itself be waited on to retrieve the result of
+    ///     the negotiation
+    @_spi(AsyncChannel)
+    public func configureHTTP2AsyncSecureUpgrade<HTTP1Output, HTTP2Output>(
+        h2ChannelConfigurator: @escaping (Channel) throws -> EventLoopFuture<HTTP2Output>,
+        http1ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<HTTP1Output>
+    ) -> EventLoopFuture<NIOProtocolNegotiationResult<NegotiationResult<HTTP1Output, HTTP2Output>>> {
+        let alpnHandler = NIOTypedApplicationProtocolNegotiationHandler<NegotiationResult<HTTP1Output, HTTP2Output>>(eventLoop: self.eventLoop) { result in
+            switch result {
+            case .negotiated("h2"):
+                // Successful upgrade to HTTP/2. Let the user configure the pipeline.
+                do {
+                    return try h2ChannelConfigurator(self).map { http2Output in .finished(.http2(http2Output)) }
+                } catch {
+                    return self.close().flatMap { self.eventLoop.makeFailedFuture(error) }
+                }
+            case .negotiated("http/1.1"), .fallback:
+                // Explicit or implicit HTTP/1.1 choice.
+                return http1ChannelConfigurator(self).map { http1Output in .finished(.http1_1(http1Output)) }
+            case .negotiated:
+                // We negotiated something that isn't HTTP/1.1. This is a bad scene, and is a good indication
+                // of a user configuration error. We're going to close the connection directly.
+                return self.close().flatMap { self.eventLoop.makeFailedFuture(NIOHTTP2Errors.invalidALPNToken()) }
+            }
+        }
+
+        return self.pipeline.addHandler(alpnHandler).flatMap { _ in
+            alpnHandler.protocolNegotiationResult
+        }
+    }
+
     /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
     ///
     /// This helper takes care of configuring the server pipeline such that it negotiates whether to
@@ -444,13 +501,15 @@ extension Channel {
     /// handler appropriately configured to perform protocol negotiation.
     ///
     /// - Parameters:
-    ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///   - connectionConfiguration: The settings that will be used when establishing the HTTP/2 connection. These will be sent to the peer as part of the
     ///         handshake.
-    ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
+    ///   - streamConfiguration: The settings that will be used when establishing new HTTP/2 streams. These mainly pertain to flow control.
     ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
     ///   - h2ConnectionChannelConfigurator: An optional callback that will be invoked only
     ///         when the negotiated protocol is H2 to configure the connection channel.
-    ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///   - configurator: A callback that will be invoked after a protocol has been negotiated.
+    ///         The callback only needs to add application-specific handlers and must return a future
+    ///         that completes when the channel has been fully mutated.
     /// - Returns: `EventLoopFuture<Void>` that completes when the channel is ready.
     public func configureCommonHTTPServerPipeline(
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
@@ -494,6 +553,63 @@ extension Channel {
         }
         return self.configureHTTP2SecureUpgrade(h2ChannelConfigurator: h2ChannelConfigurator,
                                                 http1ChannelConfigurator: http1ChannelConfigurator)
+    }
+
+    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
+    ///
+    /// This helper takes care of configuring the server pipeline such that it negotiates whether to
+    /// use HTTP/1.1 or HTTP/2.
+    ///
+    /// This function doesn't configure the TLS handler. Callers of this function need to add a TLS
+    /// handler appropriately configured to perform protocol negotiation.
+    ///
+    /// - Parameters:
+    ///   - connectionConfiguration: The settings that will be used when establishing the HTTP/2 connection.
+    ///         These will be sent to the peer as part of the handshake.
+    ///   - streamConfiguration: The settings that will be used when establishing new HTTP/2 streams.
+    ///         These mainly pertain to flow control.
+    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///   - h1ConnectionChannelConfigurator: An optional callback that will be invoked only
+    ///         when the negotiated protocol is HTTP/1.1 to configure the connection channel.
+    ///   - h2ConnectionChannelConfigurator: An optional callback that will be invoked only
+    ///         when the negotiated protocol is HTTP/2 to configure the connection channel.
+    ///   - streamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    /// - Returns: An `EventLoopFuture` containing a ``NIOProtocolNegotiationResult`` that completes when the channel
+    ///     is ready to negotiate. The ``NIOProtocolNegotiationResult`` may itself be waited on to retrieve the result of
+    ///     the negotiation
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    @_spi(AsyncChannel)
+    public func configureAsyncHTTPServerPipeline<HTTP1Output, HTTP2Output, HTTP2StreamOutput>(
+        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
+        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        h1ConnectionChannelConfigurator: @escaping NIOHTTP2Handler.ConnectionInitializerWithOutput<HTTP1Output>,
+        h2ConnectionChannelConfigurator: @escaping NIOHTTP2Handler.ConnectionInitializerWithOutput<HTTP2Output>,
+        streamInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<HTTP2StreamOutput>
+    ) throws -> EventLoopFuture<NIOProtocolNegotiationResult<NegotiationResult<HTTP1Output, (HTTP2Output, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)>>> {
+        let h2ChannelConfigurator = { (channel: Channel) throws -> EventLoopFuture<(HTTP2Output, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)> in
+            channel.configureAsyncHTTP2Pipeline(
+                mode: .server,
+                connectionConfiguration: connectionConfiguration,
+                streamConfiguration: streamConfiguration,
+                streamDelegate: streamDelegate
+            ) { streamChannel -> EventLoopFuture<HTTP2StreamOutput> in
+                streamInitializer(streamChannel)
+            }.flatMap { multiplexer in
+                return h2ConnectionChannelConfigurator(channel).map { connectionChannel in
+                    (connectionChannel, multiplexer)
+                }
+            }
+        }
+        let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<HTTP1Output> in
+            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
+                h1ConnectionChannelConfigurator(channel)
+            }
+        }
+        return self.configureHTTP2AsyncSecureUpgrade(
+            h2ChannelConfigurator: h2ChannelConfigurator,
+            http1ChannelConfigurator: http1ChannelConfigurator
+        )
     }
 
     /// Configures a `ChannelPipeline` to speak HTTP/2 and wraps both the connection channel and any
@@ -728,4 +844,11 @@ extension ChannelPipeline.SynchronousOperations {
             }
         }
     }
+}
+
+/// `NegotiationResult` is a generic negotiation result holder for HTTP/1.1 and HTTP/2
+@_spi(AsyncChannel)
+public enum NegotiationResult<HTTP1Output, HTTP2Output> {
+    case http1_1(HTTP1Output)
+    case http2(HTTP2Output)
 }

@@ -994,6 +994,8 @@ extension NIOHTTP2Handler {
     public typealias ConnectionInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
     /// The type of `inboundStreamInitializer` callbacks which return non-void results.
     public typealias StreamInitializerWithOutput<Output> = @Sendable (Channel) -> EventLoopFuture<Output>
+    /// The type of all `connectionInitializer` callbacks which return non-void results.
+    public typealias ConnectionInitializerWithOutput<Output> = @Sendable (Channel) -> EventLoopFuture<Output>
 #else
     /// The type of all `inboundStreamInitializer` callbacks.
     public typealias StreamInitializer = (Channel) -> EventLoopFuture<Void>
@@ -1001,6 +1003,8 @@ extension NIOHTTP2Handler {
     public typealias ConnectionInitializer = (Channel) -> EventLoopFuture<Void>
     /// The type of `inboundStreamInitializer` callbacks which return non-void results.
     public typealias StreamInitializerWithOutput<Output> = (Channel) -> EventLoopFuture<Output>
+    /// The type of all `connectionInitializer` callbacks which return non-void results.
+    public typealias ConnectionInitializerWithOutput<Output> = (Channel) -> EventLoopFuture<Output>
 #endif
 
     /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer. (i.e. using
