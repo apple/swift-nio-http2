@@ -800,8 +800,8 @@ private extension HTTP2StreamChannel {
 internal extension HTTP2StreamChannel {
     /// Called when a frame is received from the network.
     ///
-    /// - parameters:
-    ///     - frame: The `HTTP2Frame` received from the network.
+    /// - Parameters:
+    ///   - frame: The `HTTP2Frame` received from the network.
     func receiveInboundFrame(_ frame: HTTP2Frame) {
         guard self.state != .closed else {
             // Do nothing
@@ -828,9 +828,9 @@ internal extension HTTP2StreamChannel {
 
     /// Called when a frame is sent to the network.
     ///
-    /// - parameters:
-    ///     - frame: The `HTTP2Frame` to send to the network.
-    ///     - promise: The promise associated with the frame write.
+    /// - Parameters:
+    ///   - frame: The `HTTP2Frame` to send to the network.
+    ///   - promise: The promise associated with the frame write.
     private func receiveOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
             let error = ChannelError.alreadyClosed
@@ -843,8 +843,8 @@ internal extension HTTP2StreamChannel {
 
     /// Called when a stream closure is received from the network.
     ///
-    /// - parameters:
-    ///     - reason: The reason received from the network, if any.
+    /// - Parameters:
+    ///   - reason: The reason received from the network, if any.
     func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
         // Avoid emitting any WINDOW_UPDATE frames now that we're closed.
         self.windowManager.closed = true

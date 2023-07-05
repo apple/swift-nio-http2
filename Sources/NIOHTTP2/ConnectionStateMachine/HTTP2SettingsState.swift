@@ -77,8 +77,8 @@ struct HTTP2SettingsState {
     ///
     /// This function assumes that settings have been validated by the state machine.
     ///
-    /// - parameters:
-    ///     - settings: The settings to emit.
+    /// - Parameters:
+    ///   - settings: The settings to emit.
     mutating func emitSettings(_ settings: HTTP2Settings) {
         self.unacknowlegedSettingsFrames.append(settings)
     }
@@ -87,8 +87,8 @@ struct HTTP2SettingsState {
     ///
     /// This applies the pending SETTINGS values. If there are no pending SETTINGS values, this will throw.
     ///
-    /// - parameters:
-    ///     - onValueChange: A callback that will be invoked once for each setting change.
+    /// - Parameters:
+    ///   - onValueChange: A callback that will be invoked once for each setting change.
     mutating func receiveSettingsAck(onValueChange: OnValueChangeCallback) throws {
         guard self.unacknowlegedSettingsFrames.count > 0 else {
             throw NIOHTTP2Errors.receivedBadSettings()
@@ -103,9 +103,9 @@ struct HTTP2SettingsState {
     ///
     /// We auto-ACK all SETTINGS, so this applies the settings immediately.
     ///
-    /// - parameters:
-    ///     - settings: The received settings.
-    ///     - onValueChange: A callback that will be invoked once for each setting change.
+    /// - Parameters:
+    ///   - settings: The received settings.
+    ///   - onValueChange: A callback that will be invoked once for each setting change.
     mutating func receiveSettings(_ settings: HTTP2Settings, onValueChange: OnValueChangeCallback) rethrows {
         return try self.applySettings(settings, onValueChange: onValueChange)
     }
@@ -114,9 +114,9 @@ struct HTTP2SettingsState {
     ///
     /// This function assumes that settings have been validated by the state machine.
     ///
-    /// - parameters:
-    ///     - settings: The settings to apply.
-    ///     - onValueChange: A callback that will be invoked once for each setting change.
+    /// - Parameters:
+    ///   - settings: The settings to apply.
+    ///   - onValueChange: A callback that will be invoked once for each setting change.
     private mutating func applySettings(_ settings: HTTP2Settings, onValueChange: OnValueChangeCallback) rethrows {
         for setting in settings {
             let oldValue = self.currentSettingsValues.updateValue(setting._value, forKey: setting.parameter)

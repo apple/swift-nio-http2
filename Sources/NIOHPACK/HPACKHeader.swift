@@ -81,8 +81,8 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// The indexability of all headers is assumed to be the default, i.e. indexable and
     /// rewritable by proxies.
     ///
-    /// - parameters
-    ///     - headers: An initial set of headers to use to populate the header block.
+    /// - Parameters:
+    ///   - headers: An initial set of headers to use to populate the header block.
     @inlinable
     public init(_ headers: [(String, String)] = []) {
         self.headers = headers.map { HPACKHeader(name: $0.0, value: $0.1) }
@@ -104,9 +104,9 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// The indexability of all headers is assumed to be the default, i.e. indexable and
     /// rewritable by proxies.
     ///
-    /// - parameters
-    ///     - headers: An initial set of headers to use to populate the header block.
-    ///     - allocator: The allocator to use to allocate the underlying storage.
+    /// - Parameters:
+    ///   - headers: An initial set of headers to use to populate the header block.
+    ///   - allocator: The allocator to use to allocate the underlying storage.
     @available(*, deprecated, renamed: "init(_:)")
     public init(_ headers: [(String, String)] = [], allocator: ByteBufferAllocator) {
         // We no longer use an allocator so we don't need this method anymore.
@@ -130,10 +130,12 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// This method is strictly additive: if there are other values for the given header name
     /// already in the block, this will add a new entry. `add` performs case-insensitive
     /// comparisons on the header field name.
-    ///
-    /// - Parameter name: The header field name. This must be an ASCII string. For HTTP/2 lowercase
-    ///     header names are strongly encouraged.
-    /// - Parameter value: The header field value to add for the given name.
+    /// - Parameters:
+    ///   - name: The header field name. This must be an ASCII string. For HTTP/2 lowercase
+    ///         header names are strongly encouraged.
+    ///   - value: The header field value to add for the given name.
+    ///   - indexing: The types of indexing and rewriting operations a decoder may take with
+    ///         regard to this header.
     @inlinable
     public mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         precondition(!name.utf8.contains(where: { !$0.isASCII }), "name must be ASCII")
@@ -179,10 +181,13 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// Like `add`, this method performs case-insensitive comparisons of the header field
     /// names.
     ///
-    /// - Parameter name: The header field name. For maximum compatibility this should be an
-    ///     ASCII string. For future-proofing with HTTP/2 lowercase header names are strongly
-    ///     recommended.
-    /// - Parameter value: The header field value to add for the given name.
+    /// - Parameters:
+    ///   - name: The header field name. For maximum compatibility this should be an
+    ///         ASCII string. For future-proofing with HTTP/2 lowercase header names are strongly
+    ///         recommended.
+    ///   - value: The header field value to add for the given name.
+    ///   - indexing: The types of indexing and rewriting operations a decoder may take with
+    ///         regard to this header.
     @inlinable
     public mutating func replaceOrAdd(name: String, value: String, indexing: HPACKIndexing = .indexable) {
         self.remove(name: name)
@@ -239,9 +244,9 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
 
     /// Checks if a header is present.
     ///
-    /// - parameters:
-    ///     - name: The name of the header
-    /// - returns: `true` if a header with the name (and value) exists, `false` otherwise.
+    /// - Parameters:
+    ///   - name: The name of the header
+    /// - Returns: `true` if a header with the name (and value) exists, `false` otherwise.
     @inlinable
     public func contains(name: String) -> Bool {
         guard !self.headers.isEmpty else {

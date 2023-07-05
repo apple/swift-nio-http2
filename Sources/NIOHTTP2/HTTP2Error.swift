@@ -35,17 +35,17 @@ public enum NIOHTTP2Errors {
 
     /// Creates a ``NoSuchStream`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - streamID: The ``HTTP2StreamID`` for the stream that does not exist.
+    /// - Parameters:
+    ///   - streamID: The ``HTTP2StreamID`` for the stream that does not exist.
     public static func noSuchStream(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> NoSuchStream {
         return NoSuchStream(streamID: streamID, file: file, line: line)
     }
 
     /// Creates a ``StreamClosed`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - streamID: The ``HTTP2StreamID`` for the stream that is or has been closed
-    ///     - errorCode: The ``HTTP2ErrorCode`` representing the reason for closure of the stream.
+    /// - Parameters:
+    ///   - streamID: The ``HTTP2StreamID`` for the stream that is or has been closed
+    ///   - errorCode: The ``HTTP2ErrorCode`` representing the reason for closure of the stream.
     public static func streamClosed(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: String = #fileID, line: UInt = #line) -> StreamClosed {
         return StreamClosed(streamID: streamID, errorCode: errorCode, file: file, line: line)
     }
@@ -57,17 +57,17 @@ public enum NIOHTTP2Errors {
 
     /// Creates a ``BadStreamStateTransition`` error with appropriate source context
     ///
-    /// - parameters
-    ///     - state: The ``NIOHTTP2StreamState`` representing the state of the stream from which we were trying to transition
+    /// - Parameters:
+    ///   - state: The ``NIOHTTP2StreamState`` representing the state of the stream from which we were trying to transition
     public static func badStreamStateTransition(from state: NIOHTTP2StreamState? = nil, file: String = #fileID, line: UInt = #line) -> BadStreamStateTransition {
         return BadStreamStateTransition(from: state, file: file, line: line)
     }
 
     /// Creates an ``InvalidFlowControlWindowSize`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - delta: The change in the window size that was proposed in error
-    ///     - currentWindowSize: The current size of the stream flow control window
+    /// - Parameters:
+    ///   - delta: The change in the window size that was proposed in error
+    ///   - currentWindowSize: The current size of the stream flow control window
     public static func invalidFlowControlWindowSize(delta: Int, currentWindowSize: Int, file: String = #fileID, line: UInt = #line) -> InvalidFlowControlWindowSize {
         return InvalidFlowControlWindowSize(delta: delta, currentWindowSize: currentWindowSize, file: file, line: line)
     }
@@ -79,8 +79,8 @@ public enum NIOHTTP2Errors {
 
     /// Creates an ``InvalidSetting`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - setting: The invalid setting in question
+    /// - Parameters:
+    ///   - setting: The invalid setting in question
     public static func invalidSetting(setting: HTTP2Setting, file: String = #fileID, line: UInt = #line) -> InvalidSetting {
         return InvalidSetting(setting: setting, file: file, line: line)
     }
@@ -137,8 +137,8 @@ public enum NIOHTTP2Errors {
 
     /// Creates a ``Unsupported`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///      - info: Human-readable information describing _what_ is unsupported.
+    /// - Parameters:
+    ///   - info: Human-readable information describing _what_ is unsupported.
     public static func unsupported(info: String, file: String = #fileID, line: UInt = #line) -> Unsupported {
         return Unsupported(info: info, file: file, line: line)
     }
@@ -155,40 +155,40 @@ public enum NIOHTTP2Errors {
 
     /// Creates a ``MissingPseudoHeader`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///      - name: The name of the pseudo-header that was missing from the header block.
+    /// - Parameters:
+    ///   - name: The name of the pseudo-header that was missing from the header block.
     public static func missingPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> MissingPseudoHeader {
         return MissingPseudoHeader(name, file: file, line: line)
     }
 
     /// Creates a ``DuplicatePseudoHeader`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - name: The name of the pseudo-header that was duplicated within the header block.
+    /// - Parameters:
+    ///   - name: The name of the pseudo-header that was duplicated within the header block.
     public static func duplicatePseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> DuplicatePseudoHeader {
         return DuplicatePseudoHeader(name, file: file, line: line)
     }
 
     /// Creates a ``PseudoHeaderAfterRegularHeader`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - name: The name of the pseudo-header that appeared after a regular header in the header block.
+    /// - Parameters:
+    ///   - name: The name of the pseudo-header that appeared after a regular header in the header block.
     public static func pseudoHeaderAfterRegularHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> PseudoHeaderAfterRegularHeader {
         return PseudoHeaderAfterRegularHeader(name, file: file, line: line)
     }
 
     /// Creates a ``UnknownPseudoHeader`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - name: The name of the pseudo-header that was not recognised by ``NIOHTTP2``.
+    /// - Parameters:
+    ///   - name: The name of the pseudo-header that was not recognised by ``NIOHTTP2``.
     public static func unknownPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> UnknownPseudoHeader {
         return UnknownPseudoHeader(name, file: file, line: line)
     }
 
     /// Creates a ``InvalidPseudoHeaders`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - block: The block of `HPACKHeaders` that contain the invalid pseudo headers.
+    /// - Parameters:
+    ///   - block: The block of `HPACKHeaders` that contain the invalid pseudo headers.
     public static func invalidPseudoHeaders(_ block: HPACKHeaders, file: String = #fileID, line: UInt = #line) -> InvalidPseudoHeaders {
         return InvalidPseudoHeaders(block, file: file, line: line)
     }
@@ -210,41 +210,41 @@ public enum NIOHTTP2Errors {
 
     /// Creates a ``InvalidStatusValue`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - value: The value of the `:status` header that is invalid.
+    /// - Parameters:
+    ///   - value: The value of the `:status` header that is invalid.
     public static func invalidStatusValue(_ value: String, file: String = #fileID, line: UInt = #line) -> InvalidStatusValue {
         return InvalidStatusValue(value, file: file, line: line)
     }
 
     /// Creates a ``PriorityCycle`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - streamID: The ``HTTP2StreamID`` representing the stream that created the priority cycle.
+    /// - Parameters:
+    ///   - streamID: The ``HTTP2StreamID`` representing the stream that created the priority cycle.
     public static func priorityCycle(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> PriorityCycle {
         return PriorityCycle(streamID: streamID, file: file, line: line)
     }
 
     /// Creates a ``TrailersWithoutEndStream`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - streamID: The ``HTTP2StreamID`` on which the `HEADERS` frame without `END_STREAM` was received.
+    /// - Parameters:
+    ///   - streamID: The ``HTTP2StreamID`` on which the `HEADERS` frame without `END_STREAM` was received.
     public static func trailersWithoutEndStream(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> TrailersWithoutEndStream {
         return TrailersWithoutEndStream(streamID: streamID, file: file, line: line)
     }
 
     /// Creates a ``InvalidHTTP2HeaderFieldName`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - fieldName: The invalid HTTP/2 header field name
+    /// - Parameters:
+    ///   - fieldName: The invalid HTTP/2 header field name
     public static func invalidHTTP2HeaderFieldName(_ fieldName: String, file: String = #fileID, line: UInt = #line) -> InvalidHTTP2HeaderFieldName {
         return InvalidHTTP2HeaderFieldName(fieldName, file: file, line: line)
     }
 
     /// Creates a ``ForbiddenHeaderField`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - name: The field name for the forbidden header field
-    ///     - value: The field value for the forbidden header field
+    /// - Parameters:
+    ///   - name: The field name for the forbidden header field
+    ///   - value: The field value for the forbidden header field
     public static func forbiddenHeaderField(name: String, value: String, file: String = #fileID, line: UInt = #line) -> ForbiddenHeaderField {
         return ForbiddenHeaderField(name: name, value: value, file: file, line: line)
     }
@@ -291,9 +291,9 @@ public enum NIOHTTP2Errors {
 
     /// Creates a ``StreamError`` error with appropriate source context.
     ///
-    /// - parameters:
-    ///     - streamID: The ``HTTP2StreamID`` on which this error was triggered
-    ///     - baseError: The underlying `Error` that was thrown.
+    /// - Parameters:
+    ///   - streamID: The ``HTTP2StreamID`` on which this error was triggered
+    ///   - baseError: The underlying `Error` that was thrown.
     public static func streamError(streamID: HTTP2StreamID, baseError: Error) -> StreamError {
         return StreamError(streamID: streamID, baseError: baseError)
     }

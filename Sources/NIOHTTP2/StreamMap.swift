@@ -161,10 +161,10 @@ internal extension StreamMap where Element == HTTP2StreamStateMachine {
     //
     /// Transform the value of an HTTP2StreamStateMachine, closing it if it ends up closed.
     ///
-    /// - parameters:
-    ///     - modifier: A block that will modify the contained value in the
+    /// - Parameters:
+    ///   - modifier: A block that will modify the contained value in the
     ///          map, if there is one present.
-    /// - returns: The return value of the block or `nil` if the element was not present.
+    /// - Returns: The return value of the block or `nil` if the element was not present.
     mutating func autoClosingTransform<T>(streamID: HTTP2StreamID, _ modifier: (inout Element) -> T) -> T? {
         if streamID.mayBeInitiatedBy(.client) {
             return self.clientInitiated.autoClosingTransform(streamID: streamID, modifier)
@@ -295,10 +295,10 @@ extension CircularBuffer where Element == HTTP2StreamStateMachine {
     //
     /// Transform the value of an HTTP2StreamStateMachine, closing it if it ends up closed.
     ///
-    /// - parameters:
-    ///     - modifier: A block that will modify the contained value in the
+    /// - Parameters:
+    ///   - modifier: A block that will modify the contained value in the
     ///         map, if there is one present.
-    /// - returns: The return value of the block or `nil` if the element was not in the map.
+    /// - Returns: The return value of the block or `nil` if the element was not in the map.
     mutating func autoClosingTransform<ResultType>(streamID: HTTP2StreamID, _ modifier: (inout Element) -> ResultType) -> ResultType? {
         guard let index = self.findIndexForStreamID(streamID) else {
             return nil
