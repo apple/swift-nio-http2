@@ -434,29 +434,6 @@ extension Channel {
         }
     }
 
-    private func _commonHTTPServerPipeline(
-        configurator: @escaping (Channel) -> EventLoopFuture<Void>,
-        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)?,
-        configureHTTP2Pipeline: @escaping (Channel) -> EventLoopFuture<Void>
-    ) -> EventLoopFuture<Void> {
-        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            configureHTTP2Pipeline(channel).flatMap { _ in
-                if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
-                    return h2ConnectionChannelConfigurator(channel)
-                } else {
-                    return channel.eventLoop.makeSucceededFuture(())
-                }
-            }
-        }
-        let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
-            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
-                configurator(channel)
-            }
-        }
-        return self.configureHTTP2SecureUpgrade(h2ChannelConfigurator: h2ChannelConfigurator,
-                                                http1ChannelConfigurator: http1ChannelConfigurator)
-    }
-
     /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
     ///
     /// This helper takes care of configuring the server pipeline such that it negotiates whether to
@@ -494,6 +471,29 @@ extension Channel {
                 }
             }.map { _ in () }
         }
+    }
+
+    private func _commonHTTPServerPipeline(
+        configurator: @escaping (Channel) -> EventLoopFuture<Void>,
+        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)?,
+        configureHTTP2Pipeline: @escaping (Channel) -> EventLoopFuture<Void>
+    ) -> EventLoopFuture<Void> {
+        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+            configureHTTP2Pipeline(channel).flatMap { _ in
+                if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
+                    return h2ConnectionChannelConfigurator(channel)
+                } else {
+                    return channel.eventLoop.makeSucceededFuture(())
+                }
+            }
+        }
+        let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
+                configurator(channel)
+            }
+        }
+        return self.configureHTTP2SecureUpgrade(h2ChannelConfigurator: h2ChannelConfigurator,
+                                                http1ChannelConfigurator: http1ChannelConfigurator)
     }
 
     /// Configures a `ChannelPipeline` to speak HTTP/2 and wraps both the connection channel and any
