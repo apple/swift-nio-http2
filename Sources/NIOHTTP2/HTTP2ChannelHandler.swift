@@ -1026,6 +1026,9 @@ extension NIOHTTP2Handler {
     }
 
     /// Connection-level configuration.
+    ///
+    /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    /// handshake.
     public struct ConnectionConfiguration: Hashable, Sendable {
         public var initialSettings: HTTP2Settings = nioDefaultSettings
         public var headerBlockValidation: ValidationState = .enabled
@@ -1036,10 +1039,22 @@ extension NIOHTTP2Handler {
     }
 
     /// Stream-level configuration.
+    ///
+    /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
     public struct StreamConfiguration: Hashable, Sendable {
         public var targetWindowSize: Int = 65535
         public var outboundBufferSizeHighWatermark: Int = 8196
         public var outboundBufferSizeLowWatermark: Int = 4092
+        public init() {}
+    }
+
+    /// Overall connection and stream-level configuration.
+    public struct Configuration: Hashable, Sendable {
+        /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+        /// handshake.
+        public var connection: ConnectionConfiguration = .init()
+        /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
+        public var stream: StreamConfiguration = .init()
         public init() {}
     }
 
