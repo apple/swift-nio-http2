@@ -148,7 +148,7 @@ extension InlineStreamMultiplexer {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), streamStateInitializer)
     }
 
-    internal func createStreamChannel<Output>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+    internal func createStreamChannel<Output>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), initializer)
     }
 }
@@ -239,7 +239,7 @@ extension NIOHTTP2Handler {
         }
 
         /// Create a stream channel initialized with the provided closure
-        public func createStreamChannel<OutboundStreamOutput>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
+        public func createStreamChannel<OutboundStreamOutput>(_ initializer: @escaping NIOChannelInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
             return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
 

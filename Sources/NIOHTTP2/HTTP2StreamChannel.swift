@@ -230,7 +230,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    internal func configure<Output>(initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>, userPromise promise: EventLoopPromise<Output>?) {
+    internal func configure<Output>(initializer: @escaping NIOChannelInitializerWithOutput<Output>, userPromise promise: EventLoopPromise<Output>?) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent

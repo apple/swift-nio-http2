@@ -286,7 +286,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func _createStreamChannel<Output>(
         _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ promise: EventLoopPromise<Output>?,
-        _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+        _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) {
         self.channel.eventLoop.assertInEventLoop()
 
@@ -307,7 +307,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func createStreamChannel<Output>(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         promise: EventLoopPromise<Output>?,
-        _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+        _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) {
         if self.channel.eventLoop.inEventLoop {
             self._createStreamChannel(multiplexer, promise, streamStateInitializer)
@@ -320,7 +320,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
     internal func createStreamChannel<Output>(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+        _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) -> EventLoopFuture<Output> {
         let promise = self.channel.eventLoop.makePromise(of: Output.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
@@ -426,11 +426,11 @@ internal protocol ChannelContinuation {
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 struct StreamChannelContinuation<Output>: ChannelContinuation {
     private var continuation: AsyncThrowingStream<Output, Error>.Continuation
-    private let inboundStreamInititializer: NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+    private let inboundStreamInititializer: NIOChannelInitializerWithOutput<Output>
 
     private init(
         continuation: AsyncThrowingStream<Output, Error>.Continuation,
-        inboundStreamInititializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+        inboundStreamInititializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) {
         self.continuation = continuation
         self.inboundStreamInititializer = inboundStreamInititializer
@@ -446,7 +446,7 @@ struct StreamChannelContinuation<Output>: ChannelContinuation {
     ///   have a `Output` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
     ///   per-stream protocol negotiation where `Output` would be some form of `NIOProtocolNegotiationResult`.
     static func initialize(
-        with inboundStreamInititializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+        with inboundStreamInititializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) -> (StreamChannelContinuation<Output>, NIOHTTP2InboundStreamChannels<Output>) {
         let (stream, continuation) = AsyncThrowingStream.makeStream(of: Output.self)
         return (StreamChannelContinuation(continuation: continuation, inboundStreamInititializer: inboundStreamInititializer), NIOHTTP2InboundStreamChannels(stream))

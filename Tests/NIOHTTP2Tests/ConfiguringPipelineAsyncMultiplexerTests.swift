@@ -338,21 +338,21 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             }.get()
         )
 
-        let nioProtocolNegotiationResultFuture = try self.serverChannel.configureAsyncHTTPServerPipeline(
+        let nioProtocolNegotiationHandler = try await self.serverChannel.configureAsyncHTTPServerPipeline(
             connectionConfiguration: .init(),
             streamConfiguration: .init()
         ) { channel in
             channel.eventLoop.makeSucceededVoidFuture()
-        } h2ConnectionChannelConfigurator: { channel in
+        } http2ChannelConfigurator: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
-        } streamInitializer: { channel -> EventLoopFuture<Channel> in
+        } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
             channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
-        }
+        }.get()
 
         // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2"))
 
-        let nioProtocolNegotiationResult = try await nioProtocolNegotiationResultFuture.get()
+        let nioProtocolNegotiationResult = try await nioProtocolNegotiationHandler.protocolNegotiationResult.get()
 
         try await assertNoThrow(try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -413,21 +413,21 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             self.clientChannel.pipeline.addHandlers([HTTP1ClientResponseRecorderHandler(), HTTP1ClientSendability()])
         }.get()
 
-        let nioProtocolNegotiationResultFuture = try self.serverChannel.configureAsyncHTTPServerPipeline(
+        let nioProtocolNegotiationHandler = try await self.serverChannel.configureAsyncHTTPServerPipeline(
             connectionConfiguration: .init(),
             streamConfiguration: .init()
         ) { channel in
             channel.pipeline.addHandlers([HTTP1OKResponder(), HTTP1ServerRequestRecorderHandler()])
-        } h2ConnectionChannelConfigurator: { channel in
+        } http2ChannelConfigurator: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
-        } streamInitializer: { channel -> EventLoopFuture<Channel> in
+        } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
             channel.eventLoop.makeSucceededFuture(channel)
-        }
+        }.get()
 
         // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "http/1.1"))
 
-        let nioProtocolNegotiationResult = try await nioProtocolNegotiationResultFuture.get()
+        let nioProtocolNegotiationResult = try await nioProtocolNegotiationHandler.protocolNegotiationResult.get()
 
         try await self.interactInMemory(self.clientChannel, self.serverChannel)
 
