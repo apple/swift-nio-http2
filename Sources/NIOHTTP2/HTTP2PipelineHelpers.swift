@@ -804,3 +804,9 @@ public struct NIOHTTP2AsyncConfiguration<HTTP2ConnectionInbound: Sendable, HTTP2
         self.inboundStreamInitializer = inboundStreamInitializer
     }
 }
+
+#if swift(>=5.7)
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+@_spi(AsyncChannel)
+extension NIOHTTP2AsyncConfiguration: @unchecked Sendable {}
+#endif

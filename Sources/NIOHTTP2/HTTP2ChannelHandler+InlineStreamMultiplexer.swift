@@ -253,8 +253,8 @@ extension NIOHTTP2Handler {
         @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
         @_spi(AsyncChannel)
         public func createStreamChannel<Inbound, Outbound>(
-            configuration: NIOAsyncChannel<Inbound, Outbound>.Configuration,
-            initializer: @escaping NIOHTTP2Handler.StreamInitializer
+            configuration: NIOAsyncChannel<Inbound, Outbound>.Configuration = .init(),
+            initializer: @escaping NIOChannelInitializer
         ) async throws -> NIOAsyncChannel<Inbound, Outbound> {
             return try await self.createStreamChannel { channel in
                 initializer(channel).flatMapThrowing { _ in
