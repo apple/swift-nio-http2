@@ -724,7 +724,6 @@ extension ChannelPipeline.SynchronousOperations {
     /// 
     /// Using this rather than implementing a similar function yourself allows that pipeline to evolve without breaking your code.
     ///
-
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
     ///   - inboundStreamAsyncChannelConfiguration: Settings relating to `NIOAsyncChannel`s wrapping internal stream channels
@@ -745,12 +744,12 @@ extension ChannelPipeline.SynchronousOperations {
         position: ChannelPipeline.Position = .last,
         inboundStreamInitializer: @escaping NIOChannelInitializer
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>> {
-        var configuration = NIOHTTP2Handler.Configuration()
-        configuration.connection = connectionConfiguration
-        configuration.stream = streamConfiguration
         return try self.configureAsyncHTTP2Pipeline(
             mode: mode,
-            configuration: configuration,
+            configuration: .init(
+                connection: connectionConfiguration,
+                stream: streamConfiguration
+            ),
             position: position
         ) { channel in
             inboundStreamInitializer(channel).flatMapThrowing { _ in
@@ -765,7 +764,7 @@ extension ChannelPipeline.SynchronousOperations {
 
 /// `NIONegotiatedHTTPVersion` is a generic negotiation result holder for HTTP/1.1 and HTTP/2
 @_spi(AsyncChannel)
-public enum NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output> {
+public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable> {
     case http1_1(HTTP1Output)
     case http2(HTTP2Output)
 }
@@ -773,7 +772,7 @@ public enum NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output> {
 /// `HTTP2AsyncConfiguration` contains all configuration required for setting up an HTTP/2 async connection.
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 @_spi(AsyncChannel)
-public struct HTTP2AsyncConfiguration<HTTP2ConnectionInbound, HTTP2ConnectionOutbound, HTTP2StreamInbound, HTTP2StreamOutbound> {
+public struct HTTP2AsyncConfiguration<HTTP2ConnectionInbound: Sendable, HTTP2ConnectionOutbound: Sendable, HTTP2StreamInbound: Sendable, HTTP2StreamOutbound: Sendable>: Sendable {
     /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
     public var connection: NIOHTTP2Handler.ConnectionConfiguration
     /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the

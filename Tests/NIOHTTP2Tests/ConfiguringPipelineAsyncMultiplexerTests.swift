@@ -65,13 +65,13 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         typealias OutboundOut = HTTPServerResponsePart
 
         func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-            guard case .end = self.unwrapInboundIn(data) else {
-                context.fireChannelRead(data)
-                return
+            switch self.unwrapInboundIn(data) {
+            case .head:
+                context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
+                context.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
+            case .body, .end:
+                break
             }
-
-            context.write(self.wrapOutboundOut(.head(responseHead)), promise: nil)
-            context.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
 
             context.fireChannelRead(data)
         }
@@ -431,7 +431,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         typealias InboundIn = message
 
         private let partsLock = NIOLock()
-        var _receivedParts: [message] = []
+        private var _receivedParts: [message] = []
 
         var receivedParts: [message] {
             get {

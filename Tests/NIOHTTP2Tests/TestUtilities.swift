@@ -65,7 +65,7 @@ extension XCTestCase {
     /// Have two `NIOAsyncTestingChannel` objects send and receive data from each other until
     /// they make no forward progress.
     ///
-    /// ** This function is not thread safe and can lead to deadlocks, prefer the one-way variant which is less error-prone**
+    /// ** This function is racy and can lead to deadlocks, prefer the one-way variant which is less error-prone**
     func interactInMemory(_ first: NIOAsyncTestingChannel, _ second: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
         var operated: Bool
 

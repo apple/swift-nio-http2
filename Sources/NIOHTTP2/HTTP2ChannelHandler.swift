@@ -1052,10 +1052,19 @@ extension NIOHTTP2Handler {
     public struct Configuration: Hashable, Sendable {
         /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the
         /// handshake.
-        public var connection: ConnectionConfiguration = .init()
+        public var connection: ConnectionConfiguration
         /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
-        public var stream: StreamConfiguration = .init()
-        public init() {}
+        public var stream: StreamConfiguration
+
+        public init() {
+            self.connection = .init()
+            self.stream = .init()
+        }
+
+        public init(connection: ConnectionConfiguration, stream: StreamConfiguration) {
+            self.connection = connection
+            self.stream = stream
+        }
     }
 
     /// An `EventLoopFuture` which returns a ``StreamMultiplexer`` which can be used to create new outbound HTTP/2 streams.
