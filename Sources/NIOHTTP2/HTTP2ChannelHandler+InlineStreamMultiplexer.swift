@@ -247,33 +247,20 @@ extension NIOHTTP2Handler {
         /// Create a stream channel initialized with the provided closure and return it wrapped within a `NIOAsyncChannel`.
         ///
         /// - Parameters:
-        ///   - backpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
-        ///   - isOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
-        ///   - inboundType: The ``NIOAsyncChannel/inboundStream`` message type for the created channel.
-        ///       This type must match the `InboundOut` type of the final handler added to the stream channel by the `initializer`
-        ///       or ``HTTP2Frame/FramePayload`` if there are none.
-        ///   - outboundType: The ``NIOAsyncChannel/outboundWriter`` message type for the created channel.
-        ///       This type must match the `OutboundIn` type of the final handler added to the stream channel by the `initializer`
-        ///       or ``HTTP2Frame/FramePayload`` if there are none.
+        ///   - configuration: Configuration for the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
         ///   - initializer: A callback that will be invoked to allow you to configure the
         ///         `ChannelPipeline` for the newly created channel.
         @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
         @_spi(AsyncChannel)
         public func createStreamChannel<Inbound, Outbound>(
-            backpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-            isOutboundHalfClosureEnabled: Bool = false,
-            inboundType: Inbound.Type = Inbound.self,
-            outboundType: Outbound.Type = Outbound.self,
+            configuration: NIOAsyncChannel<Inbound, Outbound>.Configuration,
             initializer: @escaping NIOHTTP2Handler.StreamInitializer
         ) async throws -> NIOAsyncChannel<Inbound, Outbound> {
             return try await self.createStreamChannel { channel in
                 initializer(channel).flatMapThrowing { _ in
                     return try NIOAsyncChannel(
                         synchronouslyWrapping: channel,
-                        backpressureStrategy: backpressureStrategy,
-                        isOutboundHalfClosureEnabled: isOutboundHalfClosureEnabled,
-                        inboundType: Inbound.self,
-                        outboundType: Outbound.self
+                        configuration: configuration
                     )
                 }
             }

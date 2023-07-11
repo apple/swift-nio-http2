@@ -191,8 +191,10 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 let streamChannel = try await clientMultiplexer.createStreamChannel(
-                    inboundType: HTTP2Frame.FramePayload.self,
-                    outboundType: HTTP2Frame.FramePayload.self
+                    configuration: .init(
+                        inboundType: HTTP2Frame.FramePayload.self,
+                        outboundType: HTTP2Frame.FramePayload.self
+                    )
                 ) { channel -> EventLoopFuture<Void> in
                     channel.eventLoop.makeSucceededVoidFuture()
                 }
@@ -268,8 +270,10 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 let streamChannel = try await clientMultiplexer.createStreamChannel(
-                    inboundType: HTTP2Frame.FramePayload.self,
-                    outboundType: HTTP2Frame.FramePayload.self
+                    configuration: .init(
+                        inboundType: HTTP2Frame.FramePayload.self,
+                        outboundType: HTTP2Frame.FramePayload.self
+                    )
                 ) { channel -> EventLoopFuture<Void> in
                     channel.eventLoop.makeSucceededVoidFuture()
                 }
