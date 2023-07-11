@@ -604,7 +604,7 @@ extension Channel {
     @_spi(AsyncChannel)
     public func configureAsyncHTTP2Pipeline<ConnectionInbound, ConnectionOutbound, StreamInbound, StreamOutbound>(
         mode: NIOHTTP2Handler.ParserMode,
-        configuration: HTTP2AsyncConfiguration<ConnectionInbound, ConnectionOutbound, StreamInbound, StreamOutbound>
+        configuration: NIOHTTP2AsyncConfiguration<ConnectionInbound, ConnectionOutbound, StreamInbound, StreamOutbound>
     ) -> EventLoopFuture<(
         NIOAsyncChannel<ConnectionInbound, ConnectionOutbound>,
         NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>>
@@ -769,10 +769,10 @@ public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendabl
     case http2(HTTP2Output)
 }
 
-/// `HTTP2AsyncConfiguration` contains all configuration required for setting up an HTTP/2 async connection.
+/// `NIOHTTP2AsyncConfiguration` contains all configuration required for setting up an HTTP/2 async connection.
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 @_spi(AsyncChannel)
-public struct HTTP2AsyncConfiguration<HTTP2ConnectionInbound: Sendable, HTTP2ConnectionOutbound: Sendable, HTTP2StreamInbound: Sendable, HTTP2StreamOutbound: Sendable>: Sendable {
+public struct NIOHTTP2AsyncConfiguration<HTTP2ConnectionInbound: Sendable, HTTP2ConnectionOutbound: Sendable, HTTP2StreamInbound: Sendable, HTTP2StreamOutbound: Sendable>: Sendable {
     /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
     public var connection: NIOHTTP2Handler.ConnectionConfiguration
     /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the
