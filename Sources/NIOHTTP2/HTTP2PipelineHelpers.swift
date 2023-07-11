@@ -567,10 +567,12 @@ extension Channel {
             return connectionInitializer(self).flatMapThrowing { _ in
                 let connectionAsyncChannel = try NIOAsyncChannel(
                     synchronouslyWrapping: self,
-                    backpressureStrategy: connectionBackpressureStrategy,
-                    isOutboundHalfClosureEnabled: isConnectionOutboundHalfClosureEnabled,
-                    inboundType: ConnectionInbound.self,
-                    outboundType: ConnectionOutbound.self
+                    configuration: .init(
+                        backpressureStrategy: connectionBackpressureStrategy ?? .init(lowWatermark: 2, highWatermark: 10),
+                        isOutboundHalfClosureEnabled: isConnectionOutboundHalfClosureEnabled,
+                        inboundType: ConnectionInbound.self,
+                        outboundType: ConnectionOutbound.self
+                    )
                 )
                 return (connectionAsyncChannel, multiplexer)
             }
@@ -716,10 +718,12 @@ extension ChannelPipeline.SynchronousOperations {
             inboundStreamInitializer(channel).flatMapThrowing { _ in
                 return try NIOAsyncChannel(
                     synchronouslyWrapping: channel,
-                    backpressureStrategy: inboundStreamBackpressureStrategy,
-                    isOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
-                    inboundType: StreamInbound.self,
-                    outboundType: StreamOutbound.self
+                    configuration: .init(
+                        backpressureStrategy: inboundStreamBackpressureStrategy ?? .init(lowWatermark: 2, highWatermark: 10),
+                        isOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
+                        inboundType: StreamInbound.self,
+                        outboundType: StreamOutbound.self
+                    )
                 )
             }
         }
