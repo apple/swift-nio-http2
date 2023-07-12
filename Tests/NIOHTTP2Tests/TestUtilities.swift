@@ -64,6 +64,8 @@ extension XCTestCase {
 
     /// Have two `NIOAsyncTestingChannel` objects send and receive data from each other until
     /// they make no forward progress.
+    ///
+    /// ** This function is racy and can lead to deadlocks, prefer the one-way variant which is less error-prone**
     func interactInMemory(_ first: NIOAsyncTestingChannel, _ second: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
         var operated: Bool
 
@@ -81,6 +83,23 @@ extension XCTestCase {
             if let data = await readBytesFromChannel(second) {
                 operated = true
                 try await assertNoThrow(try await first.writeInbound(data), file: file, line: line)
+            }
+        } while operated
+    }
+
+    /// Have a `NIOAsyncTestingChannel` send data to another until it makes no forward progress.
+    func deliverAllBytes(from source: NIOAsyncTestingChannel, to destination: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
+        var operated: Bool
+
+        func readBytesFromChannel(_ channel: NIOAsyncTestingChannel) async -> ByteBuffer? {
+            return try? await assertNoThrowWithValue(await channel.readOutbound(as: ByteBuffer.self))
+        }
+
+        repeat {
+            operated = false
+            if let data = await readBytesFromChannel(source) {
+                operated = true
+                try await assertNoThrow(try await destination.writeInbound(data), file: file, line: line)
             }
         } while operated
     }
@@ -919,6 +938,18 @@ internal func assertNil(
 ) async rethrows {
     let result = try await expression()
     XCTAssertNil(result, file: file, line: line)
+}
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+internal func assertEqual<T: Equatable>(
+    _ expression1: @autoclosure () async throws -> T?,
+    _ expression2: @autoclosure () async throws -> T?,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async rethrows {
+    let result1 = try await expression1()
+    let result2 = try await expression2()
+    XCTAssertEqual(result1, result2, file: file, line: line)
 }
 
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)

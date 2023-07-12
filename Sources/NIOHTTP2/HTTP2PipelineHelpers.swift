@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 @_spi(AsyncChannel) import NIOCore
-import NIOTLS
+@_spi(AsyncChannel) import NIOTLS
 
 /// The supported ALPN protocol tokens for NIO's HTTP/2 abstraction layer.
 ///
@@ -31,6 +31,18 @@ import NIOTLS
 ///
 /// Configuring for servers is very similar.
 public let NIOHTTP2SupportedALPNProtocols = ["h2", "http/1.1"]
+
+#if swift(>=5.7)
+/// The type of NIO Channel initializer callbacks which do not need to return data.
+public typealias NIOChannelInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
+/// The type of NIO Channel initializer callbacks which need to return data.
+public typealias NIOChannelInitializerWithOutput<Output> = @Sendable (Channel) -> EventLoopFuture<Output>
+#else
+/// The type of NIO Channel initializer callbacks which do not need to return data.
+public typealias NIOChannelInitializer = (Channel) -> EventLoopFuture<Void>
+/// The type of NIO Channel initializer callbacks which need to return data.
+public typealias NIOChannelInitializerWithOutput<Output> = (Channel) -> EventLoopFuture<Output>
+#endif
 
 extension ChannelPipeline {
     /// Configures a channel pipeline to perform a HTTP/2 secure upgrade.
@@ -51,7 +63,7 @@ extension ChannelPipeline {
     /// This configuration is acceptable for use on both client and server channel pipelines.
     ///
     /// - Parameters:
-    ///   - h2PipelineConfigurator: A callback that will be invoked if HTTP/2 has been negogiated, and that
+    ///   - h2PipelineConfigurator: A callback that will be invoked if HTTP/2 has been negotiated, and that
     ///         should configure the pipeline for HTTP/2 use. Must return a future that completes when the
     ///         pipeline has been fully mutated.
     ///   - http1PipelineConfigurator: A callback that will be invoked if HTTP/1.1 has been explicitly
@@ -182,7 +194,7 @@ extension Channel {
                                        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
                                        streamDelegate: NIOHTTP2StreamDelegate? = nil,
                                        position: ChannelPipeline.Position = .last,
-                                       inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<NIOHTTP2Handler.StreamMultiplexer> {
+                                       inboundStreamInitializer: @escaping NIOChannelInitializer) -> EventLoopFuture<NIOHTTP2Handler.StreamMultiplexer> {
         if self.eventLoop.inEventLoop {
             return self.eventLoop.makeCompletedFuture {
                 return try self.pipeline.syncOperations.configureHTTP2Pipeline(
@@ -217,10 +229,7 @@ extension Channel {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
-    ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
-    ///         handshake.
-    ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
-    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///   - configuration: The settings that will be used when establishing the connection and new streams.
     ///   - position: The position in the pipeline into which to insert this handler.
     ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
@@ -229,19 +238,15 @@ extension Channel {
     @_spi(AsyncChannel)
     public func configureAsyncHTTP2Pipeline<Output>(
         mode: NIOHTTP2Handler.ParserMode,
-        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
-        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        configuration: NIOHTTP2Handler.Configuration = .init(),
         position: ChannelPipeline.Position = .last,
-        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+        inboundStreamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) -> EventLoopFuture<NIOHTTP2Handler.AsyncStreamMultiplexer<Output>> {
         if self.eventLoop.inEventLoop {
             return self.eventLoop.makeCompletedFuture {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
-                    connectionConfiguration: connectionConfiguration,
-                    streamConfiguration: streamConfiguration,
-                    streamDelegate: streamDelegate,
+                    configuration: configuration,
                     position: position,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
@@ -250,9 +255,7 @@ extension Channel {
             return self.eventLoop.submit {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
-                    connectionConfiguration: connectionConfiguration,
-                    streamConfiguration: streamConfiguration,
-                    streamDelegate: streamDelegate,
+                    configuration: configuration,
                     position: position,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
@@ -271,49 +274,32 @@ extension Channel {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
+    ///   - inboundStreamAsyncChannelConfiguration: Settings relating to `NIOAsyncChannel`s wrapping internal stream channels.
     ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
     ///         handshake.
     ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
-    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
     ///   - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
-    ///   - inboundStreamBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
-    ///   - isInboundStreamOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
-    ///   - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
-    ///         This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///         or ``HTTP2Frame/FramePayload`` if there are none.
-    ///   - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for inbound stream channels.
-    ///         This type must match the `OutboundIn` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///         or ``HTTP2Frame/FramePayload`` if there are none.
     ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline which wraps
     ///     inbound streams as `NIOAsyncChannels` after initialization. The multiplexer can be used to initiate new streams
     ///     and iterate over inbound HTTP/2 stream channels.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    @_spi(AsyncChannel)
-    public func configureAsyncHTTP2Pipeline<StreamInbound, StreamOutbound>(
+    internal func configureAsyncHTTP2Pipeline<StreamInbound, StreamOutbound>(
         mode: NIOHTTP2Handler.ParserMode,
-        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
-        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        inboundStreamAsyncChannelConfiguration: NIOAsyncChannel<StreamInbound, StreamOutbound>.Configuration,
+        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration = .init(),
+        streamConfiguration: NIOHTTP2Handler.StreamConfiguration = .init(),
         position: ChannelPipeline.Position = .last,
-        inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        isInboundStreamOutboundHalfClosureEnabled: Bool = false,
-        streamInboundType: StreamInbound.Type = StreamInbound.self,
-        streamOutboundType: StreamOutbound.Type = StreamOutbound.self,
-        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
+        inboundStreamInitializer: @escaping NIOChannelInitializer
     ) throws -> EventLoopFuture<NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>>> {
         if self.eventLoop.inEventLoop {
             return self.eventLoop.makeCompletedFuture {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
+                    inboundStreamAsyncChannelConfiguration: inboundStreamAsyncChannelConfiguration,
                     connectionConfiguration: connectionConfiguration,
                     streamConfiguration: streamConfiguration,
-                    streamDelegate: streamDelegate,
                     position: position,
-                    inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
-                    isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
-                    streamInboundType: streamInboundType,
-                    streamOutboundType: streamOutboundType,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
             }
@@ -321,21 +307,17 @@ extension Channel {
             return self.eventLoop.submit {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
+                    inboundStreamAsyncChannelConfiguration: inboundStreamAsyncChannelConfiguration,
                     connectionConfiguration: connectionConfiguration,
                     streamConfiguration: streamConfiguration,
-                    streamDelegate: streamDelegate,
                     position: position,
-                    inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
-                    isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
-                    streamInboundType: streamInboundType,
-                    streamOutboundType: streamOutboundType,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
             }
         }
     }
 
-    /// Configures a channel to perform a HTTP/2 secure upgrade.
+    /// Configures a channel to perform an HTTP/2 secure upgrade.
     ///
     /// HTTP/2 secure upgrade uses the Application Layer Protocol Negotiation TLS extension to
     /// negotiate the inner protocol as part of the TLS handshake. For this reason, until the TLS
@@ -353,7 +335,7 @@ extension Channel {
     /// This configuration is acceptable for use on both client and server channel pipelines.
     ///
     /// - Parameters:
-    ///   - h2ChannelConfigurator: A callback that will be invoked if HTTP/2 has been negogiated, and that
+    ///   - h2ChannelConfigurator: A callback that will be invoked if HTTP/2 has been negotiated, and that
     ///         should configure the channel for HTTP/2 use. Must return a future that completes when the
     ///         channel has been fully mutated.
     ///   - http1ChannelConfigurator: A callback that will be invoked if HTTP/1.1 has been explicitly
@@ -380,7 +362,59 @@ extension Channel {
         return self.pipeline.addHandler(alpnHandler)
     }
 
-    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
+
+    /// Configures a channel to perform an HTTP/2 secure upgrade with typed negotiation results.
+    ///
+    /// HTTP/2 secure upgrade uses the Application Layer Protocol Negotiation TLS extension to
+    /// negotiate the inner protocol as part of the TLS handshake. For this reason, until the TLS
+    /// handshake is complete, the ultimate configuration of the channel pipeline cannot be known.
+    ///
+    /// This function configures the channel with a pair of callbacks that will handle the result
+    /// of the negotiation. It explicitly **does not** configure a TLS handler to actually attempt
+    /// to negotiate ALPN. The supported ALPN protocols are provided in
+    /// `NIOHTTP2SupportedALPNProtocols`: please ensure that the TLS handler you are using for your
+    /// pipeline is appropriately configured to perform this protocol negotiation.
+    ///
+    /// If negotiation results in an unexpected protocol, the pipeline will close the connection
+    /// and no callback will fire.
+    ///
+    /// This configuration is acceptable for use on both client and server channel pipelines.
+    ///
+    /// - Parameters:
+    ///   - http1ConnectionInitializer: A callback that will be invoked if HTTP/1.1 has been explicitly
+    ///         negotiated, or if no protocol was negotiated. Must return a future that completes when the
+    ///         channel has been fully mutated.
+    ///   - http2ConnectionInitializer: A callback that will be invoked if HTTP/2 has been negotiated, and that
+    ///         should configure the channel for HTTP/2 use. Must return a future that completes when the
+    ///         channel has been fully mutated.
+    /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
+    ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
+    ///     be waited on to retrieve the result of the negotiation.
+    internal func configureHTTP2AsyncSecureUpgrade<HTTP1Output, HTTP2Output>(
+        http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1Output>,
+        http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2Output>
+    ) -> EventLoopFuture<NIOTypedApplicationProtocolNegotiationHandler<NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output>>> {
+        let alpnHandler = NIOTypedApplicationProtocolNegotiationHandler<NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output>>(eventLoop: self.eventLoop) { result in
+            switch result {
+            case .negotiated("h2"):
+                // Successful upgrade to HTTP/2. Let the user configure the pipeline.
+                return http2ConnectionInitializer(self).map { http2Output in .finished(.http2(http2Output)) }
+            case .negotiated("http/1.1"), .fallback:
+                // Explicit or implicit HTTP/1.1 choice.
+                return http1ConnectionInitializer(self).map { http1Output in .finished(.http1_1(http1Output)) }
+            case .negotiated:
+                // We negotiated something that isn't HTTP/1.1. This is a bad scene, and is a good indication
+                // of a user configuration error. We're going to close the connection directly.
+                return self.close().flatMap { self.eventLoop.makeFailedFuture(NIOHTTP2Errors.invalidALPNToken()) }
+            }
+        }
+
+        return self.pipeline.addHandler(alpnHandler).map { _ in
+            alpnHandler
+        }
+    }
+
+    /// Configures a `ChannelPipeline` to speak either HTTP/1.1 or HTTP/2 according to what can be negotiated with the client.
     ///
     /// This helper takes care of configuring the server pipeline such that it negotiates whether to
     /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotiated, the
@@ -403,7 +437,7 @@ extension Channel {
         return self.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator, targetWindowSize: 65535, configurator)
     }
     
-    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
+    /// Configures a `ChannelPipeline` to speak either HTTP/1.1 or HTTP/2 according to what can be negotiated with the client.
     ///
     /// This helper takes care of configuring the server pipeline such that it negotiates whether to
     /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotiated, the
@@ -434,6 +468,47 @@ extension Channel {
         }
     }
 
+    /// Configures a `ChannelPipeline` to speak either HTTP/1.1 or HTTP/2 according to what can be negotiated with the client.
+    ///
+    /// This helper takes care of configuring the server pipeline such that it negotiates whether to
+    /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotiated, the
+    /// provided callback will configure the application-specific handlers in a protocol-agnostic way.
+    ///
+    /// This function doesn't configure the TLS handler. Callers of this function need to add a TLS
+    /// handler appropriately configured to perform protocol negotiation.
+    ///
+    /// - Parameters:
+    ///   - connectionConfiguration: The settings that will be used when establishing the HTTP/2 connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///   - streamConfiguration: The settings that will be used when establishing new HTTP/2 streams. These mainly pertain to flow control.
+    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///   - h2ConnectionChannelConfigurator: An optional callback that will be invoked only
+    ///         when the negotiated protocol is H2 to configure the connection channel.
+    ///   - configurator: A callback that will be invoked after a protocol has been negotiated.
+    ///         The callback only needs to add application-specific handlers and must return a future
+    ///         that completes when the channel has been fully mutated.
+    /// - Returns: `EventLoopFuture<Void>` that completes when the channel is ready.
+    public func configureCommonHTTPServerPipeline(
+        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
+        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
+        configurator: @escaping NIOChannelInitializer
+    ) -> EventLoopFuture<Void> {
+        return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
+            channel.configureHTTP2Pipeline(
+                mode: .server,
+                connectionConfiguration: connectionConfiguration,
+                streamConfiguration: streamConfiguration,
+                streamDelegate: streamDelegate
+            ) { streamChannel -> EventLoopFuture<Void> in
+                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
+                    configurator(streamChannel)
+                }
+            }.map { _ in () }
+        }
+    }
+
     private func _commonHTTPServerPipeline(
         configurator: @escaping (Channel) -> EventLoopFuture<Void>,
         h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)?,
@@ -457,43 +532,55 @@ extension Channel {
                                                 http1ChannelConfigurator: http1ChannelConfigurator)
     }
 
-    /// Configures a `ChannelPipeline` to speak either HTTP or HTTP/2 according to what can be negotiated with the client.
+    /// Configures a `ChannelPipeline` to speak either HTTP/1.1 or HTTP/2 according to what can be negotiated with the client.
     ///
     /// This helper takes care of configuring the server pipeline such that it negotiates whether to
-    /// use HTTP/1.1 or HTTP/2. Once the protocol to use for the channel has been negotiated, the
-    /// provided callback will configure the application-specific handlers in a protocol-agnostic way.
+    /// use HTTP/1.1 or HTTP/2.
     ///
     /// This function doesn't configure the TLS handler. Callers of this function need to add a TLS
     /// handler appropriately configured to perform protocol negotiation.
     ///
     /// - Parameters:
-    ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
-    ///         handshake.
-    ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
-    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
-    ///   - h2ConnectionChannelConfigurator: An optional callback that will be invoked only
-    ///         when the negotiated protocol is H2 to configure the connection channel.
-    ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
-    /// - Returns: `EventLoopFuture<Void>` that completes when the channel is ready.
-    public func configureCommonHTTPServerPipeline(
-        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
-        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
-        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
-        configurator: @escaping NIOHTTP2Handler.StreamInitializer
-    ) -> EventLoopFuture<Void> {
-        return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
-            channel.configureHTTP2Pipeline(
+    ///   - http2Configuration: The settings that will be used when establishing the HTTP/2 connections and new HTTP/2 streams.
+    ///   - http1ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
+    ///     is HTTP/1.1 to configure the connection channel.
+    ///   - http2ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
+    ///     is HTTP/2 to configure the connection channel.
+    ///   - http2InboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
+    ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
+    ///     be waited on to retrieve the result of the negotiation.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    @_spi(AsyncChannel)
+    public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput, HTTP2ConnectionOutput, HTTP2StreamOutput>(
+        http2Configuration: NIOHTTP2Handler.Configuration = .init(),
+        http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1ConnectionOutput>,
+        http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2ConnectionOutput>,
+        http2InboundStreamInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2StreamOutput>
+    ) throws -> EventLoopFuture<NIOTypedApplicationProtocolNegotiationHandler<NIONegotiatedHTTPVersion<
+            HTTP1ConnectionOutput,
+            (HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)
+        >>> {
+        let http2ConnectionInitializer: NIOChannelInitializerWithOutput<(HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)> = { channel in
+            channel.configureAsyncHTTP2Pipeline(
                 mode: .server,
-                connectionConfiguration: connectionConfiguration,
-                streamConfiguration: streamConfiguration,
-                streamDelegate: streamDelegate
-            ) { streamChannel -> EventLoopFuture<Void> in
-                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
-                    configurator(streamChannel)
+                configuration: http2Configuration,
+                inboundStreamInitializer: http2InboundStreamInitializer
+            ).flatMap { multiplexer in
+                return http2ConnectionInitializer(channel).map { connectionChannel in
+                    (connectionChannel, multiplexer)
                 }
-            }.map { _ in () }
+            }
         }
+        let http1ConnectionInitializer: NIOChannelInitializerWithOutput<HTTP1ConnectionOutput> = { channel in
+            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
+                http1ConnectionInitializer(channel)
+            }
+        }
+        return self.configureHTTP2AsyncSecureUpgrade(
+            http1ConnectionInitializer: http1ConnectionInitializer,
+            http2ConnectionInitializer: http2ConnectionInitializer
+        )
     }
 
     /// Configures a `ChannelPipeline` to speak HTTP/2 and wraps both the connection channel and any
@@ -508,27 +595,8 @@ extension Channel {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
-    ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
-    ///         handshake.
-    ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
-    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
-    ///   - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
-    ///   - connectionBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel`` wrapping the HTTP/2 connection channel.
-    ///   - isConnectionOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel`` wrapping the HTTP/2 connection channel.
-    ///   - connectionInboundType: The ``NIOAsyncChannel/inboundStream`` message type for the HTTP/2 connection channel.
-    ///         This type must match the `InboundOut` type of the final handler in the connection channel.
-    ///   - connectionOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for the HTTP/2 connection channel.
-    ///         This type must match the `OutboundIn` type of the final handler in the connection channel.
-    ///   - inboundStreamBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
-    ///   - isInboundStreamOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
-    ///   - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
-    ///         This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///         or ``HTTP2Frame/FramePayload`` if there are none.
-    ///   - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for inbound stream channels.
-    ///         This type must match the `OutboundIn` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///         or ``HTTP2Frame/FramePayload`` if there are none.
-    ///   - connectionInitializer: A closure that will be called once the `NIOHTTP2Handler` has been added to the pipeline.
-    ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///   - configuration: The settings and initialization configuration for both connections and streams, and their wrapping
+    ///     ``NIOAsyncChannel``s.
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline which wraps
     ///     inbound streams as `NIOAsyncChannels` after initialization. The multiplexer can be used to initiate new streams
     ///     and iterate over inbound HTTP/2 stream channels.
@@ -536,46 +604,29 @@ extension Channel {
     @_spi(AsyncChannel)
     public func configureAsyncHTTP2Pipeline<ConnectionInbound, ConnectionOutbound, StreamInbound, StreamOutbound>(
         mode: NIOHTTP2Handler.ParserMode,
-        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
-        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
-        connectionBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        isConnectionOutboundHalfClosureEnabled: Bool = false,
-        connectionInboundType: ConnectionInbound.Type = ConnectionInbound.self,
-        connectionOutboundType: ConnectionOutbound.Type = ConnectionOutbound.self,
-        inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        isInboundStreamOutboundHalfClosureEnabled: Bool = false,
-        streamInboundType: StreamInbound.Type = StreamInbound.self,
-        streamOutboundType: StreamOutbound.Type = StreamOutbound.self,
-        connectionInitializer: @escaping NIOHTTP2Handler.ConnectionInitializer,
-        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
-    ) throws -> EventLoopFuture<(
+        configuration: NIOHTTP2AsyncConfiguration<ConnectionInbound, ConnectionOutbound, StreamInbound, StreamOutbound>
+    ) -> EventLoopFuture<(
         NIOAsyncChannel<ConnectionInbound, ConnectionOutbound>,
         NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>>
     )> {
-        return try self.configureAsyncHTTP2Pipeline(
-            mode: mode,
-            connectionConfiguration: connectionConfiguration,
-            streamConfiguration: streamConfiguration,
-            streamDelegate: streamDelegate,
-            inboundStreamBackpressureStrategy: inboundStreamBackpressureStrategy,
-            isInboundStreamOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
-            streamInboundType: streamInboundType,
-            streamOutboundType: streamOutboundType,
-            inboundStreamInitializer: inboundStreamInitializer
-        ).flatMap { multiplexer in
-            return connectionInitializer(self).flatMapThrowing { _ in
-                let connectionAsyncChannel = try NIOAsyncChannel(
-                    synchronouslyWrapping: self,
-                    configuration: .init(
-                        backpressureStrategy: connectionBackpressureStrategy ?? .init(lowWatermark: 2, highWatermark: 10),
-                        isOutboundHalfClosureEnabled: isConnectionOutboundHalfClosureEnabled,
-                        inboundType: ConnectionInbound.self,
-                        outboundType: ConnectionOutbound.self
+        do {
+            return try self.configureAsyncHTTP2Pipeline(
+                mode: mode,
+                inboundStreamAsyncChannelConfiguration: configuration.inboundStreamAsyncChannel,
+                connectionConfiguration: configuration.connection,
+                streamConfiguration: configuration.stream,
+                inboundStreamInitializer: configuration.inboundStreamInitializer
+            ).flatMap { multiplexer in
+                return configuration.connectionInitializer(self).flatMapThrowing { _ in
+                    let connectionAsyncChannel = try NIOAsyncChannel<ConnectionInbound, ConnectionOutbound>(
+                        synchronouslyWrapping: self,
+                        configuration: configuration.connectionAsyncChannel
                     )
-                )
-                return (connectionAsyncChannel, multiplexer)
+                    return (connectionAsyncChannel, multiplexer)
+                }
             }
+        } catch {
+            return self.eventLoop.makeFailedFuture(error)
         }
     }
 }
@@ -603,7 +654,7 @@ extension ChannelPipeline.SynchronousOperations {
                                        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
                                        streamDelegate: NIOHTTP2StreamDelegate? = nil,
                                        position: ChannelPipeline.Position = .last,
-                                       inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer) throws -> NIOHTTP2Handler.StreamMultiplexer {
+                                       inboundStreamInitializer: @escaping NIOChannelInitializer) throws -> NIOHTTP2Handler.StreamMultiplexer {
         let handler = NIOHTTP2Handler(
             mode: mode,
             eventLoop: self.eventLoop,
@@ -630,10 +681,7 @@ extension ChannelPipeline.SynchronousOperations {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
-    ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
-    ///         handshake.
-    ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
-    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///   - configuration: The settings that will be used when establishing the connection and new streams.
     ///   - position: The position in the pipeline into which to insert this handler.
     ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
@@ -642,18 +690,15 @@ extension ChannelPipeline.SynchronousOperations {
     @_spi(AsyncChannel)
     public func configureAsyncHTTP2Pipeline<Output>(
         mode: NIOHTTP2Handler.ParserMode,
-        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
-        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        configuration: NIOHTTP2Handler.Configuration = .init(),
         position: ChannelPipeline.Position = .last,
-        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>
+        inboundStreamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<Output> {
         let handler = NIOHTTP2Handler(
             mode: mode,
             eventLoop: self.eventLoop,
-            connectionConfiguration: connectionConfiguration,
-            streamConfiguration: streamConfiguration,
-            streamDelegate: streamDelegate,
+            connectionConfiguration: configuration.connection,
+            streamConfiguration: configuration.stream,
             inboundStreamInitializer: { channel in channel.eventLoop.makeSucceededVoidFuture() }
         )
 
@@ -677,55 +722,89 @@ extension ChannelPipeline.SynchronousOperations {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
+    ///   - inboundStreamAsyncChannelConfiguration: Settings relating to `NIOAsyncChannel`s wrapping internal stream channels.
     ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
     ///         handshake.
     ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
-    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
     ///   - position: The position in the pipeline into which to insert the `NIOHTTP2Handler`.
-    ///   - inboundStreamBackpressureStrategy: The backpressure strategy of the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
-    ///   - isInboundStreamOutboundHalfClosureEnabled: If outbound half closure should be enabled for the ``NIOAsyncChannel``s wrapping inbound HTTP/2 streams.
-    ///   - streamInboundType: The ``NIOAsyncChannel/inboundStream`` message type for inbound stream channels.
-    ///         This type must match the `InboundOut` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///         or ``HTTP2Frame/FramePayload`` if there are none.
-    ///   - streamOutboundType: The ``NIOAsyncChannel/outboundWriter`` message type for inbound stream channels.
-    ///         This type must match the `OutboundIn` type of the final handler added to the stream channel by the `inboundStreamInitializer`
-    ///         or ``HTTP2Frame/FramePayload`` if there are none.
     ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline which wraps
     ///     inbound streams as `NIOAsyncChannels` after initialization. The multiplexer can be used to initiate new streams
     ///     and iterate over inbound HTTP/2 stream channels.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    @_spi(AsyncChannel)
-    public func configureAsyncHTTP2Pipeline<StreamInbound, StreamOutbound>(
+    internal func configureAsyncHTTP2Pipeline<StreamInbound, StreamOutbound>(
         mode: NIOHTTP2Handler.ParserMode,
-        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
-        streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        inboundStreamAsyncChannelConfiguration: NIOAsyncChannel<StreamInbound, StreamOutbound>.Configuration,
+        connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration = .init(),
+        streamConfiguration: NIOHTTP2Handler.StreamConfiguration = .init(),
         position: ChannelPipeline.Position = .last,
-        inboundStreamBackpressureStrategy: NIOAsyncSequenceProducerBackPressureStrategies.HighLowWatermark? = nil,
-        isInboundStreamOutboundHalfClosureEnabled: Bool = false,
-        streamInboundType: StreamInbound.Type = StreamInbound.self,
-        streamOutboundType: StreamOutbound.Type = StreamOutbound.self,
-        inboundStreamInitializer: @escaping NIOHTTP2Handler.StreamInitializer
+        inboundStreamInitializer: @escaping NIOChannelInitializer
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<NIOAsyncChannel<StreamInbound, StreamOutbound>> {
         return try self.configureAsyncHTTP2Pipeline(
             mode: mode,
-            connectionConfiguration: connectionConfiguration,
-            streamConfiguration: streamConfiguration,
-            streamDelegate: streamDelegate,
+            configuration: .init(
+                connection: connectionConfiguration,
+                stream: streamConfiguration
+            ),
             position: position
         ) { channel in
             inboundStreamInitializer(channel).flatMapThrowing { _ in
-                return try NIOAsyncChannel(
+                return try NIOAsyncChannel<StreamInbound, StreamOutbound>(
                     synchronouslyWrapping: channel,
-                    configuration: .init(
-                        backpressureStrategy: inboundStreamBackpressureStrategy ?? .init(lowWatermark: 2, highWatermark: 10),
-                        isOutboundHalfClosureEnabled: isInboundStreamOutboundHalfClosureEnabled,
-                        inboundType: StreamInbound.self,
-                        outboundType: StreamOutbound.self
-                    )
+                    configuration: inboundStreamAsyncChannelConfiguration
                 )
             }
         }
     }
 }
+
+/// `NIONegotiatedHTTPVersion` is a generic negotiation result holder for HTTP/1.1 and HTTP/2
+@_spi(AsyncChannel)
+public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable> {
+    case http1_1(HTTP1Output)
+    case http2(HTTP2Output)
+}
+
+/// `NIOHTTP2AsyncConfiguration` contains all configuration required for setting up an HTTP/2 async connection.
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+@_spi(AsyncChannel)
+public struct NIOHTTP2AsyncConfiguration<HTTP2ConnectionInbound: Sendable, HTTP2ConnectionOutbound: Sendable, HTTP2StreamInbound: Sendable, HTTP2StreamOutbound: Sendable> {
+    /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
+    public var connection: NIOHTTP2Handler.ConnectionConfiguration
+    /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    /// handshake.
+    public var stream: NIOHTTP2Handler.StreamConfiguration
+
+    /// The settings for the `NIOAsyncChannel` wrapping the HTTP/2 connection channel
+    public var connectionAsyncChannel: NIOAsyncChannel<HTTP2ConnectionInbound, HTTP2ConnectionOutbound>.Configuration
+    /// The settings for `NIOAsyncChannel`s wrapping inbound HTTP/2 stream channels
+    public var inboundStreamAsyncChannel: NIOAsyncChannel<HTTP2StreamInbound, HTTP2StreamOutbound>.Configuration
+
+    /// A callback used to configure the HTTP/2 connection channel
+    public var connectionInitializer: NIOChannelInitializer
+    /// A callback used to configure inbound HTTP/2 stream channels
+    public var inboundStreamInitializer: NIOChannelInitializer
+
+    public init(
+        connectionAsyncChannel: NIOAsyncChannel<HTTP2ConnectionInbound, HTTP2ConnectionOutbound>.Configuration,
+        inboundStreamAsyncChannel: NIOAsyncChannel<HTTP2StreamInbound, HTTP2StreamOutbound>.Configuration,
+        connection: NIOHTTP2Handler.ConnectionConfiguration = .init(),
+        stream: NIOHTTP2Handler.StreamConfiguration = .init(),
+        connectionInitializer: @escaping NIOChannelInitializer,
+        inboundStreamInitializer: @escaping NIOChannelInitializer
+    ) {
+        self.connectionAsyncChannel = connectionAsyncChannel
+        self.inboundStreamAsyncChannel = inboundStreamAsyncChannel
+        self.connection = connection
+        self.stream = stream
+        self.connectionInitializer = connectionInitializer
+        self.inboundStreamInitializer = inboundStreamInitializer
+    }
+}
+
+#if swift(>=5.7)
+// Unchecked sendable because `NIOAsyncChannel.Configuration` is actually sendable but not yet marked as such
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+@_spi(AsyncChannel)
+extension NIOHTTP2AsyncConfiguration: @unchecked Sendable {}
+#endif

@@ -23,7 +23,6 @@ public let nioDefaultSettings = [
     HTTP2Setting(parameter: .maxHeaderListSize, value: HPACKDecoder.defaultMaxHeaderListSize),
 ]
 
-
 /// ``NIOHTTP2Handler`` implements the HTTP/2 protocol for a single connection.
 ///
 /// This `ChannelHandler` takes a series of bytes and turns them into a sequence of ``HTTP2Frame`` objects.
@@ -988,19 +987,11 @@ extension NIOHTTP2Handler {
 
 extension NIOHTTP2Handler {
 #if swift(>=5.7)
-    /// The type of all `inboundStreamInitializer` callbacks.
-    public typealias StreamInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
-    /// The type of all `connectionInitializer` callbacks.
-    public typealias ConnectionInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
-    /// The type of `inboundStreamInitializer` callbacks which return non-void results.
-    public typealias StreamInitializerWithOutput<Output> = @Sendable (Channel) -> EventLoopFuture<Output>
+    /// The type of all `inboundStreamInitializer` callbacks which do not need to return data.
+    public typealias StreamInitializer = NIOChannelInitializer
 #else
-    /// The type of all `inboundStreamInitializer` callbacks.
-    public typealias StreamInitializer = (Channel) -> EventLoopFuture<Void>
-    /// The type of all `connectionInitializer` callbacks.
-    public typealias ConnectionInitializer = (Channel) -> EventLoopFuture<Void>
-    /// The type of `inboundStreamInitializer` callbacks which return non-void results.
-    public typealias StreamInitializerWithOutput<Output> = (Channel) -> EventLoopFuture<Output>
+    /// The type of all `inboundStreamInitializer` callbacks which need to return data.
+    public typealias StreamInitializer = NIOChannelInitializer
 #endif
 
     /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer. (i.e. using
@@ -1035,6 +1026,9 @@ extension NIOHTTP2Handler {
     }
 
     /// Connection-level configuration.
+    ///
+    /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    /// handshake.
     public struct ConnectionConfiguration: Hashable, Sendable {
         public var initialSettings: HTTP2Settings = nioDefaultSettings
         public var headerBlockValidation: ValidationState = .enabled
@@ -1045,11 +1039,32 @@ extension NIOHTTP2Handler {
     }
 
     /// Stream-level configuration.
+    ///
+    /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
     public struct StreamConfiguration: Hashable, Sendable {
         public var targetWindowSize: Int = 65535
         public var outboundBufferSizeHighWatermark: Int = 8196
         public var outboundBufferSizeLowWatermark: Int = 4092
         public init() {}
+    }
+
+    /// Overall connection and stream-level configuration.
+    public struct Configuration: Hashable, Sendable {
+        /// The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+        /// handshake.
+        public var connection: ConnectionConfiguration
+        /// The settings that will be used when establishing new streams. These mainly pertain to flow control.
+        public var stream: StreamConfiguration
+
+        public init() {
+            self.connection = .init()
+            self.stream = .init()
+        }
+
+        public init(connection: ConnectionConfiguration, stream: StreamConfiguration) {
+            self.connection = connection
+            self.stream = stream
+        }
     }
 
     /// An `EventLoopFuture` which returns a ``StreamMultiplexer`` which can be used to create new outbound HTTP/2 streams.
