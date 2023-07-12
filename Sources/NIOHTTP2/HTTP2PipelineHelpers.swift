@@ -274,7 +274,7 @@ extension Channel {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
-    ///   - inboundStreamAsyncChannelConfiguration: Settings relating to `NIOAsyncChannel`s wrapping internal stream channels
+    ///   - inboundStreamAsyncChannelConfiguration: Settings relating to `NIOAsyncChannel`s wrapping internal stream channels.
     ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
     ///         handshake.
     ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
@@ -389,7 +389,7 @@ extension Channel {
     ///         channel has been fully mutated.
     /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
     ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
-    ///     be waited on to retrieve the result of the negotiation
+    ///     be waited on to retrieve the result of the negotiation.
     internal func configureHTTP2AsyncSecureUpgrade<HTTP1Output, HTTP2Output>(
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1Output>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2Output>
@@ -549,7 +549,7 @@ extension Channel {
     ///   - http2InboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
     ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
-    ///     be waited on to retrieve the result of the negotiation
+    ///     be waited on to retrieve the result of the negotiation.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
     public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput, HTTP2ConnectionOutput, HTTP2StreamOutput>(
@@ -681,10 +681,7 @@ extension ChannelPipeline.SynchronousOperations {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
-    ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
-    ///         handshake.
-    ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
-    ///   - streamDelegate: The delegate to be notified in the event of stream creation and close.
+    ///   - configuration: The settings that will be used when establishing the connection and new streams.
     ///   - position: The position in the pipeline into which to insert this handler.
     ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
@@ -725,7 +722,7 @@ extension ChannelPipeline.SynchronousOperations {
     ///
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
-    ///   - inboundStreamAsyncChannelConfiguration: Settings relating to `NIOAsyncChannel`s wrapping internal stream channels
+    ///   - inboundStreamAsyncChannelConfiguration: Settings relating to `NIOAsyncChannel`s wrapping internal stream channels.
     ///   - connectionConfiguration: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
     ///         handshake.
     ///   - streamConfiguration: The settings that will be used when establishing new streams. These mainly pertain to flow control.
@@ -806,6 +803,7 @@ public struct NIOHTTP2AsyncConfiguration<HTTP2ConnectionInbound: Sendable, HTTP2
 }
 
 #if swift(>=5.7)
+// Unchecked sendable because `NIOAsyncChannel.Configuration` is actually sendable but not yet marked as such
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 @_spi(AsyncChannel)
 extension NIOHTTP2AsyncConfiguration: @unchecked Sendable {}
