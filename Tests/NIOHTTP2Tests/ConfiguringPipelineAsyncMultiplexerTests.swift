@@ -21,6 +21,8 @@ import NIOHPACK
 import NIOHTTP1
 @_spi(AsyncChannel) import NIOHTTP2
 import NIOTLS
+@_spi(AsyncChannel) import NIOPosix
+@_spi(AsyncChannel) import NIOTLS
 
 final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
     var clientChannel: NIOAsyncTestingChannel!
@@ -93,7 +95,76 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
     // `testBasicPipelineCommunicates` ensures that a client-server system set up to use async stream abstractions
     // can communicate successfully.
+    @available(macOS 14.0, *)
     func testBasicPipelineCommunicates() async throws {
+        let channel = try await ServerBootstrap(group: MultiThreadedEventLoopGroup(numberOfThreads: 1))
+            .bind(
+                host: "127.0.0.1",
+                port: 0
+            ) { channel in
+                channel.configureAsyncHTTPServerPipeline { http1ConnectionChannel in
+                    http1ConnectionChannel.eventLoop.makeCompletedFuture {
+                        try NIOAsyncChannel(
+                            synchronouslyWrapping: http1ConnectionChannel,
+                            configuration: .init(
+                                inboundType: HTTPServerRequestPart.self,
+                                outboundType: HTTPServerResponsePart.self
+                            )
+                        )
+                    }
+                } http2ConnectionInitializer: { http2ConnectionChannel in
+                    http2ConnectionChannel.eventLoop.makeCompletedFuture {
+                        try NIOAsyncChannel(
+                            synchronouslyWrapping: http2ConnectionChannel,
+                            configuration: .init(
+                                inboundType: HTTP2Frame.self,
+                                outboundType: HTTP2Frame.self
+                            )
+                        )
+                    }
+                } http2InboundStreamInitializer: { http2StreamChannel in
+                    http2StreamChannel.eventLoop.makeCompletedFuture {
+                        try NIOAsyncChannel(
+                            synchronouslyWrapping: http2StreamChannel,
+                            configuration: .init(
+                                inboundType: HTTP2Frame.FramePayload.self,
+                                outboundType: HTTP2Frame.FramePayload.self
+                            )
+                        )
+                    }
+                }
+            }
+
+        try await withThrowingDiscardingTaskGroup { group in
+            for try await negotiationResult in channel.inboundStream {
+                group.addTask {
+                    switch try! await negotiationResult.get().waitForFinalResult() {
+                    case .http1_1(let connectionChannel):
+                        for try await part in connectionChannel.inboundStream {
+                            print(part)
+                        }
+
+                    case .http2((let connectionChannel, let streamMultiplexer)):
+                        try await withThrowingDiscardingTaskGroup { group in
+                            group.addTask {
+                                for try await frame in connectionChannel.inboundStream {
+                                    print(frame)
+                                }
+                            }
+                            
+                            for try await stream in streamMultiplexer.inbound {
+                                group.addTask {
+                                    for try await frame in stream.inboundStream {
+                                        print(frame)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let requestCount = 100
 
         let serverRecorder = InboundFramePayloadRecorder()
