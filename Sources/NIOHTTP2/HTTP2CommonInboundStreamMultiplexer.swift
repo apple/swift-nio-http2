@@ -109,8 +109,11 @@ extension HTTP2CommonInboundStreamMultiplexer {
             // does no actual work.
             self.streamChannelContinuation?.yield(channel: channel.baseChannel)
 
-            channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
+            // Note: Firing the initial (header) frame before calling `HTTP2StreamChannel.configureInboundStream(initializer:)`
+            // is crucial to preserve frame order, since the initialization process might trigger another read on the parent
+            // channel which in turn might cause further frames to be processed synchronously.
             channel.receiveInboundFrame(frame)
+            channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
 
             if !channel.inList {
                 self.didReadChannels.append(channel)
