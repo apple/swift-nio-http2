@@ -153,30 +153,30 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
     func testNIOAsyncConnectionStreamChannelPipelineCommunicates() async throws {
         let requestCount = 100
 
-        let (clientAsyncChannel, clientMultiplexer) = try await assertNoThrowWithValue(
+        let clientMultiplexer = try await assertNoThrowWithValue(
             try await self.clientChannel.configureAsyncHTTP2Pipeline(
                 mode: .client,
-                configuration: .init(
-                    connectionAsyncChannel: NIOAsyncChannel.Configuration(inboundType: HTTP2Frame.self, outboundType: HTTP2Frame.self),
-                    inboundStreamAsyncChannel: NIOAsyncChannel.Configuration(inboundType: HTTP2Frame.FramePayload.self, outboundType: HTTP2Frame.FramePayload.self)
-                ) { channel in
-                    channel.eventLoop.makeSucceededVoidFuture()
-                } inboundStreamInitializer: { channel -> EventLoopFuture<Void> in
-                    channel.eventLoop.makeSucceededVoidFuture()
+                inboundStreamInitializer: { channel in
+                    channel.eventLoop.makeCompletedFuture {
+                        try NIOAsyncChannel(
+                            synchronouslyWrapping: channel,
+                            configuration: .init(inboundType: HTTP2Frame.FramePayload.self, outboundType: HTTP2Frame.FramePayload.self)
+                        )
+                    }
                 }
             ).get()
         )
 
-        let (serverAsyncChannel, serverMultiplexer) = try await assertNoThrowWithValue(
+        let serverMultiplexer = try await assertNoThrowWithValue(
             try await self.serverChannel.configureAsyncHTTP2Pipeline(
                 mode: .server,
-                configuration: .init(
-                    connectionAsyncChannel: NIOAsyncChannel.Configuration(inboundType: HTTP2Frame.self, outboundType: HTTP2Frame.self),
-                    inboundStreamAsyncChannel: NIOAsyncChannel.Configuration(inboundType: HTTP2Frame.FramePayload.self, outboundType: HTTP2Frame.FramePayload.self)
-                ) { channel in
-                    channel.eventLoop.makeSucceededVoidFuture()
-                } inboundStreamInitializer: { channel -> EventLoopFuture<Void> in
-                    channel.eventLoop.makeSucceededVoidFuture()
+                inboundStreamInitializer: { channel in
+                    channel.eventLoop.makeCompletedFuture {
+                        try NIOAsyncChannel(
+                            synchronouslyWrapping: channel,
+                            configuration: .init(inboundType: HTTP2Frame.FramePayload.self, outboundType: HTTP2Frame.FramePayload.self)
+                        )
+                    }
                 }
             ).get()
         )
@@ -222,9 +222,6 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
                 }
             }
 
-            clientAsyncChannel.outboundWriter.finish()
-            serverAsyncChannel.outboundWriter.finish()
-
             try await assertNoThrow(try await self.clientChannel.finish())
             try await assertNoThrow(try await self.serverChannel.finish())
 
@@ -246,7 +243,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             }.get()
         )
 
-        let nioProtocolNegotiationHandler = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
+        let nioProtocolNegotiationResult = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
             channel.eventLoop.makeSucceededVoidFuture()
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
@@ -257,21 +254,16 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2"))
 
-        let nioProtocolNegotiationResult = try await nioProtocolNegotiationHandler.protocolNegotiationResult.get()
+        let negotiationResult = try await nioProtocolNegotiationResult.get().waitForFinalResult()
 
         try await assertNoThrow(try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
         let serverMultiplexer: NIOHTTP2Handler.AsyncStreamMultiplexer<Channel>
-        switch nioProtocolNegotiationResult {
-        case .deferredResult:
-            preconditionFailure("Negotiation result must be ready")
-        case .finished(let negotiationResult):
-            switch negotiationResult {
-            case .http1_1:
-                preconditionFailure("Negotiation result must be ready")
-            case .http2(let (_, multiplexer)):
-                serverMultiplexer = multiplexer
-            }
+        switch negotiationResult {
+        case .http1_1:
+            preconditionFailure("Negotiation result must be HTTP/2")
+        case .http2(let (_, multiplexer)):
+            serverMultiplexer = multiplexer
         }
 
         try await withThrowingTaskGroup(of: Int.self, returning: Void.self) { group in
@@ -321,7 +313,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             self.clientChannel.pipeline.addHandlers([InboundRecorderHandler<HTTPClientResponsePart>(), HTTP1ClientSendability()])
         }.get()
 
-        let nioProtocolNegotiationHandler = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
+        let nioProtocolNegotiationResult = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
             channel.pipeline.addHandlers([HTTP1OKResponder(), InboundRecorderHandler<HTTPServerRequestPart>()])
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
@@ -332,21 +324,16 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "http/1.1"))
 
-        let nioProtocolNegotiationResult = try await nioProtocolNegotiationHandler.protocolNegotiationResult.get()
+        let negotiationResult = try await nioProtocolNegotiationResult.get().waitForFinalResult()
 
         try await self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
         try await self.deliverAllBytes(from: self.serverChannel, to: self.clientChannel)
 
-        switch nioProtocolNegotiationResult {
-        case .deferredResult:
-            preconditionFailure("Negotiation result must be ready")
-        case .finished(let negotiationResult):
-            switch negotiationResult {
-            case .http1_1:
-                break
-            case .http2:
-                preconditionFailure("Negotiation result must be http/1.1")
-            }
+        switch negotiationResult {
+        case .http1_1:
+            break
+        case .http2:
+            preconditionFailure("Negotiation result must be http/1.1")
         }
 
         // client
