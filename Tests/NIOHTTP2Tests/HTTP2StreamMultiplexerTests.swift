@@ -1927,4 +1927,50 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try channel.finish(acceptAlreadyClosed: false))
     }
 
+    func testMultiplexerFiresInitialFramesInCorrectOrder() throws {
+        final class BufferingChannelHandler<Element>: ChannelDuplexHandler {
+            typealias InboundIn = Element
+            typealias InboundOut = Element
+            typealias OutboundIn = Element
+            typealias OutboundOut = Element
+            
+            let elementsToBufferCount: Int = 1
+            var bufferedElements: CircularBuffer<Element> = []
+
+            func read(context: ChannelHandlerContext) {
+                while let bufferedElement = bufferedElements.popFirst() {
+                    context.fireChannelRead(wrapInboundOut(bufferedElement))
+                }
+                
+                context.read()
+            }
+            
+            func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+                bufferedElements.append(unwrapInboundIn(data))
+                
+                if bufferedElements.count > elementsToBufferCount {
+                    context.fireChannelRead(wrapInboundOut(bufferedElements.removeFirst()))
+                }
+            }
+        }
+        
+        XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
+        let streamID = HTTP2StreamID(1)
+        let headerFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders())))
+        let payloadBuffer = channel.allocator.buffer(capacity: 0)
+        let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(payloadBuffer))))
+        
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
+            channel.pipeline.addHandler(FramePayloadExpecter(expectedPayload: [headerFrame.payload, dataFrame.payload]))
+        }
+        
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(BufferingChannelHandler<HTTP2Frame>()).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
+
+        XCTAssertNoThrow(try self.channel.writeInbound(headerFrame))
+        XCTAssertNoThrow(try self.channel.writeInbound(dataFrame))
+        self.activateStream(streamID)
+        (self.channel.eventLoop as! EmbeddedEventLoop).run()
+        XCTAssertNoThrow(try self.channel.finish())
+    }
 }
