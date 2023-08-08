@@ -254,7 +254,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2"))
 
-        let negotiationResult = try await nioProtocolNegotiationResult.get().waitForFinalResult()
+        let negotiationResult = try await nioProtocolNegotiationResult.getResult()
 
         try await assertNoThrow(try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -324,7 +324,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "http/1.1"))
 
-        let negotiationResult = try await nioProtocolNegotiationResult.get().waitForFinalResult()
+        let negotiationResult = try await nioProtocolNegotiationResult.getResult()
 
         try await self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
         try await self.deliverAllBytes(from: self.serverChannel, to: self.clientChannel)
