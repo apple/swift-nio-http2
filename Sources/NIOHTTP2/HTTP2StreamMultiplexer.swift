@@ -215,12 +215,14 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                   inboundStreamStateInitializer: .includesStreamID(inboundStreamStateInitializer))
     }
 
-    private init(mode: NIOHTTP2Handler.ParserMode,
-                 channel: Channel,
-                 targetWindowSize: Int = 65535,
-                 outboundBufferSizeHighWatermark: Int,
-                 outboundBufferSizeLowWatermark: Int,
-                 inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer) {
+    private init(
+        mode: NIOHTTP2Handler.ParserMode,
+        channel: Channel,
+        targetWindowSize: Int = 65535,
+        outboundBufferSizeHighWatermark: Int,
+        outboundBufferSizeLowWatermark: Int,
+        inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer
+    ) {
         self.channel = channel
 
         self.commonStreamMultiplexer = HTTP2CommonInboundStreamMultiplexer(
@@ -229,7 +231,8 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
             inboundStreamStateInitializer: inboundStreamStateInitializer,
             targetWindowSize: targetWindowSize,
             streamChannelOutboundBytesHighWatermark: outboundBufferSizeHighWatermark,
-            streamChannelOutboundBytesLowWatermark: outboundBufferSizeLowWatermark
+            streamChannelOutboundBytesLowWatermark: outboundBufferSizeLowWatermark,
+            streamInitializerProductContinuation: nil // async is only supported for the HTTP2Handler inline multiplexer
         )
     }
 }
