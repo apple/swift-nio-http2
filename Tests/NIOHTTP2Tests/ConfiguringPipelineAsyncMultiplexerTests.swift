@@ -204,7 +204,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 let streamChannel = try await clientMultiplexer.createStreamChannel(
-                    configuration: .init(
+                    asyncChannelConfiguration: .init(
                         inboundType: HTTP2Frame.FramePayload.self,
                         outboundType: HTTP2Frame.FramePayload.self
                     )

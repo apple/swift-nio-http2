@@ -46,7 +46,7 @@ struct MultiplexerAbstractChannel {
                                      outboundBytesLowWatermark: outboundBytesLowWatermark,
                                      streamDataType: .frame)
 
-        case .excludesStreamID:
+        case .excludesStreamID, .returnsAny:
             self.baseChannel = .init(allocator: allocator,
                                      parent: parent,
                                      multiplexer: multiplexer,
@@ -63,6 +63,7 @@ extension MultiplexerAbstractChannel {
     enum InboundStreamStateInitializer {
         case includesStreamID(((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?)
         case excludesStreamID(((Channel) -> EventLoopFuture<Void>)?)
+        case returnsAny(((Channel) -> EventLoopFuture<Any>))
     }
 }
 
@@ -89,24 +90,36 @@ extension MultiplexerAbstractChannel {
         }
     }
 
-    func configureInboundStream(initializer: InboundStreamStateInitializer) {
+    func configureInboundStream(initializer: InboundStreamStateInitializer, promise: EventLoopPromise<Any>?) {
         switch initializer {
         case .includesStreamID(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: nil)
         case .excludesStreamID(let initializer):
-            self.baseChannel.configure(initializer: initializer, userPromise: nil)
+            let channelPromise: EventLoopPromise<Channel>?
+            if let promise = promise {
+                channelPromise = self.baseChannel.eventLoop.makePromise(of: Channel.self)
+                channelPromise!.completeWith(promise.futureResult.map { value in value as! Channel })
+            } else {
+                channelPromise = nil
+            }
+            self.baseChannel.configure(initializer: initializer, userPromise: channelPromise)
+        case .returnsAny(let initializer):
+            self.baseChannel.configure(initializer: initializer, userPromise: promise)
         }
     }
 
+    // legacy `initializer` function signature
     func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
-    func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    // NIOHTTP2Handler.Multiplexer and HTTP2StreamMultiplexer
+    func configure(initializer: NIOChannelInitializer?, userPromise promise: EventLoopPromise<Channel>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
-    func configure<Output>(initializer: @escaping NIOChannelInitializerWithOutput<Output>, userPromise promise: EventLoopPromise<Output>?) {
+    // used for async multiplexer
+    func configure(initializer: @escaping NIOChannelInitializerWithOutput<Any>, userPromise promise: EventLoopPromise<Any>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
