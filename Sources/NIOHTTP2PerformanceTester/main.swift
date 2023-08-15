@@ -17,14 +17,15 @@ import Dispatch
 
 // MARK: Test Harness
 
-var warning: String = ""
+var _warning: String = ""
 assert({
     print("======================================================")
     print("= YOU ARE RUNNING NIOPerformanceTester IN DEBUG MODE =")
     print("======================================================")
-    warning = " <<< DEBUG MODE >>>"
+    _warning = " <<< DEBUG MODE >>>"
     return true
 }())
+let warning = _warning
 
 public func measure(_ fn: () throws -> Int) rethrows -> [TimeInterval] {
     func measureOne(_ fn: () throws -> Int) rethrows -> TimeInterval {
@@ -43,7 +44,7 @@ public func measure(_ fn: () throws -> Int) rethrows -> [TimeInterval] {
     return measurements
 }
 
-let limitSet = CommandLine.arguments.dropFirst()
+let limitSet = ProcessInfo.processInfo.arguments.dropFirst()
 
 public func measureAndPrint(desc: String, fn: () throws -> Int) rethrows -> Void {
     #if CACHEGRIND

@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import XCTest
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
@@ -156,7 +157,7 @@ final class CompoundOutboundBufferTest: XCTestCase {
     func testBufferedFrameDrops() {
         var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1, maxBufferedControlFrames: 1000)
 
-        var results: [Bool?] = Array(repeating: nil as Bool?, count: 4)
+        let results = NIOLockedValueBox<[Bool?]>(Array(repeating: nil as Bool?, count: 4))
         var futures: [EventLoopFuture<Void>] = []
 
         // Write in a bunch of frames, which will get buffered.
@@ -180,28 +181,38 @@ final class CompoundOutboundBufferTest: XCTestCase {
 
         for (idx, future) in futures.enumerated() {
             future.map {
-                results[idx] = true
+                results.withLockedValue { results in
+                    results[idx] = true
+                }
             }.whenFailure { error in
                 XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
-                results[idx] = false
+                results.withLockedValue { results in
+                    results[idx] = false
+                }
             }
         }
 
         // Ok, mark the flush point.
         buffer.flushReceived()
-        XCTAssertEqual(results, [true, nil, nil, nil])
+        results.withLockedValue { results in
+            XCTAssertEqual(results, [true, nil, nil, nil])
+        }
 
         // Now, fail stream one.
         for promise in buffer.streamClosed(1) {
             promise?.fail(NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
         }
-        XCTAssertEqual(results, [true, false, nil, nil])
+        results.withLockedValue { results in
+            XCTAssertEqual(results, [true, false, nil, nil])
+        }
 
         // Now fail stream three.
         for promise in buffer.streamClosed(3) {
             promise?.fail(NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
         }
-        XCTAssertEqual(results, [true, false, false, false])
+        results.withLockedValue { results in
+            XCTAssertEqual(results, [true, false, false, false])
+        }
     }
 
     func testRejectsPrioritySelfDependency() {
@@ -280,7 +291,7 @@ final class CompoundOutboundBufferTest: XCTestCase {
     func testFailingAllPromisesOnClose() {
         var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1, maxBufferedControlFrames: 1000)
 
-        var results: [Bool?] = Array(repeating: nil as Bool?, count: 5)
+        let results = NIOLockedValueBox<[Bool?]>(Array(repeating: nil as Bool?, count: 5))
         var futures: [EventLoopFuture<Void>] = []
 
         // Write in a bunch of frames, which will get buffered.
@@ -309,18 +320,26 @@ final class CompoundOutboundBufferTest: XCTestCase {
 
         for (idx, future) in futures.enumerated() {
             future.map {
-                results[idx] = false
+                results.withLockedValue { results in
+                    results[idx] = false
+                }
             }.whenFailure { error in
                 XCTAssertEqual(error as? ChannelError, ChannelError.ioOnClosedChannel)
-                results[idx] = true
+                results.withLockedValue { results in
+                    results[idx] = true
+                }
             }
         }
 
-        XCTAssertEqual(results, [false, nil, nil, nil, nil])
+        results.withLockedValue { results in
+            XCTAssertEqual(results, [false, nil, nil, nil, nil])
+        }
 
         // Now, invalidate the buffer.
         buffer.invalidateBuffer()
-        XCTAssertEqual(results, [false, true, true, true, true])
+        results.withLockedValue { results in
+            XCTAssertEqual(results, [false, true, true, true, true])
+        }
     }
 
     func testBufferedControlFramesAreEmittedPreferentiallyToOtherFrames() {
@@ -371,18 +390,18 @@ extension CompoundOutboundBuffer {
     fileprivate mutating func receivedFrames(file: StaticString = #filePath, line: UInt = #line) -> [HTTP2Frame] {
         var receivedFrames: [HTTP2Frame] = Array()
 
-        loop: while true {
-            switch self.nextFlushedWritableFrame(channelWritable: true) {
-            case .noFrame:
-                break loop
-            case .frame(let bufferedFrame, let promise):
-                receivedFrames.append(bufferedFrame)
-                promise?.succeed(())
-            case .error(let promise, let error):
-                promise?.fail(error)
-                XCTFail("Caught error: \(error)", file: (file), line: line)
-            }
+    loop: while true {
+        switch self.nextFlushedWritableFrame(channelWritable: true) {
+        case .noFrame:
+            break loop
+        case .frame(let bufferedFrame, let promise):
+            receivedFrames.append(bufferedFrame)
+            promise?.succeed(())
+        case .error(let promise, let error):
+            promise?.fail(error)
+            XCTFail("Caught error: \(error)", file: (file), line: line)
         }
+    }
 
         return receivedFrames
     }

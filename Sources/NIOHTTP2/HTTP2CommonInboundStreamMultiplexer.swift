@@ -315,8 +315,13 @@ extension HTTP2CommonInboundStreamMultiplexer {
         // Always create streams channels on the next event loop tick. This avoids re-entrancy
         // issues where handlers interposed between the two HTTP/2 handlers could create streams
         // in channel active which become activated twice.
+        //
+        // We are safe to use NIOLoopBounds here because the public API ensures that we are on the right event loop
+        // when we get to this code. Whilst it is possible that the multiplexer was created on the wrong event loop
+        // such an eventuality would lead us to assert immediately so we would quickly discover it.
+        let loopBounds = NIOLoopBound((self, multiplexer), eventLoop: self.channel.eventLoop)
         self.channel.eventLoop.execute {
-            self._createStreamChannel(multiplexer, promise, streamStateInitializer)
+            loopBounds.value.0._createStreamChannel(loopBounds.value.1, promise, streamStateInitializer)
         }
     }
 
@@ -332,7 +337,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func _createStreamChannel(
         _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ promise: EventLoopPromise<Channel>?,
-        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
+        _ streamStateInitializer: @escaping NIOChannelInitializer
     ) {
         let channel = MultiplexerAbstractChannel(
             allocator: self.channel.allocator,
@@ -351,19 +356,25 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         promise: EventLoopPromise<Channel>?,
-        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
+        _ streamStateInitializer: @escaping NIOChannelInitializer
     ) {
         // Always create streams channels on the next event loop tick. This avoids re-entrancy
         // issues where handlers interposed between the two HTTP/2 handlers could create streams
         // in channel active which become activated twice.
+        //
+        // We are safe to use NIOLoopBounds here because the public API ensures that we are on the right event loop
+        // when we get to this code. Whilst it is possible that the multiplexer was created on the wrong event loop
+        // such an eventuality would lead us to assert immediately so we would quickly discover it.
+        let loopBounds = NIOLoopBound((self, multiplexer), eventLoop: self.channel.eventLoop)
         self.channel.eventLoop.execute {
-            self._createStreamChannel(multiplexer, promise, streamStateInitializer)
+            loopBounds.value.0._createStreamChannel(loopBounds.value.1, promise, streamStateInitializer)
         }
     }
 
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
+        _ streamStateInitializer: @escaping NIOChannelInitializer
+    ) -> EventLoopFuture<Channel> {
         let promise = self.channel.eventLoop.makePromise(of: Channel.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
         return promise.futureResult
@@ -373,21 +384,25 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         promise: EventLoopPromise<Channel>?,
-        _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>
+        _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID
     ) {
+        // We are safe to use NIOLoopBounds here because the public API ensures that we are on the right event loop
+        // when we get to this code. Whilst it is possible that the multiplexer was created on the wrong event loop
+        // such an eventuality would lead us to assert immediately so we would quickly discover it.
+        let loopBounds = NIOLoopBound((self, multiplexer), eventLoop: self.channel.eventLoop)
         self.channel.eventLoop.execute {
-            let streamID = self.nextStreamID()
+            let streamID = loopBounds.value.0.nextStreamID()
             let channel = MultiplexerAbstractChannel(
-                allocator: self.channel.allocator,
-                parent: self.channel,
-                multiplexer: multiplexer,
+                allocator: loopBounds.value.0.channel.allocator,
+                parent: loopBounds.value.0.channel,
+                multiplexer: loopBounds.value.1,
                 streamID: streamID,
-                targetWindowSize: Int32(self.targetWindowSize),
-                outboundBytesHighWatermark: self.streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: self.streamChannelOutboundBytesLowWatermark,
+                targetWindowSize: Int32(loopBounds.value.0.targetWindowSize),
+                outboundBytesHighWatermark: loopBounds.value.0.streamChannelOutboundBytesHighWatermark,
+                outboundBytesLowWatermark: loopBounds.value.0.streamChannelOutboundBytesLowWatermark,
                 inboundStreamStateInitializer: .includesStreamID(nil)
             )
-            self.streams[streamID] = channel
+            loopBounds.value.0.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
         }
     }
@@ -425,7 +440,7 @@ internal protocol ChannelContinuation {
 
 /// `StreamChannelContinuation` is a wrapper for a generic `AsyncThrowingStream` which holds the inbound HTTP2 stream channels.
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-struct StreamChannelContinuation<Output>: ChannelContinuation {
+struct StreamChannelContinuation<Output: Sendable>: ChannelContinuation {
     private var continuation: AsyncThrowingStream<Output, Error>.Continuation
     private let inboundStreamInititializer: NIOChannelInitializerWithOutput<Output>
 
@@ -488,7 +503,7 @@ struct StreamChannelContinuation<Output>: ChannelContinuation {
 /// `NIOHTTP2InboundStreamChannels` provides access to inbound stream channels as an `AsyncSequence`.
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 @_spi(AsyncChannel)
-public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
+public struct NIOHTTP2InboundStreamChannels<Output: Sendable>: AsyncSequence {
     public struct AsyncIterator: AsyncIteratorProtocol {
         public typealias Element = Output
 

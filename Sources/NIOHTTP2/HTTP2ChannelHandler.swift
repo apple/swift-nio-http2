@@ -160,7 +160,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 
     /// The mode for this parser to operate in: client or server.
-    public enum ParserMode {
+    public enum ParserMode: Sendable {
         /// Client mode
         case client
 
@@ -836,9 +836,9 @@ extension NIOHTTP2Handler {
             // Don't allow infinite recursion through this method.
             return
         }
-        
+
         self.isUnbufferingAndFlushingAutomaticFrames = true
-    
+
         loop: while true {
             switch self.outboundBuffer.nextFlushedWritableFrame(channelWritable: self.channelWritable) {
             case .noFrame:
@@ -849,7 +849,7 @@ extension NIOHTTP2Handler {
                 self.processOutboundFrame(context: context, frame: frame, promise: promise)
             }
         }
-        
+
         self.isUnbufferingAndFlushingAutomaticFrames = false
         self.flushIfNecessary(context: context)
     }
@@ -989,9 +989,13 @@ extension NIOHTTP2Handler {
 #if swift(>=5.7)
     /// The type of all `inboundStreamInitializer` callbacks which do not need to return data.
     public typealias StreamInitializer = NIOChannelInitializer
+    /// The type of all `inboundStreamInitializer` callbacks which need to return data.
+    public typealias StreamInitializerWithOutput = NIOChannelInitializerWithOutput
 #else
     /// The type of all `inboundStreamInitializer` callbacks which need to return data.
     public typealias StreamInitializer = NIOChannelInitializer
+    /// The type of all `inboundStreamInitializer` callbacks which need to return data.
+    public typealias StreamInitializerWithOutput = NIOChannelInitializerWithOutput
 #endif
 
     /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer. (i.e. using
@@ -1078,8 +1082,9 @@ extension NIOHTTP2Handler {
                 return try self.syncMultiplexer()
             }
         } else {
+            let unsafeSelf = UnsafeTransfer(self)
             return self.eventLoop!.submit {
-                return try self.syncMultiplexer()
+                return try unsafeSelf.wrappedValue.syncMultiplexer()
             }
         }
     }
@@ -1091,11 +1096,14 @@ extension NIOHTTP2Handler {
     /// > - The caller is already on the correct event loop.
     public func syncMultiplexer() throws -> StreamMultiplexer {
         self.eventLoop!.preconditionInEventLoop()
+        guard let inboundStreamMultiplexer = self.inboundStreamMultiplexer else {
+            throw NIOHTTP2Errors.missingMultiplexer()
+        }
 
-        switch self.inboundStreamMultiplexer {
-        case let .some(.inline(multiplexer)):
-            return StreamMultiplexer(multiplexer)
-        case .some(.legacy), .none:
+        switch inboundStreamMultiplexer {
+        case let .inline(multiplexer):
+            return StreamMultiplexer(multiplexer, eventLoop: self.eventLoop!)
+        case .legacy:
             throw NIOHTTP2Errors.missingMultiplexer()
         }
     }
@@ -1103,12 +1111,34 @@ extension NIOHTTP2Handler {
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     internal func syncAsyncStreamMultiplexer<Output>(continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) throws -> AsyncStreamMultiplexer<Output> {
         self.eventLoop!.preconditionInEventLoop()
+        guard let inboundStreamMultiplexer = self.inboundStreamMultiplexer else {
+            throw NIOHTTP2Errors.missingMultiplexer()
+        }
 
-        switch self.inboundStreamMultiplexer {
-        case let .some(.inline(multiplexer)):
-            return AsyncStreamMultiplexer(multiplexer, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
-        case .some(.legacy), .none:
+        switch inboundStreamMultiplexer {
+        case let .inline(multiplexer):
+            return AsyncStreamMultiplexer(multiplexer, eventLoop: self.eventLoop!, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
+        case .legacy:
             throw NIOHTTP2Errors.missingMultiplexer()
         }
     }
 }
+
+/// ``UnsafeTransfer`` can be used to make non-`Sendable` values `Sendable`.
+/// As the name implies, the usage of this is unsafe because it disables the sendable checking of the compiler.
+/// It can be used similar to `@unsafe Sendable` but for values instead of types.
+@usableFromInline
+struct UnsafeTransfer<Wrapped> {
+    @usableFromInline
+    var wrappedValue: Wrapped
+
+    @inlinable
+    init(_ wrappedValue: Wrapped) {
+        self.wrappedValue = wrappedValue
+    }
+}
+
+extension UnsafeTransfer: @unchecked Sendable {}
+
+extension UnsafeTransfer: Equatable where Wrapped: Equatable {}
+extension UnsafeTransfer: Hashable where Wrapped: Hashable {}

@@ -15,6 +15,7 @@
 import XCTest
 
 import NIOCore
+import NIOConcurrencyHelpers
 import NIOEmbedded
 import NIOHPACK
 import NIOHTTP1
@@ -86,7 +87,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
-    
+
     func testBasicPipelineCommunicatesWithTargetWindowSize() throws {
         let serverRecorder = InboundFramePayloadRecorder()
         let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535, inboundStreamInitializer: nil).wait())
@@ -159,17 +160,19 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
-    
+
     func testPreambleGetsWrittenOnce() throws {
         // This test checks that the preamble sent by NIOHTTP2Handler is only written once. There are two paths
         // to sending the preamble, in handlerAdded(context:) (if the channel is active) and in channelActive(context:),
         // we want to hit both of these.
         let connectionPromise: EventLoopPromise<Void> = self.serverChannel.eventLoop.makePromise()
 
+        let serverChannel = self.serverChannel!
+
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            self.serverChannel.configureHTTP2Pipeline(mode: .server, inboundStreamInitializer: nil)
+            serverChannel.configureHTTP2Pipeline(mode: .server, inboundStreamInitializer: nil)
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -199,10 +202,12 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         // we want to hit both of these.
         let connectionPromise: EventLoopPromise<Void> = self.serverChannel.eventLoop.makePromise()
 
+        let serverChannel = self.serverChannel!
+
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535, inboundStreamInitializer: nil)
+            serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535, inboundStreamInitializer: nil)
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -225,7 +230,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         // We don't expect anything else at this point.
         XCTAssertNil(try self.serverChannel.readOutbound(as: IOData.self))
     }
-    
+
     func testClosingParentChannelClosesStreamChannel() throws {
         /// A channel handler that succeeds a promise when the channel becomes inactive.
         final class InactiveHandler: ChannelInboundHandler {
@@ -268,7 +273,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         }
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
-    
+
     func testClosingParentChannelClosesStreamChannelWithTargetWindowSize() throws {
         /// A channel handler that succeeds a promise when the channel becomes inactive.
         final class InactiveHandler: ChannelInboundHandler {
@@ -313,13 +318,15 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
     }
 
     /// A simple channel handler that records inbound frames.
-    class HTTP1ServerRequestRecorderHandler: ChannelInboundHandler {
+    final class HTTP1ServerRequestRecorderHandler: ChannelInboundHandler, Sendable {
         typealias InboundIn = HTTPServerRequestPart
 
-        var receivedParts: [HTTPServerRequestPart] = []
+        let receivedParts = NIOLockedValueBox<[HTTPServerRequestPart]>([])
 
         func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-            self.receivedParts.append(self.unwrapInboundIn(data))
+            self.receivedParts.withLockedValue { receivedParts in
+                receivedParts.append(self.unwrapInboundIn(data))
+            }
         }
     }
 
@@ -364,18 +371,20 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
 
         // Assert that the user-provided handler received the
         // HTTP1 parts corresponding to the H2 message sent
-        XCTAssertEqual(2, serverRecorder.receivedParts.count)
-        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
-            XCTAssertEqual(1, head.headers["host"].count)
-            XCTAssertEqual("localhost", head.headers["host"].first)
-            XCTAssertEqual(.GET, head.method)
-            XCTAssertEqual("/testH2toHTTP1", head.uri)
-        } else {
-            XCTFail("Expected head")
-        }
-        if case .some(.end(_)) = serverRecorder.receivedParts.last {
-        } else {
-            XCTFail("Expected end")
+        serverRecorder.receivedParts.withLockedValue { receivedParts in
+            XCTAssertEqual(2, receivedParts.count)
+            if case .some(.head(let head)) = receivedParts.first {
+                XCTAssertEqual(1, head.headers["host"].count)
+                XCTAssertEqual("localhost", head.headers["host"].first)
+                XCTAssertEqual(.GET, head.method)
+                XCTAssertEqual("/testH2toHTTP1", head.uri)
+            } else {
+                XCTFail("Expected head")
+            }
+            if case .some(.end(_)) = receivedParts.last {
+            } else {
+                XCTFail("Expected end")
+            }
         }
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
@@ -383,7 +392,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
-    
+
     func testNegotiatedHTTP2BasicPipelineCommunicatesWithTargetWindowSize() throws {
         final class ErrorHandler: ChannelInboundHandler {
             typealias InboundIn = Never
@@ -425,18 +434,20 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
 
         // Assert that the user-provided handler received the
         // HTTP1 parts corresponding to the H2 message sent
-        XCTAssertEqual(2, serverRecorder.receivedParts.count)
-        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
-            XCTAssertEqual(1, head.headers["host"].count)
-            XCTAssertEqual("localhost", head.headers["host"].first)
-            XCTAssertEqual(.GET, head.method)
-            XCTAssertEqual("/testH2toHTTP1", head.uri)
-        } else {
-            XCTFail("Expected head")
-        }
-        if case .some(.end(_)) = serverRecorder.receivedParts.last {
-        } else {
-            XCTFail("Expected end")
+        serverRecorder.receivedParts.withLockedValue { receivedParts in
+            XCTAssertEqual(2, receivedParts.count)
+            if case .some(.head(let head)) = receivedParts.first {
+                XCTAssertEqual(1, head.headers["host"].count)
+                XCTAssertEqual("localhost", head.headers["host"].first)
+                XCTAssertEqual(.GET, head.method)
+                XCTAssertEqual("/testH2toHTTP1", head.uri)
+            } else {
+                XCTFail("Expected head")
+            }
+            if case .some(.end(_)) = receivedParts.last {
+            } else {
+                XCTFail("Expected end")
+            }
         }
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
@@ -455,7 +466,7 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         }
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHTTPClientHandlers().wait())
-        
+
         XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
             return channel.pipeline.addHandler(serverRecorder)
         }.wait())
@@ -472,19 +483,21 @@ class ConfiguringPipelineWithFramePayloadStreamsTests: XCTestCase {
         XCTAssertNoThrow(try requestPromise.futureResult.wait())
 
         self.interactInMemory(self.clientChannel, self.serverChannel)
-        
+
         // Assert that the user-provided handler received the
         // HTTP1 parts corresponding to the H2 message sent
-        XCTAssertEqual(2, serverRecorder.receivedParts.count)
-        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
-            XCTAssertEqual(.GET, head.method)
-            XCTAssertEqual("/testHTTP1", head.uri)
-        } else {
-            XCTFail("Expected head")
-        }
-        if case .some(.end(_)) = serverRecorder.receivedParts.last {
-        } else {
-            XCTFail("Expected end")
+        serverRecorder.receivedParts.withLockedValue { receivedParts in
+            XCTAssertEqual(2, receivedParts.count)
+            if case .some(.head(let head)) = receivedParts.first {
+                XCTAssertEqual(.GET, head.method)
+                XCTAssertEqual("/testHTTP1", head.uri)
+            } else {
+                XCTFail("Expected head")
+            }
+            if case .some(.end(_)) = receivedParts.last {
+            } else {
+                XCTFail("Expected end")
+            }
         }
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()

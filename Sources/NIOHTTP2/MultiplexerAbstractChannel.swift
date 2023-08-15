@@ -61,8 +61,8 @@ struct MultiplexerAbstractChannel {
 
 extension MultiplexerAbstractChannel {
     enum InboundStreamStateInitializer {
-        case includesStreamID(((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?)
-        case excludesStreamID(((Channel) -> EventLoopFuture<Void>)?)
+        case includesStreamID(NIOChannelInitializerWithStreamID?)
+        case excludesStreamID(NIOChannelInitializer?)
     }
 }
 
@@ -98,11 +98,11 @@ extension MultiplexerAbstractChannel {
         }
     }
 
-    func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    func configure(initializer: NIOChannelInitializerWithStreamID?, userPromise promise: EventLoopPromise<Channel>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
-    func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    func configure(initializer: NIOChannelInitializer?, userPromise promise: EventLoopPromise<Channel>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
