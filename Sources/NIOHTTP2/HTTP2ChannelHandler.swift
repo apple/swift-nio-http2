@@ -119,7 +119,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// - `InboundStreamMultiplexer`: The component responsible for (de)multiplexing inbound streams.
     private enum InboundStreamMultiplexerState {
         case uninitializedLegacy
-        case uninitializedInline(StreamConfiguration, StreamInitializer, NIOHTTP2StreamDelegate?, (any AnyContinuation)?)
+        case uninitializedInline(StreamConfiguration, StreamInitializer, NIOHTTP2StreamDelegate?)
         case initialized(InboundStreamMultiplexer)
         case deinitialized
 
@@ -139,7 +139,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             case .uninitializedLegacy:
                 self = .initialized(.legacy(LegacyInboundStreamMultiplexer(context: context)))
 
-            case .uninitializedInline(let streamConfiguration, let inboundStreamInitializer, let streamDelegate, let streamInitializerProductContinuation):
+            case .uninitializedInline(let streamConfiguration, let inboundStreamInitializer, let streamDelegate):
                 self = .initialized(.inline(
                     InlineStreamMultiplexer(
                         context: context,
@@ -149,8 +149,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                         targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
                         streamChannelOutboundBytesHighWatermark: streamConfiguration.outboundBufferSizeHighWatermark,
                         streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
-                        streamDelegate: streamDelegate,
-                        streamInitializerProductContinuation: streamInitializerProductContinuation
+                        streamDelegate: streamDelegate
                     )
                 ))
 
@@ -1023,40 +1022,7 @@ extension NIOHTTP2Handler {
                   maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
         )
-        self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer, streamDelegate, nil)
-    }
-
-    /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer which yields inbound stream initializer products to
-    /// an async stream.
-    ///
-    /// Frames on the root stream will continue to be passed down the main channel, whereas those intended for
-    /// other streams will be forwarded to the appropriate child channel.
-    ///
-    /// To create streams using the local multiplexer, first obtain it via the computed property (`multiplexer`)
-    /// and then invoke one of the `multiplexer.createStreamChannel` methods. If possible the multiplexer should be
-    /// stored and used across multiple invocations because obtaining it requires synchronizing on the event loop.
-    ///
-    /// the `streamInitializerProductContinuation` will be used to asynchronously stream inbound stream initializer products.
-    ///
-    /// The optional `streamDelegate` will be notified of stream creation and close events.
-    internal convenience init(
-        mode: ParserMode,
-        eventLoop: EventLoop,
-        connectionConfiguration: ConnectionConfiguration = .init(),
-        streamConfiguration: StreamConfiguration = .init(),
-        streamDelegate: NIOHTTP2StreamDelegate? = nil,
-        streamInitializerProductContinuation: any AnyContinuation,
-        inboundStreamInitializer: @escaping StreamInitializer
-    ) {
-        self.init(mode: mode,
-                  eventLoop: eventLoop,
-                  initialSettings: connectionConfiguration.initialSettings,
-                  headerBlockValidation: connectionConfiguration.headerBlockValidation,
-                  contentLengthValidation: connectionConfiguration.contentLengthValidation,
-                  maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
-                  maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
-        )
-        self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer, streamDelegate, streamInitializerProductContinuation)
+        self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer, streamDelegate)
     }
 
     /// Connection-level configuration.
@@ -1135,12 +1101,12 @@ extension NIOHTTP2Handler {
     }
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    internal func syncAsyncStreamMultiplexer<Output>(inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) throws -> AsyncStreamMultiplexer<Output> {
+    internal func syncAsyncStreamMultiplexer<Output>(continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) throws -> AsyncStreamMultiplexer<Output> {
         self.eventLoop!.preconditionInEventLoop()
 
         switch self.inboundStreamMultiplexer {
         case let .some(.inline(multiplexer)):
-            return AsyncStreamMultiplexer(multiplexer, inboundStreamChannels: inboundStreamChannels)
+            return AsyncStreamMultiplexer(multiplexer, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
         case .some(.legacy), .none:
             throw NIOHTTP2Errors.missingMultiplexer()
         }

@@ -599,25 +599,19 @@ extension ChannelPipeline.SynchronousOperations {
         position: ChannelPipeline.Position = .last,
         inboundStreamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<Output> {
-
-        let (inboundStreamChannels, continuation) = NIOHTTP2InboundStreamChannels.initialize(inboundStreamInitializerOutput: Output.self)
-
         let handler = NIOHTTP2Handler(
             mode: mode,
             eventLoop: self.eventLoop,
             connectionConfiguration: configuration.connection,
             streamConfiguration: configuration.stream,
-            streamInitializerProductContinuation: continuation,
-            inboundStreamInitializer: { channel in
-                inboundStreamInitializer(channel).map { output in
-                    continuation.yield(output)
-                }
-            }
+            inboundStreamInitializer: { channel in channel.eventLoop.makeSucceededVoidFuture() }
         )
 
         try self.addHandler(handler, position: position)
 
-        return try handler.syncAsyncStreamMultiplexer(inboundStreamChannels: inboundStreamChannels)
+        let (continuation, inboundStreamChannels) = StreamChannelContinuation.initialize(with: inboundStreamInitializer)
+
+        return try handler.syncAsyncStreamMultiplexer(continuation: continuation, inboundStreamChannels: inboundStreamChannels)
     }
 }
 

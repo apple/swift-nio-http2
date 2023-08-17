@@ -23,20 +23,7 @@ internal struct InlineStreamMultiplexer {
     /// The delegate to be notified upon stream creation and close.
     private var streamDelegate: NIOHTTP2StreamDelegate?
 
-    internal var streamInitializerProductContinuation: (any AnyContinuation)? {
-        self.commonStreamMultiplexer.streamInitializerProductContinuation
-    }
-
-    init(
-        context: ChannelHandlerContext,
-        outboundView: NIOHTTP2Handler.OutboundView,
-        mode: NIOHTTP2Handler.ParserMode,
-        inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer,
-        targetWindowSize: Int, streamChannelOutboundBytesHighWatermark: Int,
-        streamChannelOutboundBytesLowWatermark: Int,
-        streamDelegate: NIOHTTP2StreamDelegate?,
-        streamInitializerProductContinuation: (any AnyContinuation)?
-    ) {
+    init(context: ChannelHandlerContext, outboundView: NIOHTTP2Handler.OutboundView, mode: NIOHTTP2Handler.ParserMode, inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer, targetWindowSize: Int, streamChannelOutboundBytesHighWatermark: Int, streamChannelOutboundBytesLowWatermark: Int, streamDelegate: NIOHTTP2StreamDelegate?) {
         self.context = context
         self.commonStreamMultiplexer = HTTP2CommonInboundStreamMultiplexer(
             mode: mode,
@@ -44,8 +31,7 @@ internal struct InlineStreamMultiplexer {
             inboundStreamStateInitializer: inboundStreamStateInitializer,
             targetWindowSize: targetWindowSize,
             streamChannelOutboundBytesHighWatermark: streamChannelOutboundBytesHighWatermark,
-            streamChannelOutboundBytesLowWatermark: streamChannelOutboundBytesLowWatermark,
-            streamInitializerProductContinuation: streamInitializerProductContinuation
+            streamChannelOutboundBytesLowWatermark: streamChannelOutboundBytesLowWatermark
         )
         self.outboundView = outboundView
         self.streamDelegate = streamDelegate
@@ -220,6 +206,12 @@ extension NIOHTTP2Handler {
     }
 }
 
+extension InlineStreamMultiplexer {
+    func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
+        self.commonStreamMultiplexer.setChannelContinuation(streamChannels)
+    }
+}
+
 extension NIOHTTP2Handler {
     /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream and
     /// provides access to inbound HTTP/2 streams.
@@ -240,8 +232,9 @@ extension NIOHTTP2Handler {
         public let inbound: NIOHTTP2InboundStreamChannels<InboundStreamOutput>
 
         // Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
             self.inlineStreamMultiplexer = inlineStreamMultiplexer
+            self.inlineStreamMultiplexer.setChannelContinuation(continuation)
             self.inbound = inboundStreamChannels
         }
 
