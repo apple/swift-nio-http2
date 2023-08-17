@@ -76,7 +76,7 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
 
 func sendOneRequest(channel: Channel, multiplexer: HTTP2StreamMultiplexer) throws -> Int {
     let responseReceivedPromise = channel.eventLoop.makePromise(of: Int.self)
-    func requestStreamInitializer(channel: Channel) -> EventLoopFuture<Void> {
+    let requestStreamInitializer: NIOChannelInitializer = { channel in
         return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https),
                                              SendRequestHandler(host: "127.0.0.1",
                                                                 request: .init(version: .init(major: 2, minor: 0),
