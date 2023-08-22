@@ -1007,6 +1007,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             }
         }
 
+        // Run the loop to create the channels.
+        self.channel.embeddedEventLoop.run()
+
         XCTAssertEqual(createdChannelCount, 3)
         XCTAssertEqual(configuredChannelCount, 0)
         XCTAssertEqual(streamIDs.count, 0)
@@ -1047,6 +1050,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
                 }
             }
         }
+
+        // Run the loop to create the channels.
+        self.channel.embeddedEventLoop.run()
 
         XCTAssertEqual(createdChannelCount, 3)
         XCTAssertEqual(configuredChannelCount, 0)
