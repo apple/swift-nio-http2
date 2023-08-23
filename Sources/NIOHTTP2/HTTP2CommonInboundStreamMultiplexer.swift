@@ -312,12 +312,11 @@ extension HTTP2CommonInboundStreamMultiplexer {
         promise: EventLoopPromise<Output>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) {
-        if self.channel.eventLoop.inEventLoop {
+        // Always create streams channels on the next event loop tick. This avoids re-entrancy
+        // issues where handlers interposed between the two HTTP/2 handlers could create streams
+        // in channel active which become activated twice.
+        self.channel.eventLoop.execute {
             self._createStreamChannel(multiplexer, promise, streamStateInitializer)
-        } else {
-            self.channel.eventLoop.execute {
-                self._createStreamChannel(multiplexer, promise, streamStateInitializer)
-            }
         }
     }
 
@@ -354,12 +353,11 @@ extension HTTP2CommonInboundStreamMultiplexer {
         promise: EventLoopPromise<Channel>?,
         _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
     ) {
-        if self.channel.eventLoop.inEventLoop {
+        // Always create streams channels on the next event loop tick. This avoids re-entrancy
+        // issues where handlers interposed between the two HTTP/2 handlers could create streams
+        // in channel active which become activated twice.
+        self.channel.eventLoop.execute {
             self._createStreamChannel(multiplexer, promise, streamStateInitializer)
-        } else {
-            self.channel.eventLoop.execute {
-                self._createStreamChannel(multiplexer, promise, streamStateInitializer)
-            }
         }
     }
 
