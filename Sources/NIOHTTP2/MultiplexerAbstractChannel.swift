@@ -95,14 +95,7 @@ extension MultiplexerAbstractChannel {
         case .includesStreamID(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: nil)
         case .excludesStreamID(let initializer):
-            let channelPromise: EventLoopPromise<Channel>?
-            if let promise = promise {
-                channelPromise = self.baseChannel.eventLoop.makePromise(of: Channel.self)
-                channelPromise!.completeWith(promise.futureResult.map { value in value as! Channel })
-            } else {
-                channelPromise = nil
-            }
-            self.baseChannel.configure(initializer: initializer, userPromise: channelPromise)
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
         case .returnsAny(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: promise)
         }

@@ -242,27 +242,5 @@ extension NIOHTTP2Handler {
         public func createStreamChannel<OutboundStreamOutput>(_ initializer: @escaping NIOChannelInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
             return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
-
-        /// Create a stream channel initialized with the provided closure and return it wrapped within a `NIOAsyncChannel`.
-        ///
-        /// - Parameters:
-        ///   - configuration: Configuration for the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
-        ///   - initializer: A callback that will be invoked to allow you to configure the
-        ///         `ChannelPipeline` for the newly created channel.
-        @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-        @_spi(AsyncChannel)
-        public func createStreamChannel<Inbound, Outbound>(
-            asyncChannelConfiguration: NIOAsyncChannel<Inbound, Outbound>.Configuration = .init(),
-            initializer: @escaping NIOChannelInitializer
-        ) async throws -> NIOAsyncChannel<Inbound, Outbound> {
-            return try await self.createStreamChannel { channel in
-                initializer(channel).flatMapThrowing { _ in
-                    return try NIOAsyncChannel(
-                        synchronouslyWrapping: channel,
-                        configuration: asyncChannelConfiguration
-                    )
-                }
-            }
-        }
     }
 }
