@@ -596,7 +596,7 @@ extension ChannelPipeline.SynchronousOperations {
     /// be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
-    public func configureAsyncHTTP2Pipeline<Output>(
+    public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
         configuration: NIOHTTP2Handler.Configuration = .init(),
         position: ChannelPipeline.Position = .last,
@@ -608,7 +608,7 @@ extension ChannelPipeline.SynchronousOperations {
             connectionConfiguration: configuration.connection,
             streamConfiguration: configuration.stream,
             inboundStreamInitializerWithAnyOutput: { channel in
-                inboundStreamInitializer(channel).map { $0 }
+                inboundStreamInitializer(channel).map { return $0 }
             }
         )
 

@@ -293,7 +293,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
-    internal func _createStreamChannel<Output>(
+    internal func _createStreamChannel<Output: Sendable>(
         _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ promise: EventLoopPromise<Output>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
@@ -313,11 +313,10 @@ extension HTTP2CommonInboundStreamMultiplexer {
         self.pendingStreams[channel.channelID] = channel
 
         let anyInitializer: NIOChannelInitializerWithOutput<any Sendable> = { channel in
-            streamStateInitializer(channel).map { $0 }
+            streamStateInitializer(channel).map { return $0 }
         }
 
         let anyPromise: EventLoopPromise<Any>?
-
         if let promise = promise {
             anyPromise = channel.baseChannel.eventLoop.makePromise(of: Any.self)
             anyPromise?.futureResult.whenComplete { result in
@@ -335,7 +334,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
         channel.configure(initializer: anyInitializer, userPromise: anyPromise)
     }
 
-    internal func createStreamChannel<Output>(
+    internal func createStreamChannel<Output: Sendable>(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         promise: EventLoopPromise<Output>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
@@ -348,7 +347,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
     }
 
-    internal func createStreamChannel<Output>(
+    internal func createStreamChannel<Output: Sendable>(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) -> EventLoopFuture<Output> {
