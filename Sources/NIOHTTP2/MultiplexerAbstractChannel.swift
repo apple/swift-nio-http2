@@ -63,7 +63,7 @@ extension MultiplexerAbstractChannel {
     enum InboundStreamStateInitializer {
         case includesStreamID(((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?)
         case excludesStreamID(((Channel) -> EventLoopFuture<Void>)?)
-        case returnsAny(((Channel) -> EventLoopFuture<Any>))
+        case returnsAny(((Channel) -> EventLoopFuture<any Sendable>))
     }
 }
 
@@ -90,12 +90,21 @@ extension MultiplexerAbstractChannel {
         }
     }
 
-    func configureInboundStream(initializer: InboundStreamStateInitializer, promise: EventLoopPromise<Any>?) {
+    func configureInboundStream(initializer: InboundStreamStateInitializer) {
         switch initializer {
         case .includesStreamID(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: nil)
         case .excludesStreamID(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: nil)
+        case .returnsAny(let initializer):
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
+        }
+    }
+
+    func configureInboundStream(initializer: InboundStreamStateInitializer, promise: EventLoopPromise<Any>?) {
+        switch initializer {
+        case .includesStreamID, .excludesStreamID:
+            preconditionFailure("Configuration with a supplied `Any` promise is not supported with this initializer type.")
         case .returnsAny(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: promise)
         }
@@ -112,7 +121,7 @@ extension MultiplexerAbstractChannel {
     }
 
     // used for async multiplexer
-    func configure(initializer: @escaping NIOChannelInitializerWithOutput<Any>, userPromise promise: EventLoopPromise<Any>?) {
+    func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<Any>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 

@@ -233,7 +233,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     // This variant is used in the async stream case.
     // It uses `Any`s because when called from `configureInboundStream` it is passed the initializer stored on the handler
     // which can't be a typed generic without changing the handler API.
-    internal func configure(initializer: (@escaping (Channel) -> EventLoopFuture<Any>), userPromise promise: EventLoopPromise<Any>?) {
+    internal func configure(initializer: (@escaping (Channel) -> EventLoopFuture<any Sendable>), userPromise promise: EventLoopPromise<Any>?) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent

@@ -24,9 +24,9 @@ import NIOHTTP1
 private extension Channel {
     /// Adds a simple no-op ``HTTP2StreamMultiplexer`` to the pipeline.
     func addNoOpInlineMultiplexer(mode: NIOHTTP2Handler.ParserMode, eventLoop: EventLoop) {
-        XCTAssertNoThrow(try self.pipeline.addHandler(NIOHTTP2Handler(mode: mode, eventLoop: eventLoop) { channel in
+        XCTAssertNoThrow(try self.pipeline.addHandler(NIOHTTP2Handler(mode: mode, eventLoop: eventLoop, inboundStreamInitializer: { channel in
             self.eventLoop.makeSucceededFuture(())
-        }).wait())
+        })).wait())
     }
 }
 

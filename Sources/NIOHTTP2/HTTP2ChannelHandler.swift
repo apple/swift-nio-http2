@@ -1005,7 +1005,7 @@ extension NIOHTTP2Handler {
     /// The type of all `inboundStreamInitializer` callbacks which do not need to return data.
     public typealias StreamInitializer = NIOChannelInitializer
     /// The type of NIO Channel initializer callbacks which need to return untyped data.
-    internal typealias StreamInitializerWithAnyOutput = @Sendable (Channel) -> EventLoopFuture<Any>
+    internal typealias StreamInitializerWithAnyOutput = @Sendable (Channel) -> EventLoopFuture<any Sendable>
 #else
     /// The type of all `inboundStreamInitializer` callbacks which need to return data.
     public typealias StreamInitializer = NIOChannelInitializer

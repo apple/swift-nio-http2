@@ -108,15 +108,18 @@ extension HTTP2CommonInboundStreamMultiplexer {
             // channel which in turn might cause further frames to be processed synchronously.
             channel.receiveInboundFrame(frame)
 
-            let initializerProductPromise = self.streamChannelContinuation == nil ? nil : self.channel.eventLoop.makePromise(of: Any.self)
-            channel.configureInboundStream(initializer: self.inboundStreamStateInitializer, promise: initializerProductPromise)
-
+            // Configure the inbound stream.
             // If we have an async sequence of inbound stream channels yield the channel to it
             // but only once we are sure initialization and activation succeed
             if let streamChannelContinuation = self.streamChannelContinuation {
-                initializerProductPromise!.futureResult.whenSuccess { value in
+                let promise = self.channel.eventLoop.makePromise(of: Any.self)
+                promise.futureResult.whenSuccess { value in
                     streamChannelContinuation.yield(any: value)
                 }
+
+                channel.configureInboundStream(initializer: self.inboundStreamStateInitializer, promise: promise)
+            } else {
+                channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
             }
 
             if !channel.inList {
@@ -309,14 +312,22 @@ extension HTTP2CommonInboundStreamMultiplexer {
         )
         self.pendingStreams[channel.channelID] = channel
 
-        let anyInitializer: NIOChannelInitializerWithOutput<Any> = { channel in
+        let anyInitializer: NIOChannelInitializerWithOutput<any Sendable> = { channel in
             streamStateInitializer(channel).map { $0 }
         }
 
         let anyPromise: EventLoopPromise<Any>?
+
         if let promise = promise {
             anyPromise = channel.baseChannel.eventLoop.makePromise(of: Any.self)
-            promise.completeWith(anyPromise!.futureResult.map { value in value as! Output })
+            anyPromise?.futureResult.whenComplete { result in
+                switch result {
+                case .success(let any):
+                    promise.succeed(any as! Output)
+                case .failure(let error):
+                    promise.fail(error)
+                }
+            }
         } else {
             anyPromise = nil
         }
