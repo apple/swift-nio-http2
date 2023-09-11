@@ -140,15 +140,15 @@ extension InlineStreamMultiplexer {
 }
 
 extension InlineStreamMultiplexer {
-    internal func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer) {
+    internal func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), promise: promise, streamStateInitializer)
     }
 
-    internal func createStreamChannel(_ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer) -> EventLoopFuture<Channel> {
+    internal func createStreamChannel(_ streamStateInitializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), streamStateInitializer)
     }
 
-    internal func createStreamChannel<Output>(_ initializer: @escaping NIOHTTP2Handler.StreamInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+    internal func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), initializer)
     }
 }
@@ -217,7 +217,7 @@ extension NIOHTTP2Handler {
 }
 
 extension InlineStreamMultiplexer {
-    func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
+    func setChannelContinuation(_ streamChannels: any AnyContinuation) {
         self.commonStreamMultiplexer.setChannelContinuation(streamChannels)
     }
 }
@@ -234,17 +234,16 @@ extension NIOHTTP2Handler {
     /// and `IOData`.
     ///
     /// Outbound stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
-    /// `OutboundStreamOutput`. This type may be `HTTP2Frame` or changed to any other type.
+    /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
     public struct AsyncStreamMultiplexer<InboundStreamOutput: Sendable>: Sendable {
-
         private let inlineStreamMultiplexer: NIOLoopBound<InlineStreamMultiplexer>
         private let eventLoop: EventLoop
         public let inbound: NIOHTTP2InboundStreamChannels<InboundStreamOutput>
 
         // Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop, continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
             self.inlineStreamMultiplexer = NIOLoopBound(inlineStreamMultiplexer, eventLoop: eventLoop)
             self.eventLoop = eventLoop
             self.inlineStreamMultiplexer.value.setChannelContinuation(continuation)
@@ -252,36 +251,13 @@ extension NIOHTTP2Handler {
         }
 
         /// Create a stream channel initialized with the provided closure
-        public func createStreamChannel<OutboundStreamOutput>(_ initializer: @escaping StreamInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
+        public func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
             if self.eventLoop.inEventLoop {
                 return try await self.inlineStreamMultiplexer.value.createStreamChannel(initializer).get()
             } else {
                 return try await self.eventLoop.flatSubmit {
                     self.inlineStreamMultiplexer.value.createStreamChannel(initializer)
                 }.get()
-            }
-        }
-
-
-        /// Create a stream channel initialized with the provided closure and return it wrapped within a `NIOAsyncChannel`.
-        ///
-        /// - Parameters:
-        ///   - configuration: Configuration for the ``NIOAsyncChannel`` wrapping the HTTP/2 stream channel.
-        ///   - initializer: A callback that will be invoked to allow you to configure the
-        ///         `ChannelPipeline` for the newly created channel.
-        @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-        @_spi(AsyncChannel)
-        public func createStreamChannel<Inbound, Outbound>(
-            configuration: NIOAsyncChannel<Inbound, Outbound>.Configuration = .init(),
-            initializer: @escaping StreamInitializer
-        ) async throws -> NIOAsyncChannel<Inbound, Outbound> {
-            return try await self.createStreamChannel { channel in
-                initializer(channel).flatMapThrowing { _ in
-                    return try NIOAsyncChannel(
-                        synchronouslyWrapping: channel,
-                        configuration: configuration
-                    )
-                }
             }
         }
     }

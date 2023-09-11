@@ -494,11 +494,12 @@ extension Channel {
     ///   - configuration: The settings that will be used when establishing the connection and new streams.
     ///   - position: The position in the pipeline into which to insert this handler.
     ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     ///     be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
-    public func configureAsyncHTTP2Pipeline<Output>(
+    public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
         configuration: NIOHTTP2Handler.Configuration = .init(),
         position: ChannelPipeline.Position = .last,
@@ -551,7 +552,7 @@ extension Channel {
     ///         channel has been fully mutated.
     /// - Returns: An `EventLoopFuture` of an `EventLoopFuture` containing the `NIOProtocolNegotiationResult` that completes when the channel
     ///     is ready to negotiate.
-    internal func configureHTTP2AsyncSecureUpgrade<HTTP1Output, HTTP2Output>(
+    internal func configureHTTP2AsyncSecureUpgrade<HTTP1Output: Sendable, HTTP2Output: Sendable>(
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1Output>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2Output>
     ) -> EventLoopFuture<EventLoopFuture<NIOProtocolNegotiationResult<NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output>>>> {
@@ -591,12 +592,13 @@ extension Channel {
     ///   - http2ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
     ///     is HTTP/2 to configure the connection channel.
     ///   - http2InboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
     ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
     ///     be waited on to retrieve the result of the negotiation.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
-    public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput, HTTP2ConnectionOutput, HTTP2StreamOutput>(
+    public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput: Sendable, HTTP2ConnectionOutput: Sendable, HTTP2StreamOutput: Sendable>(
         http2Configuration: NIOHTTP2Handler.Configuration = .init(),
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1ConnectionOutput>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2ConnectionOutput>,
@@ -643,11 +645,12 @@ extension ChannelPipeline.SynchronousOperations {
     ///   - configuration: The settings that will be used when establishing the connection and new streams.
     ///   - position: The position in the pipeline into which to insert this handler.
     ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     /// be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
-    public func configureAsyncHTTP2Pipeline<Output>(
+    public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
         configuration: NIOHTTP2Handler.Configuration = .init(),
         position: ChannelPipeline.Position = .last,
@@ -658,12 +661,14 @@ extension ChannelPipeline.SynchronousOperations {
             eventLoop: self.eventLoop,
             connectionConfiguration: configuration.connection,
             streamConfiguration: configuration.stream,
-            inboundStreamInitializer: { channel in channel.eventLoop.makeSucceededVoidFuture() }
+            inboundStreamInitializerWithAnyOutput: { channel in
+                inboundStreamInitializer(channel).map { return $0 }
+            }
         )
 
         try self.addHandler(handler, position: position)
 
-        let (continuation, inboundStreamChannels) = StreamChannelContinuation.initialize(with: inboundStreamInitializer)
+        let (inboundStreamChannels, continuation) = NIOHTTP2InboundStreamChannels.initialize(inboundStreamInitializerOutput: Output.self)
 
         return try handler.syncAsyncStreamMultiplexer(continuation: continuation, inboundStreamChannels: inboundStreamChannels)
     }

@@ -170,7 +170,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
-    ///         ``createStreamChannel(promise:_:)-1jk0q``
+    ///         ``createStreamChannel(promise:_:)-1jk0q``.
     public convenience init(mode: NIOHTTP2Handler.ParserMode,
                             channel: Channel,
                             targetWindowSize: Int = 65535,

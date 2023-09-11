@@ -2188,7 +2188,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             return channel.pipeline.addHandler(ReadAndFrameConsumer())
         }
         self.channel.embeddedEventLoop.run()
-        
+
         let childChannel = try childChannelPromise.futureResult.wait()
 
         let streamID = HTTP2StreamID(1)
@@ -2230,7 +2230,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         let responseBody2 = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(.init(string: "bar")), endStream: true))
         XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: responseBody2)))
-
 
         try childChannel.pipeline.handler(type: ReadAndFrameConsumer.self).flatMapThrowing { consumer in
             XCTAssertEqual(consumer.receivedFrames.count, 2)

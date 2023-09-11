@@ -120,6 +120,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     private enum InboundStreamMultiplexerState {
         case uninitializedLegacy
         case uninitializedInline(StreamConfiguration, StreamInitializer, NIOHTTP2StreamDelegate?)
+        case uninitializedAsync(StreamConfiguration, StreamInitializerWithAnyOutput, NIOHTTP2StreamDelegate?)
         case initialized(InboundStreamMultiplexer)
         case deinitialized
 
@@ -127,7 +128,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             switch self {
             case .initialized(let inboundStreamMultiplexer):
                 return inboundStreamMultiplexer
-            case .uninitializedLegacy, .uninitializedInline, .deinitialized:
+            case .uninitializedLegacy, .uninitializedInline, .uninitializedAsync, .deinitialized:
                 return nil
             }
         }
@@ -146,6 +147,20 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                         outboundView: .init(http2Handler: http2Handler),
                         mode: mode,
                         inboundStreamStateInitializer: .excludesStreamID(inboundStreamInitializer),
+                        targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
+                        streamChannelOutboundBytesHighWatermark: streamConfiguration.outboundBufferSizeHighWatermark,
+                        streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
+                        streamDelegate: streamDelegate
+                    )
+                ))
+
+            case .uninitializedAsync(let streamConfiguration, let inboundStreamInitializer, let streamDelegate):
+                self = .initialized(.inline(
+                    InlineStreamMultiplexer(
+                        context: context,
+                        outboundView: .init(http2Handler: http2Handler),
+                        mode: mode,
+                        inboundStreamStateInitializer: .returnsAny(inboundStreamInitializer),
                         targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
                         streamChannelOutboundBytesHighWatermark: streamConfiguration.outboundBufferSizeHighWatermark,
                         streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
@@ -989,13 +1004,13 @@ extension NIOHTTP2Handler {
 #if swift(>=5.7)
     /// The type of all `inboundStreamInitializer` callbacks which do not need to return data.
     public typealias StreamInitializer = NIOChannelInitializer
-    /// The type of all `inboundStreamInitializer` callbacks which need to return data.
-    public typealias StreamInitializerWithOutput = NIOChannelInitializerWithOutput
+    /// The type of NIO Channel initializer callbacks which need to return untyped data.
+    internal typealias StreamInitializerWithAnyOutput = @Sendable (Channel) -> EventLoopFuture<any Sendable>
 #else
     /// The type of all `inboundStreamInitializer` callbacks which need to return data.
     public typealias StreamInitializer = NIOChannelInitializer
-    /// The type of all `inboundStreamInitializer` callbacks which need to return data.
-    public typealias StreamInitializerWithOutput = NIOChannelInitializerWithOutput
+    /// The type of NIO Channel initializer callbacks which need to return untyped data.
+    internal typealias StreamInitializerWithAnyOutput = (Channel) -> EventLoopFuture<any Sendable>
 #endif
 
     /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer. (i.e. using
@@ -1018,15 +1033,37 @@ extension NIOHTTP2Handler {
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
         inboundStreamInitializer: @escaping StreamInitializer
     ) {
-        self.init(mode: mode,
-                  eventLoop: eventLoop,
-                  initialSettings: connectionConfiguration.initialSettings,
-                  headerBlockValidation: connectionConfiguration.headerBlockValidation,
-                  contentLengthValidation: connectionConfiguration.contentLengthValidation,
-                  maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
-                  maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
+        self.init(
+            mode: mode,
+            eventLoop: eventLoop,
+            initialSettings: connectionConfiguration.initialSettings,
+            headerBlockValidation: connectionConfiguration.headerBlockValidation,
+            contentLengthValidation: connectionConfiguration.contentLengthValidation,
+            maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
+            maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
         )
+
         self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer, streamDelegate)
+    }
+
+    internal convenience init(
+        mode: ParserMode,
+        eventLoop: EventLoop,
+        connectionConfiguration: ConnectionConfiguration = .init(),
+        streamConfiguration: StreamConfiguration = .init(),
+        streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        inboundStreamInitializerWithAnyOutput: @escaping StreamInitializerWithAnyOutput
+    ) {
+        self.init(
+            mode: mode,
+            eventLoop: eventLoop,
+            initialSettings: connectionConfiguration.initialSettings,
+            headerBlockValidation: connectionConfiguration.headerBlockValidation,
+            contentLengthValidation: connectionConfiguration.contentLengthValidation,
+            maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
+            maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames
+        )
+        self.inboundStreamMultiplexerState = .uninitializedAsync(streamConfiguration, inboundStreamInitializerWithAnyOutput, streamDelegate)
     }
 
     /// Connection-level configuration.
@@ -1109,7 +1146,7 @@ extension NIOHTTP2Handler {
     }
 
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    internal func syncAsyncStreamMultiplexer<Output>(continuation: any ChannelContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) throws -> AsyncStreamMultiplexer<Output> {
+    internal func syncAsyncStreamMultiplexer<Output: Sendable>(continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<Output>) throws -> AsyncStreamMultiplexer<Output> {
         self.eventLoop!.preconditionInEventLoop()
         guard let inboundStreamMultiplexer = self.inboundStreamMultiplexer else {
             throw NIOHTTP2Errors.missingMultiplexer()
