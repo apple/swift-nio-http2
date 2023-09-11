@@ -198,7 +198,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
                         self.onInitializationResult(result.map { self }, promise: promise)
                     }
                 } else {
-                    self.postInitializerActivate(promise: promise, output: self)
+                    self.postInitializerActivate(output: self, promise: promise)
                 }
             case .failure(let error):
                 self.configurationFailed(withError: error, promise: promise)
@@ -222,7 +222,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
                         self.onInitializationResult(result.map { self }, promise: promise)
                     }
                 } else {
-                    self.postInitializerActivate(promise: promise, output: self)
+                    self.postInitializerActivate(output: self, promise: promise)
                 }
             case .failure(let error):
                 self.configurationFailed(withError: error, promise: promise)
@@ -230,7 +230,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    internal func configure<Output>(initializer: @escaping NIOChannelInitializerWithOutput<Output>, userPromise promise: EventLoopPromise<Output>?) {
+    // This variant is used in the async stream case.
+    // It uses `Any`s because when called from `configureInboundStream` it is passed the initializer stored on the handler
+    // which can't be a typed generic without changing the handler API.
+    internal func configure(initializer: (@escaping (Channel) -> EventLoopFuture<any Sendable>), userPromise promise: EventLoopPromise<Any>?) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -242,7 +245,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
             case .success(let autoRead):
                 self.autoRead = autoRead
                 initializer(self).whenComplete { result in
-                    self.onInitializationResult(result, promise: promise)
+                    self.onInitializationResult(result.map { $0 }, promise: promise)
                 }
             case .failure(let error):
                 self.configurationFailed(withError: error, promise: promise)
@@ -250,10 +253,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    func onInitializationResult<Output>(_ initializerResult: Result<Output, Error>, promise: EventLoopPromise<Output>?) {
+    func onInitializationResult<Output: Sendable>(_ initializerResult: Result<Output, Error>, promise: EventLoopPromise<Output>?) {
         switch initializerResult {
         case .success(let output):
-            self.postInitializerActivate(promise: promise, output: output)
+            self.postInitializerActivate(output: output, promise: promise)
         case .failure(let error):
             self.configurationFailed(withError: error, promise: promise)
         }
@@ -276,7 +279,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     /// Activates the channel if the parent channel is active and succeeds the given `promise`.
-    private func postInitializerActivate<Output>(promise: EventLoopPromise<Output>?, output: Output) {
+    private func postInitializerActivate<Output: Sendable>(output: Output, promise: EventLoopPromise<Output>?) {
         // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
         // If parent is not active, we expect to receive a channelActive later.
         if self.parent!.isActive {
@@ -288,7 +291,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     /// Handle any error that occurred during configuration.
-    private func configurationFailed<Output>(withError error: Error, promise: EventLoopPromise<Output>?) {
+    private func configurationFailed<Output: Sendable>(withError error: Error, promise: EventLoopPromise<Output>?) {
         switch self.state {
         case .idle, .localActive, .closed:
             // The stream isn't open on the network, nothing to close.

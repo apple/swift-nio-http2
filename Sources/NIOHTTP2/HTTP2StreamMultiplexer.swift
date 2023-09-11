@@ -141,7 +141,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
-    ///         ``createStreamChannel(promise:_:)-18bxc``.
+    ///         ``createStreamChannel(promise:_:)-1jk0q``.
     @available(*, deprecated, renamed: "init(mode:channel:targetWindowSize:outboundBufferSizeHighWatermark:outboundBufferSizeLowWatermark:inboundStreamInitializer:)")
     public convenience init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, targetWindowSize: Int = 65535, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
         // We default to an 8kB outbound buffer size: this is a good trade off for avoiding excessive buffering while ensuring that decent
@@ -170,7 +170,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
-    ///         ``createStreamChannel(promise:_:)-18bxc``.
+    ///         ``createStreamChannel(promise:_:)-1jk0q``.
     public convenience init(mode: NIOHTTP2Handler.ParserMode,
                             channel: Channel,
                             targetWindowSize: Int = 65535,
@@ -199,7 +199,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         channel that is created by the remote peer. For servers, these are channels created by
     ///         receiving a `HEADERS` frame from a client. For clients, these are channels created by
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
-    ///         ``createStreamChannel(promise:_:)-18bxc``.
+    ///         ``createStreamChannel(promise:_:)-1jk0q``.
     @available(*, deprecated, renamed: "init(mode:channel:targetWindowSize:outboundBufferSizeHighWatermark:outboundBufferSizeLowWatermark:inboundStreamInitializer:)")
     public convenience init(mode: NIOHTTP2Handler.ParserMode,
                             channel: Channel,
@@ -249,7 +249,7 @@ extension HTTP2StreamMultiplexer {
     ///         failed if an error occurs.
     ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
-    public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) {
+    public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)), promise: promise, streamStateInitializer)
     }
 

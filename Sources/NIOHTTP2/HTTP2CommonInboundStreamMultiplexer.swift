@@ -38,7 +38,7 @@ internal class HTTP2CommonInboundStreamMultiplexer {
     private var isReading = false
     private var flushPending = false
 
-    var streamChannelContinuation: (any ChannelContinuation)?
+    var streamChannelContinuation: (any AnyContinuation)?
 
     init(
         mode: NIOHTTP2Handler.ParserMode,
@@ -103,17 +103,24 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
             self.streams[streamID] = channel
 
-            // If we have an async sequence of inbound stream channels yield the channel to it
-            // This also implicitly performs the stream initialization step.
-            // Note that in this case the API is constructed such that `self.inboundStreamStateInitializer`
-            // does no actual work.
-            self.streamChannelContinuation?.yield(channel: channel.baseChannel)
-
             // Note: Firing the initial (header) frame before calling `HTTP2StreamChannel.configureInboundStream(initializer:)`
             // is crucial to preserve frame order, since the initialization process might trigger another read on the parent
             // channel which in turn might cause further frames to be processed synchronously.
             channel.receiveInboundFrame(frame)
-            channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
+
+            // Configure the inbound stream.
+            // If we have an async sequence of inbound stream channels yield the channel to it
+            // but only once we are sure initialization and activation succeed
+            if let streamChannelContinuation = self.streamChannelContinuation {
+                let promise = self.channel.eventLoop.makePromise(of: Any.self)
+                promise.futureResult.whenSuccess { value in
+                    streamChannelContinuation.yield(any: value)
+                }
+
+                channel.configureInboundStream(initializer: self.inboundStreamStateInitializer, promise: promise)
+            } else {
+                channel.configureInboundStream(initializer: self.inboundStreamStateInitializer)
+            }
 
             if !channel.inList {
                 self.didReadChannels.append(channel)
@@ -286,7 +293,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
-    internal func _createStreamChannel<Output>(
+    internal func _createStreamChannel<Output: Sendable>(
         _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ promise: EventLoopPromise<Output>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
@@ -304,10 +311,32 @@ extension HTTP2CommonInboundStreamMultiplexer {
             inboundStreamStateInitializer: .excludesStreamID(nil)
         )
         self.pendingStreams[channel.channelID] = channel
-        channel.configure(initializer: streamStateInitializer, userPromise: promise)
+
+        let anyInitializer: NIOChannelInitializerWithOutput<any Sendable> = { channel in
+            streamStateInitializer(channel).map { return $0 }
+        }
+
+        let anyPromise: EventLoopPromise<Any>?
+        if let promise = promise {
+            anyPromise = channel.baseChannel.eventLoop.makePromise(of: Any.self)
+            anyPromise?.futureResult.whenComplete { result in
+                switch result {
+                case .success(let any):
+                    // The cast through any here is unfortunate but the only way to make this work right now
+                    // since the HTTP2ChildChannel and the multiplexer is not generic over the output of the initializer.
+                    promise.succeed(any as! Output)
+                case .failure(let error):
+                    promise.fail(error)
+                }
+            }
+        } else {
+            anyPromise = nil
+        }
+
+        channel.configure(initializer: anyInitializer, userPromise: anyPromise)
     }
 
-    internal func createStreamChannel<Output>(
+    internal func createStreamChannel<Output: Sendable>(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         promise: EventLoopPromise<Output>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
@@ -320,7 +349,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
     }
 
-    internal func createStreamChannel<Output>(
+    internal func createStreamChannel<Output: Sendable>(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) -> EventLoopFuture<Output> {
@@ -332,7 +361,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
     internal func _createStreamChannel(
         _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ promise: EventLoopPromise<Channel>?,
-        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
+        _ streamStateInitializer: @escaping NIOChannelInitializer
     ) {
         let channel = MultiplexerAbstractChannel(
             allocator: self.channel.allocator,
@@ -345,13 +374,14 @@ extension HTTP2CommonInboundStreamMultiplexer {
             inboundStreamStateInitializer: .excludesStreamID(nil)
         )
         self.pendingStreams[channel.channelID] = channel
+
         channel.configure(initializer: streamStateInitializer, userPromise: promise)
     }
 
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         promise: EventLoopPromise<Channel>?,
-        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>
+        _ streamStateInitializer: @escaping NIOChannelInitializer
     ) {
         // Always create streams channels on the next event loop tick. This avoids re-entrancy
         // issues where handlers interposed between the two HTTP/2 handlers could create streams
@@ -363,7 +393,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        _ streamStateInitializer: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel> {
+        _ streamStateInitializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {
         let promise = self.channel.eventLoop.makePromise(of: Channel.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
         return promise.futureResult
@@ -408,7 +438,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 }
 
 extension HTTP2CommonInboundStreamMultiplexer {
-    func setChannelContinuation(_ streamChannels: any ChannelContinuation) {
+    func setChannelContinuation(_ streamChannels: any AnyContinuation) {
         self.channel.eventLoop.assertInEventLoop()
         self.streamChannelContinuation = streamChannels
     }
@@ -416,76 +446,15 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
 /// `ChannelContinuation` is used to generic async-sequence-like objects to deal with `Channel`s. This is so that they may be held
 /// by the `HTTP2ChannelHandler` without causing it to become generic itself.
-internal protocol ChannelContinuation {
-    func yield(channel: Channel)
+internal protocol AnyContinuation {
+    func yield(any: Any)
     func finish()
     func finish(throwing error: Error)
 }
 
 
-/// `StreamChannelContinuation` is a wrapper for a generic `AsyncThrowingStream` which holds the inbound HTTP2 stream channels.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-struct StreamChannelContinuation<Output>: ChannelContinuation {
-    private var continuation: AsyncThrowingStream<Output, Error>.Continuation
-    private let inboundStreamInititializer: NIOChannelInitializerWithOutput<Output>
-
-    private init(
-        continuation: AsyncThrowingStream<Output, Error>.Continuation,
-        inboundStreamInititializer: @escaping NIOChannelInitializerWithOutput<Output>
-    ) {
-        self.continuation = continuation
-        self.inboundStreamInititializer = inboundStreamInititializer
-    }
-
-    /// `initialize` creates a new `StreamChannelContinuation` object and returns it along with its backing `AsyncThrowingStream`.
-    /// The `StreamChannelContinuation` provides access to the inbound HTTP2 stream channels.
-    ///
-    /// - Parameters:
-    ///   - inboundStreamInititializer: A closure which initializes the newly-created inbound stream channel and returns a generic.
-    ///   The returned type corresponds to the output of the channel once the operations in the initializer have been performed.
-    ///   For example an `inboundStreamInititializer` which inserts handlers before wrapping the channel in a `NIOAsyncChannel` would
-    ///   have a `Output` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
-    ///   per-stream protocol negotiation where `Output` would be some form of `NIOProtocolNegotiationResult`.
-    static func initialize(
-        with inboundStreamInititializer: @escaping NIOChannelInitializerWithOutput<Output>
-    ) -> (StreamChannelContinuation<Output>, NIOHTTP2InboundStreamChannels<Output>) {
-        let (stream, continuation) = AsyncThrowingStream.makeStream(of: Output.self)
-        return (StreamChannelContinuation(continuation: continuation, inboundStreamInititializer: inboundStreamInititializer), NIOHTTP2InboundStreamChannels(stream))
-    }
-
-    /// `yield` takes a channel, executes the stored `streamInitializer` upon it and then yields the *derived* type to
-    /// the wrapped `AsyncThrowingStream`.
-    func yield(channel: Channel) {
-        channel.eventLoop.assertInEventLoop()
-        self.inboundStreamInititializer(channel).whenSuccess { output in
-            let yieldResult = self.continuation.yield(output)
-            switch yieldResult {
-            case .enqueued:
-                break // success, nothing to do
-            case .dropped:
-                preconditionFailure("Attempted to yield channel when AsyncThrowingStream is over capacity. This shouldn't be possible for an unbounded stream.")
-            case .terminated:
-                channel.close(mode: .all, promise: nil)
-                preconditionFailure("Attempted to yield channel to AsyncThrowingStream in terminated state.")
-            default:
-                channel.close(mode: .all, promise: nil)
-                preconditionFailure("Attempt to yield channel to AsyncThrowingStream failed for unhandled reason.")
-            }
-        }
-    }
-
-    /// `finish` marks the continuation as finished.
-    func finish() {
-        self.continuation.finish()
-    }
-
-    /// `finish` marks the continuation as finished with the supplied error.
-    func finish(throwing error: Error) {
-        self.continuation.finish(throwing: error)
-    }
-}
-
-/// `NIOHTTP2InboundStreamChannels` provides access to inbound stream channels as an `AsyncSequence`.
+/// `NIOHTTP2InboundStreamChannels` provides access to inbound stream channels as a generic `AsyncSequence`.
+/// They make use of generics to allow for wrapping the stream `Channel`s, for example as `NIOAsyncChannel`s or protocol negotiation objects.
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 @_spi(AsyncChannel)
 public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
@@ -507,12 +476,69 @@ public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
 
     private let asyncThrowingStream: AsyncThrowingStream<Output, Error>
 
-    init(_ asyncThrowingStream: AsyncThrowingStream<Output, Error>) {
+    private init(_ asyncThrowingStream: AsyncThrowingStream<Output, Error>) {
         self.asyncThrowingStream = asyncThrowingStream
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
         AsyncIterator(self.asyncThrowingStream.makeAsyncIterator())
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+extension NIOHTTP2InboundStreamChannels {
+    /// `Continuation` is a wrapper for a generic `AsyncThrowingStream` to which inbound HTTP2 stream channels are yielded..
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    struct Continuation: AnyContinuation {
+        private var continuation: AsyncThrowingStream<Output, Error>.Continuation
+
+        internal init(
+            continuation: AsyncThrowingStream<Output, Error>.Continuation
+        ) {
+            self.continuation = continuation
+        }
+
+        /// `yield` takes a channel as outputted by the stream initializer and yields the wrapped `AsyncThrowingStream`.
+        ///
+        /// It takes channels as as `Any` type to allow wrapping by the stream initializer.
+        func yield(any: Any) {
+            let yieldResult = self.continuation.yield(any as! Output)
+                switch yieldResult {
+                case .enqueued:
+                    break // success, nothing to do
+                case .dropped:
+                    preconditionFailure("Attempted to yield when AsyncThrowingStream is over capacity. This shouldn't be possible for an unbounded stream.")
+                case .terminated:
+                    preconditionFailure("Attempted to yield to AsyncThrowingStream in terminated state.")
+                default:
+                    preconditionFailure("Attempt to yield to AsyncThrowingStream failed for unhandled reason.")
+                }
+        }
+
+        /// `finish` marks the continuation as finished.
+        func finish() {
+            self.continuation.finish()
+        }
+
+        /// `finish` marks the continuation as finished with the supplied error.
+        func finish(throwing error: Error) {
+            self.continuation.finish(throwing: error)
+        }
+    }
+
+
+    /// `initialize` creates a new `Continuation` object and returns it along with its backing `AsyncThrowingStream`.
+    /// The `StreamChannelContinuation` provides access to the inbound HTTP2 stream channels.
+    ///
+    /// - Parameters:
+    ///   - inboundStreamInititializer: A closure which initializes the newly-created inbound stream channel and returns a generic.
+    ///   The returned type corresponds to the output of the channel once the operations in the initializer have been performed.
+    ///   For example an `inboundStreamInititializer` which inserts handlers before wrapping the channel in a `NIOAsyncChannel` would
+    ///   have a `Output` corresponding to that `NIOAsyncChannel` type. Another example is in cases where there is
+    ///   per-stream protocol negotiation where `Output` would be some form of `NIOProtocolNegotiationResult`.
+    static func initialize(inboundStreamInitializerOutput: Output.Type = Output.self) -> (NIOHTTP2InboundStreamChannels<Output>, Continuation) {
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: Output.self)
+        return (.init(stream), Continuation(continuation: continuation))
     }
 }
 
