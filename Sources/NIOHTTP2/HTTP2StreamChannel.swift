@@ -253,7 +253,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    func onInitializationResult<Output>(_ initializerResult: Result<Output, Error>, promise: EventLoopPromise<Output>?) {
+    func onInitializationResult<Output: Sendable>(_ initializerResult: Result<Output, Error>, promise: EventLoopPromise<Output>?) {
         switch initializerResult {
         case .success(let output):
             self.postInitializerActivate(output: output, promise: promise)
@@ -279,7 +279,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     /// Activates the channel if the parent channel is active and succeeds the given `promise`.
-    private func postInitializerActivate<Output>(output: Output, promise: EventLoopPromise<Output>?) {
+    private func postInitializerActivate<Output: Sendable>(output: Output, promise: EventLoopPromise<Output>?) {
         // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
         // If parent is not active, we expect to receive a channelActive later.
         if self.parent!.isActive {
@@ -291,7 +291,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     /// Handle any error that occurred during configuration.
-    private func configurationFailed<Output>(withError error: Error, promise: EventLoopPromise<Output>?) {
+    private func configurationFailed<Output: Sendable>(withError error: Error, promise: EventLoopPromise<Output>?) {
         switch self.state {
         case .idle, .localActive, .closed:
             // The stream isn't open on the network, nothing to close.

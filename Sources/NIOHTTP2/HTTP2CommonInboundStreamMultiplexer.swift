@@ -322,6 +322,8 @@ extension HTTP2CommonInboundStreamMultiplexer {
             anyPromise?.futureResult.whenComplete { result in
                 switch result {
                 case .success(let any):
+                    // The cast through any here is unfortunate but the only way to make this work right now
+                    // since the HTTP2ChildChannel and the multiplexer is not generic over the output of the initializer.
                     promise.succeed(any as! Output)
                 case .failure(let error):
                     promise.fail(error)

@@ -224,7 +224,7 @@ extension NIOHTTP2Handler {
     /// and `IOData`.
     ///
     /// Outbound stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
-    /// `OutboundStreamOutput`. This type may be `HTTP2Frame` or changed to any other type.
+    /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
     public struct AsyncStreamMultiplexer<InboundStreamOutput> {
@@ -239,7 +239,7 @@ extension NIOHTTP2Handler {
         }
 
         /// Create a stream channel initialized with the provided closure
-        public func createStreamChannel<OutboundStreamOutput: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<OutboundStreamOutput>) async throws -> OutboundStreamOutput {
+        public func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
             return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
     }
