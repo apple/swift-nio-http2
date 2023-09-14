@@ -170,8 +170,8 @@ extension Channel {
                                        inboundStreamInitializer: NIOChannelInitializer?) -> EventLoopFuture<HTTP2StreamMultiplexer> {
 
         if self.eventLoop.inEventLoop {
-            do {
-                let multiplexer = try self.pipeline.syncOperations.configureHTTP2Pipeline(
+            return self.eventLoop.makeCompletedFuture {
+                try self.pipeline.syncOperations.configureHTTP2Pipeline(
                     mode: mode,
                     channel: self,
                     initialLocalSettings: initialLocalSettings,
@@ -179,9 +179,6 @@ extension Channel {
                     targetWindowSize: targetWindowSize,
                     inboundStreamInitializer: inboundStreamInitializer
                 )
-                return self.eventLoop.makeSucceededFuture(multiplexer)
-            } catch {
-                return self.eventLoop.makeFailedFuture(error)
             }
         } else {
             return self.eventLoop.submit {
@@ -369,13 +366,12 @@ extension Channel {
         h2ConnectionChannelConfigurator: NIOChannelInitializer? = nil,
         configurator: @escaping NIOChannelInitializer
     ) -> EventLoopFuture<Void> {
-        let loopBoundStreamDelegate = NIOLoopBound(streamDelegate, eventLoop: self.eventLoop)
         return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
             channel.configureHTTP2Pipeline(
                 mode: .server,
                 connectionConfiguration: connectionConfiguration,
                 streamConfiguration: streamConfiguration,
-                streamDelegate: loopBoundStreamDelegate.value
+                streamDelegate: streamDelegate
             ) { streamChannel -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
                     configurator(streamChannel)
