@@ -172,7 +172,7 @@ extension NIOHTTP2Handler {
 
         /// Cannot be created by users.
         internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop) {
-            self.inlineStreamMultiplexer = InlineStreamMultiplexer.SendableView(inlineStreamMultiplexer)
+            self.inlineStreamMultiplexer = InlineStreamMultiplexer.SendableView(inlineStreamMultiplexer, eventLoop: eventLoop)
             self.eventLoop = eventLoop
         }
 
@@ -189,13 +189,7 @@ extension NIOHTTP2Handler {
         ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
         ///         `ChannelPipeline` for the newly created channel.
         public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping StreamInitializer) {
-            if self.eventLoop.inEventLoop {
-                self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
-            } else {
-                self.eventLoop.execute {
-                    self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
-                }
-            }
+            self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
         }
 
         /// Create a new `Channel` for a new stream initiated by this peer.
@@ -267,13 +261,21 @@ extension InlineStreamMultiplexer {
     /// InlineStreamMultiplexerSendableView exposes only the thread-safe API of InlineStreamMultiplexer
     struct SendableView: @unchecked Sendable {
         private let inlineStreamMultiplexer: InlineStreamMultiplexer
+        private let eventLoop: EventLoop
 
-        init(_ inlineStreamMultiplexer: InlineStreamMultiplexer) {
+        init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop) {
             self.inlineStreamMultiplexer = inlineStreamMultiplexer
+            self.eventLoop = eventLoop
         }
 
         internal func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer) {
-            self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
+            if self.eventLoop.inEventLoop {
+                self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
+            } else {
+                self.eventLoop.execute {
+                    self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
+                }
+            }
         }
     }
 }

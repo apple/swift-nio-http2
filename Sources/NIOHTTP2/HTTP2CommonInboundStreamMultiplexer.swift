@@ -421,18 +421,21 @@ extension HTTP2CommonInboundStreamMultiplexer {
         // such an eventuality would lead us to assert immediately so we would quickly discover it.
         let loopBounds = NIOLoopBound((self, multiplexer), eventLoop: self.channel.eventLoop)
         self.channel.eventLoop.execute {
-            let streamID = loopBounds.value.0.nextStreamID()
+            let loopBoundSelf = loopBounds.value.0
+            let loopBoundMultiplexer = loopBounds.value.1
+
+            let streamID = loopBoundSelf.nextStreamID()
             let channel = MultiplexerAbstractChannel(
-                allocator: loopBounds.value.0.channel.allocator,
-                parent: loopBounds.value.0.channel,
-                multiplexer: loopBounds.value.1,
+                allocator: loopBoundSelf.channel.allocator,
+                parent: loopBoundSelf.channel,
+                multiplexer: loopBoundMultiplexer,
                 streamID: streamID,
-                targetWindowSize: Int32(loopBounds.value.0.targetWindowSize),
-                outboundBytesHighWatermark: loopBounds.value.0.streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: loopBounds.value.0.streamChannelOutboundBytesLowWatermark,
+                targetWindowSize: Int32(loopBoundSelf.targetWindowSize),
+                outboundBytesHighWatermark: loopBoundSelf.streamChannelOutboundBytesHighWatermark,
+                outboundBytesLowWatermark: loopBoundSelf.streamChannelOutboundBytesLowWatermark,
                 inboundStreamStateInitializer: .includesStreamID(nil)
             )
-            loopBounds.value.0.streams[streamID] = channel
+            loopBoundSelf.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
         }
     }
