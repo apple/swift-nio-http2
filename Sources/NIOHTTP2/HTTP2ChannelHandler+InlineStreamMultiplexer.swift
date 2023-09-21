@@ -165,7 +165,6 @@ extension NIOHTTP2Handler {
     /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
     /// and `IOData`.
     public struct StreamMultiplexer: Sendable {
-
         private let inlineStreamMultiplexer: InlineStreamMultiplexer.SendableView
 
         private let eventLoop: EventLoop
@@ -203,9 +202,7 @@ extension NIOHTTP2Handler {
         ///         `ChannelPipeline` for the newly created channel.
         /// - Returns: An `EventLoopFuture` containing the created `Channel`, fulfilled after the supplied `streamStateInitializer` has been executed on it.
         public func createStreamChannel(_ streamStateInitializer: @escaping StreamInitializer) -> EventLoopFuture<Channel> {
-            let promise = self.eventLoop.makePromise(of: Channel.self)
-            self.createStreamChannel(promise: promise, streamStateInitializer)
-            return promise.futureResult
+            self.inlineStreamMultiplexer.createStreamChannel(streamStateInitializer)
         }
     }
 }
@@ -232,27 +229,19 @@ extension NIOHTTP2Handler {
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     @_spi(AsyncChannel)
     public struct AsyncStreamMultiplexer<InboundStreamOutput: Sendable>: Sendable {
-        private let inlineStreamMultiplexer: NIOLoopBound<InlineStreamMultiplexer>
-        private let eventLoop: EventLoop
+        private let inlineStreamMultiplexer: InlineStreamMultiplexer.SendableView
         public let inbound: NIOHTTP2InboundStreamChannels<InboundStreamOutput>
 
         // Cannot be created by users.
         internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
-            self.inlineStreamMultiplexer = NIOLoopBound(inlineStreamMultiplexer, eventLoop: eventLoop)
-            self.eventLoop = eventLoop
-            self.inlineStreamMultiplexer.value.setChannelContinuation(continuation)
+            self.inlineStreamMultiplexer = InlineStreamMultiplexer.SendableView(inlineStreamMultiplexer, eventLoop: eventLoop)
+            self.inlineStreamMultiplexer.setChannelContinuation(continuation)
             self.inbound = inboundStreamChannels
         }
 
         /// Create a stream channel initialized with the provided closure
         public func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
-            if self.eventLoop.inEventLoop {
-                return try await self.inlineStreamMultiplexer.value.createStreamChannel(initializer).get()
-            } else {
-                return try await self.eventLoop.flatSubmit {
-                    self.inlineStreamMultiplexer.value.createStreamChannel(initializer)
-                }.get()
-            }
+            try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
     }
 }
@@ -274,6 +263,36 @@ extension InlineStreamMultiplexer {
             } else {
                 self.eventLoop.execute {
                     self.inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
+                }
+            }
+        }
+
+        internal func createStreamChannel(_ initializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {
+            if self.eventLoop.inEventLoop {
+                return self.inlineStreamMultiplexer.createStreamChannel(initializer)
+            } else {
+                return self.eventLoop.flatSubmit {
+                    self.inlineStreamMultiplexer.createStreamChannel(initializer)
+                }
+            }
+        }
+
+        internal func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+            if self.eventLoop.inEventLoop {
+                return self.inlineStreamMultiplexer.createStreamChannel(initializer)
+            } else {
+                return self.eventLoop.flatSubmit {
+                    self.inlineStreamMultiplexer.createStreamChannel(initializer)
+                }
+            }
+        }
+
+        internal func setChannelContinuation(_ streamChannels: any AnyContinuation) {
+            if self.eventLoop.inEventLoop {
+                return self.inlineStreamMultiplexer.setChannelContinuation(streamChannels)
+            } else {
+                self.eventLoop.execute {
+                    return self.inlineStreamMultiplexer.setChannelContinuation(streamChannels)
                 }
             }
         }
