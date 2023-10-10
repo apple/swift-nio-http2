@@ -2060,4 +2060,38 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         promise.succeed(())
         stream.writeAndFlush(headerPayload, promise: promise)
     }
+
+    func testTooManyResets() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection()
+
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+
+        // We're now going to try to send lots of resets from the client to the server.
+        for i in stride(from: 1, to: 402, by: 2) {
+            let clientStreamID = HTTP2StreamID(i)
+            let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers)))
+            let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .rstStream(.cancel))
+
+            try self.assertFramesRoundTrip(frames: [reqFrame], sender: self.clientChannel, receiver: self.serverChannel)
+            if i < 401 {
+                try self.assertFramesRoundTrip(frames: [reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel)
+            } else {
+                // this one should trip the DoS threshold and cause EmbeddedChannel to throw, we have to do more manually
+                self.clientChannel.write(reqBodyFrame, promise: nil)
+                self.clientChannel.flush()
+                switch try self.clientChannel.readOutbound(as: IOData.self) {
+                case .byteBuffer(let b):
+                    XCTAssertThrowsError(try self.serverChannel.writeInbound(b)) { error in
+                        XCTAssert(error is NIOHTTP2Errors.ExcessiveRSTFrames)
+                    }
+                case .fileRegion, .none:
+                    XCTFail()
+                }
+            }
+        }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
