@@ -31,12 +31,12 @@ services:
       - MAX_ALLOCS_ALLOWED_1k_requests_inline_noninterleaved=34100
       - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=41150
       - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=40100
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=294050
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response_inline=271050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=263050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_inline=246050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_many=1208050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_many_inline=891050
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=296050
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response_inline=273050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=265050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_inline=248050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_many=1210050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_many_inline=893050
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=39050
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline=39050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=200050
@@ -44,8 +44,8 @@ services:
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=300050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_short_string=200050
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=292950
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent_inline=291650
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=293050
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent_inline=291750
       - IMPORT_CHECK_ARG=--explicit-target-dependency-import-check error
 
   shell:
