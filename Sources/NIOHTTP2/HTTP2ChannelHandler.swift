@@ -1033,17 +1033,10 @@ extension NIOHTTP2Handler {
 
 
 extension NIOHTTP2Handler {
-#if swift(>=5.7)
     /// The type of all `inboundStreamInitializer` callbacks which do not need to return data.
     public typealias StreamInitializer = NIOChannelInitializer
     /// The type of NIO Channel initializer callbacks which need to return untyped data.
     internal typealias StreamInitializerWithAnyOutput = @Sendable (Channel) -> EventLoopFuture<any Sendable>
-#else
-    /// The type of all `inboundStreamInitializer` callbacks which need to return data.
-    public typealias StreamInitializer = NIOChannelInitializer
-    /// The type of NIO Channel initializer callbacks which need to return untyped data.
-    internal typealias StreamInitializerWithAnyOutput = (Channel) -> EventLoopFuture<any Sendable>
-#endif
 
     /// Creates a new ``NIOHTTP2Handler`` with a local multiplexer. (i.e. using
     /// ``StreamMultiplexer``.)

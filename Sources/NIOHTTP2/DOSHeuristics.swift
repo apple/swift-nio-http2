@@ -30,7 +30,6 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
 
     private var resetFrameRateControlStateMachine: HTTP2ResetFrameRateControlStateMachine
 
-#if swift(>=5.7)
     internal init(maximumSequentialEmptyDataFrames: Int, maximumResetFrameCount: Int, resetFrameCounterWindow: TimeAmount, clock: DeadlineClock = RealNIODeadlineClock()) {
         precondition(maximumSequentialEmptyDataFrames >= 0,
                      "maximum sequential empty data frames must be positive, got \(maximumSequentialEmptyDataFrames)")
@@ -38,20 +37,6 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
         self.receivedEmptyDataFrames = 0
         self.resetFrameRateControlStateMachine = .init(countThreshold: maximumResetFrameCount, timeWindow: resetFrameCounterWindow, clock: clock)
     }
-#else
-    internal init(maximumSequentialEmptyDataFrames: Int, maximumResetFrameCount: Int, resetFrameCounterWindow: TimeAmount, clock: DeadlineClock) {
-        precondition(maximumSequentialEmptyDataFrames >= 0,
-                     "maximum sequential empty data frames must be positive, got \(maximumSequentialEmptyDataFrames)")
-        self.maximumSequentialEmptyDataFrames = maximumSequentialEmptyDataFrames
-        self.receivedEmptyDataFrames = 0
-
-        self.resetFrameRateControlStateMachine = .init(countThreshold: maximumResetFrameCount, timeWindow: resetFrameCounterWindow, clock: clock)
-    }
-
-    internal init(maximumSequentialEmptyDataFrames: Int, maximumResetFrameCount: Int, resetFrameCounterWindow: TimeAmount) where DeadlineClock == RealNIODeadlineClock {
-        self.init(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames, maximumResetFrameCount: maximumResetFrameCount, resetFrameCounterWindow: resetFrameCounterWindow, clock: RealNIODeadlineClock())
-    }
-#endif
 }
 
 
@@ -104,7 +89,6 @@ extension DOSHeuristics {
         private var resetTimestamps: Deque<NIODeadline>
         private var _state: ResetFrameRateControlState = .noneReceived
 
-#if swift(>=5.7)
         init(countThreshold: Int, timeWindow: TimeAmount, clock: DeadlineClock = RealNIODeadlineClock()) {
             self.countThreshold = countThreshold
             self.timeWindow = timeWindow
@@ -112,15 +96,6 @@ extension DOSHeuristics {
 
             self.resetTimestamps = .init(minimumCapacity: self.countThreshold)
         }
-#else
-        init(countThreshold: Int, timeWindow: TimeAmount, clock: DeadlineClock) {
-            self.countThreshold = countThreshold
-            self.timeWindow = timeWindow
-            self.clock = clock
-
-            self.resetTimestamps = .init(minimumCapacity: self.countThreshold)
-        }
-#endif
 
         mutating func resetReceived() -> ResetFrameRateControlState {
             self.garbageCollect()

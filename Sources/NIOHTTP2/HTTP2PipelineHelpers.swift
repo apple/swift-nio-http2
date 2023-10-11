@@ -32,17 +32,10 @@ import NIOTLS
 /// Configuring for servers is very similar.
 public let NIOHTTP2SupportedALPNProtocols = ["h2", "http/1.1"]
 
-#if swift(>=5.7)
 /// The type of NIO Channel initializer callbacks which do not need to return data.
 public typealias NIOChannelInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
 /// The type of NIO Channel initializer callbacks which need to return data.
 public typealias NIOChannelInitializerWithOutput<Output> = @Sendable (Channel) -> EventLoopFuture<Output>
-#else
-/// The type of NIO Channel initializer callbacks which do not need to return data.
-public typealias NIOChannelInitializer = (Channel) -> EventLoopFuture<Void>
-/// The type of NIO Channel initializer callbacks which need to return data.
-public typealias NIOChannelInitializerWithOutput<Output> = (Channel) -> EventLoopFuture<Output>
-#endif
 
 extension ChannelPipeline {
     /// Configures a channel pipeline to perform a HTTP/2 secure upgrade.
