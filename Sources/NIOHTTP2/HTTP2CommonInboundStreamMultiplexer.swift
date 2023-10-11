@@ -456,7 +456,6 @@ internal protocol AnyContinuation {
 /// `NIOHTTP2InboundStreamChannels` provides access to inbound stream channels as a generic `AsyncSequence`.
 /// They make use of generics to allow for wrapping the stream `Channel`s, for example as `NIOAsyncChannel`s or protocol negotiation objects.
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-@_spi(AsyncChannel)
 public struct NIOHTTP2InboundStreamChannels<Output>: AsyncSequence {
     public struct AsyncIterator: AsyncIteratorProtocol {
         public typealias Element = Output

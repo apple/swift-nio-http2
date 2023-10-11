@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-@_spi(AsyncChannel) import NIOCore
+import NIOCore
 
 internal struct InlineStreamMultiplexer {
     private let context: ChannelHandlerContext
@@ -226,7 +226,6 @@ extension NIOHTTP2Handler {
     /// Outbound stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
     /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    @_spi(AsyncChannel)
     public struct AsyncStreamMultiplexer<InboundStreamOutput> {
         private let inlineStreamMultiplexer: InlineStreamMultiplexer
         public let inbound: NIOHTTP2InboundStreamChannels<InboundStreamOutput>

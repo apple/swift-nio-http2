@@ -15,11 +15,11 @@
 import XCTest
 
 import NIOConcurrencyHelpers
-@_spi(AsyncChannel) import NIOCore
+import NIOCore
 import NIOEmbedded
 import NIOHPACK
 import NIOHTTP1
-@_spi(AsyncChannel) import NIOHTTP2
+import NIOHTTP2
 import NIOTLS
 
 final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
@@ -232,7 +232,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             XCTAssertEqual(serverInboundChannelCount, requestCount, "We should have created one server-side channel as a result of the one HTTP/2 stream used.")
         }
     }
-    
+
     // `testNegotiatedHTTP2BasicPipelineCommunicates` ensures that a client-server system set up to use async stream abstractions
     // can communicate successfully when HTTP/2 is negotiated.
     func testNegotiatedHTTP2BasicPipelineCommunicates() async throws {

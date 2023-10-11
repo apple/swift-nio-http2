@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-@_spi(AsyncChannel) import NIOCore
-@_spi(AsyncChannel) import NIOTLS
+import NIOCore
+import NIOTLS
 
 /// The supported ALPN protocol tokens for NIO's HTTP/2 abstraction layer.
 ///
@@ -436,7 +436,6 @@ extension Channel {
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     ///     be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    @_spi(AsyncChannel)
     public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
         configuration: NIOHTTP2Handler.Configuration = .init(),
@@ -536,7 +535,6 @@ extension Channel {
     ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
     ///     be waited on to retrieve the result of the negotiation.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    @_spi(AsyncChannel)
     public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput: Sendable, HTTP2ConnectionOutput: Sendable, HTTP2StreamOutput: Sendable>(
         http2Configuration: NIOHTTP2Handler.Configuration = .init(),
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1ConnectionOutput>,
@@ -588,7 +586,6 @@ extension ChannelPipeline.SynchronousOperations {
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     /// be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    @_spi(AsyncChannel)
     public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
         configuration: NIOHTTP2Handler.Configuration = .init(),
@@ -614,7 +611,6 @@ extension ChannelPipeline.SynchronousOperations {
 }
 
 /// `NIONegotiatedHTTPVersion` is a generic negotiation result holder for HTTP/1.1 and HTTP/2
-@_spi(AsyncChannel)
 public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable> {
     case http1_1(HTTP1Output)
     case http2(HTTP2Output)
