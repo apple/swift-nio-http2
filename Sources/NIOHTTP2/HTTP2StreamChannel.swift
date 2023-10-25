@@ -145,6 +145,7 @@ private enum HTTP2StreamData {
     }
 }
 
+@usableFromInline
 final class HTTP2StreamChannel: Channel, ChannelCore {
     /// The stream data type of the channel.
     private let streamDataType: HTTP2StreamDataType
@@ -367,14 +368,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     public let parent: Channel?
 
+    @usableFromInline
     func localAddress0() throws -> SocketAddress {
         fatalError()
     }
 
+    @usableFromInline
     func remoteAddress0() throws -> SocketAddress {
         fatalError()
     }
 
+    @usableFromInline
     func setOption<Option: ChannelOption>(_ option: Option, value: Option.Value) -> EventLoopFuture<Void> {
         if self.eventLoop.inEventLoop {
             do {

@@ -14,10 +14,12 @@
 
 import NIOCore
 
+@usableFromInline
 internal struct InlineStreamMultiplexer {
     private let context: ChannelHandlerContext
 
-    private let commonStreamMultiplexer: HTTP2CommonInboundStreamMultiplexer
+    @usableFromInline
+    internal let commonStreamMultiplexer: HTTP2CommonInboundStreamMultiplexer
     private let outboundView: NIOHTTP2Handler.OutboundView
 
     /// The delegate to be notified upon stream creation and close.
@@ -148,6 +150,7 @@ extension InlineStreamMultiplexer {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), streamStateInitializer)
     }
 
+    @inlinable
     internal func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
         self.commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), initializer)
     }
@@ -230,10 +233,12 @@ extension NIOHTTP2Handler {
     /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public struct AsyncStreamMultiplexer<InboundStreamOutput> {
-        private let inlineStreamMultiplexer: InlineStreamMultiplexer
+        @usableFromInline
+        internal let inlineStreamMultiplexer: InlineStreamMultiplexer
         public let inbound: NIOHTTP2AsyncSequence<InboundStreamOutput>
 
         // Cannot be created by users.
+        @usableFromInline
         internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<InboundStreamOutput>) {
             self.inlineStreamMultiplexer = inlineStreamMultiplexer
             self.inlineStreamMultiplexer.setChannelContinuation(continuation)
@@ -245,6 +250,7 @@ extension NIOHTTP2Handler {
         /// - Parameter initializer: A closure that will be called upon the created stream which is responsible for
         ///   initializing the stream's `Channel`.
         /// - Returns: The result of the `initializer`.
+        @inlinable
         public func openStream<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
             return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
