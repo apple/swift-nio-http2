@@ -430,7 +430,7 @@ extension Channel {
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
     ///   - configuration: The settings that will be used when establishing the connection and new streams.
-    ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///   - streamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     ///     be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
@@ -438,14 +438,14 @@ extension Channel {
     public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
         configuration: NIOHTTP2Handler.Configuration = .init(),
-        inboundStreamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
+        streamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) -> EventLoopFuture<NIOHTTP2Handler.AsyncStreamMultiplexer<Output>> {
         if self.eventLoop.inEventLoop {
             return self.eventLoop.makeCompletedFuture {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
                     configuration: configuration,
-                    inboundStreamInitializer: inboundStreamInitializer
+                    inboundStreamInitializer: streamInitializer
                 )
             }
         } else {
@@ -453,7 +453,7 @@ extension Channel {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
                     configuration: configuration,
-                    inboundStreamInitializer: inboundStreamInitializer
+                    inboundStreamInitializer: streamInitializer
                 )
             }
         }
@@ -525,7 +525,7 @@ extension Channel {
     ///     is HTTP/1.1 to configure the connection channel.
     ///   - http2ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
     ///     is HTTP/2 to configure the connection channel.
-    ///   - http2InboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///   - http2StreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
     ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
@@ -535,7 +535,7 @@ extension Channel {
         http2Configuration: NIOHTTP2Handler.Configuration = .init(),
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1ConnectionOutput>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2ConnectionOutput>,
-        http2InboundStreamInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2StreamOutput>
+        http2StreamInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2StreamOutput>
     ) -> EventLoopFuture<EventLoopFuture<NIONegotiatedHTTPVersion<
             HTTP1ConnectionOutput,
             (HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)
@@ -544,7 +544,7 @@ extension Channel {
             channel.configureAsyncHTTP2Pipeline(
                 mode: .server,
                 configuration: http2Configuration,
-                inboundStreamInitializer: http2InboundStreamInitializer
+                streamInitializer: http2StreamInitializer
             ).flatMap { multiplexer in
                 return http2ConnectionInitializer(channel).map { connectionChannel in
                     (connectionChannel, multiplexer)
@@ -576,7 +576,7 @@ extension ChannelPipeline.SynchronousOperations {
     /// - Parameters:
     ///   - mode: The mode this pipeline will operate in, server or client.
     ///   - configuration: The settings that will be used when establishing the connection and new streams.
-    ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///   - streamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     /// be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
@@ -584,7 +584,7 @@ extension ChannelPipeline.SynchronousOperations {
     public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
         configuration: NIOHTTP2Handler.Configuration = .init(),
-        inboundStreamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
+        streamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<Output> {
         let handler = NIOHTTP2Handler(
             mode: mode,
@@ -592,7 +592,7 @@ extension ChannelPipeline.SynchronousOperations {
             connectionConfiguration: configuration.connection,
             streamConfiguration: configuration.stream,
             inboundStreamInitializerWithAnyOutput: { channel in
-                inboundStreamInitializer(channel).map { return $0 }
+                streamInitializer(channel).map { return $0 }
             }
         )
 

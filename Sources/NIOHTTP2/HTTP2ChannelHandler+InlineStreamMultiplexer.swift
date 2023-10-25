@@ -238,7 +238,7 @@ extension NIOHTTP2Handler {
         }
 
         /// Create a stream channel initialized with the provided closure
-        public func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
+        public func openStream<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
             return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
     }
