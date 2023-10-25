@@ -40,8 +40,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     private static let clientMagic: StaticString = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
     /// The event loop on which this handler will do work.
-    @usableFromInline
-    internal let eventLoop: EventLoop?
+    @usableFromInline internal let _eventLoop: EventLoop?
 
     /// The connection state machine. We always have one of these.
     private var stateMachine: HTTP2ConnectionStateMachine
@@ -276,7 +275,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                  maximumBufferedControlFrames: Int,
                  maximumResetFrameCount: Int,
                  resetFrameCounterWindow: TimeAmount) {
-        self.eventLoop = eventLoop
+        self._eventLoop = eventLoop
         self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
         self.mode = mode
         self.initialSettings = initialSettings
@@ -315,7 +314,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   resetFrameCounterWindow: TimeAmount = .seconds(30)) {
         self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
         self.mode = mode
-        self.eventLoop = nil
+        self._eventLoop = nil
         self.initialSettings = initialSettings
         self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
         self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames, maximumResetFrameCount: maximumResetFrameCount, resetFrameCounterWindow: resetFrameCounterWindow)
@@ -1159,12 +1158,12 @@ extension NIOHTTP2Handler {
     /// i.e. it was initialized with an `inboundStreamInitializer`.
     public var multiplexer: EventLoopFuture<StreamMultiplexer> {
         // We need to return a future here so that we can synchronize access on the underlying `self.inboundStreamMultiplexer`
-        if self.eventLoop!.inEventLoop {
-            return self.eventLoop!.makeCompletedFuture {
+        if self._eventLoop!.inEventLoop {
+            return self._eventLoop!.makeCompletedFuture {
                 return try self.syncMultiplexer()
             }
         } else {
-            return self.eventLoop!.submit {
+            return self._eventLoop!.submit {
                 return try self.syncMultiplexer()
             }
         }
@@ -1176,7 +1175,7 @@ extension NIOHTTP2Handler {
     /// > - The ``NIOHTTP2Handler`` uses a local multiplexer, i.e. it was initialized with an `inboundStreamInitializer`.
     /// > - The caller is already on the correct event loop.
     public func syncMultiplexer() throws -> StreamMultiplexer {
-        self.eventLoop!.preconditionInEventLoop()
+        self._eventLoop!.preconditionInEventLoop()
 
         switch self.inboundStreamMultiplexer {
         case let .some(.inline(multiplexer)):
@@ -1189,7 +1188,7 @@ extension NIOHTTP2Handler {
     @inlinable
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     internal func syncAsyncStreamMultiplexer<Output: Sendable>(continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<Output>) throws -> AsyncStreamMultiplexer<Output> {
-        self.eventLoop!.preconditionInEventLoop()
+        self._eventLoop!.preconditionInEventLoop()
 
         switch self.inboundStreamMultiplexer {
         case let .some(.inline(multiplexer)):
