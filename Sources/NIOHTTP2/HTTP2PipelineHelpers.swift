@@ -598,7 +598,7 @@ extension ChannelPipeline.SynchronousOperations {
 
         try self.addHandler(handler)
 
-        let (inboundStreamChannels, continuation) = NIOHTTP2StreamChannels.initialize(inboundStreamInitializerOutput: Output.self)
+        let (inboundStreamChannels, continuation) = NIOHTTP2AsyncSequence.initialize(inboundStreamInitializerOutput: Output.self)
 
         return try handler.syncAsyncStreamMultiplexer(continuation: continuation, inboundStreamChannels: inboundStreamChannels)
     }
