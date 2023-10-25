@@ -125,7 +125,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 // Let's try sending some requests
-                let streamChannel = try await clientMultiplexer.createStreamChannel { channel -> EventLoopFuture<Channel> in
+                let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
                     return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
                         return channel
                     }
@@ -156,7 +156,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         let clientMultiplexer = try await assertNoThrowWithValue(
             try await self.clientChannel.configureAsyncHTTP2Pipeline(
                 mode: .client,
-                inboundStreamInitializer: { channel in
+                streamInitializer: { channel in
                     channel.eventLoop.makeCompletedFuture {
                         try NIOAsyncChannel(
                             synchronouslyWrapping: channel,
@@ -170,7 +170,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         let serverMultiplexer = try await assertNoThrowWithValue(
             try await self.serverChannel.configureAsyncHTTP2Pipeline(
                 mode: .server,
-                inboundStreamInitializer: { channel in
+                streamInitializer: { channel in
                     channel.eventLoop.makeCompletedFuture {
                         try NIOAsyncChannel(
                             synchronouslyWrapping: channel,
@@ -203,7 +203,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
             // client
             for _ in 0 ..< requestCount {
-                let streamChannel = try await clientMultiplexer.createStreamChannel() { channel in
+                let streamChannel = try await clientMultiplexer.openStream() { channel in
                     channel.eventLoop.makeCompletedFuture {
                         try NIOAsyncChannel(
                             synchronouslyWrapping: channel,
@@ -250,7 +250,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             channel.eventLoop.makeSucceededVoidFuture()
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
-        } http2InboundStreamInitializer: { channel -> EventLoopFuture<Channel> in
+        } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
             channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
         }.get()
 
@@ -282,7 +282,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 // Let's try sending some requests
-                let streamChannel = try await clientMultiplexer.createStreamChannel { channel -> EventLoopFuture<Channel> in
+                let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
                     return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
                         return channel
                     }
@@ -320,7 +320,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             channel.pipeline.addHandlers([HTTP1OKResponder(), InboundRecorderHandler<HTTPServerRequestPart>()])
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
-        } http2InboundStreamInitializer: { channel -> EventLoopFuture<Channel> in
+        } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
             channel.eventLoop.makeSucceededFuture(channel)
         }.get()
 

@@ -445,7 +445,7 @@ extension Channel {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
                     configuration: configuration,
-                    inboundStreamInitializer: streamInitializer
+                    streamInitializer: streamInitializer
                 )
             }
         } else {
@@ -453,7 +453,7 @@ extension Channel {
                 return try self.pipeline.syncOperations.configureAsyncHTTP2Pipeline(
                     mode: mode,
                     configuration: configuration,
-                    inboundStreamInitializer: streamInitializer
+                    streamInitializer: streamInitializer
                 )
             }
         }
@@ -598,7 +598,7 @@ extension ChannelPipeline.SynchronousOperations {
 
         try self.addHandler(handler)
 
-        let (inboundStreamChannels, continuation) = NIOHTTP2InboundStreamChannels.initialize(inboundStreamInitializerOutput: Output.self)
+        let (inboundStreamChannels, continuation) = NIOHTTP2StreamChannels.initialize(inboundStreamInitializerOutput: Output.self)
 
         return try handler.syncAsyncStreamMultiplexer(continuation: continuation, inboundStreamChannels: inboundStreamChannels)
     }
@@ -606,6 +606,8 @@ extension ChannelPipeline.SynchronousOperations {
 
 /// `NIONegotiatedHTTPVersion` is a generic negotiation result holder for HTTP/1.1 and HTTP/2
 public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable> {
+    /// Protocol negotiation resulted in the connection using HTTP/1.1.
     case http1_1(HTTP1Output)
+    /// Protocol negotiation resulted in the connection using HTTP/2.
     case http2(HTTP2Output)
 }
