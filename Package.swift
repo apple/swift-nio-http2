@@ -1,4 +1,4 @@
-// swift-tools-version:5.6
+// swift-tools-version:5.7
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -21,7 +21,7 @@ let package = Package(
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.58.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0"),
         .package(url: "https://github.com/apple/swift-atomics.git", from: "1.0.2"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
     ],

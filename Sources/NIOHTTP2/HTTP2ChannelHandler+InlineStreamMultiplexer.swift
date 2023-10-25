@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-@_spi(AsyncChannel) import NIOCore
+import NIOCore
 
 internal struct InlineStreamMultiplexer {
     private let context: ChannelHandlerContext
@@ -224,24 +224,28 @@ extension NIOHTTP2Handler {
     /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
     /// and `IOData`.
     ///
-    /// Outbound stream channel objects are initialized upon creation using the supplied `streamStateInitializer` which returns a type
+    /// Inbound (remotely-initiated) streams are accessible via the ``inbound`` property, having been initialized and
+    /// returned as the `InboundStreamOutput` type. 
+    ///
+    /// You can open a stream by calling ``openStream(_:)``. Locally-initiated stream channel objects are initialized upon creation using the supplied `initializer` which returns a type
     /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    @_spi(AsyncChannel)
     public struct AsyncStreamMultiplexer<InboundStreamOutput: Sendable>: Sendable {
         private let inlineStreamMultiplexer: InlineStreamMultiplexer.SendableView
-        public let inbound: NIOHTTP2InboundStreamChannels<InboundStreamOutput>
-
+        public let inbound: NIOHTTP2AsyncSequence<InboundStreamOutput>
+        
         // Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2InboundStreamChannels<InboundStreamOutput>) {
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<InboundStreamOutput>) {
             self.inlineStreamMultiplexer = InlineStreamMultiplexer.SendableView(inlineStreamMultiplexer, eventLoop: eventLoop)
             self.inlineStreamMultiplexer.setChannelContinuation(continuation)
             self.inbound = inboundStreamChannels
         }
-
-        /// Create a stream channel initialized with the provided closure
-        public func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
-            try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
+        
+        /// - Parameter initializer: A closure that will be called upon the created stream which is responsible for
+        ///   initializing the stream's `Channel`.
+        /// - Returns: The result of the `initializer`.
+        public func openStream<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
+            return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
         }
     }
 }

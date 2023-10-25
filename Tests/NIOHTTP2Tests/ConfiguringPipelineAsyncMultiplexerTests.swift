@@ -15,11 +15,11 @@
 import XCTest
 
 import NIOConcurrencyHelpers
-@_spi(AsyncChannel) import NIOCore
+import NIOCore
 import NIOEmbedded
 import NIOHPACK
 import NIOHTTP1
-@_spi(AsyncChannel) import NIOHTTP2
+import NIOHTTP2
 import NIOTLS
 
 final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
@@ -125,7 +125,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 // Let's try sending some requests
-                let streamChannel = try await clientMultiplexer.createStreamChannel { channel -> EventLoopFuture<Channel> in
+                let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
                     return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
                         return channel
                     }
@@ -156,7 +156,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         let clientMultiplexer = try await assertNoThrowWithValue(
             try await self.clientChannel.configureAsyncHTTP2Pipeline(
                 mode: .client,
-                inboundStreamInitializer: { channel in
+                streamInitializer: { channel in
                     channel.eventLoop.makeCompletedFuture {
                         try NIOAsyncChannel(
                             synchronouslyWrapping: channel,
@@ -169,7 +169,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
         let serverMultiplexerFuture = self.serverChannel.configureAsyncHTTP2Pipeline(
             mode: .server,
-            inboundStreamInitializer: { channel in
+            streamInitializer: { channel in
                 channel.eventLoop.makeCompletedFuture {
                     try NIOAsyncChannel(
                         synchronouslyWrapping: channel,
@@ -189,11 +189,11 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
                 let serverMultiplexer = try await assertNoThrowWithValue(try await serverMultiplexerFuture.get())
                 var serverInboundChannelCount = 0
                 for try await streamChannel in serverMultiplexer.inbound {
-                    for try await receivedFrame in streamChannel.inboundStream {
+                    for try await receivedFrame in streamChannel.inbound {
                         receivedFrame.assertFramePayloadMatches(this: ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload)
 
-                        try await streamChannel.outboundWriter.write(ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload)
-                        streamChannel.outboundWriter.finish()
+                        try await streamChannel.outbound.write(ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload)
+                        streamChannel.outbound.finish()
 
                         try await Self.deliverAllBytes(from: serverChannel, to: clientChannel)
                     }
@@ -204,7 +204,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
             // client
             for _ in 0 ..< requestCount {
-                let streamChannel = try await clientMultiplexer.createStreamChannel() { channel in
+                let streamChannel = try await clientMultiplexer.openStream() { channel in
                     channel.eventLoop.makeCompletedFuture {
                         try NIOAsyncChannel(
                             synchronouslyWrapping: channel,
@@ -216,12 +216,12 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
                     }
                 }
                 // Let's try sending some requests
-                try await streamChannel.outboundWriter.write(ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload)
-                streamChannel.outboundWriter.finish()
+                try await streamChannel.outbound.write(ConfiguringPipelineAsyncMultiplexerTests.requestFramePayload)
+                streamChannel.outbound.finish()
 
                 try await Self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
 
-                for try await receivedFrame in streamChannel.inboundStream {
+                for try await receivedFrame in streamChannel.inbound {
                     receivedFrame.assertFramePayloadMatches(this: ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload)
                 }
             }
@@ -247,11 +247,11 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             }.get()
         )
 
-        let nioProtocolNegotiationResult = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
+        let negotiationResultFuture = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
             channel.eventLoop.makeSucceededVoidFuture()
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
-        } http2InboundStreamInitializer: { channel -> EventLoopFuture<Channel> in
+        } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
             channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
         }.get()
 
@@ -263,7 +263,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         try await withThrowingTaskGroup(of: Int.self, returning: Void.self) { group in
             // server
             group.addTask {
-                let negotiationResult = try await nioProtocolNegotiationResult.getResult()
+                let negotiationResult = try await negotiationResultFuture.get()
                 let serverMultiplexer: NIOHTTP2Handler.AsyncStreamMultiplexer<Channel>
                 switch negotiationResult {
                 case .http1_1:
@@ -282,7 +282,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             // client
             for _ in 0 ..< requestCount {
                 // Let's try sending some requests
-                let streamChannel = try await clientMultiplexer.createStreamChannel { channel -> EventLoopFuture<Channel> in
+                let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
                     return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
                         return channel
                     }
@@ -316,18 +316,18 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             clientChannel.pipeline.addHandlers([InboundRecorderHandler<HTTPClientResponsePart>(), HTTP1ClientSendability()])
         }.get()
 
-        let nioProtocolNegotiationResult = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
+        let negotiationResultFuture = try await self.serverChannel.configureAsyncHTTPServerPipeline() { channel in
             channel.pipeline.addHandlers([HTTP1OKResponder(), InboundRecorderHandler<HTTPServerRequestPart>()])
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
-        } http2InboundStreamInitializer: { channel -> EventLoopFuture<Channel> in
+        } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
             channel.eventLoop.makeSucceededFuture(channel)
         }.get()
 
         // Let's pretend the TLS handler did protocol negotiation for us
         self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "http/1.1"))
 
-        let negotiationResult = try await nioProtocolNegotiationResult.getResult()
+        let negotiationResult = try await negotiationResultFuture.get()
 
         try await Self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
         try await Self.deliverAllBytes(from: self.serverChannel, to: self.clientChannel)

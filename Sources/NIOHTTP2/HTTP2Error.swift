@@ -289,6 +289,11 @@ public enum NIOHTTP2Errors {
         return MissingMultiplexer(file: file, line: line)
     }
 
+    /// Creates a ``ExcessiveRSTFrames`` error with appropriate source context.
+    public static func excessiveRSTFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveRSTFrames {
+        return ExcessiveRSTFrames(file: file, line: line)
+    }
+
     /// Creates a ``StreamError`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -1668,6 +1673,27 @@ public enum NIOHTTP2Errors {
 
     /// The ``NIOHTTP2Handler`` does not have a multiplexer but one has been accessed.
     public struct MissingMultiplexer: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            return _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func ==(lhs: Self, rhs: Self) -> Bool {
+            return true
+        }
+    }
+
+
+    /// The client has issued RST frames at an excessive rate resulting in the connection being defensively closed.
+    public struct ExcessiveRSTFrames: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
