@@ -444,10 +444,120 @@ extension HTTP2CommonInboundStreamMultiplexer {
     }
 }
 
-/// `ChannelContinuation` is used to generic async-sequence-like objects to deal with `Channel`s. This is so that they may be held
-/// by the `HTTP2ChannelHandler` without causing it to become generic itself.
+/// `AnyContinuation` is used to generic async-sequence-like objects to deal with the generic element types without
+/// the holding type becoming generic itself.
+///
+/// This is useful in in the case of the `HTTP2ChannelHandler` which must deal with types which hold stream initializers
+/// which have a generic return type.
 internal protocol AnyContinuation {
     func yield(any: Any)
     func finish()
     func finish(throwing error: Error)
 }
+
+
+/// `NIOHTTP2AsyncSequence` is an implementation of the `AsyncSequence` protocol which allows iteration over a generic
+/// element type `Output`.
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+public struct NIOHTTP2AsyncSequence<Output>: AsyncSequence {
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        public typealias Element = Output
+
+        private var iterator: AsyncThrowingStream<Output, Error>.AsyncIterator
+
+        init(wrapping iterator: AsyncThrowingStream<Output, Error>.AsyncIterator) {
+            self.iterator = iterator
+        }
+
+        public mutating func next() async throws -> Output? {
+            try await self.iterator.next()
+        }
+    }
+
+    public typealias Element = Output
+
+    private let asyncThrowingStream: AsyncThrowingStream<Output, Error>
+
+    private init(_ asyncThrowingStream: AsyncThrowingStream<Output, Error>) {
+        self.asyncThrowingStream = asyncThrowingStream
+    }
+
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(wrapping: self.asyncThrowingStream.makeAsyncIterator())
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+extension NIOHTTP2AsyncSequence {
+    /// `Continuation` is a wrapper for a generic `AsyncThrowingStream` to which the products of the initializers of
+    /// inbound (remotely-initiated) HTTP/2 stream channels are yielded.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    struct Continuation: AnyContinuation {
+        private var continuation: AsyncThrowingStream<Output, Error>.Continuation
+
+        internal init(wrapping continuation: AsyncThrowingStream<Output, Error>.Continuation) {
+            self.continuation = continuation
+        }
+
+        /// `yield` takes a channel as outputted by the stream initializer and yields the wrapped `AsyncThrowingStream`.
+        ///
+        /// It takes channels as as `Any` type to allow wrapping by the stream initializer.
+        func yield(any: Any) {
+            let yieldResult = self.continuation.yield(any as! Output)
+                switch yieldResult {
+                case .enqueued:
+                    break // success, nothing to do
+                case .dropped:
+                    preconditionFailure("Attempted to yield when AsyncThrowingStream is over capacity. This shouldn't be possible for an unbounded stream.")
+                case .terminated:
+                    preconditionFailure("Attempted to yield to AsyncThrowingStream in terminated state.")
+                default:
+                    preconditionFailure("Attempt to yield to AsyncThrowingStream failed for unhandled reason.")
+                }
+        }
+
+        /// `finish` marks the continuation as finished.
+        func finish() {
+            self.continuation.finish()
+        }
+
+        /// `finish` marks the continuation as finished with the supplied error.
+        func finish(throwing error: Error) {
+            self.continuation.finish(throwing: error)
+        }
+    }
+
+
+    /// `initialize` creates a new `Continuation` object and returns it along with its backing ``NIOHTTP2AsyncSequence``.
+    /// The `Continuation` provides the ability to yield to the backing .``NIOHTTP2AsyncSequence``.
+    ///
+    /// - Parameters:
+    ///   - inboundStreamInitializerOutput: The type which is returned by the initializer operating on the inbound
+    ///   (remotely-initiated) HTTP/2 streams.
+    static func initialize(inboundStreamInitializerOutput: Output.Type = Output.self) -> (NIOHTTP2AsyncSequence<Output>, Continuation) {
+        let (stream, continuation) = AsyncThrowingStream.makeStream(of: Output.self)
+        return (.init(stream), Continuation(wrapping: continuation))
+    }
+}
+
+@available(*, unavailable)
+extension NIOHTTP2AsyncSequence.AsyncIterator: Sendable {}
+
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+extension NIOHTTP2AsyncSequence: Sendable where Output: Sendable {}
+
+#if swift(<5.9)
+// this should be available in the std lib from 5.9 onwards
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+extension AsyncThrowingStream {
+    static func makeStream(
+        of elementType: Element.Type = Element.self,
+        throwing failureType: Failure.Type = Failure.self,
+        bufferingPolicy limit: Continuation.BufferingPolicy = .unbounded
+    ) -> (stream: AsyncThrowingStream<Element, Failure>, continuation: AsyncThrowingStream<Element, Failure>.Continuation) where Failure == Error {
+        var continuation: AsyncThrowingStream<Element, Failure>.Continuation!
+        let stream = AsyncThrowingStream<Element, Failure>(bufferingPolicy: limit) { continuation = $0 }
+        return (stream: stream, continuation: continuation!)
+    }
+}
+#endif

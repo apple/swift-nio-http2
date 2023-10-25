@@ -211,3 +211,42 @@ extension InlineStreamMultiplexer {
         self.commonStreamMultiplexer.setChannelContinuation(streamChannels)
     }
 }
+
+extension NIOHTTP2Handler {
+    /// A variant of `NIOHTTP2Handler.StreamMultiplexer` which creates a child channel for each HTTP/2 stream and
+    /// provides access to inbound HTTP/2 streams.
+    ///
+    /// In general in NIO applications it is helpful to consider each HTTP/2 stream as an
+    /// independent stream of HTTP/2 frames. This multiplexer achieves this by creating a
+    /// number of in-memory `HTTP2StreamChannel` objects, one for each stream. These operate
+    /// on ``HTTP2Frame/FramePayload`` objects as their base communication
+    /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
+    /// and `IOData`.
+    ///
+    /// Inbound (remotely-initiated) streams are accessible via the ``inbound`` property, having been initialized and
+    /// returned as the `InboundStreamOutput` type. 
+    ///
+    /// You can open a stream by calling ``openStream(_:)``. Locally-initiated stream channel objects are initialized upon creation using the supplied `initializer` which returns a type
+    /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    public struct AsyncStreamMultiplexer<InboundStreamOutput> {
+        private let inlineStreamMultiplexer: InlineStreamMultiplexer
+        public let inbound: NIOHTTP2AsyncSequence<InboundStreamOutput>
+
+        // Cannot be created by users.
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<InboundStreamOutput>) {
+            self.inlineStreamMultiplexer = inlineStreamMultiplexer
+            self.inlineStreamMultiplexer.setChannelContinuation(continuation)
+            self.inbound = inboundStreamChannels
+        }
+
+
+        /// Create a stream channel initialized with the provided closure
+        /// - Parameter initializer: A closure that will be called upon the created stream which is responsible for
+        ///   initializing the stream's `Channel`.
+        /// - Returns: The result of the `initializer`.
+        public func openStream<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
+            return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
+        }
+    }
+}
