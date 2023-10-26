@@ -144,7 +144,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
         self._channel.eventLoop.preconditionInEventLoop()
         if let channel = self.streams[event.streamID] {
             channel.networkActivationReceived()
-            return channel._baseChannel
+            return channel.baseChannel
         }
         return nil
     }
@@ -153,7 +153,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
         self._channel.eventLoop.preconditionInEventLoop()
         if let channel = self.streams[event.streamID] {
             channel.receiveStreamClosed(event.reason)
-            return channel._baseChannel
+            return channel.baseChannel
         }
         return nil
     }
@@ -320,7 +320,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
         let anyPromise: EventLoopPromise<Any>?
         if let promise = promise {
-            anyPromise = channel._baseChannel.eventLoop.makePromise(of: Any.self)
+            anyPromise = channel.baseChannel.eventLoop.makePromise(of: Any.self)
             anyPromise?.futureResult.whenComplete { result in
                 switch result {
                 case .success(let any):

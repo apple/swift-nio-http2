@@ -25,7 +25,7 @@ import NIOCore
 /// The implementation of `Equatable` & `Hashable` on this type reinforces that requirement.
 @usableFromInline
 struct MultiplexerAbstractChannel {
-    @usableFromInline var _baseChannel: HTTP2StreamChannel
+    @usableFromInline private(set) var baseChannel: HTTP2StreamChannel
 
     @usableFromInline
     init(allocator: ByteBufferAllocator,
@@ -39,7 +39,7 @@ struct MultiplexerAbstractChannel {
         switch inboundStreamStateInitializer {
         case .includesStreamID:
             assert(streamID != nil)
-            self._baseChannel = .init(allocator: allocator,
+            self.baseChannel = .init(allocator: allocator,
                                      parent: parent,
                                      multiplexer: multiplexer,
                                      streamID: streamID,
@@ -49,7 +49,7 @@ struct MultiplexerAbstractChannel {
                                      streamDataType: .frame)
 
         case .excludesStreamID, .returnsAny:
-            self._baseChannel = .init(allocator: allocator,
+            self.baseChannel = .init(allocator: allocator,
                                      parent: parent,
                                      multiplexer: multiplexer,
                                      streamID: streamID,
@@ -73,35 +73,35 @@ extension MultiplexerAbstractChannel {
 // MARK: API for HTTP2StreamMultiplexer
 extension MultiplexerAbstractChannel {
     var streamID: HTTP2StreamID? {
-        return self._baseChannel.streamID
+        return self.baseChannel.streamID
     }
 
     @usableFromInline
     var channelID: ObjectIdentifier {
-        return ObjectIdentifier(self._baseChannel)
+        return ObjectIdentifier(self.baseChannel)
     }
 
     var inList: Bool {
-        return self._baseChannel.inList
+        return self.baseChannel.inList
     }
 
     var streamChannelListNode: StreamChannelListNode {
         get {
-            return self._baseChannel.streamChannelListNode
+            return self.baseChannel.streamChannelListNode
         }
         nonmutating set {
-            self._baseChannel.streamChannelListNode = newValue
+            self.baseChannel.streamChannelListNode = newValue
         }
     }
 
     func configureInboundStream(initializer: InboundStreamStateInitializer) {
         switch initializer {
         case .includesStreamID(let initializer):
-            self._baseChannel.configure(initializer: initializer, userPromise: nil)
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
         case .excludesStreamID(let initializer):
-            self._baseChannel.configure(initializer: initializer, userPromise: nil)
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
         case .returnsAny(let initializer):
-            self._baseChannel.configure(initializer: initializer, userPromise: nil)
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
         }
     }
 
@@ -110,77 +110,77 @@ extension MultiplexerAbstractChannel {
         case .includesStreamID, .excludesStreamID:
             preconditionFailure("Configuration with a supplied `Any` promise is not supported with this initializer type.")
         case .returnsAny(let initializer):
-            self._baseChannel.configure(initializer: initializer, userPromise: promise)
+            self.baseChannel.configure(initializer: initializer, userPromise: promise)
         }
     }
 
     // legacy `initializer` function signature
     func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
-        self._baseChannel.configure(initializer: initializer, userPromise: promise)
+        self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
     // NIOHTTP2Handler.Multiplexer and HTTP2StreamMultiplexer
     func configure(initializer: NIOChannelInitializer?, userPromise promise: EventLoopPromise<Channel>?) {
-        self._baseChannel.configure(initializer: initializer, userPromise: promise)
+        self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
     // used for async multiplexer
     @usableFromInline
     func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<Any>?) {
-        self._baseChannel.configure(initializer: initializer, userPromise: promise)
+        self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
     func performActivation() {
-        self._baseChannel.performActivation()
+        self.baseChannel.performActivation()
     }
 
     func networkActivationReceived() {
-        self._baseChannel.networkActivationReceived()
+        self.baseChannel.networkActivationReceived()
     }
 
     func receiveInboundFrame(_ frame: HTTP2Frame) {
-        self._baseChannel.receiveInboundFrame(frame)
+        self.baseChannel.receiveInboundFrame(frame)
     }
 
     func receiveParentChannelReadComplete() {
-        self._baseChannel.receiveParentChannelReadComplete()
+        self.baseChannel.receiveParentChannelReadComplete()
     }
 
     func initialWindowSizeChanged(delta: Int) {
-        self._baseChannel.initialWindowSizeChanged(delta: delta)
+        self.baseChannel.initialWindowSizeChanged(delta: delta)
     }
 
     func receiveWindowUpdatedEvent(_ windowSize: Int) {
-        self._baseChannel.receiveWindowUpdatedEvent(windowSize)
+        self.baseChannel.receiveWindowUpdatedEvent(windowSize)
     }
 
     func parentChannelWritabilityChanged(newValue: Bool) {
-        self._baseChannel.parentChannelWritabilityChanged(newValue: newValue)
+        self.baseChannel.parentChannelWritabilityChanged(newValue: newValue)
     }
 
     func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
-        self._baseChannel.receiveStreamClosed(reason)
+        self.baseChannel.receiveStreamClosed(reason)
     }
 
     func receiveStreamError(_ error: NIOHTTP2Errors.StreamError) {
-        self._baseChannel.receiveStreamError(error)
+        self.baseChannel.receiveStreamError(error)
     }
 
     func wroteBytes(_ size: Int) {
-        self._baseChannel.wroteBytes(size)
+        self.baseChannel.wroteBytes(size)
     }
 }
 
 extension MultiplexerAbstractChannel: Equatable {
-    @usableFromInline
+    @inlinable
     static func ==(lhs: MultiplexerAbstractChannel, rhs: MultiplexerAbstractChannel) -> Bool {
-        return lhs._baseChannel === rhs._baseChannel
+        return lhs.baseChannel === rhs.baseChannel
     }
 }
 
 extension MultiplexerAbstractChannel: Hashable {
-    @usableFromInline
+    @inlinable
     func hash(into hasher: inout Hasher) {
-        hasher.combine(ObjectIdentifier(self._baseChannel))
+        hasher.combine(ObjectIdentifier(self.baseChannel))
     }
 }
