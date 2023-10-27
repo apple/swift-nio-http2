@@ -229,15 +229,22 @@ extension NIOHTTP2Handler {
     /// You can open a stream by calling ``openStream(_:)``. Locally-initiated stream channel objects are initialized upon creation using the supplied `initializer` which returns a type
     /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    public struct AsyncStreamMultiplexer<InboundStreamOutput> {
-        private let inlineStreamMultiplexer: InlineStreamMultiplexer
+    public struct AsyncStreamMultiplexer<InboundStreamOutput: Sendable>: Sendable {
+        private let inlineStreamMultiplexer: NIOLoopBound<InlineStreamMultiplexer>
+        private let eventLoop: any EventLoop
         public let inbound: NIOHTTP2AsyncSequence<InboundStreamOutput>
 
         // Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<InboundStreamOutput>) {
-            self.inlineStreamMultiplexer = inlineStreamMultiplexer
-            self.inlineStreamMultiplexer.setChannelContinuation(continuation)
+        internal init(
+            _ inlineStreamMultiplexer: InlineStreamMultiplexer,
+            continuation: any AnyContinuation,
+            inboundStreamChannels: NIOHTTP2AsyncSequence<InboundStreamOutput>,
+            eventLoop: any EventLoop
+        ) {
+            self.inlineStreamMultiplexer = NIOLoopBound(inlineStreamMultiplexer, eventLoop: eventLoop)
+            inlineStreamMultiplexer.setChannelContinuation(continuation)
             self.inbound = inboundStreamChannels
+            self.eventLoop = eventLoop
         }
 
 
@@ -246,7 +253,9 @@ extension NIOHTTP2Handler {
         ///   initializing the stream's `Channel`.
         /// - Returns: The result of the `initializer`.
         public func openStream<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
-            return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
+            return try await self.eventLoop.submit {
+                self.inlineStreamMultiplexer.value.createStreamChannel(initializer)
+            }.flatMap { $0 }.get()
         }
     }
 }

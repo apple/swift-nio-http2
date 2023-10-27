@@ -1187,7 +1187,12 @@ extension NIOHTTP2Handler {
 
         switch self.inboundStreamMultiplexer {
         case let .some(.inline(multiplexer)):
-            return AsyncStreamMultiplexer(multiplexer, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
+            return AsyncStreamMultiplexer(
+                multiplexer,
+                continuation: continuation,
+                inboundStreamChannels: inboundStreamChannels,
+                eventLoop: self.eventLoop!
+            )
         case .some(.legacy), .none:
             throw NIOHTTP2Errors.missingMultiplexer()
         }

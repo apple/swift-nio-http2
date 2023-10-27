@@ -605,7 +605,7 @@ extension ChannelPipeline.SynchronousOperations {
 }
 
 /// `NIONegotiatedHTTPVersion` is a generic negotiation result holder for HTTP/1.1 and HTTP/2
-public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable> {
+public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable>: Sendable {
     /// Protocol negotiation resulted in the connection using HTTP/1.1.
     case http1_1(HTTP1Output)
     /// Protocol negotiation resulted in the connection using HTTP/2.
