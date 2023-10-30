@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
+import NIOHTTP1
 import NIOTLS
 
 /// The supported ALPN protocol tokens for NIO's HTTP/2 abstraction layer.
@@ -434,6 +435,7 @@ extension Channel {
     ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     ///     be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
+    @inlinable
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,
@@ -485,6 +487,7 @@ extension Channel {
     ///         channel has been fully mutated.
     /// - Returns: An `EventLoopFuture` of an `EventLoopFuture` containing the `NIOProtocolNegotiationResult` that completes when the channel
     ///     is ready to negotiate.
+    @inlinable
     internal func configureHTTP2AsyncSecureUpgrade<HTTP1Output: Sendable, HTTP2Output: Sendable>(
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1Output>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2Output>
@@ -530,6 +533,7 @@ extension Channel {
     /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
     ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
     ///     be waited on to retrieve the result of the negotiation.
+    @inlinable
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput: Sendable, HTTP2ConnectionOutput: Sendable, HTTP2StreamOutput: Sendable>(
         http2Configuration: NIOHTTP2Handler.Configuration = .init(),
@@ -580,6 +584,7 @@ extension ChannelPipeline.SynchronousOperations {
     ///     The output of this closure is the element type of the returned multiplexer
     /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
     /// be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
+    @inlinable
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public func configureAsyncHTTP2Pipeline<Output: Sendable>(
         mode: NIOHTTP2Handler.ParserMode,

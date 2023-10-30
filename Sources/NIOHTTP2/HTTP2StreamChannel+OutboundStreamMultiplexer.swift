@@ -41,6 +41,7 @@ extension HTTP2StreamChannel {
     /// Abstracts over the integrated stream multiplexing (new) and the chained channel handler (legacy) multiplexing approaches.
     ///
     /// We use an enum for this purpose since we can't use a generic (for API compatibility reasons) and it allows us to avoid the cost of using an existential.
+    @usableFromInline
     internal enum OutboundStreamMultiplexer: HTTP2OutboundStreamMultiplexer {
         case legacy(LegacyOutboundStreamMultiplexer)
         case inline(InlineStreamMultiplexer)
@@ -95,6 +96,7 @@ extension HTTP2StreamChannel {
 /// Provides a 'multiplexer' interface for legacy compatibility.
 ///
 /// This doesn't actually do any multiplexing but delegates it to the `HTTP2StreamMultiplexer` which does.
+@usableFromInline
 internal struct LegacyOutboundStreamMultiplexer {
     let multiplexer: HTTP2StreamMultiplexer
 }
