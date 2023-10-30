@@ -257,7 +257,7 @@ extension NIOHTTP2Handler {
 }
 
 extension InlineStreamMultiplexer {
-    /// InlineStreamMultiplexerSendableView exposes only the thread-safe API of InlineStreamMultiplexer
+    /// InlineStreamMultiplexer.SendableView exposes only the thread-safe API of InlineStreamMultiplexer
     @usableFromInline
     internal struct SendableView: @unchecked Sendable {
         @usableFromInline internal let _inlineStreamMultiplexer: InlineStreamMultiplexer

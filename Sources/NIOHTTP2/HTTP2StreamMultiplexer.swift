@@ -250,7 +250,14 @@ extension HTTP2StreamMultiplexer {
     ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
-        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)), promise: promise, streamStateInitializer)
+        let sendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
+        if self.channel.eventLoop.inEventLoop {
+            sendableView.createStreamChannel(promise: promise, streamStateInitializer)
+        } else {
+            self.channel.eventLoop.execute {
+                sendableView.createStreamChannel(promise: promise, streamStateInitializer)
+            }
+        }
     }
 
     /// Create a new `Channel` for a new stream initiated by this peer.
@@ -267,7 +274,44 @@ extension HTTP2StreamMultiplexer {
     ///         `ChannelPipeline` for the newly created channel.
     @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
-        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)), promise: promise, streamStateInitializer)
+        let sendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
+        if self.channel.eventLoop.inEventLoop {
+            sendableView.createStreamChannel(promise: promise, streamStateInitializer)
+        } else {
+            let sendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
+            self.channel.eventLoop.execute {
+                sendableView.createStreamChannel(promise: promise, streamStateInitializer)
+            }
+        }
+    }
+}
+
+extension HTTP2StreamMultiplexer {
+    /// HTTP2StreamMultiplexer.SendableView exposes only the thread-safe API of HTTP2StreamMultiplexer
+    struct SendableView: @unchecked Sendable {
+        let http2StreamMultiplexer: HTTP2StreamMultiplexer
+        let eventLoop: EventLoop
+
+        func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
+            if self.eventLoop.inEventLoop {
+                self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
+            } else {
+                self.eventLoop.execute {
+                    self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
+                }
+            }
+        }
+
+        @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
+        func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
+            if self.eventLoop.inEventLoop {
+                self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
+            } else {
+                self.eventLoop.execute {
+                    self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
+                }
+            }
+        }
     }
 }
 

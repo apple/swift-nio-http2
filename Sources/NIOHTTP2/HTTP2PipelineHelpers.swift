@@ -558,10 +558,12 @@ extension Channel {
         }
 
         return self.pipeline
-             .addHandler(alpnHandler)
-             .map { _ in
-                 alpnHandler.protocolNegotiationResult
-             }
+            .addHandler(alpnHandler)
+            .flatMap { _ in
+                self.pipeline.handler(type: NIOTypedApplicationProtocolNegotiationHandler<NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output>>.self).map { alpnHandler in
+                    alpnHandler.protocolNegotiationResult
+                }
+            }
     }
 
     /// Configures a `ChannelPipeline` to speak either HTTP/1.1 or HTTP/2 according to what can be negotiated with the client.

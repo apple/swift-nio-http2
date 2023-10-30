@@ -348,12 +348,14 @@ extension HTTP2CommonInboundStreamMultiplexer {
         // issues where handlers interposed between the two HTTP/2 handlers could create streams
         // in channel active which become activated twice.
         //
-        // We are safe to use NIOLoopBounds here because the public API ensures that we are on the right event loop
-        // when we get to this code. Whilst it is possible that the multiplexer was created on the wrong event loop
-        // such an eventuality would lead us to assert immediately so we would quickly discover it.
-        let loopBounds = NIOLoopBound((self, multiplexer), eventLoop: self._channel.eventLoop)
+        // We are safe to use UnsafeTransfer here because the public API ensures that we are on the right event loop
+        // when we get to this code. We aren't actually sending the values to a new isolation domain,
+        // just delaying the execution. The types will never leave the current event loop.
+        self._channel.eventLoop.assertInEventLoop()
+        let unsafeSelf = UnsafeTransfer(self)
+        let unsafeMultiplexer = UnsafeTransfer(multiplexer)
         self._channel.eventLoop.execute {
-            loopBounds.value.0._createStreamChannel(loopBounds.value.1, promise, streamStateInitializer)
+            unsafeSelf.wrappedValue._createStreamChannel(unsafeMultiplexer.wrappedValue, promise, streamStateInitializer)
         }
     }
 
@@ -396,12 +398,14 @@ extension HTTP2CommonInboundStreamMultiplexer {
         // issues where handlers interposed between the two HTTP/2 handlers could create streams
         // in channel active which become activated twice.
         //
-        // We are safe to use NIOLoopBounds here because the public API ensures that we are on the right event loop
-        // when we get to this code. Whilst it is possible that the multiplexer was created on the wrong event loop
-        // such an eventuality would lead us to assert immediately so we would quickly discover it.
-        let loopBounds = NIOLoopBound((self, multiplexer), eventLoop: self._channel.eventLoop)
+        // We are safe to use UnsafeTransfer here because the public API ensures that we are on the right event loop
+        // when we get to this code. We aren't actually sending the values to a new isolation domain,
+        // just delaying the execution. The types will never leave the current event loop.
+        self._channel.eventLoop.assertInEventLoop()
+        let unsafeSelf = UnsafeTransfer(self)
+        let unsafeMultiplexer = UnsafeTransfer(multiplexer)
         self._channel.eventLoop.execute {
-            loopBounds.value.0._createStreamChannel(loopBounds.value.1, promise, streamStateInitializer)
+            unsafeSelf.wrappedValue._createStreamChannel(unsafeMultiplexer.wrappedValue, promise, streamStateInitializer)
         }
     }
 
@@ -419,26 +423,26 @@ extension HTTP2CommonInboundStreamMultiplexer {
         promise: EventLoopPromise<Channel>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID
     ) {
-        // We are safe to use NIOLoopBounds here because the public API ensures that we are on the right event loop
-        // when we get to this code. Whilst it is possible that the multiplexer was created on the wrong event loop
-        // such an eventuality would lead us to assert immediately so we would quickly discover it.
-        let loopBounds = NIOLoopBound((self, multiplexer), eventLoop: self._channel.eventLoop)
+        // We are safe to use UnsafeTransfer here because the public API ensures that we are on the right event loop
+        // when we get to this code. We aren't actually sending the values to a new isolation domain,
+        // just delaying the execution. The types will never leave the current event loop.
+        self._channel.eventLoop.assertInEventLoop()
+        let unsafeSelf = UnsafeTransfer(self)
+        let unsafeMultiplexer = UnsafeTransfer(multiplexer)
         self._channel.eventLoop.execute {
-            let loopBoundSelf = loopBounds.value.0
-            let loopBoundMultiplexer = loopBounds.value.1
 
-            let streamID = loopBoundSelf.nextStreamID()
+            let streamID = unsafeSelf.wrappedValue.nextStreamID()
             let channel = MultiplexerAbstractChannel(
-                allocator: loopBoundSelf._channel.allocator,
-                parent: loopBoundSelf._channel,
-                multiplexer: loopBoundMultiplexer,
+                allocator: unsafeSelf.wrappedValue._channel.allocator,
+                parent: unsafeSelf.wrappedValue._channel,
+                multiplexer: unsafeMultiplexer.wrappedValue,
                 streamID: streamID,
-                targetWindowSize: Int32(loopBoundSelf._targetWindowSize),
-                outboundBytesHighWatermark: loopBoundSelf._streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: loopBoundSelf._streamChannelOutboundBytesLowWatermark,
+                targetWindowSize: Int32(unsafeSelf.wrappedValue._targetWindowSize),
+                outboundBytesHighWatermark: unsafeSelf.wrappedValue._streamChannelOutboundBytesHighWatermark,
+                outboundBytesLowWatermark: unsafeSelf.wrappedValue._streamChannelOutboundBytesLowWatermark,
                 inboundStreamStateInitializer: .includesStreamID(nil)
             )
-            loopBoundSelf.streams[streamID] = channel
+            unsafeSelf.wrappedValue.streams[streamID] = channel
             channel.configure(initializer: streamStateInitializer, userPromise: promise)
         }
     }
