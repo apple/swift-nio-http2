@@ -23,9 +23,11 @@ import NIOCore
 ///
 /// Note that while this is a `struct`, this `struct` has _reference semantics_.
 /// The implementation of `Equatable` & `Hashable` on this type reinforces that requirement.
+@usableFromInline
 struct MultiplexerAbstractChannel {
-    private(set) var baseChannel: HTTP2StreamChannel
+    @usableFromInline private(set) var baseChannel: HTTP2StreamChannel
 
+    @usableFromInline
     init(allocator: ByteBufferAllocator,
          parent: Channel,
          multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
@@ -60,6 +62,7 @@ struct MultiplexerAbstractChannel {
 }
 
 extension MultiplexerAbstractChannel {
+    @usableFromInline
     enum InboundStreamStateInitializer {
         case includesStreamID(NIOChannelInitializerWithStreamID?)
         case excludesStreamID(NIOChannelInitializer?)
@@ -73,6 +76,7 @@ extension MultiplexerAbstractChannel {
         return self.baseChannel.streamID
     }
 
+    @usableFromInline
     var channelID: ObjectIdentifier {
         return ObjectIdentifier(self.baseChannel)
     }
@@ -121,6 +125,7 @@ extension MultiplexerAbstractChannel {
     }
 
     // used for async multiplexer
+    @usableFromInline
     func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<any Sendable>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
@@ -167,12 +172,14 @@ extension MultiplexerAbstractChannel {
 }
 
 extension MultiplexerAbstractChannel: Equatable {
+    @inlinable
     static func ==(lhs: MultiplexerAbstractChannel, rhs: MultiplexerAbstractChannel) -> Bool {
         return lhs.baseChannel === rhs.baseChannel
     }
 }
 
 extension MultiplexerAbstractChannel: Hashable {
+    @inlinable
     func hash(into hasher: inout Hasher) {
         hasher.combine(ObjectIdentifier(self.baseChannel))
     }

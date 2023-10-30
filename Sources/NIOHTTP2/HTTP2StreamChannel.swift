@@ -145,6 +145,7 @@ private enum HTTP2StreamData {
     }
 }
 
+@usableFromInline
 final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     // @unchecked Sendable because the only mutable state is `_pipeline` which is only modified in init
 
@@ -369,14 +370,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
 
     public let parent: Channel?
 
+    @usableFromInline
     func localAddress0() throws -> SocketAddress {
         fatalError()
     }
 
+    @usableFromInline
     func remoteAddress0() throws -> SocketAddress {
         fatalError()
     }
 
+    @usableFromInline
     func setOption<Option: ChannelOption>(_ option: Option, value: Option.Value) -> EventLoopFuture<Void> {
         if self.eventLoop.inEventLoop {
             do {
