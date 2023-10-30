@@ -335,15 +335,3 @@ fileprivate func encodeHex(data: ByteBuffer) -> String {
     }
     return result
 }
-
-extension ByteBufferView : CustomDebugStringConvertible {
-    public var debugDescription: String {
-        var desc = "\(self.count) bytes: ["
-        for byte in self {
-            let hexByte = String(byte, radix: 16)
-            desc += " \(hexByte.count == 1 ? "0" : "")\(hexByte)"
-        }
-        desc += " ]"
-        return desc
-    }
-}
