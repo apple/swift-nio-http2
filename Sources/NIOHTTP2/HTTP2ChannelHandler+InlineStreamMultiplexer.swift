@@ -258,6 +258,9 @@ extension NIOHTTP2Handler {
 
 extension InlineStreamMultiplexer {
     /// InlineStreamMultiplexer.SendableView exposes only the thread-safe API of InlineStreamMultiplexer
+    ///
+    /// We use unchecked Sendable here because we unconditionally hop so we are on the right event loop
+    /// from here on.
     @usableFromInline
     internal struct SendableView: @unchecked Sendable {
         @usableFromInline internal let _inlineStreamMultiplexer: InlineStreamMultiplexer
@@ -269,33 +272,30 @@ extension InlineStreamMultiplexer {
         }
 
         internal func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer) {
-            if self._eventLoop.inEventLoop {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            self._eventLoop.execute {
                 self._inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
-            } else {
-                self._eventLoop.execute {
-                    self._inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
-                }
             }
         }
 
         internal func createStreamChannel(_ initializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {
-            if self._eventLoop.inEventLoop {
-                return self._inlineStreamMultiplexer.createStreamChannel(initializer)
-            } else {
-                return self._eventLoop.flatSubmit {
-                    self._inlineStreamMultiplexer.createStreamChannel(initializer)
-                }
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            return self._eventLoop.flatSubmit {
+                self._inlineStreamMultiplexer.createStreamChannel(initializer)
             }
         }
 
         @inlinable
         internal func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
-            if self._eventLoop.inEventLoop {
-                return self._inlineStreamMultiplexer.createStreamChannel(initializer)
-            } else {
-                return self._eventLoop.flatSubmit {
-                    self._inlineStreamMultiplexer.createStreamChannel(initializer)
-                }
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            return self._eventLoop.flatSubmit {
+                self._inlineStreamMultiplexer.createStreamChannel(initializer)
             }
         }
 

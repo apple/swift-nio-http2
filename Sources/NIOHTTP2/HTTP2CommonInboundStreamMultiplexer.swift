@@ -295,9 +295,9 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
 extension HTTP2CommonInboundStreamMultiplexer {
     @inlinable
-    internal func _createStreamChannel<Output: Sendable>(
-        _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        _ promise: EventLoopPromise<Output>?,
+    internal func createStreamChannel<Output: Sendable>(
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        promise: EventLoopPromise<Output>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) {
         self._channel.eventLoop.assertInEventLoop()
@@ -341,27 +341,6 @@ extension HTTP2CommonInboundStreamMultiplexer {
     @inlinable
     internal func createStreamChannel<Output: Sendable>(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        promise: EventLoopPromise<Output>?,
-        _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
-    ) {
-        // Always create streams channels on the next event loop tick. This avoids re-entrancy
-        // issues where handlers interposed between the two HTTP/2 handlers could create streams
-        // in channel active which become activated twice.
-        //
-        // We are safe to use UnsafeTransfer here because the public API ensures that we are on the right event loop
-        // when we get to this code. We aren't actually sending the values to a new isolation domain,
-        // just delaying the execution. The types will never leave the current event loop.
-        self._channel.eventLoop.assertInEventLoop()
-        let unsafeSelf = UnsafeTransfer(self)
-        let unsafeMultiplexer = UnsafeTransfer(multiplexer)
-        self._channel.eventLoop.execute {
-            unsafeSelf.wrappedValue._createStreamChannel(unsafeMultiplexer.wrappedValue, promise, streamStateInitializer)
-        }
-    }
-
-    @inlinable
-    internal func createStreamChannel<Output: Sendable>(
-        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithOutput<Output>
     ) -> EventLoopFuture<Output> {
         let promise = self._channel.eventLoop.makePromise(of: Output.self)
@@ -369,11 +348,13 @@ extension HTTP2CommonInboundStreamMultiplexer {
         return promise.futureResult
     }
 
-    internal func _createStreamChannel(
-        _ multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        _ promise: EventLoopPromise<Channel>?,
+    internal func createStreamChannel(
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        promise: EventLoopPromise<Channel>?,
         _ streamStateInitializer: @escaping NIOChannelInitializer
     ) {
+        self._channel.eventLoop.assertInEventLoop()
+
         let channel = MultiplexerAbstractChannel(
             allocator: self._channel.allocator,
             parent: self._channel,
@@ -391,26 +372,6 @@ extension HTTP2CommonInboundStreamMultiplexer {
 
     internal func createStreamChannel(
         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-        promise: EventLoopPromise<Channel>?,
-        _ streamStateInitializer: @escaping NIOChannelInitializer
-    ) {
-        // Always create streams channels on the next event loop tick. This avoids re-entrancy
-        // issues where handlers interposed between the two HTTP/2 handlers could create streams
-        // in channel active which become activated twice.
-        //
-        // We are safe to use UnsafeTransfer here because the public API ensures that we are on the right event loop
-        // when we get to this code. We aren't actually sending the values to a new isolation domain,
-        // just delaying the execution. The types will never leave the current event loop.
-        self._channel.eventLoop.assertInEventLoop()
-        let unsafeSelf = UnsafeTransfer(self)
-        let unsafeMultiplexer = UnsafeTransfer(multiplexer)
-        self._channel.eventLoop.execute {
-            unsafeSelf.wrappedValue._createStreamChannel(unsafeMultiplexer.wrappedValue, promise, streamStateInitializer)
-        }
-    }
-
-    internal func createStreamChannel(
-        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
         _ streamStateInitializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {
         let promise = self._channel.eventLoop.makePromise(of: Channel.self)
         self.createStreamChannel(multiplexer: multiplexer, promise: promise, streamStateInitializer)
@@ -423,28 +384,21 @@ extension HTTP2CommonInboundStreamMultiplexer {
         promise: EventLoopPromise<Channel>?,
         _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID
     ) {
-        // We are safe to use UnsafeTransfer here because the public API ensures that we are on the right event loop
-        // when we get to this code. We aren't actually sending the values to a new isolation domain,
-        // just delaying the execution. The types will never leave the current event loop.
         self._channel.eventLoop.assertInEventLoop()
-        let unsafeSelf = UnsafeTransfer(self)
-        let unsafeMultiplexer = UnsafeTransfer(multiplexer)
-        self._channel.eventLoop.execute {
 
-            let streamID = unsafeSelf.wrappedValue.nextStreamID()
-            let channel = MultiplexerAbstractChannel(
-                allocator: unsafeSelf.wrappedValue._channel.allocator,
-                parent: unsafeSelf.wrappedValue._channel,
-                multiplexer: unsafeMultiplexer.wrappedValue,
-                streamID: streamID,
-                targetWindowSize: Int32(unsafeSelf.wrappedValue._targetWindowSize),
-                outboundBytesHighWatermark: unsafeSelf.wrappedValue._streamChannelOutboundBytesHighWatermark,
-                outboundBytesLowWatermark: unsafeSelf.wrappedValue._streamChannelOutboundBytesLowWatermark,
-                inboundStreamStateInitializer: .includesStreamID(nil)
-            )
-            unsafeSelf.wrappedValue.streams[streamID] = channel
-            channel.configure(initializer: streamStateInitializer, userPromise: promise)
-        }
+        let streamID = self.nextStreamID()
+        let channel = MultiplexerAbstractChannel(
+            allocator: self._channel.allocator,
+            parent: self._channel,
+            multiplexer: multiplexer,
+            streamID: streamID,
+            targetWindowSize: Int32(self._targetWindowSize),
+            outboundBytesHighWatermark: self._streamChannelOutboundBytesHighWatermark,
+            outboundBytesLowWatermark: self._streamChannelOutboundBytesLowWatermark,
+            inboundStreamStateInitializer: .includesStreamID(nil)
+        )
+        self.streams[streamID] = channel
+        channel.configure(initializer: streamStateInitializer, userPromise: promise)
     }
 }
 

@@ -275,41 +275,35 @@ extension HTTP2StreamMultiplexer {
     @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
         let sendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
-        if self.channel.eventLoop.inEventLoop {
-            sendableView.createStreamChannel(promise: promise, streamStateInitializer)
-        } else {
-            let sendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
-            self.channel.eventLoop.execute {
-                sendableView.createStreamChannel(promise: promise, streamStateInitializer)
-            }
-        }
+        sendableView.createStreamChannel(promise: promise, streamStateInitializer)
     }
 }
 
 extension HTTP2StreamMultiplexer {
     /// HTTP2StreamMultiplexer.SendableView exposes only the thread-safe API of HTTP2StreamMultiplexer
+    ///
+    /// We use unckecked Sendable here because we always make sure we are on the right event loop
+    /// from this code on.
     struct SendableView: @unchecked Sendable {
         let http2StreamMultiplexer: HTTP2StreamMultiplexer
         let eventLoop: EventLoop
 
         func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
-            if self.eventLoop.inEventLoop {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            self.eventLoop.execute {
                 self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
-            } else {
-                self.eventLoop.execute {
-                    self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
-                }
             }
         }
 
         @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
         func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
-            if self.eventLoop.inEventLoop {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            self.eventLoop.execute {
                 self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
-            } else {
-                self.eventLoop.execute {
-                    self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
-                }
             }
         }
     }
