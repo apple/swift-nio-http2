@@ -146,7 +146,9 @@ private enum HTTP2StreamData {
 }
 
 @usableFromInline
-final class HTTP2StreamChannel: Channel, ChannelCore {
+final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
+    // @unchecked Sendable because the only mutable state is `_pipeline` which is only modified in init
+
     /// The stream data type of the channel.
     private let streamDataType: HTTP2StreamDataType
 
@@ -181,7 +183,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self._pipeline = ChannelPipeline(channel: self)
     }
 
-    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    internal func configure(initializer: NIOChannelInitializerWithStreamID?, userPromise promise: EventLoopPromise<Channel>?) {
         assert(self.streamDataType == .frame)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -207,7 +209,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    internal func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    internal func configure(initializer: NIOChannelInitializer?, userPromise promise: EventLoopPromise<Channel>?) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -234,7 +236,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     // This variant is used in the async stream case.
     // It uses `Any`s because when called from `configureInboundStream` it is passed the initializer stored on the handler
     // which can't be a typed generic without changing the handler API.
-    internal func configure(initializer: (@escaping (Channel) -> EventLoopFuture<any Sendable>), userPromise promise: EventLoopPromise<Any>?) {
+    internal func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<any Sendable>?) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -265,7 +267,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     /// Gets the 'autoRead' option from the parent channel and invokes the `body` closure with the
     /// result. This may be done synchronously if the parent `Channel` supports synchronous options.
-    private func getAutoReadFromParent(_ body: @escaping (Result<Bool, Error>) -> Void) {
+    private func getAutoReadFromParent(_ body: @Sendable @escaping (Result<Bool, Error>) -> Void) {
         // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
         // Note we also don't set the value here: the additional `map` causes an extra allocation
         // when using a Swift 5.0 compiler.

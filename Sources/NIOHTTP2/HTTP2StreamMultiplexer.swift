@@ -143,7 +143,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ///         receiving a `PUSH_PROMISE` frame from a server. To initiate a new outbound channel, use
     ///         ``createStreamChannel(promise:_:)-1jk0q``.
     @available(*, deprecated, renamed: "init(mode:channel:targetWindowSize:outboundBufferSizeHighWatermark:outboundBufferSizeLowWatermark:inboundStreamInitializer:)")
-    public convenience init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, targetWindowSize: Int = 65535, inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
+    public convenience init(mode: NIOHTTP2Handler.ParserMode, channel: Channel, targetWindowSize: Int = 65535, inboundStreamStateInitializer: NIOChannelInitializerWithStreamID? = nil) {
         // We default to an 8kB outbound buffer size: this is a good trade off for avoiding excessive buffering while ensuring that decent
         // throughput can be maintained. We use 4kB as the low water mark.
         self.init(mode: mode,
@@ -176,7 +176,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                             targetWindowSize: Int = 65535,
                             outboundBufferSizeHighWatermark: Int = 8196,
                             outboundBufferSizeLowWatermark: Int = 4092,
-                            inboundStreamInitializer: ((Channel) -> EventLoopFuture<Void>)?) {
+                            inboundStreamInitializer: NIOChannelInitializer?) {
         self.init(mode: mode,
                   channel: channel,
                   targetWindowSize: targetWindowSize,
@@ -206,7 +206,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
                             targetWindowSize: Int = 65535,
                             outboundBufferSizeHighWatermark: Int,
                             outboundBufferSizeLowWatermark: Int,
-                            inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) {
+                            inboundStreamStateInitializer: NIOChannelInitializerWithStreamID? = nil) {
         self.init(mode: mode,
                   channel: channel,
                   targetWindowSize: targetWindowSize,
@@ -250,7 +250,14 @@ extension HTTP2StreamMultiplexer {
     ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
     public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
-        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)), promise: promise, streamStateInitializer)
+        let sendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
+        if self.channel.eventLoop.inEventLoop {
+            sendableView.createStreamChannel(promise: promise, streamStateInitializer)
+        } else {
+            self.channel.eventLoop.execute {
+                sendableView.createStreamChannel(promise: promise, streamStateInitializer)
+            }
+        }
     }
 
     /// Create a new `Channel` for a new stream initiated by this peer.
@@ -266,8 +273,39 @@ extension HTTP2StreamMultiplexer {
     ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
     @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
-    public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping (Channel, HTTP2StreamID) -> EventLoopFuture<Void>) {
-        self.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self)), promise: promise, streamStateInitializer)
+    public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
+        let sendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
+        sendableView.createStreamChannel(promise: promise, streamStateInitializer)
+    }
+}
+
+extension HTTP2StreamMultiplexer {
+    /// HTTP2StreamMultiplexer.SendableView exposes only the thread-safe API of HTTP2StreamMultiplexer
+    ///
+    /// We use unckecked Sendable here because we always make sure we are on the right event loop
+    /// from this code on.
+    struct SendableView: @unchecked Sendable {
+        let http2StreamMultiplexer: HTTP2StreamMultiplexer
+        let eventLoop: EventLoop
+
+        func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            self.eventLoop.execute {
+                self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
+            }
+        }
+
+        @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
+        func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            self.eventLoop.execute {
+                self.http2StreamMultiplexer.commonStreamMultiplexer.createStreamChannel(multiplexer: .legacy(LegacyOutboundStreamMultiplexer(multiplexer: self.http2StreamMultiplexer)), promise: promise, streamStateInitializer)
+            }
+        }
     }
 }
 

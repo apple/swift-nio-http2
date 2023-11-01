@@ -177,7 +177,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 
     /// The mode for this parser to operate in: client or server.
-    public enum ParserMode {
+    public enum ParserMode: Sendable {
         /// Client mode
         case client
 
@@ -885,9 +885,9 @@ extension NIOHTTP2Handler {
             // Don't allow infinite recursion through this method.
             return
         }
-        
+
         self.isUnbufferingAndFlushingAutomaticFrames = true
-    
+
         loop: while true {
             switch self.outboundBuffer.nextFlushedWritableFrame(channelWritable: self.channelWritable) {
             case .noFrame:
@@ -898,7 +898,7 @@ extension NIOHTTP2Handler {
                 self.processOutboundFrame(context: context, frame: frame, promise: promise)
             }
         }
-        
+
         self.isUnbufferingAndFlushingAutomaticFrames = false
         self.flushIfNecessary(context: context)
     }
@@ -1163,8 +1163,9 @@ extension NIOHTTP2Handler {
                 return try self.syncMultiplexer()
             }
         } else {
+            let unsafeSelf = UnsafeTransfer(self)
             return self._eventLoop!.submit {
-                return try self.syncMultiplexer()
+                return try unsafeSelf.wrappedValue.syncMultiplexer()
             }
         }
     }
@@ -1176,11 +1177,14 @@ extension NIOHTTP2Handler {
     /// > - The caller is already on the correct event loop.
     public func syncMultiplexer() throws -> StreamMultiplexer {
         self._eventLoop!.preconditionInEventLoop()
+        guard let inboundStreamMultiplexer = self.inboundStreamMultiplexer else {
+            throw NIOHTTP2Errors.missingMultiplexer()
+        }
 
-        switch self.inboundStreamMultiplexer {
-        case let .some(.inline(multiplexer)):
-            return StreamMultiplexer(multiplexer)
-        case .some(.legacy), .none:
+        switch inboundStreamMultiplexer {
+        case let .inline(multiplexer):
+            return StreamMultiplexer(multiplexer, eventLoop: self._eventLoop!)
+        case .legacy:
             throw NIOHTTP2Errors.missingMultiplexer()
         }
     }
@@ -1189,11 +1193,14 @@ extension NIOHTTP2Handler {
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     internal func syncAsyncStreamMultiplexer<Output: Sendable>(continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<Output>) throws -> AsyncStreamMultiplexer<Output> {
         self._eventLoop!.preconditionInEventLoop()
+        guard let inboundStreamMultiplexer = self.inboundStreamMultiplexer else {
+            throw NIOHTTP2Errors.missingMultiplexer()
+        }
 
-        switch self.inboundStreamMultiplexer {
-        case let .some(.inline(multiplexer)):
-            return AsyncStreamMultiplexer(multiplexer, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
-        case .some(.legacy), .none:
+        switch inboundStreamMultiplexer {
+        case let .inline(multiplexer):
+            return AsyncStreamMultiplexer(multiplexer, eventLoop: self._eventLoop!, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
+        case .legacy:
             throw NIOHTTP2Errors.missingMultiplexer()
         }
     }

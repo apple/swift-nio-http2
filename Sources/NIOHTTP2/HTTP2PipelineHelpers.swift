@@ -33,6 +33,8 @@ import NIOTLS
 /// Configuring for servers is very similar.
 public let NIOHTTP2SupportedALPNProtocols = ["h2", "http/1.1"]
 
+/// Legacy type of NIO Channel initializer callbacks which take `HTTP2StreamID` as a parameter.
+public typealias NIOChannelInitializerWithStreamID = @Sendable (Channel, HTTP2StreamID) -> EventLoopFuture<Void>
 /// The type of NIO Channel initializer callbacks which do not need to return data.
 public typealias NIOChannelInitializer = @Sendable (Channel) -> EventLoopFuture<Void>
 /// The type of NIO Channel initializer callbacks which need to return data.
@@ -105,10 +107,10 @@ extension Channel {
     public func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
                                        initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
                                        position: ChannelPipeline.Position = .last,
-                                       inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
+                                       inboundStreamStateInitializer: NIOChannelInitializerWithStreamID? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
         return self.configureHTTP2Pipeline(mode: mode, initialLocalSettings: initialLocalSettings, position: position, targetWindowSize: 65535, inboundStreamStateInitializer: inboundStreamStateInitializer)
     }
-    
+
     /// Configures a `ChannelPipeline` to speak HTTP/2.
     ///
     /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
@@ -129,14 +131,13 @@ extension Channel {
                                        initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
                                        position: ChannelPipeline.Position = .last,
                                        targetWindowSize: Int,
-                                       inboundStreamStateInitializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
+                                       inboundStreamStateInitializer: NIOChannelInitializerWithStreamID? = nil) -> EventLoopFuture<HTTP2StreamMultiplexer> {
         var handlers = [ChannelHandler]()
         handlers.reserveCapacity(2)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
         handlers.append(NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings))
-        let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, targetWindowSize: targetWindowSize, inboundStreamStateInitializer: inboundStreamStateInitializer)
-        handlers.append(multiplexer)
+        handlers.append(HTTP2StreamMultiplexer(mode: mode, channel: self, targetWindowSize: targetWindowSize, inboundStreamStateInitializer: inboundStreamStateInitializer))
 
-        return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
+        return self.pipeline.addHandlers(handlers, position: position).flatMap { self.pipeline.handler(type: HTTP2StreamMultiplexer.self) }
     }
 
     /// Configures a `ChannelPipeline` to speak HTTP/2.
@@ -158,14 +159,31 @@ extension Channel {
                                        initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
                                        position: ChannelPipeline.Position = .last,
                                        targetWindowSize: Int = 65535,
-                                       inboundStreamInitializer: ((Channel) -> EventLoopFuture<Void>)?) -> EventLoopFuture<HTTP2StreamMultiplexer> {
-        var handlers = [ChannelHandler]()
-        handlers.reserveCapacity(2)  // Update this if we need to add more handlers, to avoid unnecessary reallocation.
-        handlers.append(NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings))
-        let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: self, targetWindowSize: targetWindowSize, inboundStreamInitializer: inboundStreamInitializer)
-        handlers.append(multiplexer)
+                                       inboundStreamInitializer: NIOChannelInitializer?) -> EventLoopFuture<HTTP2StreamMultiplexer> {
 
-        return self.pipeline.addHandlers(handlers, position: position).map { multiplexer }
+        if self.eventLoop.inEventLoop {
+            return self.eventLoop.makeCompletedFuture {
+                try self.pipeline.syncOperations.configureHTTP2Pipeline(
+                    mode: mode,
+                    channel: self,
+                    initialLocalSettings: initialLocalSettings,
+                    position: position,
+                    targetWindowSize: targetWindowSize,
+                    inboundStreamInitializer: inboundStreamInitializer
+                )
+            }
+        } else {
+            return self.eventLoop.submit {
+                try self.pipeline.syncOperations.configureHTTP2Pipeline(
+                    mode: mode,
+                    channel: self,
+                    initialLocalSettings: initialLocalSettings,
+                    position: position,
+                    targetWindowSize: targetWindowSize,
+                    inboundStreamInitializer: inboundStreamInitializer
+                )
+            }
+        }
     }
 
     /// Configures a `ChannelPipeline` to speak HTTP/2.
@@ -239,8 +257,8 @@ extension Channel {
     ///         negotiated, or if no protocol was negotiated. Must return a future that completes when the
     ///         channel has been fully mutated.
     /// - Returns: An `EventLoopFuture<Void>` that completes when the channel is ready to negotiate.
-    public func configureHTTP2SecureUpgrade(h2ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>,
-                                            http1ChannelConfigurator: @escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Void> {
+    public func configureHTTP2SecureUpgrade(h2ChannelConfigurator: @escaping NIOChannelInitializer,
+                                            http1ChannelConfigurator: @escaping NIOChannelInitializer) -> EventLoopFuture<Void> {
         let alpnHandler = ApplicationProtocolNegotiationHandler { result in
             switch result {
             case .negotiated("h2"):
@@ -276,12 +294,12 @@ extension Channel {
     ///         that completes when the channel has been fully mutated.
     /// - Returns: `EventLoopFuture<Void>` that completes when the channel is ready.
     public func configureCommonHTTPServerPipeline(
-        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
-        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>
+        h2ConnectionChannelConfigurator: NIOChannelInitializer? = nil,
+        _ configurator: @escaping NIOChannelInitializer
     ) -> EventLoopFuture<Void> {
         return self.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator, targetWindowSize: 65535, configurator)
     }
-    
+
     /// Configures a `ChannelPipeline` to speak either HTTP/1.1 or HTTP/2 according to what can be negotiated with the client.
     ///
     /// This helper takes care of configuring the server pipeline such that it negotiates whether to
@@ -300,9 +318,9 @@ extension Channel {
     ///         that completes when the channel has been fully mutated.
     /// - Returns: `EventLoopFuture<Void>` that completes when the channel is ready.
     public func configureCommonHTTPServerPipeline(
-        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
+        h2ConnectionChannelConfigurator: NIOChannelInitializer? = nil,
         targetWindowSize: Int,
-        _ configurator: @escaping (Channel) -> EventLoopFuture<Void>
+        _ configurator: @escaping NIOChannelInitializer
     ) -> EventLoopFuture<Void> {
         return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
             channel.configureHTTP2Pipeline(mode: .server, targetWindowSize: targetWindowSize) { streamChannel -> EventLoopFuture<Void> in
@@ -337,7 +355,7 @@ extension Channel {
         connectionConfiguration: NIOHTTP2Handler.ConnectionConfiguration,
         streamConfiguration: NIOHTTP2Handler.StreamConfiguration,
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
-        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)? = nil,
+        h2ConnectionChannelConfigurator: NIOChannelInitializer? = nil,
         configurator: @escaping NIOChannelInitializer
     ) -> EventLoopFuture<Void> {
         return self._commonHTTPServerPipeline(configurator: configurator, h2ConnectionChannelConfigurator: h2ConnectionChannelConfigurator) { channel in
@@ -355,11 +373,11 @@ extension Channel {
     }
 
     private func _commonHTTPServerPipeline(
-        configurator: @escaping (Channel) -> EventLoopFuture<Void>,
-        h2ConnectionChannelConfigurator: ((Channel) -> EventLoopFuture<Void>)?,
-        configureHTTP2Pipeline: @escaping (Channel) -> EventLoopFuture<Void>
+        configurator: @escaping NIOChannelInitializer,
+        h2ConnectionChannelConfigurator: NIOChannelInitializer?,
+        configureHTTP2Pipeline: @escaping NIOChannelInitializer
     ) -> EventLoopFuture<Void> {
-        let h2ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+        let h2ChannelConfigurator: NIOChannelInitializer = { channel in
             configureHTTP2Pipeline(channel).flatMap { _ in
                 if let h2ConnectionChannelConfigurator = h2ConnectionChannelConfigurator {
                     return h2ConnectionChannelConfigurator(channel)
@@ -368,7 +386,7 @@ extension Channel {
                 }
             }
         }
-        let http1ChannelConfigurator = { (channel: Channel) -> EventLoopFuture<Void> in
+        let http1ChannelConfigurator: NIOChannelInitializer = { channel in
             channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
                 configurator(channel)
             }
@@ -415,6 +433,37 @@ extension ChannelPipeline.SynchronousOperations {
 
         // `multiplexer` will always be non-nil when we are initializing with an `inboundStreamInitializer`
         return try handler.syncMultiplexer()
+    }
+
+    /// Synchronously configures a `ChannelPipeline` to speak HTTP/2.
+    ///
+    /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not handle negotiation.
+    /// Instead, this simply adds the handlers required to speak HTTP/2 after negotiation has completed, or when agreed by prior knowledge.
+    /// Whenever possible use this function to setup a HTTP/2 server pipeline, as it allows that pipeline to evolve without breaking your code.
+    ///
+    /// - Parameters:
+    ///   - mode: The mode this pipeline will operate in, server or client.
+    ///   - channel: to which the created``HTTP2StreamMultiplexer`` will belong.
+    ///   - initialLocalSettings: The settings that will be used when establishing the connection. These will be sent to the peer as part of the
+    ///         handshake.
+    ///   - position: The position in the pipeline into which to insert these handlers.
+    ///   - targetWindowSize: The target size of the HTTP/2 flow control window.
+    ///   - inboundStreamInitializer: A closure that will be called whenever the remote peer initiates a new stream. This should almost always
+    ///         be provided, especially on servers.
+    /// - Returns: An `EventLoopFuture` containing the `HTTP2StreamMultiplexer` inserted into this pipeline, which can be used to initiate new streams.
+    internal func configureHTTP2Pipeline(mode: NIOHTTP2Handler.ParserMode,
+                                         channel: Channel,
+                                         initialLocalSettings: [HTTP2Setting] = nioDefaultSettings,
+                                         position: ChannelPipeline.Position = .last,
+                                         targetWindowSize: Int = 65535,
+                                         inboundStreamInitializer: NIOChannelInitializer?) throws -> HTTP2StreamMultiplexer {
+
+        let http2Handler = NIOHTTP2Handler(mode: mode, initialSettings: initialLocalSettings)
+        let multiplexer = HTTP2StreamMultiplexer(mode: mode, channel: channel, targetWindowSize: targetWindowSize, inboundStreamInitializer: inboundStreamInitializer)
+        try self.addHandler(http2Handler, position: position)
+        try self.addHandler(multiplexer, position: .after(http2Handler))
+
+        return multiplexer
     }
 }
 
@@ -491,6 +540,7 @@ extension Channel {
     internal func configureHTTP2AsyncSecureUpgrade<HTTP1Output: Sendable, HTTP2Output: Sendable>(
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1Output>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2Output>
+
     ) -> EventLoopFuture<EventLoopFuture<NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output>>> {
         let alpnHandler = NIOTypedApplicationProtocolNegotiationHandler<NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output>>() { result in
             switch result {
@@ -509,8 +559,10 @@ extension Channel {
 
         return self.pipeline
             .addHandler(alpnHandler)
-            .map { _ in
-                alpnHandler.protocolNegotiationResult
+            .flatMap { _ in
+                self.pipeline.handler(type: NIOTypedApplicationProtocolNegotiationHandler<NIONegotiatedHTTPVersion<HTTP1Output, HTTP2Output>>.self).map { alpnHandler in
+                    alpnHandler.protocolNegotiationResult
+                }
             }
     }
 
@@ -610,7 +662,7 @@ extension ChannelPipeline.SynchronousOperations {
 }
 
 /// `NIONegotiatedHTTPVersion` is a generic negotiation result holder for HTTP/1.1 and HTTP/2
-public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable> {
+public enum NIONegotiatedHTTPVersion<HTTP1Output: Sendable, HTTP2Output: Sendable>: Sendable {
     /// Protocol negotiation resulted in the connection using HTTP/1.1.
     case http1_1(HTTP1Output)
     /// Protocol negotiation resulted in the connection using HTTP/2.

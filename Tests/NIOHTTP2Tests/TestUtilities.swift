@@ -88,7 +88,7 @@ extension XCTestCase {
     }
 
     /// Have a `NIOAsyncTestingChannel` send data to another until it makes no forward progress.
-    func deliverAllBytes(from source: NIOAsyncTestingChannel, to destination: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
+    static func deliverAllBytes(from source: NIOAsyncTestingChannel, to destination: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
         var operated: Bool
 
         func readBytesFromChannel(_ channel: NIOAsyncTestingChannel) async -> ByteBuffer? {

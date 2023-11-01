@@ -71,11 +71,10 @@ public enum NIOHPACKErrors {
     /// A dynamic table size update was found outside its allowed place.
     /// They may only be included at the start of a header block.
     public struct IllegalDynamicTableSizeChange : NIOHPACKError {}
-
     /// A new header could not be added to the dynamic table. Usually
     /// this means the header itself is larger than the current
     /// dynamic table size.
-    public struct FailedToAddIndexedHeader<Name: Collection, Value: Collection> : NIOHPACKError where Name.Element == UInt8, Value.Element == UInt8 {
+    public struct FailedToAddIndexedHeader<Name: Collection & Sendable, Value: Collection & Sendable> : NIOHPACKError where Name.Element == UInt8, Value.Element == UInt8 {
         /// The table size required to be able to add this header to the table.
         public let bytesNeeded: Int
 

@@ -189,7 +189,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             // Here we send a large response: 65535 bytes in size.
             let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "65535")])
 
-            var responseBody = self.clientChannel.allocator.buffer(capacity: 65535)
+            var responseBody = channel.allocator.buffer(capacity: 65535)
             responseBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
 
             let respFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: responseHeaders))
@@ -252,7 +252,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             let reqFrame = HTTP2Frame.FramePayload.headers(.init(headers: headers))
             channel.write(reqFrame, promise: nil)
 
-            var requestBody = self.clientChannel.allocator.buffer(capacity: 65535)
+            var requestBody = channel.allocator.buffer(capacity: 65535)
             requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
 
             // Now prepare the large body. We need END_STREAM set.

@@ -168,14 +168,15 @@ extension NIOHTTP2Handler {
     /// on ``HTTP2Frame/FramePayload`` objects as their base communication
     /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
     /// and `IOData`.
-    public struct StreamMultiplexer: @unchecked Sendable {
-        // '@unchecked Sendable' because this state is not intrinsically `Sendable`
-        // but it is only accessed in `createStreamChannel` which executes the work on the right event loop
-        private let inlineStreamMultiplexer: InlineStreamMultiplexer
+    public struct StreamMultiplexer: Sendable {
+        private let inlineStreamMultiplexer: InlineStreamMultiplexer.SendableView
+
+        private let eventLoop: EventLoop
 
         /// Cannot be created by users.
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer) {
-            self.inlineStreamMultiplexer = inlineStreamMultiplexer
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop) {
+            self.inlineStreamMultiplexer = InlineStreamMultiplexer.SendableView(inlineStreamMultiplexer, eventLoop: eventLoop)
+            self.eventLoop = eventLoop
         }
 
         /// Create a new `Channel` for a new stream initiated by this peer.
@@ -233,26 +234,79 @@ extension NIOHTTP2Handler {
     /// You can open a stream by calling ``openStream(_:)``. Locally-initiated stream channel objects are initialized upon creation using the supplied `initializer` which returns a type
     /// `Output`. This type may be `HTTP2Frame` or changed to any other type.
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    public struct AsyncStreamMultiplexer<InboundStreamOutput> {
-        @usableFromInline internal let inlineStreamMultiplexer: InlineStreamMultiplexer
+    public struct AsyncStreamMultiplexer<InboundStreamOutput: Sendable>: Sendable {
+        @usableFromInline internal let _inlineStreamMultiplexer: InlineStreamMultiplexer.SendableView
         public let inbound: NIOHTTP2AsyncSequence<InboundStreamOutput>
 
         // Cannot be created by users.
         @usableFromInline
-        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<InboundStreamOutput>) {
-            self.inlineStreamMultiplexer = inlineStreamMultiplexer
-            self.inlineStreamMultiplexer.setChannelContinuation(continuation)
+        internal init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop, continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<InboundStreamOutput>) {
+            self._inlineStreamMultiplexer = InlineStreamMultiplexer.SendableView(inlineStreamMultiplexer, eventLoop: eventLoop)
+            self._inlineStreamMultiplexer.setChannelContinuation(continuation)
             self.inbound = inboundStreamChannels
         }
 
-
-        /// Create a stream channel initialized with the provided closure
         /// - Parameter initializer: A closure that will be called upon the created stream which is responsible for
         ///   initializing the stream's `Channel`.
         /// - Returns: The result of the `initializer`.
         @inlinable
         public func openStream<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) async throws -> Output {
-            return try await self.inlineStreamMultiplexer.createStreamChannel(initializer).get()
+            return try await self._inlineStreamMultiplexer.createStreamChannel(initializer).get()
+        }
+    }
+}
+
+extension InlineStreamMultiplexer {
+    /// InlineStreamMultiplexer.SendableView exposes only the thread-safe API of InlineStreamMultiplexer
+    ///
+    /// We use unchecked Sendable here because we unconditionally hop so we are on the right event loop
+    /// from here on.
+    @usableFromInline
+    internal struct SendableView: @unchecked Sendable {
+        @usableFromInline internal let _inlineStreamMultiplexer: InlineStreamMultiplexer
+        @usableFromInline internal let _eventLoop: EventLoop
+
+        init(_ inlineStreamMultiplexer: InlineStreamMultiplexer, eventLoop: EventLoop) {
+            self._inlineStreamMultiplexer = inlineStreamMultiplexer
+            self._eventLoop = eventLoop
+        }
+
+        internal func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer) {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            self._eventLoop.execute {
+                self._inlineStreamMultiplexer.createStreamChannel(promise: promise, streamStateInitializer)
+            }
+        }
+
+        internal func createStreamChannel(_ initializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            return self._eventLoop.flatSubmit {
+                self._inlineStreamMultiplexer.createStreamChannel(initializer)
+            }
+        }
+
+        @inlinable
+        internal func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
+            // Always create streams channels on the next event loop tick. This avoids re-entrancy
+            // issues where handlers interposed between the two HTTP/2 handlers could create streams
+            // in channel active which become activated twice.
+            return self._eventLoop.flatSubmit {
+                self._inlineStreamMultiplexer.createStreamChannel(initializer)
+            }
+        }
+
+        internal func setChannelContinuation(_ streamChannels: any AnyContinuation) {
+            if self._eventLoop.inEventLoop {
+                return self._inlineStreamMultiplexer.setChannelContinuation(streamChannels)
+            } else {
+                self._eventLoop.execute {
+                    return self._inlineStreamMultiplexer.setChannelContinuation(streamChannels)
+                }
+            }
         }
     }
 }

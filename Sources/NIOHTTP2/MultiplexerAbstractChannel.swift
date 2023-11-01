@@ -64,9 +64,9 @@ struct MultiplexerAbstractChannel {
 extension MultiplexerAbstractChannel {
     @usableFromInline
     enum InboundStreamStateInitializer {
-        case includesStreamID(((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?)
-        case excludesStreamID(((Channel) -> EventLoopFuture<Void>)?)
-        case returnsAny(((Channel) -> EventLoopFuture<any Sendable>))
+        case includesStreamID(NIOChannelInitializerWithStreamID?)
+        case excludesStreamID(NIOChannelInitializer?)
+        case returnsAny(NIOChannelInitializerWithOutput<any Sendable>)
     }
 }
 
@@ -105,7 +105,7 @@ extension MultiplexerAbstractChannel {
         }
     }
 
-    func configureInboundStream(initializer: InboundStreamStateInitializer, promise: EventLoopPromise<Any>?) {
+    func configureInboundStream(initializer: InboundStreamStateInitializer, promise: EventLoopPromise<any Sendable>?) {
         switch initializer {
         case .includesStreamID, .excludesStreamID:
             preconditionFailure("Configuration with a supplied `Any` promise is not supported with this initializer type.")
@@ -115,7 +115,7 @@ extension MultiplexerAbstractChannel {
     }
 
     // legacy `initializer` function signature
-    func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    func configure(initializer: NIOChannelInitializerWithStreamID?, userPromise promise: EventLoopPromise<Channel>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
@@ -126,7 +126,7 @@ extension MultiplexerAbstractChannel {
 
     // used for async multiplexer
     @usableFromInline
-    func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<Any>?) {
+    func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<any Sendable>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 

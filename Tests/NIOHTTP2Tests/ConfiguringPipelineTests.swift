@@ -14,6 +14,7 @@
 
 import XCTest
 
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
@@ -160,10 +161,12 @@ class ConfiguringPipelineTests: XCTestCase {
         // we want to hit both of these.
         let connectionPromise: EventLoopPromise<Void> = self.serverChannel.eventLoop.makePromise()
 
+        let serverChannel = self.serverChannel!
+
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            self.serverChannel.configureHTTP2Pipeline(mode: .server)
+            serverChannel.configureHTTP2Pipeline(mode: .server)
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -194,10 +197,12 @@ class ConfiguringPipelineTests: XCTestCase {
         // we want to hit both of these.
         let connectionPromise: EventLoopPromise<Void> = self.serverChannel.eventLoop.makePromise()
 
+        let serverChannel = self.serverChannel!
+
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535)
+            serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535)
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -310,13 +315,15 @@ class ConfiguringPipelineTests: XCTestCase {
     }
 
     /// A simple channel handler that records inbound frames.
-    class HTTP1ServerRequestRecorderHandler: ChannelInboundHandler {
+    final class HTTP1ServerRequestRecorderHandler: ChannelInboundHandler, Sendable {
         typealias InboundIn = HTTPServerRequestPart
 
-        var receivedParts: [HTTPServerRequestPart] = []
+        let receivedParts = NIOLockedValueBox<[HTTPServerRequestPart]>([])
 
         func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-            self.receivedParts.append(self.unwrapInboundIn(data))
+            self.receivedParts.withLockedValue { receivedParts in
+                receivedParts.append(self.unwrapInboundIn(data))
+            }
         }
     }
 
@@ -330,11 +337,12 @@ class ConfiguringPipelineTests: XCTestCase {
             }
         }
 
-        let serverRecorder = HTTP1ServerRequestRecorderHandler()
         let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client).wait())
 
+        let serverChildChannelPromise = self.serverChannel.eventLoop.makePromise(of: Channel.self)
         XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
-            return channel.pipeline.addHandler(serverRecorder)
+            serverChildChannelPromise.succeed(channel)
+            return channel.pipeline.addHandler(HTTP1ServerRequestRecorderHandler())
         }.wait())
 
         // Let's pretend the TLS handler did protocol negotiation for us
@@ -361,21 +369,27 @@ class ConfiguringPipelineTests: XCTestCase {
             XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
         }
 
-        // Assert that the user-provided handler received the
-        // HTTP1 parts corresponding to the H2 message sent
-        XCTAssertEqual(2, serverRecorder.receivedParts.count)
-        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
-            XCTAssertEqual(1, head.headers["host"].count)
-            XCTAssertEqual("localhost", head.headers["host"].first)
-            XCTAssertEqual(.GET, head.method)
-            XCTAssertEqual("/testH2toHTTP1", head.uri)
-        } else {
-            XCTFail("Expected head")
-        }
-        if case .some(.end(_)) = serverRecorder.receivedParts.last {
-        } else {
-            XCTFail("Expected end")
-        }
+        let serverChildChannel = try serverChildChannelPromise.futureResult.wait()
+        try serverChildChannel.pipeline.handler(type: HTTP1ServerRequestRecorderHandler.self).map { serverRecorder in
+            // Assert that the user-provided handler received the
+            // HTTP1 parts corresponding to the H2 message sent
+            serverRecorder.receivedParts.withLockedValue { receivedParts in
+                XCTAssertEqual(2, receivedParts.count)
+                if case .some(.head(let head)) = receivedParts.first {
+                    XCTAssertEqual(1, head.headers["host"].count)
+                    XCTAssertEqual("localhost", head.headers["host"].first)
+                    XCTAssertEqual(.GET, head.method)
+                    XCTAssertEqual("/testH2toHTTP1", head.uri)
+                } else {
+                    XCTFail("Expected head")
+                }
+                if case .some(.end(_)) = receivedParts.last {
+                } else {
+                    XCTFail("Expected end")
+                }
+            }
+        }.wait()
+
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
 
@@ -393,11 +407,12 @@ class ConfiguringPipelineTests: XCTestCase {
             }
         }
 
-        let serverRecorder = HTTP1ServerRequestRecorderHandler()
         let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).wait())
 
+        let serverChildChannelPromise = self.serverChannel.eventLoop.makePromise(of: Channel.self)
         XCTAssertNoThrow(try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: { $0.pipeline.addHandler(ErrorHandler()) }) { channel in
-            return channel.pipeline.addHandler(serverRecorder)
+            serverChildChannelPromise.succeed(channel)
+            return channel.pipeline.addHandler(HTTP1ServerRequestRecorderHandler())
         }.wait())
 
         // Let's pretend the TLS handler did protocol negotiation for us
@@ -424,21 +439,27 @@ class ConfiguringPipelineTests: XCTestCase {
             XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
         }
 
-        // Assert that the user-provided handler received the
-        // HTTP1 parts corresponding to the H2 message sent
-        XCTAssertEqual(2, serverRecorder.receivedParts.count)
-        if case .some(.head(let head)) = serverRecorder.receivedParts.first {
-            XCTAssertEqual(1, head.headers["host"].count)
-            XCTAssertEqual("localhost", head.headers["host"].first)
-            XCTAssertEqual(.GET, head.method)
-            XCTAssertEqual("/testH2toHTTP1", head.uri)
-        } else {
-            XCTFail("Expected head")
-        }
-        if case .some(.end(_)) = serverRecorder.receivedParts.last {
-        } else {
-            XCTFail("Expected end")
-        }
+        let serverChildChannel = try serverChildChannelPromise.futureResult.wait()
+        try serverChildChannel.pipeline.handler(type: HTTP1ServerRequestRecorderHandler.self).map { serverRecorder in
+            // Assert that the user-provided handler received the
+            // HTTP1 parts corresponding to the H2 message sent
+            serverRecorder.receivedParts.withLockedValue { receivedParts in
+                XCTAssertEqual(2, receivedParts.count)
+                if case .some(.head(let head)) = receivedParts.first {
+                    XCTAssertEqual(1, head.headers["host"].count)
+                    XCTAssertEqual("localhost", head.headers["host"].first)
+                    XCTAssertEqual(.GET, head.method)
+                    XCTAssertEqual("/testH2toHTTP1", head.uri)
+                } else {
+                    XCTFail("Expected head")
+                }
+                if case .some(.end(_)) = receivedParts.last {
+                } else {
+                    XCTFail("Expected end")
+                }
+            }
+        }.wait()
+
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
 
