@@ -2375,4 +2375,8 @@ class HTTP2FrameParserTests: XCTestCase {
                                        payload: .data(.init(data: .byteBuffer(payload), endStream: true)))
         try assertReadsFrame(from: greaseBuf, matching: expectedFrame, expectedFlowControlledLength: 13)
     }
+
+    func testFrameFitsIntoAnExistentialContainer() throws {
+        XCTAssertLessThanOrEqual(MemoryLayout<HTTP2Frame>.size, 24)
+    }
 }

@@ -27,9 +27,15 @@ public struct HTTP2Frame: Sendable {
 
     /// Stream priority data, used in PRIORITY frames and optionally in HEADERS frames.
     public struct StreamPriorityData: Equatable, Hashable, Sendable {
-        public var exclusive: Bool
         public var dependency: HTTP2StreamID
+        public var exclusive: Bool
         public var weight: UInt8
+
+        public init(exclusive: Bool, dependency: HTTP2StreamID, weight: UInt8) {
+            self.exclusive = exclusive
+            self.dependency = dependency
+            self.weight = weight
+        }
     }
 
     /// Frame-type-specific payload data.
@@ -46,7 +52,7 @@ public struct HTTP2Frame: Sendable {
         /// frames into a single ``HTTP2Frame/FramePayload/headers(_:)`` instance.
         ///
         /// See [RFC 7540 § 6.2](https://httpwg.org/specs/rfc7540.html#rfc.section.6.2).
-        indirect case headers(Headers)
+        case headers(Headers)
         
         /// A `PRIORITY` frame, used to change priority and dependency ordering among
         /// streams.
@@ -212,35 +218,106 @@ public struct HTTP2Frame: Sendable {
 
         /// The payload of a `HEADERS` frame.
         public struct Headers: Sendable {
+            /// An OptionSet that keeps track of the various boolean flags in HEADERS.
+            /// It allows us to elide having our two optionals by keeping track of their
+            /// optionality here, which frees up a byte and keeps the total size of
+            /// HTTP2Frame at 24 bytes.
+            @usableFromInline
+            struct Booleans: OptionSet, Sendable, Hashable {
+                @usableFromInline
+                var rawValue: UInt8
+
+                @inlinable
+                init(rawValue: UInt8) {
+                    self.rawValue = rawValue
+                }
+
+                @usableFromInline static let endStream = Booleans(rawValue: 1 << 0)
+                @usableFromInline static let priorityPresent = Booleans(rawValue: 1 << 1)
+                @usableFromInline static let paddingPresent = Booleans(rawValue: 1 << 2)
+            }
+
             /// The decoded header block belonging to this `HEADERS` frame.
             public var headers: HPACKHeaders
 
+            /// Stream priority data.
+            ///
+            /// If `.priorityPresent` is not set in our boolean flags, this value is ignored.
+            @usableFromInline
+            var _priorityData: StreamPriorityData
+
+            /// The number of padding bytes in this frame.
+            ///
+            /// If `.paddingPresent` is not set in our boolean flags, this value is ignored.
+            @usableFromInline
+            var _paddingBytes: UInt8
+
+            /// Boolean flags that control the presence of other values in this frame.
+            @usableFromInline
+            var booleans: Booleans
+
             /// The stream priority data transmitted on this frame, if any.
-            public var priorityData: StreamPriorityData?
+            @inlinable
+            public var priorityData: StreamPriorityData? {
+                get {
+                    if self.booleans.contains(.priorityPresent) {
+                        return self._priorityData
+                    } else {
+                        return nil
+                    }
+                }
+                set {
+                    if let newValue = newValue {
+                        self._priorityData = newValue
+                        self.booleans.insert(.priorityPresent)
+                    } else {
+                        self.booleans.remove(.priorityPresent)
+                    }
+                }
+            }
 
             /// The value of the `END_STREAM` flag on this frame.
-            public var endStream: Bool
-
-            /// The underlying number of padding bytes. If nil, no padding is present.
-            internal private(set) var _paddingBytes: UInt8?
+            @inlinable
+            public var endStream: Bool {
+                get {
+                    self.booleans.contains(.endStream)
+                }
+                set {
+                    if newValue {
+                        self.booleans.insert(.endStream)
+                    } else {
+                        self.booleans.remove(.endStream)
+                    }
+                }
+            }
 
             /// The number of padding bytes sent in this frame. If nil, this frame was not padded.
+            @inlinable
             public var paddingBytes: Int? {
                 get {
-                    return self._paddingBytes.map { Int($0) }
+                    if self.booleans.contains(.paddingPresent) {
+                        return Int(self._paddingBytes)
+                    } else {
+                        return nil
+                    }
                 }
                 set {
                     if let newValue = newValue {
                         precondition(newValue >= 0 && newValue <= Int(UInt8.max), "Invalid padding byte length: \(newValue)")
                         self._paddingBytes = UInt8(newValue)
+                        self.booleans.insert(.paddingPresent)
                     } else {
-                        self._paddingBytes = nil
+                        self.booleans.remove(.paddingPresent)
                     }
                 }
             }
 
             public init(headers: HPACKHeaders, priorityData: StreamPriorityData? = nil, endStream: Bool = false, paddingBytes: Int? = nil) {
                 self.headers = headers
+                self.booleans = .init(rawValue: 0)
+                self._paddingBytes = 0
+                self._priorityData = StreamPriorityData(exclusive: false, dependency: .rootStream, weight: 0)
+
                 self.priorityData = priorityData
                 self.endStream = endStream
                 self.paddingBytes = paddingBytes
