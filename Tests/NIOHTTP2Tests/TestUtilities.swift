@@ -66,6 +66,7 @@ extension XCTestCase {
     /// they make no forward progress.
     ///
     /// ** This function is racy and can lead to deadlocks, prefer the one-way variant which is less error-prone**
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func interactInMemory(_ first: NIOAsyncTestingChannel, _ second: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
         var operated: Bool
 
@@ -88,6 +89,7 @@ extension XCTestCase {
     }
 
     /// Have a `NIOAsyncTestingChannel` send data to another until it makes no forward progress.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     static func deliverAllBytes(from source: NIOAsyncTestingChannel, to destination: NIOAsyncTestingChannel, file: StaticString = #filePath, line: UInt = #line) async throws {
         var operated: Bool
 
@@ -157,6 +159,7 @@ extension XCTestCase {
     ///
     /// If the handshake has not occurred, this will definitely call `XCTFail`. It may also throw if the
     /// channel is now in an indeterminate state.
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func assertDoHandshake(client: NIOAsyncTestingChannel, server: NIOAsyncTestingChannel,
                            clientSettings: [HTTP2Setting] = nioDefaultSettings, serverSettings: [HTTP2Setting] = nioDefaultSettings,
                            file: StaticString = #filePath, line: UInt = #line) async throws {
@@ -272,6 +275,7 @@ extension EmbeddedChannel {
     }
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension NIOAsyncTestingChannel {
     /// This function attempts to obtain a HTTP/2 frame from a connection. It must already have been
     /// sent, as this function does not call `interactInMemory`. If no frame has been received, this
@@ -896,6 +900,7 @@ func assertNoThrowWithValue<T>(
     }
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 func assertNoThrowWithValue<T>(
     _ body: @autoclosure () async throws -> T,
     defaultValue: T? = nil,
@@ -915,6 +920,7 @@ func assertNoThrowWithValue<T>(
     }
 }
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 func assertNoThrow<T>(
     _ body: @autoclosure () async throws -> T,
     defaultValue: T? = nil,

@@ -22,6 +22,7 @@ import NIOHTTP1
 import NIOHTTP2
 import NIOTLS
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
     var clientChannel: NIOAsyncTestingChannel!
     var serverChannel: NIOAsyncTestingChannel!
