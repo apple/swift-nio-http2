@@ -22,6 +22,7 @@ import NIOHTTP1
 import NIOHTTP2
 import NIOTLS
 
+@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
     var clientChannel: NIOAsyncTestingChannel!
     var serverChannel: NIOAsyncTestingChannel!
@@ -150,6 +151,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
     // `testNIOAsyncConnectionStreamChannelPipelineCommunicates` ensures that a client-server system set up to use `NIOAsyncChannel`
     // wrappers around connection and stream channels can communicate successfully.
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testNIOAsyncConnectionStreamChannelPipelineCommunicates() async throws {
         let requestCount = 100
 
