@@ -151,6 +151,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
     // `testNIOAsyncConnectionStreamChannelPipelineCommunicates` ensures that a client-server system set up to use `NIOAsyncChannel`
     // wrappers around connection and stream channels can communicate successfully.
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testNIOAsyncConnectionStreamChannelPipelineCommunicates() async throws {
         let requestCount = 100
 
