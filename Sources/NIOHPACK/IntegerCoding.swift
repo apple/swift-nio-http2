@@ -24,7 +24,7 @@ import NIOCore
 ///   - prefixBits: Existing bits to place in that first byte of `buffer` before encoding `value`.
 /// - Returns: Returns the number of bytes used to encode the integer.
 @discardableResult
-func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
+func encodeInteger(_ value: UInt64, to buffer: inout ByteBuffer,
                    prefix: Int, prefixBits: UInt8 = 0) -> Int {
     assert(prefix <= 8)
     assert(prefix >= 1)
@@ -51,7 +51,7 @@ func encodeInteger(_ value: UInt, to buffer: inout ByteBuffer,
     // the remaining bytes.
     // We can safely use unchecked subtraction here: we know that `k` is zero or greater, and that `value` is
     // either the same value or greater. As a result, this can be unchecked: it's always safe.
-    var n = value &- UInt(k)
+    var n = value &- UInt64(k)
     while n >= 128 {
         let nextByte = (1 << 7) | UInt8(truncatingIfNeeded: n & 0x7f)
         buffer.writeInteger(nextByte)
@@ -139,7 +139,7 @@ extension ByteBuffer {
         return result.value
     }
 
-    mutating func write(encodedInteger value: UInt, prefix: Int = 0, prefixBits: UInt8 = 0) {
+    mutating func write(encodedInteger value: UInt64, prefix: Int = 0, prefixBits: UInt8 = 0) {
         encodeInteger(value, to: &self, prefix: prefix, prefixBits: prefixBits)
     }
 }
