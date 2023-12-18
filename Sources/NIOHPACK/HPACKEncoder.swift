@@ -133,12 +133,12 @@ public struct HPACKEncoder {
             self.state = .encoding
         case .resized(nil):
             // one resize
-            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt64(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
             self.state = .encoding
         case let .resized(smallestSize?):
             // two resizes, one smaller than the other
-            self.buffer.write(encodedInteger: UInt(smallestSize), prefix: 5, prefixBits: 0x20)
-            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt64(smallestSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt64(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
             self.state = .encoding
         default:
             break
@@ -174,12 +174,12 @@ public struct HPACKEncoder {
             self.state = .encoding
         case .resized(nil):
             // one resize
-            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt64(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
             self.state = .encoding
         case let .resized(smallestSize?):
             // two resizes, one smaller than the other
-            self.buffer.write(encodedInteger: UInt(smallestSize), prefix: 5, prefixBits: 0x20)
-            self.buffer.write(encodedInteger: UInt(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt64(smallestSize), prefix: 5, prefixBits: 0x20)
+            self.buffer.write(encodedInteger: UInt64(self.allowedDynamicTableSize), prefix: 5, prefixBits: 0x20)
             self.state = .encoding
         default:
             break
@@ -250,13 +250,13 @@ public struct HPACKEncoder {
         if let (index, hasValue) = self.headerIndexTable.firstHeaderMatch(for: name, value: value) {
             if hasValue {
                 // purely indexed. Nice & simple.
-                self.buffer.write(encodedInteger: UInt(index), prefix: 7, prefixBits: 0x80)
+                self.buffer.write(encodedInteger: UInt64(index), prefix: 7, prefixBits: 0x80)
                 // everything is indexed-- nothing more to do!
                 return
             } else {
                 // no value, so append the index to represent the name, followed by the value's
                 // length
-                self.buffer.write(encodedInteger: UInt(index), prefix: 6, prefixBits: 0x40)
+                self.buffer.write(encodedInteger: UInt64(index), prefix: 6, prefixBits: 0x40)
                 // now encode and append the value string
                 self.appendEncodedString(value)
             }
@@ -278,10 +278,10 @@ public struct HPACKEncoder {
         if self.useHuffmanEncoding {
             // problem: we need to encode the length before the encoded bytes, so we can't just receive the length
             // after encoding to the target buffer itself. So we have to determine the length first.
-            self.buffer.write(encodedInteger: UInt(ByteBuffer.huffmanEncodedLength(of: utf8)), prefix: 7, prefixBits: 0x80)
+            self.buffer.write(encodedInteger: UInt64(ByteBuffer.huffmanEncodedLength(of: utf8)), prefix: 7, prefixBits: 0x80)
             self.buffer.writeHuffmanEncoded(bytes: utf8)
         } else {
-            self.buffer.write(encodedInteger: UInt(utf8.count), prefix: 7, prefixBits: 0)
+            self.buffer.write(encodedInteger: UInt64(utf8.count), prefix: 7, prefixBits: 0)
             self.buffer.writeBytes(utf8)
         }
     }
@@ -299,7 +299,7 @@ public struct HPACKEncoder {
         if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: nil) {
             // we actually don't care if it has a value in this instance; we're only indexing the
             // name.
-            self.buffer.write(encodedInteger: UInt(index), prefix: 4, prefixBits: 0)
+            self.buffer.write(encodedInteger: UInt64(index), prefix: 4, prefixBits: 0)
             // now append the value
             self.appendEncodedString(value)
         } else {
@@ -320,7 +320,7 @@ public struct HPACKEncoder {
     private mutating func _appendNeverIndexed(header: String, value: String) {
         if let (index, _) = self.headerIndexTable.firstHeaderMatch(for: header, value: nil) {
             // we only use the index in this instance
-            self.buffer.write(encodedInteger: UInt(index), prefix: 4, prefixBits: 0x10)
+            self.buffer.write(encodedInteger: UInt64(index), prefix: 4, prefixBits: 0x10)
             // now append the value
             self.appendEncodedString(value)
         } else {

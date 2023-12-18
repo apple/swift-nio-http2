@@ -1893,7 +1893,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
     }
 
     func testGreasedSettingsAreTolerated() throws {
-        let settings = nioDefaultSettings + [HTTP2Setting(parameter: .init(extensionSetting: 0xfafa), value: 0xf0f0f0f0)]
+        let settings = nioDefaultSettings + [HTTP2Setting(parameter: .init(extensionSetting: 0xfafa), value: 0xf0f0f0)]
         XCTAssertNoThrow(try self.basicHTTP2Connection(clientSettings: settings))
     }
 
