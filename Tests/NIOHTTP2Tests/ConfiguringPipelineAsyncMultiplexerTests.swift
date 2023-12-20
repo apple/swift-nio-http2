@@ -92,6 +92,70 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         }
     }
 
+    func testCancellingAsyncStreamConsumer() async throws {
+        let requestCount = 200
+
+        let serverRecorder = InboundFramePayloadRecorder()
+
+        let clientMultiplexer = try await assertNoThrowWithValue(
+            try await self.clientChannel.configureAsyncHTTP2Pipeline(mode: .client) { channel -> EventLoopFuture<Channel> in
+                channel.eventLoop.makeSucceededFuture(channel)
+            }.get()
+        )
+
+        let serverMultiplexer = try await assertNoThrowWithValue(
+            try await self.serverChannel.configureAsyncHTTP2Pipeline(mode: .server) { channel -> EventLoopFuture<Channel> in
+                channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
+            }.get()
+        )
+
+        try await assertNoThrow(try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+
+        // Launch a server
+        let serverTask = Task {
+            var serverInboundChannelCount = 0
+            for try await _ in serverMultiplexer.inbound {
+                serverInboundChannelCount += 1
+            }
+
+            try Task.checkCancellation()
+
+            return serverInboundChannelCount
+        }
+
+        // client
+        for i in 0 ..< requestCount {
+            // Let's try sending some requests.
+            let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
+                return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
+                    return channel
+                }
+            }
+
+            // When we get above 100, cancel the server task.
+            if i == 100 { serverTask.cancel() }
+
+            let clientRecorder = try await streamChannel.pipeline.handler(type: InboundFramePayloadRecorder.self).get()
+            try await Self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
+            try await Self.deliverAllBytes(from: self.serverChannel, to: self.clientChannel)
+
+            clientRecorder.receivedFrames.assertFramePayloadsMatch([ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload])
+            try await streamChannel.closeFuture.get()
+        }
+
+        try await assertNoThrow(try await self.clientChannel.finish())
+        try await assertNoThrow(try await self.serverChannel.finish())
+
+        do {
+            _ = try await serverTask.value
+            XCTFail("Server unexpectedly succeeded")
+        } catch is CancellationError {
+            // Expected
+        } catch {
+            XCTFail("Unexpected error throw: \(error)")
+        }
+    }
+
     // `testBasicPipelineCommunicates` ensures that a client-server system set up to use async stream abstractions
     // can communicate successfully.
     func testBasicPipelineCommunicates() async throws {
