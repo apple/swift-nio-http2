@@ -282,13 +282,18 @@ extension HTTP2StreamMultiplexer {
 extension HTTP2StreamMultiplexer {
     /// HTTP2StreamMultiplexer.SendableView exposes only the thread-safe API of HTTP2StreamMultiplexer
     ///
-    /// We use unckecked Sendable here because we always make sure we are on the right event loop
+    /// We use unchecked Sendable here because we always make sure we are on the right event loop
     /// from this code on.
-    struct SendableView: @unchecked Sendable {
+    public struct SendableView: @unchecked Sendable {
         let http2StreamMultiplexer: HTTP2StreamMultiplexer
         let eventLoop: EventLoop
 
-        func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
+        public init(http2StreamMultiplexer: HTTP2StreamMultiplexer, eventLoop: EventLoop) {
+            self.http2StreamMultiplexer = http2StreamMultiplexer
+            self.eventLoop = eventLoop
+        }
+
+        public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializer) {
             // Always create streams channels on the next event loop tick. This avoids re-entrancy
             // issues where handlers interposed between the two HTTP/2 handlers could create streams
             // in channel active which become activated twice.
@@ -298,7 +303,7 @@ extension HTTP2StreamMultiplexer {
         }
 
         @available(*, deprecated, message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'")
-        func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
+        public func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID) {
             // Always create streams channels on the next event loop tick. This avoids re-entrancy
             // issues where handlers interposed between the two HTTP/2 handlers could create streams
             // in channel active which become activated twice.

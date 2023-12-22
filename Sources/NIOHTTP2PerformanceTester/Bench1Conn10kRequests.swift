@@ -77,18 +77,26 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
 func sendOneRequest(channel: Channel, multiplexer: HTTP2StreamMultiplexer) throws -> Int {
     let responseReceivedPromise = channel.eventLoop.makePromise(of: Int.self)
     let requestStreamInitializer: NIOChannelInitializer = { channel in
-        return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https),
-                                             SendRequestHandler(host: "127.0.0.1",
-                                                                request: .init(version: .init(major: 2, minor: 0),
-                                                                               method: .GET,
-                                                                               uri: "/", headers: ["host": "localhost"]),
-                                                                responseReceivedPromise: responseReceivedPromise),
-                                             ErrorHandler()],
-                                            position: .last)
+        return channel.pipeline.addHandlers(
+            [
+                HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https),
+                SendRequestHandler(
+                    host: "127.0.0.1",
+                    request: .init(
+                        version: .init(major: 2, minor: 0),
+                        method: .GET,
+                        uri: "/", headers: ["host": "localhost"]
+                    ),
+                    responseReceivedPromise: responseReceivedPromise
+                ),
+                ErrorHandler()
+            ],
+            position: .last
+        )
     }
-    let loopBoundMultiplexer = NIOLoopBound(multiplexer, eventLoop: channel.eventLoop)
+    let multiplexerSendableView = HTTP2StreamMultiplexer.SendableView(http2StreamMultiplexer: multiplexer, eventLoop: channel.eventLoop)
     channel.eventLoop.execute {
-        loopBoundMultiplexer.value.createStreamChannel(promise: nil, requestStreamInitializer)
+        multiplexerSendableView.createStreamChannel(promise: nil, requestStreamInitializer)
     }
     return try responseReceivedPromise.futureResult.wait()
 }
