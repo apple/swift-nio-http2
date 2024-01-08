@@ -86,9 +86,8 @@ func sendOneRequest(channel: Channel, multiplexer: HTTP2StreamMultiplexer) throw
                                              ErrorHandler()],
                                             position: .last)
     }
-    let loopBoundMultiplexer = NIOLoopBound(multiplexer, eventLoop: channel.eventLoop)
-    channel.eventLoop.execute {
-        loopBoundMultiplexer.value.createStreamChannel(promise: nil, requestStreamInitializer)
+    channel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multiplexer in
+      multiplexer.createStreamChannel(promise: nil, requestStreamInitializer)
     }
     return try responseReceivedPromise.futureResult.wait()
 }
