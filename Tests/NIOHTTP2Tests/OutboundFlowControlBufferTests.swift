@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import XCTest
+import Atomics
 import NIOCore
 import NIOEmbedded
 import NIOHTTP1
@@ -162,32 +163,32 @@ class OutboundFlowControlBufferTests: XCTestCase {
         self.buffer.streamCreated(streamOne, initialWindowSize: 15)
 
         // We send a large DATA frame here.
-        var frameWritten = false
+        let frameWritten = ManagedAtomic<Bool>(false)
         let framePromise: EventLoopPromise<Void> = self.loop.makePromise()
         framePromise.futureResult.map {
-            frameWritten = true
+            frameWritten.store(true, ordering: .sequentiallyConsistent)
         }.whenFailure {
             XCTFail("Unexpected write failure: \($0)")
         }
 
         var frame = self.createDataFrame(streamOne, byteBufferSize: 50, endStream: true)
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(frame, promise: framePromise).assertNothing())
-        XCTAssertFalse(frameWritten)
+        XCTAssertFalse(frameWritten.load(ordering: .sequentiallyConsistent))
 
         // Flush out the first frame.
         self.buffer.flushReceived()
         self.receivedFrames().assertFramesMatch([frame.sliceDataFrame(length: 15)])
-        XCTAssertFalse(frameWritten)
+        XCTAssertFalse(frameWritten.load(ordering: .sequentiallyConsistent))
 
         // Open the window, we get the second frame.
         self.buffer.updateWindowOfStream(streamOne, newSize: 34)
         self.receivedFrames().assertFramesMatch([frame.sliceDataFrame(length: 34)])
-        XCTAssertFalse(frameWritten)
+        XCTAssertFalse(frameWritten.load(ordering: .sequentiallyConsistent))
 
         // If we open again, we get the final frame, with endStream set.
         self.buffer.updateWindowOfStream(streamOne, newSize: 200)
         self.receivedFrames().assertFramesMatch([frame])
-        XCTAssertTrue(frameWritten)
+        XCTAssertTrue(frameWritten.load(ordering: .sequentiallyConsistent))
     }
 
     func testInterlacingWithHeaders() {

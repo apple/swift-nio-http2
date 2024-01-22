@@ -17,7 +17,7 @@ import NIOCore
 /// A delegate which can be used with the ``NIOHTTP2Handler`` and its multiplexer.
 ///
 /// Delegates are called when the multiplexer creates or closes HTTP/2 streams.
-public protocol NIOHTTP2StreamDelegate {
+public protocol NIOHTTP2StreamDelegate: Sendable {
     /// A new HTTP/2 stream was created with the given ID.
     func streamCreated(_ id: HTTP2StreamID, channel: Channel)
 

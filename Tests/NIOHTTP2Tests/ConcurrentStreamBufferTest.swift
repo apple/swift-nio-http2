@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import XCTest
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
@@ -236,7 +237,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
 
-        var writeStatus: [Bool?] = Array(repeating: nil, count: 30)
+        let writeStatus = NIOLockedValueBox<[Bool?]>(Array(repeating: nil, count: 30))
 
         var writePromises: [EventLoopFuture<Void>] = try assertNoThrowWithValue((0..<15).map { _ in
             let p = self.loop.makePromise(of: Void.self)
@@ -252,10 +253,14 @@ final class ConcurrentStreamBufferTests: XCTestCase {
 
         for (idx, promise) in writePromises.enumerated() {
             promise.map {
-                writeStatus[idx] = true
+                writeStatus.withLockedValue { writeStatus in
+                    writeStatus[idx] = true
+                }
             }.whenFailure { error in
                 XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .cancel))
-                writeStatus[idx] = false
+                writeStatus.withLockedValue { writeStatus in
+                    writeStatus[idx] = false
+                }
             }
         }
 
@@ -274,7 +279,9 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         flushedFrames.assertFramesMatch(Array(repeating: subsequentFrame, count: 15))
 
         // Only the first 15 are done.
-        XCTAssertEqual(writeStatus, Array(repeating: true as Bool?, count: 15) + Array(repeating: nil as Bool?, count: 15))
+        writeStatus.withLockedValue { writeStatus in
+            XCTAssertEqual(writeStatus, Array(repeating: true as Bool?, count: 15) + Array(repeating: nil as Bool?, count: 15))
+        }
 
         // Now we're going to write a RST_STREAM frame on stream 3
         let rstStreamFrame = HTTP2Frame(streamID: 3, payload: .rstStream(.cancel))
@@ -286,7 +293,9 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         }
 
         XCTAssertEqual(error, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .cancel))
-        XCTAssertEqual(writeStatus, Array(repeating: true as Bool?, count: 15) + Array(repeating: false as Bool?, count: 15))
+        writeStatus.withLockedValue { writeStatus in
+            XCTAssertEqual(writeStatus, Array(repeating: true as Bool?, count: 15) + Array(repeating: false as Bool?, count: 15))
+        }
     }
 
     func testResetStreamOnBufferingStream() throws {
@@ -298,7 +307,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
 
-        var writeStatus: [Bool?] = Array(repeating: nil, count: 15)
+        let writeStatus = NIOLockedValueBox<[Bool?]>(Array(repeating: nil, count: 15))
 
         let writePromises: [EventLoopFuture<Void>] = try assertNoThrowWithValue((0..<15).map { _ in
             let p = self.loop.makePromise(of: Void.self)
@@ -308,16 +317,22 @@ final class ConcurrentStreamBufferTests: XCTestCase {
 
         for (idx, promise) in writePromises.enumerated() {
             promise.map {
-                writeStatus[idx] = true
+                writeStatus.withLockedValue { writeStatus in
+                    writeStatus[idx] = true
+                }
             }.whenFailure { error in
                 XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .cancel))
-                writeStatus[idx] = false
+                writeStatus.withLockedValue { writeStatus in
+                    writeStatus[idx] = false
+                }
             }
         }
 
         // No new writes other than the first frame.
         XCTAssertNil(manager.nextFlushedWritableFrame())
-        XCTAssertEqual(writeStatus, Array(repeating: nil as Bool?, count: 15))
+        writeStatus.withLockedValue { writeStatus in
+            XCTAssertEqual(writeStatus, Array(repeating: nil as Bool?, count: 15))
+        }
 
         // Now we're going to send RST_STREAM on 3. All writes should fail, and we should be asked to drop the RST_STREAM frame.
         let rstStreamFrame = HTTP2Frame(streamID: 3, payload: .rstStream(.cancel))
@@ -328,7 +343,9 @@ final class ConcurrentStreamBufferTests: XCTestCase {
             write.1?.fail(error)
         }
 
-        XCTAssertEqual(writeStatus, Array(repeating: false as Bool?, count: 15))
+        writeStatus.withLockedValue { writeStatus in
+            XCTAssertEqual(writeStatus, Array(repeating: false as Bool?, count: 15))
+        }
 
         // Flushing changes nothing.
         manager.flushReceived()
@@ -347,7 +364,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
 
         // Now we're going to try to write a frame for stream 5. This will fail.
         let fiveFrame = HTTP2Frame(streamID: 5, payload: .headers(.init(headers: HPACKHeaders([]))))
-        
+
         XCTAssertThrowsError(try manager.processOutboundFrame(fiveFrame, promise: nil, channelWritable: true)) { error in
             XCTAssertTrue(error is NIOHTTP2Errors.StreamIDTooSmall)
         }
@@ -407,7 +424,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         XCTAssertNoThrow(try manager.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
         manager.streamCreated(1)
 
-        var writeStatus: [Bool?] = Array(repeating: nil, count: 15)
+        let writeStatus = NIOLockedValueBox<[Bool?]>(Array(repeating: nil, count: 15))
         let writePromises: [EventLoopFuture<Void>] = try assertNoThrowWithValue((0..<15).map { _ in
             let p = self.loop.makePromise(of: Void.self)
             XCTAssertNoThrow(try manager.processOutboundFrame(subsequentFrame, promise: p, channelWritable: true).assertNothing())
@@ -415,10 +432,14 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         })
         for (idx, promise) in writePromises.enumerated() {
             promise.map {
-                writeStatus[idx] = true
+                writeStatus.withLockedValue { writeStatus in
+                    writeStatus[idx] = true
+                }
             }.whenFailure { error in
                 XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
-                writeStatus[idx] = false
+                writeStatus.withLockedValue { writeStatus in
+                    writeStatus[idx] = false
+                }
             }
         }
         manager.flushReceived()
@@ -439,7 +460,9 @@ final class ConcurrentStreamBufferTests: XCTestCase {
             promise?.fail(NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
         }
 
-        XCTAssertEqual(writeStatus, Array(repeating: false, count: 15))
+        writeStatus.withLockedValue { writeStatus in
+            XCTAssertEqual(writeStatus, Array(repeating: false, count: 15))
+        }
     }
 
     func testBufferingWithBlockedChannel() throws {
@@ -452,7 +475,7 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         // Write a frame for the second stream. This should also be buffered, as the connection still isn't writable.
         let secondFrame = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders())))
         XCTAssertNoThrow(try manager.processOutboundFrame(secondFrame, promise: nil, channelWritable: false).assertNothing())
-        
+
         manager.flushReceived()
 
         // Grab a pending write, simulating the connection becoming writable.

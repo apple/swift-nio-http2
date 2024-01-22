@@ -23,9 +23,11 @@ import NIOCore
 ///
 /// Note that while this is a `struct`, this `struct` has _reference semantics_.
 /// The implementation of `Equatable` & `Hashable` on this type reinforces that requirement.
+@usableFromInline
 struct MultiplexerAbstractChannel {
-    private(set) var baseChannel: HTTP2StreamChannel
+    @usableFromInline private(set) var baseChannel: HTTP2StreamChannel
 
+    @usableFromInline
     init(allocator: ByteBufferAllocator,
          parent: Channel,
          multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
@@ -46,7 +48,7 @@ struct MultiplexerAbstractChannel {
                                      outboundBytesLowWatermark: outboundBytesLowWatermark,
                                      streamDataType: .frame)
 
-        case .excludesStreamID:
+        case .excludesStreamID, .returnsAny:
             self.baseChannel = .init(allocator: allocator,
                                      parent: parent,
                                      multiplexer: multiplexer,
@@ -60,9 +62,11 @@ struct MultiplexerAbstractChannel {
 }
 
 extension MultiplexerAbstractChannel {
+    @usableFromInline
     enum InboundStreamStateInitializer {
-        case includesStreamID(((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?)
-        case excludesStreamID(((Channel) -> EventLoopFuture<Void>)?)
+        case includesStreamID(NIOChannelInitializerWithStreamID?)
+        case excludesStreamID(NIOChannelInitializer?)
+        case returnsAny(NIOChannelInitializerWithOutput<any Sendable>)
     }
 }
 
@@ -72,6 +76,7 @@ extension MultiplexerAbstractChannel {
         return self.baseChannel.streamID
     }
 
+    @usableFromInline
     var channelID: ObjectIdentifier {
         return ObjectIdentifier(self.baseChannel)
     }
@@ -95,14 +100,33 @@ extension MultiplexerAbstractChannel {
             self.baseChannel.configure(initializer: initializer, userPromise: nil)
         case .excludesStreamID(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: nil)
+        case .returnsAny(let initializer):
+            self.baseChannel.configure(initializer: initializer, userPromise: nil)
         }
     }
 
-    func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    func configureInboundStream(initializer: InboundStreamStateInitializer, promise: EventLoopPromise<any Sendable>?) {
+        switch initializer {
+        case .includesStreamID, .excludesStreamID:
+            preconditionFailure("Configuration with a supplied `Any` promise is not supported with this initializer type.")
+        case .returnsAny(let initializer):
+            self.baseChannel.configure(initializer: initializer, userPromise: promise)
+        }
+    }
+
+    // legacy `initializer` function signature
+    func configure(initializer: NIOChannelInitializerWithStreamID?, userPromise promise: EventLoopPromise<Channel>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
-    func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    // NIOHTTP2Handler.Multiplexer and HTTP2StreamMultiplexer
+    func configure(initializer: NIOChannelInitializer?, userPromise promise: EventLoopPromise<Channel>?) {
+        self.baseChannel.configure(initializer: initializer, userPromise: promise)
+    }
+
+    // used for async multiplexer
+    @usableFromInline
+    func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<any Sendable>?) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
@@ -148,12 +172,14 @@ extension MultiplexerAbstractChannel {
 }
 
 extension MultiplexerAbstractChannel: Equatable {
+    @inlinable
     static func ==(lhs: MultiplexerAbstractChannel, rhs: MultiplexerAbstractChannel) -> Bool {
         return lhs.baseChannel === rhs.baseChannel
     }
 }
 
 extension MultiplexerAbstractChannel: Hashable {
+    @inlinable
     func hash(into hasher: inout Hasher) {
         hasher.combine(ObjectIdentifier(self.baseChannel))
     }

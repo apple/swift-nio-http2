@@ -763,7 +763,7 @@ struct HTTP2FrameDecoder {
     /// Attempts to decode a frame from the accumulated bytes passed to
     /// `append(bytes:)`.
     ///
-    /// - returns: A decoded frame, or `nil` if no frame could be decoded.
+    /// - Returns: A decoded frame, or `nil` if no frame could be decoded.
     /// - throws: An error if a decoded frame violated the HTTP/2 protocol
     ///           rules.
     mutating func nextFrame() throws -> (HTTP2Frame, flowControlledLength: Int)? {

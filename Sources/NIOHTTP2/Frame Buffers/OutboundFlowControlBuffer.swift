@@ -455,10 +455,10 @@ extension StreamMap where Element == StreamFlowControlState {
     //
     /// Apply a transform to a wrapped DataBuffer.
     ///
-    /// - parameters:
-    ///     - body: A block that will modify the contained value in the
+    /// - Parameters:
+    ///   - body: A block that will modify the contained value in the
     ///         optional, if there is one present.
-    /// - returns: Whether the value was present or not.
+    /// - Returns: Whether the value was present or not.
     @discardableResult
     fileprivate mutating func apply(streamID: HTTP2StreamID, _ body: (inout Element) -> Void) -> Bool {
         return self.modify(streamID: streamID, body) != nil

@@ -28,9 +28,9 @@ fileprivate struct BaseClientCodec {
 
     /// Initializes a `BaseClientCodec`.
     ///
-    /// - parameters:
-    ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
-    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    /// - Parameters:
+    ///   - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
+    ///   - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
     ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
@@ -142,10 +142,10 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
 
     /// Initializes a ``HTTP2ToHTTP1ClientCodec`` for the given ``HTTP2StreamID``.
     ///
-    /// - parameters:
-    ///    - streamID: The HTTP/2 stream ID this ``HTTP2ToHTTP1ClientCodec`` will be used for
-    ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
-    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    /// - Parameters:
+    ///   - streamID: The HTTP/2 stream ID this ``HTTP2ToHTTP1ClientCodec`` will be used for
+    ///   - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
+    ///   - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
     ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
@@ -157,9 +157,9 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
 
     /// Initializes a ``HTTP2ToHTTP1ClientCodec`` for the given ``HTTP2StreamID``.
     ///
-    /// - parameters:
-    ///    - streamID: The HTTP/2 stream ID this ``HTTP2ToHTTP1ClientCodec`` will be used for
-    ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
+    /// - Parameters:
+    ///   - streamID: The HTTP/2 stream ID this ``HTTP2ToHTTP1ClientCodec`` will be used for
+    ///   - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
     public convenience init(streamID: HTTP2StreamID, httpProtocol: HTTPProtocol) {
         self.init(streamID: streamID, httpProtocol: httpProtocol, normalizeHTTPHeaders: true)
     }
@@ -218,9 +218,9 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
 
     /// Initializes a ``HTTP2FramePayloadToHTTP1ClientCodec``.
     ///
-    /// - parameters:
-    ///    - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
-    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    /// - Parameters:
+    ///   - httpProtocol: The protocol (usually `"http"` or `"https"` that is used).
+    ///   - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
     ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
@@ -344,9 +344,9 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
 
     /// Initializes a ``HTTP2ToHTTP1ServerCodec`` for the given ``HTTP2StreamID``.
     ///
-    /// - parameters:
-    ///    - streamID: The HTTP/2 stream ID this ``HTTP2ToHTTP1ServerCodec`` will be used for
-    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    /// - Parameters:
+    ///   - streamID: The HTTP/2 stream ID this ``HTTP2ToHTTP1ServerCodec`` will be used for
+    ///   - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
     ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
@@ -403,8 +403,8 @@ public final class HTTP2FramePayloadToHTTP1ServerCodec: ChannelInboundHandler, C
 
     /// Initializes a ``HTTP2FramePayloadToHTTP1ServerCodec``.
     ///
-    /// - parameters:
-    ///    - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
+    /// - Parameters:
+    ///   - normalizeHTTPHeaders: Whether to automatically normalize the HTTP headers to be suitable for HTTP/2.
     ///                            The normalization will for example lower-case all header names (as required by the
     ///                            HTTP/2 spec) and remove headers that are unsuitable for HTTP/2 such as
     ///                            headers related to HTTP/1's keep-alive behaviour. Unless you are sure that all your
@@ -614,8 +614,8 @@ extension HPACKHeaders {
     /// Grabs a pseudo-header from a header block. Does not remove it.
     ///
     /// - parameter:
-    ///     - name: The header name to find.
-    /// - returns: The value for this pseudo-header.
+    ///   - name: The header name to find.
+    /// - Returns: The value for this pseudo-header.
     /// - throws: If there is no such header, or multiple.
     internal func peekPseudoHeader(name: String) throws -> String {
         // This could be done with .lazy.filter.map but that generates way more ARC traffic.

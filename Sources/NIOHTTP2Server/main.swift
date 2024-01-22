@@ -15,6 +15,7 @@
 // This example server currently does not know how to negotiate HTTP/2. That will come in a future enhancement. For now, you can
 // hit it with curl like so: curl --http2-prior-knowledge http://localhost:8888/
 
+import Foundation
 
 import NIOCore
 import NIOPosix
@@ -44,22 +45,26 @@ final class HTTP1TestServer: ChannelInboundHandler {
 
         // Insert an event loop tick here. This more accurately represents real workloads in SwiftNIO, which will not
         // re-entrantly write their response frames.
+        let channel = context.channel
+        let loopBoundContext = NIOLoopBound(context, eventLoop: context.eventLoop)
+        let loopBoundSelf = NIOLoopBound(self, eventLoop: context.eventLoop)
         context.eventLoop.execute {
-            context.channel.getOption(HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
+            channel.getOption(HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
+                let http1TestServer = loopBoundSelf.value
                 var headers = HTTPHeaders()
                 headers.add(name: "content-length", value: "5")
                 headers.add(name: "x-stream-id", value: String(Int(streamID)))
-                context.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
+                channel.write(http1TestServer.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
 
                 if requestHead.method != .HEAD {
-                    var buffer = context.channel.allocator.buffer(capacity: 12)
+                    var buffer = channel.allocator.buffer(capacity: 12)
                     buffer.writeStaticString("hello")
-                    context.channel.write(self.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
+                    channel.write(http1TestServer.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
                 }
 
-                return context.channel.writeAndFlush(self.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
+                return channel.writeAndFlush(http1TestServer.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
             }.whenComplete { _ in
-                context.close(promise: nil)
+                loopBoundContext.value.close(promise: nil)
             }
         }
     }
@@ -77,7 +82,7 @@ final class ErrorHandler: ChannelInboundHandler {
 
 
 // First argument is the program path
-let arguments = CommandLine.arguments
+let arguments = ProcessInfo.processInfo.arguments
 let arg1 = arguments.dropFirst().first
 let arg2 = arguments.dropFirst().dropFirst().first
 let arg3 = arguments.dropFirst().dropFirst().dropFirst().first

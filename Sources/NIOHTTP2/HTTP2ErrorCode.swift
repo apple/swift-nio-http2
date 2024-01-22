@@ -158,9 +158,9 @@ public extension ByteBuffer {
     /// Serializes a ``HTTP2ErrorCode`` into a `ByteBuffer` in the appropriate endianness
     /// for use in HTTP/2.
     ///
-    /// - parameters:
-    ///     - code: The ``HTTP2ErrorCode`` to serialize.
-    /// - returns: The number of bytes written.
+    /// - Parameters:
+    ///   - code: The ``HTTP2ErrorCode`` to serialize.
+    /// - Returns: The number of bytes written.
     mutating func write(http2ErrorCode code: HTTP2ErrorCode) -> Int {
         return self.writeInteger(UInt32(http2ErrorCode: code))
     }

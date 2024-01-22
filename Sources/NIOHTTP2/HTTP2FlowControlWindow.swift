@@ -48,7 +48,7 @@ struct HTTP2FlowControlWindow {
     /// - A stream was created with initial window size of 2 ** 31 - 1 (a.k.a. Int32.max)
     /// - Int32.max bytes were sent, leaving the window size at zero.
     /// - The value of SETTINGS_INITIAL_WINDOW_SIZE was set to 0, leading to a window size delta of
-    ///     -(Int32.max), and setting the window size to -(Int32.max).
+    ///   -(Int32.max), and setting the window size to -(Int32.max).
     ///
     /// As -(Int32.max) definitionally still fits into Int32, Int32 is the appropriate type to use here.
     fileprivate private(set) var windowSize: Int32
@@ -79,8 +79,8 @@ struct HTTP2FlowControlWindow {
     /// the valid values of a WINDOW_UPDATE frame. It is assumed that the frame parser validates the values in
     /// WINDOW_UPDATE frames.
     ///
-    /// - parameters:
-    ///     - amount: The size of the increment.
+    /// - Parameters:
+    ///   - amount: The size of the increment.
     /// - throws: When `amount` is outside of RFC 7540's allowed range, or when it would move this value outside
     ///     of the allowed range.
     mutating func windowUpdate(by amount: UInt32) throws {
@@ -109,8 +109,8 @@ struct HTTP2FlowControlWindow {
     /// This method will throw if this change forces the flow control window size to become larger than the maximum flow
     /// control window size.
     ///
-    /// - parameters:
-    ///     - amount: The size of the increment/decrement.
+    /// - Parameters:
+    ///   - amount: The size of the increment/decrement.
     /// - throws: When `amount` would move the flow control window outside the allowed range.
     mutating func initialSizeChanged(by amount: Int32) throws {
         assert(amount >= -(Int32.max))
@@ -124,8 +124,8 @@ struct HTTP2FlowControlWindow {
 
     /// Consume a portion of the flow control window.
     ///
-    /// - parameters:
-    ///     - flowControlledBytes: The number of flow controlled bytes to consume
+    /// - Parameters:
+    ///   - flowControlledBytes: The number of flow controlled bytes to consume
     mutating func consume(flowControlledBytes size: Int) throws {
         assert(size >= 0)
         // TODO(cory): This is the max value of SETTINGS_MAX_FRAME_SIZE, we should name this thing.

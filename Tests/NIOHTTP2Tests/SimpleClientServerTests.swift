@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import XCTest
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
@@ -38,7 +39,7 @@ class SimpleClientServerTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func basicHTTP2Connection(clientSettings: HTTP2Settings = nioDefaultSettings,
                               serverSettings: HTTP2Settings = nioDefaultSettings,
-                              withMultiplexerCallback multiplexerCallback: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)? = nil) throws {
+                              withMultiplexerCallback multiplexerCallback: NIOChannelInitializerWithStreamID? = nil) throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, initialSettings: clientSettings)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server, initialSettings: serverSettings)).wait())
 
@@ -129,8 +130,9 @@ class SimpleClientServerTests: XCTestCase {
         // Now we're going to send a request, including a very large body: 65536 bytes in size. To avoid spending too much
         // time initializing buffers, we're going to send the same 1kB data frame 64 times.
         let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
-        var requestBody = self.clientChannel.allocator.buffer(capacity: 1024)
-        requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 1024))
+        var _requestBody = self.clientChannel.allocator.buffer(capacity: 1024)
+        _requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 1024))
+        let requestBody = _requestBody
 
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler as! HTTP2StreamMultiplexer
@@ -229,7 +231,7 @@ class SimpleClientServerTests: XCTestCase {
             // Here we send a large response: 65535 bytes in size.
             let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "65535")])
 
-            var responseBody = self.clientChannel.allocator.buffer(capacity: 65535)
+            var responseBody = channel.allocator.buffer(capacity: 65535)
             responseBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
 
             let respFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: responseHeaders)))
@@ -247,12 +249,14 @@ class SimpleClientServerTests: XCTestCase {
 
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
-        var reqFrame: HTTP2Frame? = nil
+        let reqFrame = NIOLockedValueBox<HTTP2Frame?>(nil)
 
         handler.createStreamChannel(promise: nil) { channel, streamID in
             // We need END_STREAM set here, because that will force the stream to be closed on the response.
-            reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers, endStream: true)))
-            channel.writeAndFlush(reqFrame, promise: nil)
+            reqFrame.withLockedValue { reqFrame in
+                reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers, endStream: true)))
+                channel.writeAndFlush(reqFrame, promise: nil)
+            }
             return channel.eventLoop.makeSucceededFuture(())
         }
         self.clientChannel.embeddedEventLoop.run()
@@ -264,7 +268,9 @@ class SimpleClientServerTests: XCTestCase {
         try self.serverChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 65535)
 
         // And only the request frame frame for the child stream, as there was no need to open its stream window.
-        childHandler.receivedFrames.assertFramesMatch([reqFrame!])
+        reqFrame.withLockedValue { reqFrame in
+            childHandler.receivedFrames.assertFramesMatch([reqFrame!])
+        }
 
         // No other frames should be emitted, though the client may have many in a child stream.
         self.serverChannel.assertNoFramesReceived()
@@ -295,7 +301,7 @@ class SimpleClientServerTests: XCTestCase {
             let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
             channel.write(reqFrame, promise: nil)
 
-            var requestBody = self.clientChannel.allocator.buffer(capacity: 65535)
+            var requestBody = channel.allocator.buffer(capacity: 65535)
             requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
 
             // Now prepare the large body. We need END_STREAM set.
@@ -438,17 +444,25 @@ class SimpleClientServerTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(recorder.errors.count, 0)
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 0)
+        }
 
         // Send channelInactive followed by channelActive. This can happen if a user calls close
         // from within a connect promise.
         channel.pipeline.fireChannelInactive()
-        XCTAssertEqual(recorder.errors.count, 0)
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 0)
+        }
 
         channel.pipeline.fireChannelActive()
 
-        XCTAssertEqual(recorder.errors.count, 1)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 1)
+        }
+        recorder.errors.withLockedValue { errors in
+            XCTAssertTrue(errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        }
     }
 
     func testImpossibleStateTransitionsThrowErrors() throws {
@@ -462,7 +476,9 @@ class SimpleClientServerTests: XCTestCase {
                 ]
             )
 
-            XCTAssertEqual(recorder.errors.count, 0)
+            recorder.errors.withLockedValue { errors in
+                XCTAssertEqual(errors.count, 0)
+            }
             return (channel, recorder)
         }
 
@@ -470,8 +486,12 @@ class SimpleClientServerTests: XCTestCase {
         var (channel, recorder) = try setUpChannel()
         try channel.pipeline.syncOperations.addHandler(ActionOnFlushHandler { $0.pipeline.fireChannelActive() }, position: .first)
         channel.pipeline.fireChannelActive()
-        XCTAssertEqual(recorder.errors.count, 1)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 1)
+        }
+        recorder.errors.withLockedValue { errors in
+            XCTAssertTrue(errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        }
 
         // Second impossible state transition. Synchronous active/inactive/active. The error causes a close,
         // so we error twice!
@@ -484,8 +504,12 @@ class SimpleClientServerTests: XCTestCase {
             position: .first
         )
         channel.pipeline.fireChannelActive()
-        XCTAssertEqual(recorder.errors.count, 2)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 2)
+        }
+        recorder.errors.withLockedValue { errors in
+            XCTAssertTrue(errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        }
 
         // Third impossible state transition: active/inactive/active asynchronously. This error doesn't cause a
         // close because we don't distinguish it from the case tested in
@@ -493,10 +517,16 @@ class SimpleClientServerTests: XCTestCase {
         (channel, recorder) = try setUpChannel()
         channel.pipeline.fireChannelActive()
         channel.pipeline.fireChannelInactive()
-        XCTAssertEqual(recorder.errors.count, 0)
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 0)
+        }
         channel.pipeline.fireChannelActive()
-        XCTAssertEqual(recorder.errors.count, 1)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 1)
+        }
+        recorder.errors.withLockedValue { errors in
+            XCTAssertTrue(errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        }
 
         // Fourth impossible state transition: active/inactive/inactive synchronously. The error causes a close,
         // so we error twice!
@@ -509,18 +539,28 @@ class SimpleClientServerTests: XCTestCase {
             position: .first
         )
         channel.pipeline.fireChannelActive()
-        XCTAssertEqual(recorder.errors.count, 2)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 2)
+        }
+        recorder.errors.withLockedValue { errors in
+            XCTAssertTrue(errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        }
 
         // Fifth impossible state transition: active/inactive/inactive asynchronously. The error causes a close,
         // so we error twice!
         (channel, recorder) = try setUpChannel()
         channel.pipeline.fireChannelActive()
         channel.pipeline.fireChannelInactive()
-        XCTAssertEqual(recorder.errors.count, 0)
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 0)
+        }
         channel.pipeline.fireChannelInactive()
-        XCTAssertEqual(recorder.errors.count, 2)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 2)
+        }
+        recorder.errors.withLockedValue { errors in
+            XCTAssertTrue(errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        }
 
         // Sixth impossible state transition: adding the handler twice. The error causes a close, so we
         // error twice!
@@ -528,8 +568,12 @@ class SimpleClientServerTests: XCTestCase {
         try channel.connect(to: SocketAddress(unixDomainSocketPath: "/tmp/ignored"), promise: nil)
         let handler = try channel.pipeline.syncOperations.handler(type: NIOHTTP2Handler.self)
         try channel.pipeline.syncOperations.addHandler(handler, position: .after(handler))
-        XCTAssertEqual(recorder.errors.count, 2)
-        XCTAssertTrue(recorder.errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        recorder.errors.withLockedValue { errors in
+            XCTAssertEqual(errors.count, 2)
+        }
+        recorder.errors.withLockedValue { errors in
+            XCTAssertTrue(errors.allSatisfy { $0 is NIOHTTP2Errors.ActivationError })
+        }
     }
 
     func testDynamicHeaderFieldsArentEmittedWithZeroTableSize() throws {
@@ -577,20 +621,20 @@ class SimpleClientServerTests: XCTestCase {
             0x84,                   // Indexed field, index number 4, static table
             0x87,                   // Indexed field, index number 7, static table
             0x41,                   // Literal field with incremental indexing, index 1,
-                  0x88,             // Huffman-coded value with length 8,
-                  0x2f, 0x91, 0xd3,
-                  0x5d, 0x05, 0x5c,
-                  0x87, 0xa7,
+                0x88,             // Huffman-coded value with length 8,
+                0x2f, 0x91, 0xd3,
+                0x5d, 0x05, 0x5c,
+                0x87, 0xa7,
             0x82,                   // Indexed field, index number 2, static table
             0x40,                   // Literal field with incremental indexing, new name,
-                  0x8a,             // Huffman-coded name with length 10
-                  0x1a, 0xd3, 0x94,
-                  0x72, 0x16, 0xc5,
-                  0xa5, 0x31, 0x68,
-                  0x93,
-                  0x84,             // Huffman-coded value with length 4
-                  0x32, 0x14, 0x41,
-                  0x53
+                0x8a,             // Huffman-coded name with length 10
+                0x1a, 0xd3, 0x94,
+                0x72, 0x16, 0xc5,
+                0xa5, 0x31, 0x68,
+                0x93,
+                0x84,             // Huffman-coded value with length 4
+                0x32, 0x14, 0x41,
+                0x53
         ])
 
         XCTAssertEqual(expectedBytes, reads.last)

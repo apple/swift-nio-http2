@@ -145,7 +145,10 @@ private enum HTTP2StreamData {
     }
 }
 
-final class HTTP2StreamChannel: Channel, ChannelCore {
+@usableFromInline
+final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
+    // @unchecked Sendable because the only mutable state is `_pipeline` which is only modified in init
+
     /// The stream data type of the channel.
     private let streamDataType: HTTP2StreamDataType
 
@@ -180,7 +183,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         self._pipeline = ChannelPipeline(channel: self)
     }
 
-    internal func configure(initializer: ((Channel, HTTP2StreamID) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    internal func configure(initializer: NIOChannelInitializerWithStreamID?, userPromise promise: EventLoopPromise<Channel>?) {
         assert(self.streamDataType == .frame)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -195,15 +198,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
                     // This initializer callback can only be invoked if we already have a stream ID.
                     // So we force-unwrap here.
                     initializer(self, self.streamID!).whenComplete { result in
-                        switch result {
-                        case .success:
-                            self.postInitializerActivate(promise: promise)
-                        case .failure(let error):
-                            self.configurationFailed(withError: error, promise: promise)
-                        }
+                        self.onInitializationResult(result.map { self }, promise: promise)
                     }
                 } else {
-                    self.postInitializerActivate(promise: promise)
+                    self.postInitializerActivate(output: self, promise: promise)
                 }
             case .failure(let error):
                 self.configurationFailed(withError: error, promise: promise)
@@ -211,7 +209,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
-    internal func configure(initializer: ((Channel) -> EventLoopFuture<Void>)?, userPromise promise: EventLoopPromise<Channel>?) {
+    internal func configure(initializer: NIOChannelInitializer?, userPromise promise: EventLoopPromise<Channel>?) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -224,15 +222,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
                 self.autoRead = autoRead
                 if let initializer = initializer {
                     initializer(self).whenComplete { result in
-                        switch result {
-                        case .success:
-                            self.postInitializerActivate(promise: promise)
-                        case .failure(let error):
-                            self.configurationFailed(withError: error, promise: promise)
-                        }
+                        self.onInitializationResult(result.map { self }, promise: promise)
                     }
                 } else {
-                    self.postInitializerActivate(promise: promise)
+                    self.postInitializerActivate(output: self, promise: promise)
                 }
             case .failure(let error):
                 self.configurationFailed(withError: error, promise: promise)
@@ -240,9 +233,41 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
     }
 
+    // This variant is used in the async stream case.
+    // It uses `Any`s because when called from `configureInboundStream` it is passed the initializer stored on the handler
+    // which can't be a typed generic without changing the handler API.
+    internal func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<any Sendable>?) {
+        assert(self.streamDataType == .framePayload)
+        // We need to configure this channel. This involves doing four things:
+        // 1. Setting our autoRead state from the parent
+        // 2. Calling the initializer, if provided.
+        // 3. Activating when complete.
+        // 4. Catching errors if they occur.
+        self.getAutoReadFromParent { autoReadResult in
+            switch autoReadResult {
+            case .success(let autoRead):
+                self.autoRead = autoRead
+                initializer(self).whenComplete { result in
+                    self.onInitializationResult(result.map { $0 }, promise: promise)
+                }
+            case .failure(let error):
+                self.configurationFailed(withError: error, promise: promise)
+            }
+        }
+    }
+
+    func onInitializationResult<Output: Sendable>(_ initializerResult: Result<Output, Error>, promise: EventLoopPromise<Output>?) {
+        switch initializerResult {
+        case .success(let output):
+            self.postInitializerActivate(output: output, promise: promise)
+        case .failure(let error):
+            self.configurationFailed(withError: error, promise: promise)
+        }
+    }
+
     /// Gets the 'autoRead' option from the parent channel and invokes the `body` closure with the
     /// result. This may be done synchronously if the parent `Channel` supports synchronous options.
-    private func getAutoReadFromParent(_ body: @escaping (Result<Bool, Error>) -> Void) {
+    private func getAutoReadFromParent(_ body: @Sendable @escaping (Result<Bool, Error>) -> Void) {
         // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
         // Note we also don't set the value here: the additional `map` causes an extra allocation
         // when using a Swift 5.0 compiler.
@@ -257,7 +282,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
     }
 
     /// Activates the channel if the parent channel is active and succeeds the given `promise`.
-    private func postInitializerActivate(promise: EventLoopPromise<Channel>?) {
+    private func postInitializerActivate<Output: Sendable>(output: Output, promise: EventLoopPromise<Output>?) {
         // This force unwrap is safe as parent is assigned in the initializer, and never unassigned.
         // If parent is not active, we expect to receive a channelActive later.
         if self.parent!.isActive {
@@ -265,11 +290,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
         }
 
         // We aren't using cascade here to avoid the allocations it causes.
-        promise?.succeed(self)
+        promise?.succeed(output)
     }
 
     /// Handle any error that occurred during configuration.
-    private func configurationFailed(withError error: Error, promise: EventLoopPromise<Channel>?) {
+    private func configurationFailed<Output: Sendable>(withError error: Error, promise: EventLoopPromise<Output>?) {
         switch self.state {
         case .idle, .localActive, .closed:
             // The stream isn't open on the network, nothing to close.
@@ -345,14 +370,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore {
 
     public let parent: Channel?
 
+    @usableFromInline
     func localAddress0() throws -> SocketAddress {
         fatalError()
     }
 
+    @usableFromInline
     func remoteAddress0() throws -> SocketAddress {
         fatalError()
     }
 
+    @usableFromInline
     func setOption<Option: ChannelOption>(_ option: Option, value: Option.Value) -> EventLoopFuture<Void> {
         if self.eventLoop.inEventLoop {
             do {
@@ -781,8 +809,8 @@ private extension HTTP2StreamChannel {
 internal extension HTTP2StreamChannel {
     /// Called when a frame is received from the network.
     ///
-    /// - parameters:
-    ///     - frame: The `HTTP2Frame` received from the network.
+    /// - Parameters:
+    ///   - frame: The `HTTP2Frame` received from the network.
     func receiveInboundFrame(_ frame: HTTP2Frame) {
         guard self.state != .closed else {
             // Do nothing
@@ -809,9 +837,9 @@ internal extension HTTP2StreamChannel {
 
     /// Called when a frame is sent to the network.
     ///
-    /// - parameters:
-    ///     - frame: The `HTTP2Frame` to send to the network.
-    ///     - promise: The promise associated with the frame write.
+    /// - Parameters:
+    ///   - frame: The `HTTP2Frame` to send to the network.
+    ///   - promise: The promise associated with the frame write.
     private func receiveOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
             let error = ChannelError.alreadyClosed
@@ -824,8 +852,8 @@ internal extension HTTP2StreamChannel {
 
     /// Called when a stream closure is received from the network.
     ///
-    /// - parameters:
-    ///     - reason: The reason received from the network, if any.
+    /// - Parameters:
+    ///   - reason: The reason received from the network, if any.
     func receiveStreamClosed(_ reason: HTTP2ErrorCode?) {
         // Avoid emitting any WINDOW_UPDATE frames now that we're closed.
         self.windowManager.closed = true

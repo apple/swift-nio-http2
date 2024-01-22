@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2019 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2019-2023 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -12,9 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+import DequeModule
+import NIOCore
 
 /// Implements some simple denial of service heuristics on inbound frames.
-struct DOSHeuristics {
+struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
     /// The number of "empty" (zero bytes of useful payload) DATA frames we've received since the
     /// last useful frame.
     ///
@@ -26,11 +28,14 @@ struct DOSHeuristics {
     /// The maximum number of "empty" data frames we're willing to tolerate.
     private let maximumSequentialEmptyDataFrames: Int
 
-    internal init(maximumSequentialEmptyDataFrames: Int) {
+    private var resetFrameRateControlStateMachine: HTTP2ResetFrameRateControlStateMachine
+
+    internal init(maximumSequentialEmptyDataFrames: Int, maximumResetFrameCount: Int, resetFrameCounterWindow: TimeAmount, clock: DeadlineClock = RealNIODeadlineClock()) {
         precondition(maximumSequentialEmptyDataFrames >= 0,
                      "maximum sequential empty data frames must be positive, got \(maximumSequentialEmptyDataFrames)")
         self.maximumSequentialEmptyDataFrames = maximumSequentialEmptyDataFrames
         self.receivedEmptyDataFrames = 0
+        self.resetFrameRateControlStateMachine = .init(countThreshold: maximumResetFrameCount, timeWindow: resetFrameCounterWindow, clock: clock)
     }
 }
 
@@ -48,7 +53,15 @@ extension DOSHeuristics {
             }
         case .headers:
             self.receivedEmptyDataFrames = 0
-        case .alternativeService, .goAway, .origin, .ping, .priority, .pushPromise, .rstStream, .settings, .windowUpdate:
+        case .rstStream:
+            switch self.resetFrameRateControlStateMachine.resetReceived() {
+            case .rateTooHigh:
+                throw NIOHTTP2Errors.excessiveRSTFrames()
+            case .noneReceived, .ratePermitted:
+                // no risk
+                ()
+            }
+        case .alternativeService, .goAway, .origin, .ping, .priority, .pushPromise, .settings, .windowUpdate:
             // Currently we don't assess these for DoS risk.
             ()
         }
@@ -56,5 +69,70 @@ extension DOSHeuristics {
         if self.receivedEmptyDataFrames > self.maximumSequentialEmptyDataFrames {
             throw NIOHTTP2Errors.excessiveEmptyDataFrames()
         }
+    }
+}
+
+extension DOSHeuristics {
+    // protect against excessive numbers of stream RST frames being issued
+    struct HTTP2ResetFrameRateControlStateMachine {
+
+        enum ResetFrameRateControlState: Hashable {
+            case noneReceived
+            case ratePermitted
+            case rateTooHigh
+        }
+
+        private let countThreshold: Int
+        private let timeWindow: TimeAmount
+        private let clock: DeadlineClock
+
+        private var resetTimestamps: Deque<NIODeadline>
+        private var _state: ResetFrameRateControlState = .noneReceived
+
+        init(countThreshold: Int, timeWindow: TimeAmount, clock: DeadlineClock = RealNIODeadlineClock()) {
+            self.countThreshold = countThreshold
+            self.timeWindow = timeWindow
+            self.clock = clock
+
+            self.resetTimestamps = .init(minimumCapacity: self.countThreshold)
+        }
+
+        mutating func resetReceived() -> ResetFrameRateControlState {
+            self.garbageCollect()
+            self.resetTimestamps.append(self.clock.now())
+            self.evaluateState()
+            return self._state
+        }
+
+        private mutating func garbageCollect() {
+            let now = self.clock.now()
+            while let first = self.resetTimestamps.first, now - first > self.timeWindow {
+                _ = self.resetTimestamps.popFirst()
+            }
+        }
+
+        private mutating func evaluateState() {
+            switch self._state {
+            case .noneReceived:
+                self._state = .ratePermitted
+            case .ratePermitted:
+                if self.resetTimestamps.count > self.countThreshold {
+                    self._state = .rateTooHigh
+                }
+            case .rateTooHigh:
+                break // no-op, there is no way to de-escalate from an excessive rate
+            }
+        }
+    }
+}
+
+// Simple mockable clock protocol
+protocol NIODeadlineClock {
+    func now() -> NIODeadline
+}
+
+struct RealNIODeadlineClock: NIODeadlineClock {
+    func now() -> NIODeadline {
+        NIODeadline.now()
     }
 }
