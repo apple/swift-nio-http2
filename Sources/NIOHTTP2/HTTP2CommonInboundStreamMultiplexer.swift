@@ -489,10 +489,12 @@ extension NIOHTTP2AsyncSequence {
                 switch yieldResult {
                 case .enqueued:
                     break // success, nothing to do
+                case .terminated:
+                    // this can happen if the task has been cancelled
+                    // we can't do better than dropping the message at the moment
+                    break
                 case .dropped:
                     preconditionFailure("Attempted to yield when AsyncThrowingStream is over capacity. This shouldn't be possible for an unbounded stream.")
-                case .terminated:
-                    preconditionFailure("Attempted to yield to AsyncThrowingStream in terminated state.")
                 default:
                     preconditionFailure("Attempt to yield to AsyncThrowingStream failed for unhandled reason.")
                 }

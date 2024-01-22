@@ -22,7 +22,7 @@ class IntegerCodingTests : XCTestCase {
     
     // MARK: - Array-based helpers
     
-    private func encodeIntegerToArray(_ value: UInt, prefix: Int) -> [UInt8] {
+    private func encodeIntegerToArray(_ value: UInt64, prefix: Int) -> [UInt8] {
         var data = [UInt8]()
         scratchBuffer.clear()
         let len = NIOHPACK.encodeInteger(value, to: &scratchBuffer, prefix: prefix)
@@ -91,7 +91,7 @@ class IntegerCodingTests : XCTestCase {
         XCTAssertEqual(data, [1, 255, 255, 255, 255, 255, 255, 255, 255, 33])
         
         // encoding max 64-bit unsigned integer, 1-bit prefix
-        data = encodeIntegerToArray(UInt(UInt64.max), prefix: 1)
+        data = encodeIntegerToArray(UInt64.max, prefix: 1)
         
         // calculations:
         //  subtract prefix:
@@ -149,6 +149,7 @@ class IntegerCodingTests : XCTestCase {
         XCTAssertEqual(try decodeInteger(from: [0b00101010], prefix: 8), 42)
 
         // Now some larger numbers:
+        #if !os(watchOS)
         XCTAssertEqual(try decodeInteger(from: [255, 129, 254, 255, 255, 255, 255, 255, 255, 33], prefix: 8), 2449958197289549824)
         XCTAssertEqual(try decodeInteger(from: [1, 255, 255, 255, 255, 255, 255, 255, 255, 33], prefix: 1), 2449958197289549824)
         XCTAssertEqual(try decodeInteger(from: [1, 254, 255, 255, 255, 255, 255, 255, 255, 127, 1], prefix: 1), Int.max)
@@ -158,6 +159,7 @@ class IntegerCodingTests : XCTestCase {
 
         // almost the same bytes, but a different prefix:
         XCTAssertEqual(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 1], prefix: 8), 9151314442816848127)
+        #endif
 
         // now a silly version which should never have been encoded in so many bytes
         XCTAssertEqual(try decodeInteger(from: [255, 129, 128, 128, 128, 128, 128, 128, 128, 0], prefix: 8), 256)

@@ -598,6 +598,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testFlushingOneChannelDoesntFlushThemAll() async throws {
         let writeTracker = IODataWriteRecorder()
         let (channelsStream, channelsContinuation) = AsyncStream.makeStream(of: Channel.self)

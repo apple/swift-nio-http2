@@ -782,6 +782,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
     }
 
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testFlushingOneChannelDoesntFlushThemAll() async throws {
         let writeTracker = FrameWriteRecorder()
 
@@ -998,6 +999,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
     }
 
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testReadIsPerChannel() async throws {
         let firstStreamID = HTTP2StreamID(1)
         let secondStreamID = HTTP2StreamID(3)
