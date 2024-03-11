@@ -6,7 +6,8 @@ services:
     image: swift-nio-http2:22.04-5.10
     build:
       args:
-        base_image: "swiftlang/swift:nightly-5.10-jammy"
+        ubuntu_version: "jammy"
+        swift_version: "5.10"
         h2spec_version: "2.2.1"
 
   unit-tests:
