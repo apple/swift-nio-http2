@@ -793,38 +793,38 @@ struct HTTP2FrameDecoder {
             return try self.avoidingParserCoW { newState in
                 guard let processResult = try state.process() else {
                     newState = .awaitingClientMagic(state)
-                    return ParseResult.needMoreData
+                    return .needMoreData
                 }
                 newState = .accumulatingFrameHeader(processResult)
-                return ParseResult.continue
+                return .continue
             }
             
         case .initialized:
             // no bytes, no frame
             return .needMoreData
-            
+
         case .accumulatingFrameHeader(var state):
             let maxFrameSize = self.maxFrameSize
             let maxHeaderListSize = self.headerDecoder.maxHeaderListSize
             return try self.avoidingParserCoW { newState in
                 guard let targetState = try state.process(maxFrameSize: maxFrameSize, maxHeaderListSize: maxHeaderListSize) else {
                     newState = .accumulatingFrameHeader(state)
-                    return ParseResult.needMoreData
+                    return .needMoreData
                 }
                 
                 newState = .init(targetState)
-                return ParseResult.continue
+                return .continue
             }
             
         case .awaitingPaddingLengthByte(var state):
             return try self.avoidingParserCoW { newState in
                 guard let targetState = try state.process() else {
                     newState = .awaitingPaddingLengthByte(state)
-                    return ParseResult.needMoreData
+                    return .needMoreData
                 }
                 
                 newState = .init(targetState)
-                return ParseResult.continue
+                return .continue
             }
             
         case .accumulatingPayload(var state):
@@ -1384,28 +1384,19 @@ extension HTTP2FrameDecoder {
     ///
     /// Sadly, because it's generic and has a closure, we need to force it to be inlined at all call sites, which is
     /// not ideal.
+    ///
+    /// The `body` function must assign a value to the parser state, otherwise it will remain the intermediary
+    /// `appending` state, which is not wanted and it would result in the failure of the final assertion.
+    /// If the state doesn't get updated because of an error that was thrown, this function sets the parser state
+    /// to the initial one.
     @inline(__always)
-    private mutating func avoidingParserCoW<ReturnType>(_ body: (inout ParserState) -> ReturnType) -> ReturnType {
+    private mutating func avoidingParserCoW<ReturnType>(_ body: (inout ParserState) throws -> ReturnType) rethrows -> ReturnType {
+        let initialState = self.state
         self.state = .appending
         defer {
             assert(!self.isAppending)
         }
 
-        return body(&self.state)
-    }
-
-    /// This is the implementation for a throwing function. If the state doesn't get updated because an error
-    /// was thrown, this function sets the parser state to the initial one.
-    ///
-    /// The `body` function must assign a value to the parser state, otherwise it will be the intermediary
-    /// `appending` state, which is not wanted and it results in the this function's assertion failure.
-    @inline(__always)
-    private mutating func avoidingParserCoW<ReturnType>(_ body: (inout ParserState) throws -> ReturnType) throws -> ReturnType {
-        let initialState = self.state
-        self.state = .appending
-        defer {
-          assert(!self.isAppending)
-        }
         do {
             return try body(&self.state)
         } catch {
