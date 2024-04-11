@@ -1404,7 +1404,7 @@ extension HTTP2FrameDecoder {
             throw error
         }
     }
-    
+
     private var isAppending: Bool {
         if case .appending = self.state {
             return true
