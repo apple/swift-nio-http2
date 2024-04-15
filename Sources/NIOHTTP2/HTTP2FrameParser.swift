@@ -791,13 +791,22 @@ struct HTTP2FrameDecoder {
         switch self.state {
         case .awaitingClientMagic(var state):
             return try self.avoidingParserCoW { newState in
-                guard let processResult = try state.process() else {
-                    newState = .awaitingClientMagic(state)
-                    return .needMoreData
-                }
+                let result = Result<ParseResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .awaitingClientMagic(state)
+                        return .needMoreData
+                    }
                 newState = .accumulatingFrameHeader(processResult)
                 return .continue
             }
+            switch result {
+            case let .success(parseResult):
+                return parseResult
+            case let .failure(error):
+                newState = .awaitingClientMagic(state)
+                throw error
+            }
+        }
             
         case .initialized:
             // no bytes, no frame
@@ -807,41 +816,70 @@ struct HTTP2FrameDecoder {
             let maxFrameSize = self.maxFrameSize
             let maxHeaderListSize = self.headerDecoder.maxHeaderListSize
             return try self.avoidingParserCoW { newState in
-                guard let targetState = try state.process(maxFrameSize: maxFrameSize, maxHeaderListSize: maxHeaderListSize) else {
-                    newState = .accumulatingFrameHeader(state)
-                    return .needMoreData
+                let result = Result<ParseResult, Error> {
+                    guard let targetState = try state.process(maxFrameSize: maxFrameSize, maxHeaderListSize: maxHeaderListSize) else {
+                        newState = .accumulatingFrameHeader(state)
+                        return .needMoreData
+                    }
+                    
+                    newState = .init(targetState)
+                    return .continue
                 }
                 
-                newState = .init(targetState)
-                return .continue
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .accumulatingFrameHeader(state)
+                    throw error
+                }
             }
             
         case .awaitingPaddingLengthByte(var state):
             return try self.avoidingParserCoW { newState in
-                guard let targetState = try state.process() else {
-                    newState = .awaitingPaddingLengthByte(state)
-                    return .needMoreData
+                let result = Result<ParseResult, Error> {
+                    guard let targetState = try state.process() else {
+                        newState = .awaitingPaddingLengthByte(state)
+                        return .needMoreData
+                    }
+                    
+                    newState = .init(targetState)
+                    return .continue
                 }
-                
-                newState = .init(targetState)
-                return .continue
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .awaitingPaddingLengthByte(state)
+                    throw error
+                }
             }
             
         case .accumulatingPayload(var state):
             let accumulatingResult: ProcessAccumulatingResult = try self.avoidingParserCoW { newState in
-                guard let processResult = try state.process() else {
-                    newState = .accumulatingPayload(state)
-                    return .needMoreData
+                let result = Result<ProcessAccumulatingResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .accumulatingPayload(state)
+                        return .needMoreData
+                    }
+                    
+                    switch processResult {
+                    case .accumulateHeaderBlockFragments(let nextState):
+                        newState = .accumulatingHeaderBlockFragments(nextState)
+                        return .continue
+                    case .parseFrame(header: let header, payloadBytes: let payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
+                        // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
+                        newState = .accumulatingFrameHeader(nextState)
+                        return .parseFrame(header: header, payloadBytes: payloadBytes, paddingBytes: paddingBytes)
+                    }
                 }
                 
-                switch processResult {
-                case .accumulateHeaderBlockFragments(let nextState):
-                    newState = .accumulatingHeaderBlockFragments(nextState)
-                    return .continue
-                case .parseFrame(header: let header, payloadBytes: let payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
-                    // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
-                    newState = .accumulatingFrameHeader(nextState)
-                    return .parseFrame(header: header, payloadBytes: payloadBytes, paddingBytes: paddingBytes)
+                switch result {
+                case let .success(processAccumulatingResult):
+                    return processAccumulatingResult
+                case let .failure(error):
+                    newState = .accumulatingPayload(state)
+                    throw error
                 }
             }
             
@@ -870,12 +908,21 @@ struct HTTP2FrameDecoder {
 
         case .simulatingDataFrames(var state):
             return try self.avoidingParserCoW { newState in
-                guard let processResult = try state.process() else {
-                    newState = .simulatingDataFrames(state)
-                    return .needMoreData
+                let result = Result<ParseResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .simulatingDataFrames(state)
+                        return .needMoreData
+                    }
+                    newState = .init(processResult.nextState)
+                    return .frame(processResult.frame, flowControlledLength: processResult.flowControlledLength)
                 }
-                newState = .init(processResult.nextState)
-                return .frame(processResult.frame, flowControlledLength: processResult.flowControlledLength)
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .simulatingDataFrames(state)
+                    throw error
+                }
             }
 
         case .strippingTrailingPadding(var state):
@@ -891,18 +938,27 @@ struct HTTP2FrameDecoder {
 
         case .accumulatingContinuationPayload(var state):
             let accumulatingResult: ProcessAccumulatingResult = try self.avoidingParserCoW { newState in
-                guard let processResult = try state.process() else {
-                    newState = .accumulatingContinuationPayload(state)
-                    return .needMoreData
+                let result = Result<ProcessAccumulatingResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .accumulatingContinuationPayload(state)
+                        return .needMoreData
+                    }
+                    switch processResult {
+                    case .accumulateContinuationHeader(let nextState):
+                        newState = .accumulatingHeaderBlockFragments(nextState)
+                        return .continue
+                    case .parseFrame(header: let header, payloadBytes: let payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
+                        // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
+                        newState = .accumulatingFrameHeader(nextState)
+                        return .parseFrame(header: header, payloadBytes: payloadBytes, paddingBytes: paddingBytes)
+                    }
                 }
-                switch processResult {
-                case .accumulateContinuationHeader(let nextState):
-                    newState = .accumulatingHeaderBlockFragments(nextState)
-                    return .continue
-                case .parseFrame(header: let header, payloadBytes: let payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
-                    // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
-                    newState = .accumulatingFrameHeader(nextState)
-                    return .parseFrame(header: header, payloadBytes: payloadBytes, paddingBytes: paddingBytes)
+                switch result {
+                case let .success(processAccumulatingResult):
+                    return processAccumulatingResult
+                case let .failure(error):
+                    newState = .accumulatingContinuationPayload(state)
+                    throw error
                 }
             }
             
@@ -933,12 +989,21 @@ struct HTTP2FrameDecoder {
         case .accumulatingHeaderBlockFragments(var state):
             let maxHeaderListSize = self.headerDecoder.maxHeaderListSize
             return try self.avoidingParserCoW { newState in
-                guard let processResult = try state.process(maxHeaderListSize: maxHeaderListSize) else {
-                    newState = .accumulatingHeaderBlockFragments(state)
-                    return .needMoreData
+                let result = Result<ParseResult, Error> {
+                    guard let processResult = try state.process(maxHeaderListSize: maxHeaderListSize) else {
+                        newState = .accumulatingHeaderBlockFragments(state)
+                        return .needMoreData
+                    }
+                    newState = .accumulatingContinuationPayload(processResult)
+                    return .continue
                 }
-                newState = .accumulatingContinuationPayload(processResult)
-                return .continue
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .accumulatingHeaderBlockFragments(state)
+                    throw error
+                }
             }
             
         case .appending:
@@ -1384,25 +1449,14 @@ extension HTTP2FrameDecoder {
     ///
     /// Sadly, because it's generic and has a closure, we need to force it to be inlined at all call sites, which is
     /// not ideal.
-    ///
-    /// The `body` function must assign a value to the parser state, otherwise it will remain the intermediary
-    /// `appending` state, which is not wanted and it would result in the failure of the final assertion.
-    /// If the state doesn't get updated because of an error that was thrown, this function sets the parser state
-    /// to the initial one.
     @inline(__always)
     private mutating func avoidingParserCoW<ReturnType>(_ body: (inout ParserState) throws -> ReturnType) rethrows -> ReturnType {
-        let initialState = self.state
         self.state = .appending
         defer {
             assert(!self.isAppending)
         }
 
-        do {
-            return try body(&self.state)
-        } catch {
-            self.state = initialState
-            throw error
-        }
+        return try body(&self.state)
     }
 
     private var isAppending: Bool {
