@@ -796,17 +796,17 @@ struct HTTP2FrameDecoder {
                         newState = .awaitingClientMagic(state)
                         return .needMoreData
                     }
-                newState = .accumulatingFrameHeader(processResult)
-                return .continue
+                    newState = .accumulatingFrameHeader(processResult)
+                    return .continue
+                }
+                switch result {
+                case let .success(parseResult):
+                    return parseResult
+                case let .failure(error):
+                    newState = .awaitingClientMagic(state)
+                    throw error
+                }
             }
-            switch result {
-            case let .success(parseResult):
-                return parseResult
-            case let .failure(error):
-                newState = .awaitingClientMagic(state)
-                throw error
-            }
-        }
             
         case .initialized:
             // no bytes, no frame
