@@ -580,7 +580,7 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
     }
 }
 
-#if swift(<5.9)
+#if compiler(<5.9)
 // this should be available in the std lib from 5.9 onwards
 extension AsyncStream {
     internal static func makeStream(
