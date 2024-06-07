@@ -185,6 +185,10 @@ public enum NIOHTTP2Errors {
         return UnknownPseudoHeader(name, file: file, line: line)
     }
 
+    public static func unsupportedPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> UnsupportedPseudoHeader {
+        return UnsupportedPseudoHeader(name, file: file, line: line)
+    }
+
     /// Creates a ``InvalidPseudoHeaders`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -1104,6 +1108,45 @@ public enum NIOHTTP2Errors {
         @available(*, deprecated, renamed: "unknownPseudoHeader")
         public init(_ name: String) {
             self.init(name, file: #fileID, line: #line)
+        }
+
+        fileprivate init(_ name: String, file: String, line: UInt) {
+            self.storage = .init(name, file: file, line: line)
+        }
+    }
+
+    /// An unsupported pseudo-header was received.
+    public struct UnsupportedPseudoHeader: NIOHTTP2Error, CustomStringConvertible, @unchecked Sendable {
+        // @unchecked Sendable because access is controlled by getters and copy-on-write setters giving this value semantics
+
+        private var storage: StringAndLocationStorage
+
+        private mutating func copyStorageIfNotUniquelyReferenced() {
+            if !isKnownUniquelyReferenced(&self.storage) {
+                self.storage = self.storage.copy()
+            }
+        }
+
+        /// The name of the unsupported pseudo-header field.
+        public var name: String {
+            get {
+                return self.storage.value
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.value = newValue
+            }
+        }
+
+        /// The file and line where the error was created.
+        public var location: String {
+            get {
+                return self.storage.location
+            }
+        }
+
+        public var description: String {
+            return "UnsupportedPseudoHeader(name: \(self.name), location: \(self.location))"
         }
 
         fileprivate init(_ name: String, file: String, line: UInt) {

@@ -17,8 +17,8 @@ extension HPACKHeaders {
     /// Checks that a given HPACKHeaders block is a valid request header block, meeting all of the constraints of RFC 7540.
     ///
     /// If the header block is not valid, throws an error.
-    internal func validateRequestBlock() throws {
-        return try RequestBlockValidator.validateBlock(self)
+    internal func validateRequestBlock(supportsExtendedConnect: Bool) throws {
+        return try RequestBlockValidator.validateBlock(self, supportsExtendedConnect: supportsExtendedConnect)
     }
 
     /// Checks that a given HPACKHeaders block is a valid response header block, meeting all of the constraints of RFC 7540.
@@ -78,7 +78,7 @@ fileprivate protocol HeaderBlockValidator {
 
 extension HeaderBlockValidator {
     /// Validates that a header block meets the requirements of this `HeaderBlockValidator`.
-    fileprivate static func validateBlock(_ block: HPACKHeaders) throws {
+    fileprivate static func validateBlock(_ block: HPACKHeaders, supportsExtendedConnect: Bool = false) throws {
         var validator = Self()
         var blockSection = BlockSection.pseudoHeaders
         var seenPseudoHeaders = PseudoHeaders(rawValue: 0)
@@ -88,7 +88,7 @@ extension HeaderBlockValidator {
             try blockSection.validField(fieldName)
             try fieldName.legalHeaderField(value: value)
 
-            let thisPseudoHeaderFieldType = try seenPseudoHeaders.seenNewHeaderField(fieldName)
+            let thisPseudoHeaderFieldType = try seenPseudoHeaders.seenNewHeaderField(fieldName, supportsExtendedConnect: supportsExtendedConnect)
 
             try validator.validateNextField(name: fieldName, value: value, pseudoHeaderType: thisPseudoHeaderFieldType)
         }
@@ -106,6 +106,7 @@ extension HeaderBlockValidator {
 /// An object that can be used to validate if a given header block is a valid request header block.
 fileprivate struct RequestBlockValidator {
     private var isConnectRequest: Bool = false
+    private var containsProtocolPseudoheader: Bool = false
 }
 
 extension RequestBlockValidator: HeaderBlockValidator {
@@ -141,8 +142,6 @@ extension RequestBlockValidator: HeaderBlockValidator {
         // - On CONNECT requests without the :protocol pseudo-header, :method and :authority are mandatory, no others are allowed.
         //
         // This is a bit awkward.
-        //
-        // For now we don't support extended-CONNECT, but when we do we'll need to update the logic here.
         if let pseudoHeaderType = pseudoHeaderType {
             assert(name.fieldType == .pseudoHeaderField)
 
@@ -150,6 +149,8 @@ extension RequestBlockValidator: HeaderBlockValidator {
             case .method:
                 // This is a method pseudo-header. Check if the value is CONNECT.
                 self.isConnectRequest = value == "CONNECT"
+            case .extConnectProtocol:
+                self.containsProtocolPseudoheader = true
             case .path:
                 // This is a path pseudo-header. It must not be empty.
                 if value.utf8.count == 0 {
@@ -171,7 +172,11 @@ extension RequestBlockValidator: HeaderBlockValidator {
     var allowedPseudoHeaderFields: PseudoHeaders {
         // For the logic behind this if statement, see the comment in validateNextField.
         if self.isConnectRequest {
-            return .allowedConnectRequestHeaders
+            if self.containsProtocolPseudoheader {
+                return .allowedExtendedConnectRequestHeaders
+            } else {
+                return .allowedConnectRequestHeaders
+            }
         } else {
             return .allowedRequestHeaders
         }
@@ -179,7 +184,7 @@ extension RequestBlockValidator: HeaderBlockValidator {
 
     var mandatoryPseudoHeaderFields: PseudoHeaders {
         // For the logic behind this if statement, see the comment in validateNextField.
-        if self.isConnectRequest {
+        if self.isConnectRequest && !self.containsProtocolPseudoheader {
             return .mandatoryConnectRequestHeaders
         } else {
             return .mandatoryRequestHeaders
@@ -339,9 +344,11 @@ fileprivate struct PseudoHeaders: OptionSet {
     static let scheme = PseudoHeaders(rawValue: 1 << 2)
     static let authority = PseudoHeaders(rawValue: 1 << 3)
     static let status = PseudoHeaders(rawValue: 1 << 4)
+    static let extConnectProtocol = PseudoHeaders(rawValue: 1 << 5)
 
     static let mandatoryRequestHeaders: PseudoHeaders = [.path, .method, .scheme]
     static let allowedRequestHeaders: PseudoHeaders = [.path, .method, .scheme, .authority]
+    static let allowedExtendedConnectRequestHeaders: PseudoHeaders = [.path, .method, .scheme, .authority, .extConnectProtocol]
     static let mandatoryConnectRequestHeaders: PseudoHeaders = [.method, .authority]
     static let allowedConnectRequestHeaders: PseudoHeaders = [.method, .authority]
     static let mandatoryResponseHeaders: PseudoHeaders = [.status]
@@ -365,6 +372,8 @@ extension PseudoHeaders {
             self = .authority
         case "status":
             self = .status
+        case "protocol":
+            self = .extConnectProtocol
         default:
             return nil
         }
@@ -374,7 +383,7 @@ extension PseudoHeaders {
 extension PseudoHeaders {
     /// Updates this set of PseudoHeaders with any new pseudo headers we've seen. Also returns a PseudoHeaders that marks
     /// the type of this specific header field.
-    mutating func seenNewHeaderField(_ name: HeaderFieldName) throws -> PseudoHeaders? {
+    mutating func seenNewHeaderField(_ name: HeaderFieldName, supportsExtendedConnect: Bool) throws -> PseudoHeaders? {
         // We need to check if this is a pseudo-header field we've seen before and one we recognise.
         // We only want to see a pseudo-header field once.
         guard name.fieldType == .pseudoHeaderField else {
@@ -383,6 +392,10 @@ extension PseudoHeaders {
 
         guard let pseudoHeaderType = PseudoHeaders(headerFieldName: name) else {
             throw NIOHTTP2Errors.unknownPseudoHeader(":\(name.baseName)")
+        }
+
+        if pseudoHeaderType == .extConnectProtocol && !supportsExtendedConnect {
+            throw NIOHTTP2Errors.unsupportedPseudoHeader(":\(name.baseName)")
         }
 
         if self.contains(pseudoHeaderType) {

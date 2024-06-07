@@ -25,6 +25,12 @@ protocol HasRemoteSettings {
     var outboundFlowControlWindow: HTTP2FlowControlWindow { get set }
 }
 
+extension HasRemoteExtendedConnectSettings where Self: HasRemoteSettings {
+    var remoteSupportsExtendedConnect: Bool {
+        self.remoteSettings.enableConnectProtocol == 1
+    }
+}
+
 extension HasRemoteSettings {
     mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameEncoder: inout HTTP2FrameEncoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
@@ -65,6 +71,12 @@ extension HasRemoteSettings {
                     effect.streamWindowSizeChange += Int(delta)
                 case .maxFrameSize:
                     effect.newMaxFrameSize = newValue
+                case .enableConnectProtocol:
+                    // Must not transition from 1 -> 0
+                    if originalValue == 1 && newValue == 0 {
+                        throw NIOHTTP2Errors.invalidSetting(setting: HTTP2Setting(parameter: setting, value: Int(newValue)))
+                    }
+                    effect.enableConnectProtocol = newValue == 1
                 default:
                     // No operation required
                     return
@@ -73,6 +85,8 @@ extension HasRemoteSettings {
             return (.init(result: .succeed, effect: .remoteSettingsChanged(effect)), .sendAck)
         } catch let err where err is NIOHTTP2Errors.InvalidFlowControlWindowSize {
             return (.init(result: .connectionError(underlyingError: err, type: .flowControlError), effect: nil), .nothing)
+        } catch let err where err is NIOHTTP2Errors.InvalidSetting {
+            return (.init(result: .connectionError(underlyingError: err, type: .protocolError), effect: nil), .nothing)
         } catch {
             preconditionFailure("Unexpected error thrown: \(error)")
         }

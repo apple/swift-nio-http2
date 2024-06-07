@@ -87,6 +87,10 @@ struct HTTP2ConnectionStateMachine {
             return self.localSettings.initialWindowSize
         }
 
+        var remoteSupportsExtendedConnect: Bool {
+            false
+        }
+
         init(fromIdle idleState: IdleConnectionState, localSettings settings: HTTP2SettingsState) {
             self.role = idleState.role
             self.headerBlockValidation = idleState.headerBlockValidation
@@ -115,6 +119,10 @@ struct HTTP2ConnectionStateMachine {
 
         var remoteInitialWindowSize: UInt32 {
             return HTTP2SettingsState.defaultInitialWindowSize
+        }
+
+        var localSupportsExtendedConnect: Bool {
+            false
         }
 
         init(fromIdle idleState: IdleConnectionState, remoteSettings settings: HTTP2SettingsState) {
@@ -198,6 +206,10 @@ struct HTTP2ConnectionStateMachine {
             return self.role == .client
         }
 
+        var localSupportsExtendedConnect: Bool {
+            false
+        }
+
         init(fromPrefaceReceived state: PrefaceReceivedState, lastStreamID: HTTP2StreamID) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
@@ -234,6 +246,10 @@ struct HTTP2ConnectionStateMachine {
 
         var quiescedByServer: Bool {
             return self.role == .server
+        }
+
+        var remoteSupportsExtendedConnect: Bool {
+            false
         }
 
         init(fromPrefaceSent state: PrefaceSentState, lastStreamID: HTTP2StreamID) {
@@ -411,6 +427,14 @@ struct HTTP2ConnectionStateMachine {
         var streamState: ConnectionStreamState
         var lastLocalStreamID: HTTP2StreamID
         var lastRemoteStreamID: HTTP2StreamID
+
+        var localSupportsExtendedConnect: Bool {
+            false
+        }
+
+        var remoteSupportsExtendedConnect: Bool {
+            false
+        }
 
         init<PreviousState: LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
             self.role = previousState.role
@@ -1628,6 +1652,11 @@ extension HTTP2ConnectionStateMachine {
                 }
             case .maxFrameSize:
                 guard setting._value >= (1 << 14) && setting._value <= ((1 << 24) - 1) else {
+                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .protocolError)
+                }
+            case .enableConnectProtocol:
+                // Must be 0 or 1
+                guard setting._value <= 1 else {
                     return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .protocolError)
                 }
             default:
