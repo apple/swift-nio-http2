@@ -31,9 +31,11 @@ struct HTTP2FrameDecoder {
     /// The state for a parser that is waiting for the client magic.
     private struct ClientMagicState {
         private var pendingBytes: ByteBuffer?
+        private var maximumSequentialContinuationFrames: Int
 
-        init() {
+        init(maximumSequentialContinuationFrames: Int) {
             self.pendingBytes = nil
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
         mutating func process() throws -> AccumulatingFrameHeaderParserState? {
@@ -47,7 +49,10 @@ struct HTTP2FrameDecoder {
                 throw NIOHTTP2Errors.badClientMagic()
             }
 
-            return AccumulatingFrameHeaderParserState(unusedBytes: pendingBytes)
+            return AccumulatingFrameHeaderParserState(
+                unusedBytes: pendingBytes,
+                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            )
         }
 
         mutating func accumulate(bytes: ByteBuffer) {
@@ -58,14 +63,16 @@ struct HTTP2FrameDecoder {
     /// The state for a parser that is currently accumulating the bytes of a frame header.
     private struct AccumulatingFrameHeaderParserState {
         private(set) var unusedBytes: ByteBuffer
+        private(set) var maximumSequentialContinuationFrames: Int
 
-        init(unusedBytes: ByteBuffer) {
+        init(unusedBytes: ByteBuffer, maximumSequentialContinuationFrames: Int) {
             self.unusedBytes = unusedBytes
             if self.unusedBytes.readableBytes == 0 {
                 // if it's an empty buffer, reset the read/write indices so the read/write indices
                 // don't just race each other & cause many many reallocations and larger allocations
                 self.unusedBytes.quietlyReset()
             }
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
         enum NextState {
@@ -105,11 +112,19 @@ struct HTTP2FrameDecoder {
                         throw InternalError.codecError(code: .protocolError)
                     }
                     return .awaitingPaddingLengthByte(
-                        AwaitingPaddingLengthByteParserState(fromAccumulatingFrameHeader: self, frameHeader: header)
+                        AwaitingPaddingLengthByteParserState(
+                            fromAccumulatingFrameHeader: self, frameHeader: header,
+                            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                        )
                     )
                 } else {
                     return .simulatingDataFrames(
-                        SimulatingDataFramesParserState(fromIdle: self, header: header, remainingBytes: header.length)
+                        SimulatingDataFramesParserState(
+                            fromIdle: self,
+                            header: header,
+                            remainingBytes: header.length,
+                            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                        )
                     )
                 }
 
@@ -127,14 +142,30 @@ struct HTTP2FrameDecoder {
                     }
 
                     return .awaitingPaddingLengthByte(
-                        AwaitingPaddingLengthByteParserState(fromAccumulatingFrameHeader: self, frameHeader: header)
+                        AwaitingPaddingLengthByteParserState(
+                            fromAccumulatingFrameHeader: self,
+                            frameHeader: header,
+                            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                        )
                     )
                 } else {
-                    return .accumulatingPayload(AccumulatingPayloadParserState(fromIdle: self, header: header))
+                    return .accumulatingPayload(
+                        AccumulatingPayloadParserState(
+                            fromIdle: self,
+                            header: header,
+                            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                        )
+                    )
                 }
 
             default:
-                return .accumulatingPayload(AccumulatingPayloadParserState(fromIdle: self, header: header))
+                return .accumulatingPayload(
+                    AccumulatingPayloadParserState(
+                        fromIdle: self,
+                        header: header,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                    )
+                )
             }
         }
 
@@ -146,14 +177,20 @@ struct HTTP2FrameDecoder {
     private struct AwaitingPaddingLengthByteParserState {
         private var header: FrameHeader
         private var accumulatedBytes: ByteBuffer
+        private var maximumSequentialContinuationFrames: Int
 
-        init(fromAccumulatingFrameHeader state: AccumulatingFrameHeaderParserState, frameHeader: FrameHeader) {
+        init(
+            fromAccumulatingFrameHeader state: AccumulatingFrameHeaderParserState,
+            frameHeader: FrameHeader,
+            maximumSequentialContinuationFrames: Int
+        ) {
             precondition(frameHeader.type.supportsPadding)
             precondition(frameHeader.flags.contains(.padded))
 
             precondition(frameHeader.length > 0)
             self.header = frameHeader
             self.accumulatedBytes = state.unusedBytes
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
         enum NextState {
@@ -187,7 +224,8 @@ struct HTTP2FrameDecoder {
                     SimulatingDataFramesParserState(
                         header: unpaddedHeader,
                         accumulatedBytes: self.accumulatedBytes,
-                        expectedPadding: expectedPadding
+                        expectedPadding: expectedPadding,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
                     )
                 )
             } else {
@@ -195,7 +233,8 @@ struct HTTP2FrameDecoder {
                     AccumulatingPayloadParserState(
                         header: unpaddedHeader,
                         accumulatedBytes: self.accumulatedBytes,
-                        expectedPadding: expectedPadding
+                        expectedPadding: expectedPadding,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
                     )
                 )
             }
@@ -212,14 +251,25 @@ struct HTTP2FrameDecoder {
         private(set) var header: FrameHeader
         private var accumulatedBytes: ByteBuffer
         private var expectedPadding: Int?
+        private var maximumSequentialContinuationFrames: Int
 
-        init(fromIdle state: AccumulatingFrameHeaderParserState, header: FrameHeader) {
+        init(
+            fromIdle state: AccumulatingFrameHeaderParserState,
+            header: FrameHeader,
+            maximumSequentialContinuationFrames: Int
+        ) {
             self.header = header
             self.accumulatedBytes = state.unusedBytes
             self.expectedPadding = nil
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
-        init(header: FrameHeader, accumulatedBytes: ByteBuffer, expectedPadding: UInt8) {
+        init(
+            header: FrameHeader,
+            accumulatedBytes: ByteBuffer,
+            expectedPadding: UInt8,
+            maximumSequentialContinuationFrames: Int
+        ) {
             // In this state we must not see a .padded header: it has to have been stripped earlier.
             // Do not remove this first precondition without removing the unchecked math in process().
             precondition(header.length >= Int(expectedPadding))
@@ -228,11 +278,17 @@ struct HTTP2FrameDecoder {
             self.header = header
             self.accumulatedBytes = accumulatedBytes
             self.expectedPadding = Int(expectedPadding)
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
         enum ProcessResult {
             case accumulateHeaderBlockFragments(AccumulatingHeaderBlockFragmentsParserState)
-            case parseFrame(header: FrameHeader, payloadBytes: ByteBuffer, paddingBytes: Int?, nextState: AccumulatingFrameHeaderParserState)
+            case parseFrame(
+                header: FrameHeader,
+                payloadBytes: ByteBuffer,
+                paddingBytes: Int?,
+                nextState: AccumulatingFrameHeaderParserState
+            )
         }
 
         /// Process a frame.
@@ -277,7 +333,9 @@ struct HTTP2FrameDecoder {
                         header: syntheticHeader,
                         initialPayload: payloadBytes,
                         incomingPayload: self.accumulatedBytes,
-                        originalPaddingBytes: self.expectedPadding
+                        originalPaddingBytes: self.expectedPadding,
+                        sequentialContinuationFramesSize: 0,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
                     )
                 )
             }
@@ -285,7 +343,10 @@ struct HTTP2FrameDecoder {
             // Before we read the frame, we save our state back. This ensures that if we throw an error here, we've
             // appropriately skipped the frame payload.
             let expectedPadding = self.expectedPadding
-            let nextState = AccumulatingFrameHeaderParserState(unusedBytes: self.accumulatedBytes)
+            let nextState = AccumulatingFrameHeaderParserState(
+                unusedBytes: self.accumulatedBytes,
+                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            )
 
             return .parseFrame(
                 header: syntheticHeader, payloadBytes: payloadBytes, paddingBytes: expectedPadding, nextState: nextState
@@ -323,16 +384,28 @@ struct HTTP2FrameDecoder {
         private var remainingByteCount: Int
         private var flowControlledLength: Int
         private var expectedPadding: Int?
+        private var maximumSequentialContinuationFrames: Int
 
-        init(fromIdle state: AccumulatingFrameHeaderParserState, header: FrameHeader, remainingBytes: Int) {
+        init(
+            fromIdle state: AccumulatingFrameHeaderParserState,
+            header: FrameHeader,
+            remainingBytes: Int,
+            maximumSequentialContinuationFrames: Int
+        ) {
             self.header = header
             self.payload = state.unusedBytes
             self.expectedPadding = nil
             self.remainingByteCount = remainingBytes
             self.flowControlledLength = header.length
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
-        init(header: FrameHeader, accumulatedBytes: ByteBuffer, expectedPadding: UInt8) {
+        init(
+            header: FrameHeader,
+            accumulatedBytes: ByteBuffer,
+            expectedPadding: UInt8,
+            maximumSequentialContinuationFrames: Int
+        ) {
             // In this state we must not see a .padded header: it has to have been stripped earlier.
             precondition(header.length >= Int(expectedPadding))
             precondition((!header.type.supportsPadding) || (!header.flags.contains(.padded)))
@@ -342,6 +415,7 @@ struct HTTP2FrameDecoder {
             self.expectedPadding = Int(expectedPadding)
             self.remainingByteCount = header.length
             self.flowControlledLength = header.length + 1  // Include the .padding byte
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
         /// The result of successful processing: we always produce a DATA frame, and have
@@ -412,11 +486,17 @@ struct HTTP2FrameDecoder {
                     StrippingTrailingPaddingState(
                         fromSimulatingDataFramesState: self,
                         excessBytes: self.payload,
-                        expectedPadding: padding
+                        expectedPadding: padding,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
                     )
                 )
             } else {
-                return .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: self.payload))
+                return .accumulatingFrameHeader(
+                    AccumulatingFrameHeaderParserState(
+                        unusedBytes: self.payload,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                    )
+                )
             }
         }
 
@@ -450,21 +530,34 @@ struct HTTP2FrameDecoder {
         private var header: FrameHeader
         private var excessBytes: ByteBuffer
         private var expectedPadding: Int
+        private var maximumSequentialContinuationFrames: Int
 
-        init(fromSimulatingDataFramesState state: SimulatingDataFramesParserState, excessBytes: ByteBuffer, expectedPadding: Int) {
+        init(
+            fromSimulatingDataFramesState state: SimulatingDataFramesParserState,
+            excessBytes: ByteBuffer,
+            expectedPadding: Int,
+            maximumSequentialContinuationFrames: Int
+        ) {
             precondition(expectedPadding > 0)
 
             self.header = state.header
             self.excessBytes = excessBytes
             self.expectedPadding = expectedPadding
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
-        init(fromAccumulatingPayloadState state: AccumulatingPayloadParserState, excessBytes: ByteBuffer, expectedPadding: Int) {
+        init(
+            fromAccumulatingPayloadState state: AccumulatingPayloadParserState,
+            excessBytes: ByteBuffer,
+            expectedPadding: Int,
+            maximumSequentialContinuationFrames: Int
+        ) {
             precondition(expectedPadding > 0)
 
             self.header = state.header
             self.excessBytes = excessBytes
             self.expectedPadding = expectedPadding
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
         enum NextState {
@@ -476,7 +569,12 @@ struct HTTP2FrameDecoder {
             if self.excessBytes.readableBytes >= self.expectedPadding {
                 // All the padding is here.
                 self.excessBytes.moveReaderIndex(forwardBy: self.expectedPadding)
-                return .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: self.excessBytes))
+                return .accumulatingFrameHeader(
+                    AccumulatingFrameHeaderParserState(
+                        unusedBytes: self.excessBytes,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                    )
+                )
             } else if self.excessBytes.readableBytes > 0 {
                 // We're short on padding. Strip some and move forward.
                 // Unchecked is safe here: we know that `readableBytes` is positive, and smaller than `expectedPadding`.
@@ -504,24 +602,37 @@ struct HTTP2FrameDecoder {
         private var currentFrameBytes: ByteBuffer
         private var continuationPayload: ByteBuffer
         private var originalPaddingBytes: Int?
+        private var sequentialContinuationFramesSize: Int
+        private var maximumSequentialContinuationFrames: Int
 
-        init(fromAccumulatingHeaderBlockFragments acc: AccumulatingHeaderBlockFragmentsParserState,
-             continuationHeader: FrameHeader) {
+        init(
+            fromAccumulatingHeaderBlockFragments acc: AccumulatingHeaderBlockFragmentsParserState,
+            continuationHeader: FrameHeader,
+            maximumSequentialContinuationFrames: Int
+        ) {
             precondition(acc.header.beginsContinuationSequence)
             precondition(continuationHeader.type == .continuation)
+            precondition(acc.sequentialContinuationFramesSize < maximumSequentialContinuationFrames)
 
             self.initialHeader = acc.header
             self.continuationHeader = continuationHeader
             self.currentFrameBytes = acc.accumulatedPayload
             self.continuationPayload = acc.incomingPayload
             self.originalPaddingBytes = acc.originalPaddingBytes
+            self.sequentialContinuationFramesSize = acc.sequentialContinuationFramesSize
+            self.maximumSequentialContinuationFrames = acc.maximumSequentialContinuationFrames
         }
 
         /// The result of successful processing: we either produce a frame and move to the new accumulating state,
         /// or we continue accumulating
         enum ProcessResult {
             case accumulateContinuationHeader(AccumulatingHeaderBlockFragmentsParserState)
-            case parseFrame(header: FrameHeader, payloadBytes: ByteBuffer, paddingBytes: Int?, nextState: AccumulatingFrameHeaderParserState)
+            case parseFrame(
+                header: FrameHeader,
+                payloadBytes: ByteBuffer,
+                paddingBytes: Int?,
+                nextState: AccumulatingFrameHeaderParserState
+            )
         }
 
         mutating func process() throws -> ProcessResult? {
@@ -535,6 +646,9 @@ struct HTTP2FrameDecoder {
             self.currentFrameBytes.writeImmutableBuffer(continuationPayload)
             let payload = self.currentFrameBytes
 
+            // Increase the count of CONTINUATION frames in the sequence.
+            self.sequentialContinuationFramesSize += 1
+
             // we have collected enough bytes: is this the last CONTINUATION frame?
             guard self.continuationHeader.flags.contains(.endHeaders) else {
                 // nope, switch back to accumulating fragments
@@ -543,14 +657,19 @@ struct HTTP2FrameDecoder {
                         header: header,
                         initialPayload: payload,
                         incomingPayload: self.continuationPayload,
-                        originalPaddingBytes: self.originalPaddingBytes
+                        originalPaddingBytes: self.originalPaddingBytes,
+                        sequentialContinuationFramesSize: self.sequentialContinuationFramesSize,
+                        maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
                     )
                 )
             }
 
             // It is! Let's add .endHeaders to our fake frame.
             header.flags.formUnion(.endHeaders)
-            let nextState = AccumulatingFrameHeaderParserState(unusedBytes: self.continuationPayload)
+            let nextState = AccumulatingFrameHeaderParserState(
+                unusedBytes: self.continuationPayload,
+                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            )
             return .parseFrame(header: header, payloadBytes: payload, paddingBytes: self.originalPaddingBytes, nextState: nextState)
         }
 
@@ -569,13 +688,24 @@ struct HTTP2FrameDecoder {
         private(set) var accumulatedPayload: ByteBuffer
         private(set) var incomingPayload: ByteBuffer
         private(set) var originalPaddingBytes: Int?
+        private(set) var sequentialContinuationFramesSize: Int
+        private(set) var maximumSequentialContinuationFrames: Int
 
-        init(header: FrameHeader, initialPayload: ByteBuffer, incomingPayload: ByteBuffer, originalPaddingBytes: Int?) {
+        init(
+            header: FrameHeader,
+            initialPayload: ByteBuffer,
+            incomingPayload: ByteBuffer,
+            originalPaddingBytes: Int?,
+            sequentialContinuationFramesSize: Int,
+            maximumSequentialContinuationFrames: Int
+        ) {
             precondition(header.beginsContinuationSequence)
             self.header = header
             self.accumulatedPayload = initialPayload
             self.incomingPayload = incomingPayload
             self.originalPaddingBytes = originalPaddingBytes
+            self.sequentialContinuationFramesSize = sequentialContinuationFramesSize
+            self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         }
 
         mutating func process(maxHeaderListSize: Int) throws -> AccumulatingContinuationPayloadParserState? {
@@ -601,7 +731,16 @@ struct HTTP2FrameDecoder {
                 throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
             }
 
-            return AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: self, continuationHeader: header)
+            // The sequence of CONTINUATION frames received is not longer than the limit
+            guard self.sequentialContinuationFramesSize < self.maximumSequentialContinuationFrames else {
+                throw NIOHTTP2Errors.excessiveContinuationFrames()
+            }
+
+            return AccumulatingContinuationPayloadParserState(
+                fromAccumulatingHeaderBlockFragments: self,
+                continuationHeader: header,
+                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            )
         }
 
         mutating func accumulate(bytes: ByteBuffer) {
@@ -685,6 +824,7 @@ struct HTTP2FrameDecoder {
 
     internal var headerDecoder: HPACKDecoder
     private var state: ParserState
+    private var maximumSequentialContinuationFrames: Int
 
     // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
     internal var maxFrameSize: UInt32 = 1<<14
@@ -695,11 +835,21 @@ struct HTTP2FrameDecoder {
     ///                        and decoding headers.
     /// - parameter expectClientMagic: Whether the parser should expect to receive the bytes of
     ///                                client magic string before frame parsing begins.
-    init(allocator: ByteBufferAllocator, expectClientMagic: Bool) {
+    /// - parameter maximumSequentialContinuationFrames: The maximum number of sequential CONTINUATION frames.
+    init(
+        allocator: ByteBufferAllocator,
+        expectClientMagic: Bool,
+        maximumSequentialContinuationFrames: Int
+    ) {
         self.headerDecoder = HPACKDecoder(allocator: allocator)
+        self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
 
         if expectClientMagic {
-            self.state = .awaitingClientMagic(ClientMagicState())
+            self.state = .awaitingClientMagic(
+                ClientMagicState(
+                    maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                )
+            )
         } else {
             self.state = .initialized
         }
@@ -719,7 +869,12 @@ struct HTTP2FrameDecoder {
                 newState = .awaitingClientMagic(state)
             }
         case .initialized:
-            self.state = .accumulatingFrameHeader(AccumulatingFrameHeaderParserState(unusedBytes: bytes))
+            self.state = .accumulatingFrameHeader(
+                AccumulatingFrameHeaderParserState(
+                    unusedBytes: bytes,
+                    maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+                )
+            )
         case .accumulatingFrameHeader(var state):
             self.avoidingParserCoW { newState in
                 state.accumulate(bytes: bytes)

@@ -28,7 +28,9 @@ class HTTP2FrameParserTests: XCTestCase {
         (":authority", "www.example.com")
     ])
     let simpleHeadersEncoded: [UInt8] = [0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff]
-    
+
+    let maximumSequentialContinuationFrames = 5
+
     // MARK: - Utilities
     
     private func byteBuffer<C: Collection>(withBytes bytes: C, extraCapacity: Int = 0) -> ByteBuffer where C.Element == UInt8 {
@@ -116,7 +118,11 @@ class HTTP2FrameParserTests: XCTestCase {
                                   file: StaticString = #filePath, line: UInt = #line) throws {
         let totalFrameSize = bytes.readableBytes
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: bytes)
 
         let (frame, actualLength) = try decoder.nextFrame()!
@@ -220,7 +226,11 @@ class HTTP2FrameParserTests: XCTestCase {
         let firstPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
         let secondPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         decoder.append(bytes: frameBuffer)
         let (frame, actualLength) = try decoder.nextFrame()!
@@ -253,8 +263,12 @@ class HTTP2FrameParserTests: XCTestCase {
         let expectedFrame2 = HTTP2Frame(streamID: HTTP2StreamID(1),
                                         payload: .data(.init(data: .byteBuffer(payloadHalf), endStream: true)))
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         let slice = buf.readSlice(length: buf.readableBytes - payloadHalf.readableBytes)!
         decoder.append(bytes: slice)
         let frame: HTTP2Frame! = try decoder.nextFrame()?.0
@@ -289,8 +303,12 @@ class HTTP2FrameParserTests: XCTestCase {
         let expectedFrame2 = HTTP2Frame(streamID: HTTP2StreamID(1),
                                         payload: .data(.init(data: .byteBuffer(payloadHalf), endStream: true, paddingBytes: 4)))
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         let slice = buf.readSlice(length: 9)!
         decoder.append(bytes: slice)
         let noFrame: HTTP2Frame! = try decoder.nextFrame()?.0
@@ -400,7 +418,11 @@ class HTTP2FrameParserTests: XCTestCase {
         let firstPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
         let secondPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         decoder.append(bytes: frameBuffer)
         let (frame, actualLength) = try decoder.nextFrame()!
@@ -483,8 +505,12 @@ class HTTP2FrameParserTests: XCTestCase {
             0x00,                       // payload
         ]
         let badFrameBuf = byteBuffer(withBytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         decoder.append(bytes: badFrameBuf)
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? InternalError, case .codecError(code: .protocolError) = connErr else {
@@ -504,8 +530,12 @@ class HTTP2FrameParserTests: XCTestCase {
                                         // no payload!
         ]
         let buf = self.byteBuffer(withBytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         decoder.append(bytes: buf)
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
             guard let connErr = err as? InternalError, case .codecError(code: .protocolError) = connErr else {
@@ -524,7 +554,11 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
 
         let buffer = self.allocator.buffer(bytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buffer)
 
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
@@ -543,7 +577,11 @@ class HTTP2FrameParserTests: XCTestCase {
             0x00, 0x00, 0x00, 0x01,     // 4-byte stream identifier
         ]
         let badFrameBuf = byteBuffer(withBytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         XCTAssertEqual(decoder.maxFrameSize, 16384)
 
         decoder.append(bytes: badFrameBuf)
@@ -571,7 +609,11 @@ class HTTP2FrameParserTests: XCTestCase {
         let firstPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
         let secondPaddingBuffer = byteBuffer(withBytes: [UInt8(0)])
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         decoder.append(bytes: frameBuffer)
         var (frame, actualLength) = try decoder.nextFrame()!
@@ -679,8 +721,12 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeBytes(self.simpleHeadersEncoded)
         buf.writeBytes([UInt8](repeating: 0, count: 3))
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // should fail if the stream is zero
         buf.setInteger(UInt8(0), at: 8)
         decoder.append(bytes: buf)
@@ -717,7 +763,11 @@ class HTTP2FrameParserTests: XCTestCase {
             ]
 
             let buf = self.byteBuffer(withBytes: frameBytes)
-            var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+            var decoder = HTTP2FrameDecoder(
+                allocator: self.allocator,
+                expectClientMagic: false,
+                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            )
 
             decoder.append(bytes: buf)
             XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
@@ -785,6 +835,61 @@ class HTTP2FrameParserTests: XCTestCase {
         try assertReadsFrame(from: buf, matching: expectedFrame)
     }
 
+    func testMaximumSequentialContinuationFrames() throws {
+        let CONTINUATION: [UInt8] = [
+            // CONTINUATION frame with the END_HEADERS flag not set
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x00,                       // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
+        ]
+
+        var frameBytes: [UInt8] = [
+            // HEADERS
+            0x00, 0x00, 0x01,           // 3-byte payload length (1 byte)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x08,                       // 1-byte flags (PADDED)
+            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
+            0x00,                       // 1-byte padding length (0)
+            // CONTINUATION frame with the END_HEADERS flag set
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x04,                       // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x03      // 4-byte stream identifier
+        ]
+
+        let excessContinuationFrames = 1
+
+        // Iteratively test that sequential CONTINUATION frames are received up to the configured
+        // limit, after which an error should be thrown.
+        for numberOfContinuationFrames in 1 ... self.maximumSequentialContinuationFrames + excessContinuationFrames {
+            let buf = byteBuffer(withBytes: frameBytes)
+
+            var decoder = HTTP2FrameDecoder(
+                allocator: self.allocator,
+                expectClientMagic: false,
+                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            )
+            decoder.append(bytes: buf)
+
+            if numberOfContinuationFrames <= self.maximumSequentialContinuationFrames {
+                let expectedFrame = HTTP2Frame(
+                    streamID: HTTP2StreamID(3),
+                    payload: .headers(.init(headers: [:], endStream: false, paddingBytes: 0))
+                )
+                try assertReadsFrame(from: buf, matching: expectedFrame)
+            } else {
+                XCTAssertThrowsError(try decoder.nextFrame(), "Should throw an 'Excessive CONTINUATION frames' error") { err in
+                    XCTAssert(err is NIOHTTP2Errors.ExcessiveContinuationFrames)
+                }
+            }
+
+            // The CONTINUATION frame with the END_HEADERS flag not set will be inserted just before
+            // the CONTINUATION frame with the END_HEADERS flag set.
+            frameBytes.insert(contentsOf: CONTINUATION, at: frameBytes.endIndex - CONTINUATION.count)
+        }
+    }
+
     func testHeadersFrameDecodingWithZeroLengthAndPaddingFlagSet() throws {
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
@@ -794,7 +899,11 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
 
         let buffer = self.allocator.buffer(bytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buffer)
 
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
@@ -815,7 +924,11 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
 
         let buffer = self.allocator.buffer(bytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buffer)
 
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
@@ -900,8 +1013,12 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
         var buf = byteBuffer(withBytes: frameBytes)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // cannot be on root stream
         buf.setInteger(UInt8(0), at: 8)
         decoder.append(bytes: buf)
@@ -975,8 +1092,12 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
         var buf = byteBuffer(withBytes: frameBytes)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // cannot be on root stream
         buf.setInteger(UInt8(0), at: 8)
         decoder.append(bytes: buf)
@@ -1106,8 +1227,12 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
         var buf = byteBuffer(withBytes: frameBytes)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // MUST be sent on the root stream
         buf.setInteger(UInt8(1), at: 8)
         decoder.append(bytes: buf)
@@ -1183,8 +1308,12 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
         var buf = byteBuffer(withBytes: frameBytes)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // MUST be sent on the root stream
         buf.setInteger(UInt8(1), at: 8)
         decoder.append(bytes: buf)
@@ -1278,8 +1407,12 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes)
         buf.writeBytes(self.simpleHeadersEncoded)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // MUST NOT be sent on the root stream
         buf.setInteger(UInt8(0), at: 8)
         decoder.append(bytes: buf)
@@ -1364,7 +1497,11 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
 
         let buffer = self.allocator.buffer(bytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buffer)
 
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a protocol error", { err in
@@ -1386,7 +1523,11 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
 
         let buffer = self.allocator.buffer(bytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buffer)
 
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error", { err in
@@ -1447,8 +1588,12 @@ class HTTP2FrameParserTests: XCTestCase {
             0x04, 0x05, 0x06, 0x07,
         ]
         var buf = byteBuffer(withBytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // MUST NOT be associated with a stream.
         buf.setInteger(UInt8(1), at: 8)
         decoder.append(bytes: buf)
@@ -1558,8 +1703,12 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
         var buf = byteBuffer(withBytes: frameBytes)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // MUST NOT be associated with a stream.
         buf.setInteger(UInt8(1), at: 8)
         decoder.append(bytes: buf)
@@ -1645,8 +1794,12 @@ class HTTP2FrameParserTests: XCTestCase {
         ]
         var buf = byteBuffer(withBytes: frameBytes)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // must have a size of 4 octets
         buf.setInteger(UInt8(5), at: 2)
         buf.writeInteger(UInt8(0))        // append an extra byte so we read it all
@@ -1697,8 +1850,12 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
         buf.writeBuffer(&headers1)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
         decoder.append(bytes: buf)
         XCTAssertNil(try decoder.nextFrame())
@@ -1740,8 +1897,12 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
         buf.writeBuffer(&headers1)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
         decoder.append(bytes: buf)
         XCTAssertNil(try decoder.nextFrame())
@@ -1777,7 +1938,11 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
         buf.writeBuffer(&headers)
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         // should throw
         decoder.append(bytes: buf)
@@ -1799,7 +1964,11 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
         buf.writeBuffer(&headers1)
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
         decoder.append(bytes: buf)
@@ -1836,7 +2005,11 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: 10)
         buf.writeBuffer(&headers1)
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
         decoder.append(bytes: buf)
@@ -1878,7 +2051,11 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeBuffer(&headers1)
         buf.writeRepeatingByte(0, count: 2)
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
         decoder.append(bytes: buf)
@@ -1923,7 +2100,11 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeBuffer(&headers1)
         buf.writeRepeatingByte(0, count: 5)
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
 
         // should return nothing thus far and wait for CONTINUATION frames and an END_HEADERS flag
         decoder.append(bytes: buf)
@@ -1989,8 +2170,12 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeBytes(field.readableBytesView)
         XCTAssertEqual(buf.readableBytes, 30)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // cannot have origin on a non-root stream
         buf.setInteger(UInt8(1), at: 8)
         decoder.append(bytes: buf)
@@ -2042,7 +2227,11 @@ class HTTP2FrameParserTests: XCTestCase {
             0x00, 0x09,                 // 2-byte origin length
         ]
         let buffer = self.allocator.buffer(bytes: frameBytes)
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buffer)
 
         XCTAssertThrowsError(try decoder.nextFrame(), "Should throw a frame size error") { err in
@@ -2093,8 +2282,12 @@ class HTTP2FrameParserTests: XCTestCase {
         }
         XCTAssertEqual(buf.readableBytes, 51)
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
-        
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+
         // MUST be sent on root stream (else ignored)
         buf.setInteger(UInt8(1), at: 8)
         decoder.append(bytes: buf)
@@ -2179,7 +2372,11 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeBuffer(&headers4)
         
         // This should now yield a HEADERS frame containing the complete set of headers
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buf)
         let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
@@ -2226,7 +2423,11 @@ class HTTP2FrameParserTests: XCTestCase {
         buf.writeBuffer(&headers4)
         
         // This should now yield a HEADERS frame containing the complete set of headers
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buf)
         let frame: HTTP2Frame! = try decoder.nextFrame()?.0
         XCTAssertNotNil(frame)
@@ -2295,7 +2496,11 @@ class HTTP2FrameParserTests: XCTestCase {
         let dataFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(dataBuf), endStream: true)))
         let goawayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: streamID, errorCode: .noError, opaqueData: dataBuf))
         
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         decoder.append(bytes: buf)
         
         let frame1 = try decoder.nextFrame()?.0
@@ -2331,7 +2536,11 @@ class HTTP2FrameParserTests: XCTestCase {
         var buf = byteBuffer(withBytes: frameBytes, extraCapacity: payload.readableBytes)
         buf.writeBytes(payload.readableBytesView)
 
-        var decoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         var slice = buf.readSlice(length: 10)!
         decoder.append(bytes: slice)
         guard let result = try assertNoThrowWithValue(decoder.nextFrame()) else {
