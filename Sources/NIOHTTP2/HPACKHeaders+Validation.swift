@@ -106,7 +106,7 @@ extension HeaderBlockValidator {
 /// An object that can be used to validate if a given header block is a valid request header block.
 fileprivate struct RequestBlockValidator {
     private var isConnectRequest: Bool = false
-    private var containsProtocolPseudoheader: Bool = false
+    private var containsProtocolPseudoHeader: Bool = false
 }
 
 extension RequestBlockValidator: HeaderBlockValidator {
@@ -150,7 +150,7 @@ extension RequestBlockValidator: HeaderBlockValidator {
                 // This is a method pseudo-header. Check if the value is CONNECT.
                 self.isConnectRequest = value == "CONNECT"
             case .extConnectProtocol:
-                self.containsProtocolPseudoheader = true
+                self.containsProtocolPseudoHeader = true
             case .path:
                 // This is a path pseudo-header. It must not be empty.
                 if value.utf8.count == 0 {
@@ -172,7 +172,7 @@ extension RequestBlockValidator: HeaderBlockValidator {
     var allowedPseudoHeaderFields: PseudoHeaders {
         // For the logic behind this if statement, see the comment in validateNextField.
         if self.isConnectRequest {
-            if self.containsProtocolPseudoheader {
+            if self.containsProtocolPseudoHeader {
                 return .allowedExtendedConnectRequestHeaders
             } else {
                 return .allowedConnectRequestHeaders
@@ -184,7 +184,7 @@ extension RequestBlockValidator: HeaderBlockValidator {
 
     var mandatoryPseudoHeaderFields: PseudoHeaders {
         // For the logic behind this if statement, see the comment in validateNextField.
-        if self.isConnectRequest && !self.containsProtocolPseudoheader {
+        if self.isConnectRequest && !self.containsProtocolPseudoHeader {
             return .mandatoryConnectRequestHeaders
         } else {
             return .mandatoryRequestHeaders
