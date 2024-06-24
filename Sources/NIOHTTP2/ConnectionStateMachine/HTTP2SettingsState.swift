@@ -70,6 +70,11 @@ struct HTTP2SettingsState {
         return self[.enablePush]!
     }
 
+    /// The current value of SETTINGS_ENABLE_CONNECT_PROTOCOL
+    var enableConnectProtocol: UInt32? {
+        return self[.enableConnectProtocol]
+    }
+
     /// The default value of SETTINGS_INITIAL_WINDOW_SIZE.
     static let defaultInitialWindowSize: UInt32 = 65535
 

@@ -155,12 +155,12 @@ class ConnectionStateMachineTests: XCTestCase {
         self.clientDecoder = HTTP2FrameDecoder(allocator: ByteBufferAllocator(), expectClientMagic: false)
     }
 
-    private func exchangePreamble() {
-        assertSucceeds(self.client.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.server.receiveSettings(.settings(HTTP2Settings()), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+    private func exchangePreamble(client: HTTP2Settings = HTTP2Settings(), server: HTTP2Settings = HTTP2Settings()) {
+        assertSucceeds(self.client.sendSettings(client))
+        assertSucceeds(self.server.receiveSettings(.settings(client), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
-        assertSucceeds(self.server.sendSettings(HTTP2Settings()))
-        assertSucceeds(self.client.receiveSettings(.settings(HTTP2Settings()), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
+        assertSucceeds(self.server.sendSettings(server))
+        assertSucceeds(self.client.receiveSettings(.settings(server), frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
 
         assertSucceeds(self.client.receiveSettings(.ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
         assertSucceeds(self.server.receiveSettings(.ack, frameEncoder: &self.serverEncoder, frameDecoder: &self.serverDecoder))
@@ -2366,6 +2366,38 @@ class ConnectionStateMachineTests: XCTestCase {
         // Request headers for a CONNECT request must not contain :scheme.
         assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
         assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testProtocolPseudoheaderWithoutEnableConnectProtocolSetting() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        let headers = HPACKHeaders([(":method", "CONNECT"), (":protocol", "websocket"), (":scheme", "https"), (":path", "/chat") ])
+
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testProtocolPseudoheaderWithEnableConnectProtocolSetting() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble(server: [HTTP2Setting(parameter: .enableConnectProtocol, value: 1)])
+
+        let headers = HPACKHeaders([(":method", "CONNECT"), (":protocol", "websocket"), (":scheme", "https"), (":path", "/chat") ])
+
+        assertSucceeds(self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertSucceeds(self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+    }
+
+    func testRejectProtocolPseudoHeaderWithoutConnectMethod() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble(server: [HTTP2Setting(parameter: .enableConnectProtocol, value: 1)])
+
+        let headers = HPACKHeaders([(":method", "GET"), (":protocol", "websocket"), (":scheme", "https"), (":path", "/chat") ])
+        assertStreamError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
+        assertStreamError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: headers, isEndStreamSet: true))
     }
 
     func testRejectHeadersWithConnectionHeader() {

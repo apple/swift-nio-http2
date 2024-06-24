@@ -219,6 +219,7 @@ class HTTP2ErrorTests: XCTestCase {
         XCTAssertLessThanOrEqual(MemoryLayout<NIOHTTP2Errors.DuplicatePseudoHeader>.size, 24)
         XCTAssertLessThanOrEqual(MemoryLayout<NIOHTTP2Errors.PseudoHeaderAfterRegularHeader>.size, 24)
         XCTAssertLessThanOrEqual(MemoryLayout<NIOHTTP2Errors.UnknownPseudoHeader>.size, 24)
+        XCTAssertLessThanOrEqual(MemoryLayout<NIOHTTP2Errors.UnsupportedPseudoHeader>.size, 24)
         XCTAssertLessThanOrEqual(MemoryLayout<NIOHTTP2Errors.InvalidPseudoHeaders>.size, 24)
         XCTAssertLessThanOrEqual(MemoryLayout<NIOHTTP2Errors.MissingHostHeader>.size, 24)
         XCTAssertLessThanOrEqual(MemoryLayout<NIOHTTP2Errors.DuplicateHostHeader>.size, 24)

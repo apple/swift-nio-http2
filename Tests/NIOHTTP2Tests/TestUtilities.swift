@@ -516,7 +516,7 @@ extension HTTP2Frame.FramePayload {
 
         switch type {
         case .some(.request):
-            XCTAssertNoThrow(try actualPayload.headers.validateRequestBlock(),
+            XCTAssertNoThrow(try actualPayload.headers.validateRequestBlock(supportsExtendedConnect: true),
                              "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
         case .some(.response):
             XCTAssertNoThrow(try actualPayload.headers.validateResponseBlock(),
@@ -527,7 +527,7 @@ extension HTTP2Frame.FramePayload {
         case .some(.doNotValidate):
             () // alright, let's not validate then
         case .none:
-            XCTAssertTrue((try? actualPayload.headers.validateRequestBlock()) != nil ||
+            XCTAssertTrue((try? actualPayload.headers.validateRequestBlock(supportsExtendedConnect: true)) != nil ||
                             (try? actualPayload.headers.validateResponseBlock()) != nil ||
                             (try? actualPayload.headers.validateTrailersBlock()) != nil,
                           "\(actualPayload.headers) not a valid request/response/trailers header block",

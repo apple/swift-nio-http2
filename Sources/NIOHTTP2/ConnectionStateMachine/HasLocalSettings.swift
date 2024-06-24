@@ -25,6 +25,12 @@ protocol HasLocalSettings {
     var inboundFlowControlWindow: HTTP2FlowControlWindow { get set }
 }
 
+extension HasLocalExtendedConnectSettings where Self: HasLocalSettings {
+    var localSupportsExtendedConnect: Bool {
+        self.localSettings.enableConnectProtocol == 1
+    }
+}
+
 extension HasLocalSettings {
     mutating func receiveSettingsAck(frameDecoder: inout HTTP2FrameDecoder) -> StateMachineResultWithEffect {
         // We do a little switcheroo here to avoid problems with overlapping accesses to

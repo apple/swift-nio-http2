@@ -2099,4 +2099,28 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testExtendedConnect() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection(serverSettings: [HTTP2Setting(parameter: .enableConnectProtocol, value: 1)])
+
+        // We're now going to try to send a request from the client to the server with the protocol pseudoheader present
+        let headers = HPACKHeaders([(":path", "/"), (":method", "CONNECT"), (":scheme", "https"), (":authority", "localhost"), (":protocol", "foo")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.writeStaticString("A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers)))
+        let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .byteBuffer(requestBody), endStream: true)))
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Let's send a quick response back.
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
+        let respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(.init(headers: responseHeaders, endStream: true)))
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

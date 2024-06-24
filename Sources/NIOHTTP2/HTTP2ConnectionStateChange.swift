@@ -150,6 +150,8 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
         internal var newMaxFrameSize: UInt32?
 
         internal var newMaxConcurrentStreams: UInt32?
+
+        internal var enableConnectProtocol: Bool?
     }
 
     /// The local peer's settings have changed in a way that is not trivial to decode.
@@ -162,6 +164,8 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
         internal var newMaxFrameSize: UInt32?
 
         internal var newMaxHeaderListSize: UInt32?
+
+        internal var enableConnectProtocol: Bool?
     }
 }
 
