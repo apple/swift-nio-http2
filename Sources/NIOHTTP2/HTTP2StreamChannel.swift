@@ -605,6 +605,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     }
 
     public func close0(error: Error, mode: CloseMode, promise: EventLoopPromise<Void>?) {
+        self.closeWithCode(code: .cancel, promise: promise)
+    }
+
+    func closeWithCode(code: HTTP2ErrorCode, promise: EventLoopPromise<Void>?) {
         // If the stream is already closed, we can fail this early and abort processing. If it's not, we need to emit a
         // RST_STREAM frame.
         guard self.state != .closed else {
@@ -627,12 +631,17 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
             self.closedCleanly()
         case .remoteActive, .active, .closing, .closingNeverActivated:
             // In all of these states the stream is still on the network and we need to wait.
-            self.closedWhileOpen()
+            self.closedWhileOpen(code: code)
         }
     }
 
     public func triggerUserOutboundEvent0(_ event: Any, promise: EventLoopPromise<Void>?) {
-        // do nothing
+        switch event {
+        case .reset(let code) as HTTP2StreamChannelEvent:
+            self.closeWithCode(code: code, promise: promise)
+        default:
+            break
+        }
     }
 
     public func channelRead0(_ data: NIOAny) {
@@ -647,7 +656,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     ///
     /// Will emit a RST_STREAM frame in order to close the stream. Note that this function does not
     /// directly close the stream: it waits until the stream closed notification is fired.
-    private func closedWhileOpen() {
+    private func closedWhileOpen(code: HTTP2ErrorCode = .cancel) {
         precondition(self.state != .closed)
         guard self.state != .closing else {
             // If we're already closing, nothing to do here.
@@ -656,7 +665,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
 
         self.modifyingState { $0.beginClosing() }
         // We should have a stream ID here, force-unwrap is safe.
-        let resetFrame = HTTP2Frame(streamID: self.streamID!, payload: .rstStream(.cancel))
+        let resetFrame = HTTP2Frame(streamID: self.streamID!, payload: .rstStream(code))
         self.receiveOutboundFrame(resetFrame, promise: nil)
         self.multiplexer.flushStream(self.streamID!)
     }
@@ -997,4 +1006,10 @@ extension HTTP2StreamChannel {
     public var syncOptions: NIOSynchronousChannelOptions? {
         SynchronousOptions(channel: self)
     }
+}
+
+/// Events that can be sent by the application to be handled by the `HTTP2StreamChannel`
+public enum HTTP2StreamChannelEvent {
+    /// Send a `RST_STREAM` with the specified code
+    case reset(HTTP2ErrorCode)
 }
