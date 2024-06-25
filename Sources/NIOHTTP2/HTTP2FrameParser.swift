@@ -157,7 +157,7 @@ struct HTTP2FrameDecoder {
     private struct AwaitingPaddingLengthByteParserState {
         private var header: FrameHeader
         private var accumulatedBytes: ByteBuffer
-        private var maximumSequentialContinuationFrames: Int
+        private let maximumSequentialContinuationFrames: Int
 
         init(fromAccumulatingFrameHeader state: AccumulatingFrameHeaderParserState, frameHeader: FrameHeader) {
             precondition(frameHeader.type.supportsPadding)
@@ -554,7 +554,7 @@ struct HTTP2FrameDecoder {
         private var continuationPayload: ByteBuffer
         private var originalPaddingBytes: Int?
         private var sequentialContinuationFramesCount: Int
-        private var maximumSequentialContinuationFrames: Int
+        private let maximumSequentialContinuationFrames: Int
 
         init(
             fromAccumulatingHeaderBlockFragments acc: AccumulatingHeaderBlockFragmentsParserState,
