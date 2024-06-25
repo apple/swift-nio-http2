@@ -232,14 +232,12 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///   - maximumBufferedControlFrames: Controls the maximum buffer size of buffered outbound control frames. If we are unable to send control frames as
     ///         fast as we produce them we risk building up an unbounded buffer and exhausting our memory. To protect against this DoS vector, we put an
     ///         upper limit on the depth of this queue. Defaults to 10,000.
-    ///   - maximumSequentialContinuationFrames: The maximum number of sequential CONTINUATION frames.
     public convenience init(mode: ParserMode,
                             initialSettings: HTTP2Settings = nioDefaultSettings,
                             headerBlockValidation: ValidationState = .enabled,
                             contentLengthValidation: ValidationState = .enabled,
                             maximumSequentialEmptyDataFrames: Int = 1,
-                            maximumBufferedControlFrames: Int = 10000,
-                            maximumSequentialContinuationFrames: Int = 5) {
+                            maximumBufferedControlFrames: Int = 10000) {
         self.init(mode: mode,
                   eventLoop: nil,
                   initialSettings: initialSettings,
@@ -247,7 +245,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: contentLengthValidation,
                   maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: maximumBufferedControlFrames,
-                  maximumSequentialContinuationFrames: maximumSequentialContinuationFrames,
+                  maximumSequentialContinuationFrames: 5,
                   maximumResetFrameCount: 200,
                   resetFrameCounterWindow: .seconds(30))
 

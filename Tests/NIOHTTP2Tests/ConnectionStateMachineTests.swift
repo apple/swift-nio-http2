@@ -133,7 +133,7 @@ class ConnectionStateMachineTests: XCTestCase {
     var clientEncoder: HTTP2FrameEncoder!
     var clientDecoder: HTTP2FrameDecoder!
 
-    var maximumSequentialContinuationFrames: Int = 5
+    let maximumSequentialContinuationFrames: Int = 5
 
     static let requestHeaders = {
         return HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])

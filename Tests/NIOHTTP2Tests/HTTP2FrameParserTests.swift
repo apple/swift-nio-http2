@@ -836,11 +836,11 @@ class HTTP2FrameParserTests: XCTestCase {
     }
 
     func testMaximumSequentialContinuationFrames() throws {
-        let CONTINUATION: [UInt8] = [
+        let continuationBytes: [UInt8] = [
             // CONTINUATION frame with the END_HEADERS flag not set
             0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
             0x09,                       // 1-byte frame type (CONTINUATION)
-            0x00,                       // 1-byte flags (END_HEADERS)
+            0x00,                       // 1-byte flags (none)
             0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
         ]
 
@@ -886,7 +886,7 @@ class HTTP2FrameParserTests: XCTestCase {
 
             // The CONTINUATION frame with the END_HEADERS flag not set will be inserted just before
             // the CONTINUATION frame with the END_HEADERS flag set.
-            frameBytes.insert(contentsOf: CONTINUATION, at: frameBytes.endIndex - CONTINUATION.count)
+            frameBytes.insert(contentsOf: continuationBytes, at: frameBytes.endIndex - continuationBytes.count)
         }
     }
 
