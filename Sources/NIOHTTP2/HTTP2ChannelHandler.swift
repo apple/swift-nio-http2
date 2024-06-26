@@ -105,7 +105,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     private var inboundStreamMultiplexerState: InboundStreamMultiplexerState
 
     /// The maximum number of sequential CONTINUATION frames.
-    private var maximumSequentialContinuationFrames: Int
+    private let maximumSequentialContinuationFrames: Int
 
     @usableFromInline
     internal var inboundStreamMultiplexer: InboundStreamMultiplexer? {
@@ -1129,7 +1129,7 @@ extension NIOHTTP2Handler {
         public var contentLengthValidation: ValidationState = .enabled
         public var maximumSequentialEmptyDataFrames: Int = 1
         public var maximumBufferedControlFrames: Int = 10000
-        public var maximumSequentialContinuationFrames: Int = 5
+        public let maximumSequentialContinuationFrames: Int = 5
         public init() {}
     }
 
