@@ -537,6 +537,19 @@ struct HTTP2FrameDecoder {
 
             // we have collected enough bytes: is this the last CONTINUATION frame?
             guard self.continuationHeader.flags.contains(.endHeaders) else {
+                // When accumulating a sequence of CONTINUATION frames the buffer will continue to
+                // grow as bytes are appended to it and the reader index will continue to advance
+                // as frames are read. However this allows for an ever increasing buffer where only
+                // the unread bytes are useful. The read bytes should be periodically discarded.
+                //
+                // As a basic heuristic is to discard the read bytes when more than 1KB has been
+                // read, and that 1KB accounts for more than half of the capacity.
+                let readerIndex = self.continuationPayload.readerIndex
+                let capacity = self.continuationPayload.capacity
+                if readerIndex > 1024 && readerIndex > (capacity / 2) {
+                    self.continuationPayload.discardReadBytes()
+                }
+
                 // nope, switch back to accumulating fragments
                 return .accumulateContinuationHeader(
                     AccumulatingHeaderBlockFragmentsParserState(
