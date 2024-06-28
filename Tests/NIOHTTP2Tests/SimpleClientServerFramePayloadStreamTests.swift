@@ -1803,12 +1803,10 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         )
 
         let headersFrame: [UInt8] = [
-            0x00, 0x00, 0x01,           // 3-byte payload length (1 byte)
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
             0x01,                       // 1-byte frame type (HEADERS)
             0x00,                       // 1-byte flags (none)
             0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
-            0x00,                       // payload
-
         ]
         let continuationFrame: [UInt8] = [
             0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)

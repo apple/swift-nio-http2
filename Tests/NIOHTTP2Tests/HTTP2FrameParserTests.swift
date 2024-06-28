@@ -835,61 +835,6 @@ class HTTP2FrameParserTests: XCTestCase {
         try assertReadsFrame(from: buf, matching: expectedFrame)
     }
 
-    func testMaximumSequentialContinuationFrames() throws {
-        let continuationBytes: [UInt8] = [
-            // CONTINUATION frame with the END_HEADERS flag not set
-            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
-            0x09,                       // 1-byte frame type (CONTINUATION)
-            0x00,                       // 1-byte flags (none)
-            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
-        ]
-
-        var frameBytes: [UInt8] = [
-            // HEADERS
-            0x00, 0x00, 0x01,           // 3-byte payload length (1 byte)
-            0x01,                       // 1-byte frame type (HEADERS)
-            0x08,                       // 1-byte flags (PADDED)
-            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
-            0x00,                       // 1-byte padding length (0)
-            // CONTINUATION frame with the END_HEADERS flag set
-            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
-            0x09,                       // 1-byte frame type (CONTINUATION)
-            0x04,                       // 1-byte flags (END_HEADERS)
-            0x00, 0x00, 0x00, 0x03      // 4-byte stream identifier
-        ]
-
-        let excessContinuationFrames = 1
-
-        // Iteratively test that sequential CONTINUATION frames are received up to the configured
-        // limit, after which an error should be thrown.
-        for numberOfContinuationFrames in 1 ... self.maximumSequentialContinuationFrames + excessContinuationFrames {
-            let buf = byteBuffer(withBytes: frameBytes)
-
-            var decoder = HTTP2FrameDecoder(
-                allocator: self.allocator,
-                expectClientMagic: false,
-                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-            )
-            decoder.append(bytes: buf)
-
-            if numberOfContinuationFrames <= self.maximumSequentialContinuationFrames {
-                let expectedFrame = HTTP2Frame(
-                    streamID: HTTP2StreamID(3),
-                    payload: .headers(.init(headers: [:], endStream: false, paddingBytes: 0))
-                )
-                try assertReadsFrame(from: buf, matching: expectedFrame)
-            } else {
-                XCTAssertThrowsError(try decoder.nextFrame(), "Should throw an 'Excessive CONTINUATION frames' error") { err in
-                    XCTAssert(err is NIOHTTP2Errors.ExcessiveContinuationFrames)
-                }
-            }
-
-            // The CONTINUATION frame with the END_HEADERS flag not set will be inserted just before
-            // the CONTINUATION frame with the END_HEADERS flag set.
-            frameBytes.insert(contentsOf: continuationBytes, at: frameBytes.endIndex - continuationBytes.count)
-        }
-    }
-
     func testHeadersFrameDecodingWithZeroLengthAndPaddingFlagSet() throws {
         let frameBytes: [UInt8] = [
             0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
@@ -2128,7 +2073,62 @@ class HTTP2FrameParserTests: XCTestCase {
 
         self.assertEqualFrames(frame, expectedFrame)
     }
-    
+
+    func testMaximumSequentialContinuationFrames() throws {
+        let continuationBytes: [UInt8] = [
+            // CONTINUATION frame with the END_HEADERS flag not set
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
+        ]
+
+        var frameBytes: [UInt8] = [
+            // HEADERS
+            0x00, 0x00, 0x01,           // 3-byte payload length (1 byte)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x08,                       // 1-byte flags (PADDED)
+            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
+            0x00,                       // 1-byte padding length (0)
+            // CONTINUATION frame with the END_HEADERS flag set
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x04,                       // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x03      // 4-byte stream identifier
+        ]
+
+        let excessContinuationFrames = 1
+
+        // Iteratively test that sequential CONTINUATION frames are received up to the configured
+        // limit, after which an error should be thrown.
+        for numberOfContinuationFrames in 1 ... self.maximumSequentialContinuationFrames + excessContinuationFrames {
+            let buf = byteBuffer(withBytes: frameBytes)
+
+            var decoder = HTTP2FrameDecoder(
+                allocator: self.allocator,
+                expectClientMagic: false,
+                maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            )
+            decoder.append(bytes: buf)
+
+            if numberOfContinuationFrames <= self.maximumSequentialContinuationFrames {
+                let expectedFrame = HTTP2Frame(
+                    streamID: HTTP2StreamID(3),
+                    payload: .headers(.init(headers: [:], endStream: false, paddingBytes: 0))
+                )
+                try assertReadsFrame(from: buf, matching: expectedFrame)
+            } else {
+                XCTAssertThrowsError(try decoder.nextFrame(), "Should throw an 'Excessive CONTINUATION frames' error") { err in
+                    XCTAssert(err is NIOHTTP2Errors.ExcessiveContinuationFrames)
+                }
+            }
+
+            // The CONTINUATION frame with the END_HEADERS flag not set will be inserted just before
+            // the CONTINUATION frame with the END_HEADERS flag set.
+            frameBytes.insert(contentsOf: continuationBytes, at: frameBytes.endIndex - continuationBytes.count)
+        }
+    }
+
     // MARK: - ALTSVC frames
     
     func testAltServiceFrameDecoding() throws {

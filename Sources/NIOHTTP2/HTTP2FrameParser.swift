@@ -705,7 +705,7 @@ struct HTTP2FrameDecoder {
 
     internal var headerDecoder: HPACKDecoder
     private var state: ParserState
-    private var maximumSequentialContinuationFrames: Int
+    private let maximumSequentialContinuationFrames: Int
 
     // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
     internal var maxFrameSize: UInt32 = 1<<14
@@ -796,9 +796,7 @@ struct HTTP2FrameDecoder {
     mutating func nextFrame() throws -> (HTTP2Frame, flowControlledLength: Int)? {
         // Start running through our state machine until we run out of bytes or we emit a frame.
         while true {
-            switch (
-                try self.processNextState()
-            ) {
+            switch (try self.processNextState()) {
             case .needMoreData:
                 return nil
             case .frame(let frame, let flowControlledLength):

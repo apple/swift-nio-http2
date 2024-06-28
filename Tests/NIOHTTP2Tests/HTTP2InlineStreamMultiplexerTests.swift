@@ -35,14 +35,11 @@ private struct MyError: Error { }
 typealias IODataWriteRecorder = WriteRecorder<IOData>
 
 extension IODataWriteRecorder {
-    func drainConnectionSetupWrites(
-        mode: NIOHTTP2Handler.ParserMode = .server,
-        maximumSequentialContinuationFrames: Int
-    ) throws {
+    func drainConnectionSetupWrites(mode: NIOHTTP2Handler.ParserMode = .server) throws {
         var frameDecoder = HTTP2FrameDecoder(
             allocator: ByteBufferAllocator(),
             expectClientMagic: mode == .client,
-            maximumSequentialContinuationFrames: maximumSequentialContinuationFrames
+            maximumSequentialContinuationFrames: 5
         )
 
         while self.flushedWrites.count > 0 {
@@ -77,7 +74,6 @@ extension HPACKHeaders {
 final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
     var channel: EmbeddedChannel!
     let allocator = ByteBufferAllocator()
-    let maximumSequentialContinuationFrames = 5
 
     override func setUp() {
         self.channel = EmbeddedChannel()
@@ -283,9 +279,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         XCTAssertNoThrow(try connectionSetup())
-        try frameReceiver.drainConnectionSetupWrites(
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-        )
+        try frameReceiver.drainConnectionSetupWrites()
 
         // Let's send a bunch of headers frames. These will all be answered by RST_STREAM frames.
         let streamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID($0) }
@@ -300,7 +294,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         var frameDecoder = HTTP2FrameDecoder(
             allocator: channel.allocator,
             expectClientMagic: false,
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            maximumSequentialContinuationFrames: 5
         )
         for (idx, expectedFrame) in expectedFrames.enumerated() {
             if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[idx] {
@@ -326,9 +320,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         XCTAssertNoThrow(try connectionSetup())
-        try frameReceiver.drainConnectionSetupWrites(
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-        )
+        try frameReceiver.drainConnectionSetupWrites()
 
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -347,7 +339,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         var frameDecoder = HTTP2FrameDecoder(
             allocator: channel.allocator,
             expectClientMagic: false,
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            maximumSequentialContinuationFrames: 5
         )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
@@ -372,9 +364,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         XCTAssertNoThrow(try connectionSetup())
-        try frameReceiver.drainConnectionSetupWrites(
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-        )
+        try frameReceiver.drainConnectionSetupWrites()
 
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -394,7 +384,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         var frameDecoder = HTTP2FrameDecoder(
             allocator: channel.allocator,
             expectClientMagic: false,
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            maximumSequentialContinuationFrames: 5
         )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
@@ -418,9 +408,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         XCTAssertNoThrow(try connectionSetup())
-        try frameReceiver.drainConnectionSetupWrites(
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-        )
+        try frameReceiver.drainConnectionSetupWrites()
 
         // Let's send a headers frame to open the stream.
         let streamID = HTTP2StreamID(1)
@@ -457,7 +445,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         var frameDecoder = HTTP2FrameDecoder(
             allocator: channel.allocator,
             expectClientMagic: false,
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            maximumSequentialContinuationFrames: 5
         )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
@@ -483,9 +471,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         XCTAssertNoThrow(try connectionSetup())
-        try frameReceiver.drainConnectionSetupWrites(
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-        )
+        try frameReceiver.drainConnectionSetupWrites()
 
         // Let's send a headers frame to open the stream.
         let streamID = HTTP2StreamID(1)
@@ -507,7 +493,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         var frameDecoder = HTTP2FrameDecoder(
             allocator: channel.allocator,
             expectClientMagic: false,
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            maximumSequentialContinuationFrames: 5
         )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
@@ -584,7 +570,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         XCTAssertNoThrow(try connectionSetup())
-        try writeRecorder.drainConnectionSetupWrites(maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames)
+        try writeRecorder.drainConnectionSetupWrites()
 
         // Let's send a headers frame to open the stream, along with some DATA frames.
         let streamID = HTTP2StreamID(1)
@@ -617,7 +603,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         var frameDecoder = HTTP2FrameDecoder(
             allocator: channel.allocator,
             expectClientMagic: false,
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+            maximumSequentialContinuationFrames: 5
         )
         if case .byteBuffer(let flushedWriteBuffer) = writeRecorder.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
@@ -651,9 +637,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeTracker).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         XCTAssertNoThrow(try connectionSetup())
-        try writeTracker.drainConnectionSetupWrites(
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-        )
+        try writeTracker.drainConnectionSetupWrites()
 
         // Let's open two streams.
         let firstStreamID = HTTP2StreamID(1)
@@ -1141,10 +1125,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())
         (self.channel.eventLoop as! EmbeddedEventLoop).run()
-        try writeRecorder.drainConnectionSetupWrites(
-            mode: .client,
-            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-        )
+        try writeRecorder.drainConnectionSetupWrites(mode: .client)
 
         let multiplexer = try http2Handler.multiplexer.wait()
         multiplexer.createStreamChannel(promise: nil) { channel in
