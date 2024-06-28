@@ -1129,7 +1129,7 @@ extension NIOHTTP2Handler {
         public var contentLengthValidation: ValidationState = .enabled
         public var maximumSequentialEmptyDataFrames: Int = 1
         public var maximumBufferedControlFrames: Int = 10000
-        public let maximumSequentialContinuationFrames: Int = 5
+        public var maximumSequentialContinuationFrames: Int = 5
         public init() {}
     }
 

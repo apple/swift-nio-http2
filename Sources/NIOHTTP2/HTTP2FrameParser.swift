@@ -278,7 +278,7 @@ struct HTTP2FrameDecoder {
                         initialPayload: payloadBytes,
                         incomingPayload: self.accumulatedBytes,
                         originalPaddingBytes: self.expectedPadding,
-                        sequentialContinuationFramesCount: 0
+                        continuationSequenceCount: 1
                     )
                 )
             }
@@ -505,7 +505,7 @@ struct HTTP2FrameDecoder {
         private var currentFrameBytes: ByteBuffer
         private var continuationPayload: ByteBuffer
         private var originalPaddingBytes: Int?
-        private var sequentialContinuationFramesCount: Int
+        private var continuationSequenceCount: Int
 
         init(fromAccumulatingHeaderBlockFragments acc: AccumulatingHeaderBlockFragmentsParserState,
              continuationHeader: FrameHeader) {
@@ -517,7 +517,7 @@ struct HTTP2FrameDecoder {
             self.currentFrameBytes = acc.accumulatedPayload
             self.continuationPayload = acc.incomingPayload
             self.originalPaddingBytes = acc.originalPaddingBytes
-            self.sequentialContinuationFramesCount = acc.sequentialContinuationFramesCount
+            self.continuationSequenceCount = acc.continuationSequenceCount
         }
 
         /// The result of successful processing: we either produce a frame and move to the new accumulating state,
@@ -538,9 +538,6 @@ struct HTTP2FrameDecoder {
             self.currentFrameBytes.writeImmutableBuffer(continuationPayload)
             let payload = self.currentFrameBytes
 
-            // Increase the count of CONTINUATION frames in the sequence.
-            self.sequentialContinuationFramesCount += 1
-
             // we have collected enough bytes: is this the last CONTINUATION frame?
             guard self.continuationHeader.flags.contains(.endHeaders) else {
                 // nope, switch back to accumulating fragments
@@ -550,7 +547,7 @@ struct HTTP2FrameDecoder {
                         initialPayload: payload,
                         incomingPayload: self.continuationPayload,
                         originalPaddingBytes: self.originalPaddingBytes,
-                        sequentialContinuationFramesCount: self.sequentialContinuationFramesCount
+                        continuationSequenceCount: self.continuationSequenceCount + 1
                     )
                 )
             }
@@ -576,21 +573,21 @@ struct HTTP2FrameDecoder {
         private(set) var accumulatedPayload: ByteBuffer
         private(set) var incomingPayload: ByteBuffer
         private(set) var originalPaddingBytes: Int?
-        private(set) var sequentialContinuationFramesCount: Int
+        private(set) var continuationSequenceCount: Int
 
         init(
             header: FrameHeader,
             initialPayload: ByteBuffer,
             incomingPayload: ByteBuffer,
             originalPaddingBytes: Int?,
-            sequentialContinuationFramesCount: Int
+            continuationSequenceCount: Int
         ) {
             precondition(header.beginsContinuationSequence)
             self.header = header
             self.accumulatedPayload = initialPayload
             self.incomingPayload = incomingPayload
             self.originalPaddingBytes = originalPaddingBytes
-            self.sequentialContinuationFramesCount = sequentialContinuationFramesCount
+            self.continuationSequenceCount = continuationSequenceCount
         }
 
         mutating func process(
@@ -620,7 +617,7 @@ struct HTTP2FrameDecoder {
             }
 
             // The sequence of CONTINUATION frames received is not longer than the configured limit
-            guard self.sequentialContinuationFramesCount < maximumSequentialContinuationFrames else {
+            guard self.continuationSequenceCount <= maximumSequentialContinuationFrames else {
                 throw NIOHTTP2Errors.excessiveContinuationFrames()
             }
 
@@ -800,9 +797,7 @@ struct HTTP2FrameDecoder {
         // Start running through our state machine until we run out of bytes or we emit a frame.
         while true {
             switch (
-                try self.processNextState(
-                    maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
-                )
+                try self.processNextState()
             ) {
             case .needMoreData:
                 return nil
@@ -821,9 +816,7 @@ struct HTTP2FrameDecoder {
         case parseFrame(header: FrameHeader, payloadBytes: ByteBuffer, paddingBytes: Int?)
     }
     
-    private mutating func processNextState(
-        maximumSequentialContinuationFrames: Int
-    ) throws -> ParseResult {
+    private mutating func processNextState() throws -> ParseResult {
         switch self.state {
         case .awaitingClientMagic(var state):
             return try self.avoidingParserCoW { newState in
@@ -1024,6 +1017,8 @@ struct HTTP2FrameDecoder {
 
         case .accumulatingHeaderBlockFragments(var state):
             let maxHeaderListSize = self.headerDecoder.maxHeaderListSize
+            let maximumSequentialContinuationFrames = self.maximumSequentialContinuationFrames
+
             return try self.avoidingParserCoW { newState in
                 let result = Result<ParseResult, Error> {
                     guard let processResult = try state.process(
