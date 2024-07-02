@@ -104,6 +104,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// The delegate for (de)multiplexing inbound streams.
     private var inboundStreamMultiplexerState: InboundStreamMultiplexerState
 
+    /// The maximum number of sequential CONTINUATION frames.
+    private let maximumSequentialContinuationFrames: Int
+
     @usableFromInline
     internal var inboundStreamMultiplexer: InboundStreamMultiplexer? {
         return self.inboundStreamMultiplexerState.multiplexer
@@ -212,6 +215,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: contentLengthValidation,
                   maximumSequentialEmptyDataFrames: 1,
                   maximumBufferedControlFrames: 10000,
+                  maximumSequentialContinuationFrames: 5,
                   maximumResetFrameCount: 200,
                   resetFrameCounterWindow: .seconds(30))
     }
@@ -241,6 +245,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: contentLengthValidation,
                   maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: maximumBufferedControlFrames,
+                  maximumSequentialContinuationFrames: 5,
                   maximumResetFrameCount: 200,
                   resetFrameCounterWindow: .seconds(30))
 
@@ -262,6 +267,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: connectionConfiguration.contentLengthValidation,
                   maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
+                  maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
                   maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
                   resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength)
     }
@@ -273,6 +279,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                  contentLengthValidation: ValidationState,
                  maximumSequentialEmptyDataFrames: Int,
                  maximumBufferedControlFrames: Int,
+                 maximumSequentialContinuationFrames: Int,
                  maximumResetFrameCount: Int,
                  resetFrameCounterWindow: TimeAmount) {
         self._eventLoop = eventLoop
@@ -283,6 +290,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames, maximumResetFrameCount: maximumResetFrameCount, resetFrameCounterWindow: resetFrameCounterWindow)
         self.tolerateImpossibleStateTransitionsInDebugMode = false
         self.inboundStreamMultiplexerState = .uninitializedLegacy
+        self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
     }
 
     /// Constructs a ``NIOHTTP2Handler``.
@@ -297,6 +305,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///   - maximumBufferedControlFrames: Controls the maximum buffer size of buffered outbound control frames. If we are unable to send control frames as
     ///         fast as we produce them we risk building up an unbounded buffer and exhausting our memory. To protect against this DoS vector, we put an
     ///         upper limit on the depth of this queue. Defaults to 10,000.
+    ///   - maximumSequentialContinuationFrames: The maximum number of sequential CONTINUATION frames.
     ///   - tolerateImpossibleStateTransitionsInDebugMode: Whether impossible state transitions should be tolerated
     ///         in debug mode.
     ///   - maximumResetFrameCount: Controls the maximum permitted reset frames within a given time window. Too many may exhaust CPU resources. To protect
@@ -309,6 +318,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: ValidationState = .enabled,
                   maximumSequentialEmptyDataFrames: Int = 1,
                   maximumBufferedControlFrames: Int = 10000,
+                  maximumSequentialContinuationFrames: Int = 5,
                   tolerateImpossibleStateTransitionsInDebugMode: Bool = false,
                   maximumResetFrameCount: Int = 200,
                   resetFrameCounterWindow: TimeAmount = .seconds(30)) {
@@ -320,10 +330,15 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames, maximumResetFrameCount: maximumResetFrameCount, resetFrameCounterWindow: resetFrameCounterWindow)
         self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
         self.inboundStreamMultiplexerState = .uninitializedLegacy
+        self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
-        self.frameDecoder = HTTP2FrameDecoder(allocator: context.channel.allocator, expectClientMagic: self.mode == .server)
+        self.frameDecoder = HTTP2FrameDecoder(
+            allocator: context.channel.allocator,
+            expectClientMagic: self.mode == .server,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         self.frameEncoder = HTTP2FrameEncoder(allocator: context.channel.allocator)
         self.writeBuffer = context.channel.allocator.buffer(capacity: 128)
         self.inboundStreamMultiplexerState.initialize(context: context, http2Handler: self, mode: self.mode)
@@ -494,6 +509,9 @@ extension NIOHTTP2Handler {
             return nil
         } catch is NIOHTTP2Errors.ExcessivelyLargeHeaderBlock {
             self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.excessivelyLargeHeaderBlock(), reason: .protocolError)
+            return nil
+        } catch is NIOHTTP2Errors.ExcessiveContinuationFrames {
+            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.excessiveContinuationFrames(), reason: .enhanceYourCalm)
             return nil
         } catch {
             self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .internalError)
@@ -1069,6 +1087,7 @@ extension NIOHTTP2Handler {
             contentLengthValidation: connectionConfiguration.contentLengthValidation,
             maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
+            maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
         )
@@ -1093,6 +1112,7 @@ extension NIOHTTP2Handler {
             contentLengthValidation: connectionConfiguration.contentLengthValidation,
             maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
+            maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
         )
@@ -1109,6 +1129,7 @@ extension NIOHTTP2Handler {
         public var contentLengthValidation: ValidationState = .enabled
         public var maximumSequentialEmptyDataFrames: Int = 1
         public var maximumBufferedControlFrames: Int = 10000
+        public var maximumSequentialContinuationFrames: Int = 5
         public init() {}
     }
 

@@ -36,7 +36,11 @@ typealias IODataWriteRecorder = WriteRecorder<IOData>
 
 extension IODataWriteRecorder {
     func drainConnectionSetupWrites(mode: NIOHTTP2Handler.ParserMode = .server) throws {
-        var frameDecoder = HTTP2FrameDecoder(allocator: ByteBufferAllocator(), expectClientMagic: mode == .client)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: ByteBufferAllocator(),
+            expectClientMagic: mode == .client,
+            maximumSequentialContinuationFrames: 5
+        )
 
         while self.flushedWrites.count > 0 {
             let write = self.flushedWrites.removeFirst()
@@ -287,7 +291,11 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let expectedFrames = streamIDs.map { HTTP2Frame(streamID: $0, payload: .rstStream(.cancel)) }
         XCTAssertEqual(expectedFrames.count, frameReceiver.flushedWrites.count)
 
-        var frameDecoder = HTTP2FrameDecoder(allocator: channel.allocator, expectClientMagic: false)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: channel.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: 5
+        )
         for (idx, expectedFrame) in expectedFrames.enumerated() {
             if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[idx] {
                 frameDecoder.append(bytes: flushedWriteBuffer)
@@ -328,7 +336,11 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         // Now we close it. This triggers a RST_STREAM frame.
         childChannel.close(promise: nil)
         XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
-        var frameDecoder = HTTP2FrameDecoder(allocator: channel.allocator, expectClientMagic: false)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: channel.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: 5
+        )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
         }
@@ -369,7 +381,11 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let closed = ManagedAtomic<Bool>(false)
         childChannel.close().whenComplete { _ in closed.store(true, ordering: .sequentiallyConsistent) }
         XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
-        var frameDecoder = HTTP2FrameDecoder(allocator: channel.allocator, expectClientMagic: false)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: channel.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: 5
+        )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
         }
@@ -426,7 +442,11 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             thirdClosed.store(true, ordering: .sequentiallyConsistent)
         }
         XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
-        var frameDecoder = HTTP2FrameDecoder(allocator: channel.allocator, expectClientMagic: false)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: channel.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: 5
+        )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
         }
@@ -470,7 +490,11 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             }
         }
         XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
-        var frameDecoder = HTTP2FrameDecoder(allocator: channel.allocator, expectClientMagic: false)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: channel.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: 5
+        )
         if case .byteBuffer(let flushedWriteBuffer) = frameReceiver.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
         }
@@ -576,7 +600,11 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(frameRecorder.receivedFrames.count, 0)
         XCTAssertFalse(childChannel.isActive)
         XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
-        var frameDecoder = HTTP2FrameDecoder(allocator: channel.allocator, expectClientMagic: false)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: channel.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: 5
+        )
         if case .byteBuffer(let flushedWriteBuffer) = writeRecorder.flushedWrites[0] {
             frameDecoder.append(bytes: flushedWriteBuffer)
         }

@@ -298,6 +298,11 @@ public enum NIOHTTP2Errors {
         return ExcessiveRSTFrames(file: file, line: line)
     }
 
+    /// Creates an ``ExcessiveContinuationFrames`` error with appropriate source context.
+    public static func excessiveContinuationFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveContinuationFrames {
+        return ExcessiveContinuationFrames(file: file, line: line)
+    }
+
     /// Creates a ``StreamError`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -1737,6 +1742,26 @@ public enum NIOHTTP2Errors {
 
     /// The client has issued RST frames at an excessive rate resulting in the connection being defensively closed.
     public struct ExcessiveRSTFrames: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            return _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func ==(lhs: Self, rhs: Self) -> Bool {
+            return true
+        }
+    }
+
+    /// A remote peer has sent a sequence of `CONTINUATION` frames longer than the configured limit.
+    public struct ExcessiveContinuationFrames: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 
