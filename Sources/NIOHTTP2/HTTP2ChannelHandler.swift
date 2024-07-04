@@ -39,6 +39,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// The magic string sent by clients at the start of a HTTP/2 connection.
     private static let clientMagic: StaticString = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 
+    /// The default value for the maximum number of sequential CONTINUATION frames.
+    private static let defaultMaximumSequentialContinuationFrames: Int = 5
+
     /// The event loop on which this handler will do work.
     @usableFromInline internal let _eventLoop: EventLoop?
 
@@ -215,7 +218,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: contentLengthValidation,
                   maximumSequentialEmptyDataFrames: 1,
                   maximumBufferedControlFrames: 10000,
-                  maximumSequentialContinuationFrames: 5,
+                  maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
                   maximumResetFrameCount: 200,
                   resetFrameCounterWindow: .seconds(30))
     }
@@ -245,7 +248,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: contentLengthValidation,
                   maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
                   maximumBufferedControlFrames: maximumBufferedControlFrames,
-                  maximumSequentialContinuationFrames: 5,
+                  maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
                   maximumResetFrameCount: 200,
                   resetFrameCounterWindow: .seconds(30))
 
@@ -318,7 +321,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                   contentLengthValidation: ValidationState = .enabled,
                   maximumSequentialEmptyDataFrames: Int = 1,
                   maximumBufferedControlFrames: Int = 10000,
-                  maximumSequentialContinuationFrames: Int = 5,
+                  maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
                   tolerateImpossibleStateTransitionsInDebugMode: Bool = false,
                   maximumResetFrameCount: Int = 200,
                   resetFrameCounterWindow: TimeAmount = .seconds(30)) {
@@ -1129,7 +1132,7 @@ extension NIOHTTP2Handler {
         public var contentLengthValidation: ValidationState = .enabled
         public var maximumSequentialEmptyDataFrames: Int = 1
         public var maximumBufferedControlFrames: Int = 10000
-        public var maximumSequentialContinuationFrames: Int = 5
+        public var maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames
         public init() {}
     }
 
