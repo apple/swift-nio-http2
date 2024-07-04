@@ -133,6 +133,8 @@ class ConnectionStateMachineTests: XCTestCase {
     var clientEncoder: HTTP2FrameEncoder!
     var clientDecoder: HTTP2FrameDecoder!
 
+    let maximumSequentialContinuationFrames: Int = 5
+
     static let requestHeaders = {
         return HPACKHeaders([(":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"), ("user-agent", "test")])
     }()
@@ -150,9 +152,17 @@ class ConnectionStateMachineTests: XCTestCase {
         self.client = .init(role: .client)
 
         self.serverEncoder = HTTP2FrameEncoder(allocator: ByteBufferAllocator())
-        self.serverDecoder = HTTP2FrameDecoder(allocator: ByteBufferAllocator(), expectClientMagic: true)
+        self.serverDecoder = HTTP2FrameDecoder(
+            allocator: ByteBufferAllocator(),
+            expectClientMagic: true,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
         self.clientEncoder = HTTP2FrameEncoder(allocator: ByteBufferAllocator())
-        self.clientDecoder = HTTP2FrameDecoder(allocator: ByteBufferAllocator(), expectClientMagic: false)
+        self.clientDecoder = HTTP2FrameDecoder(
+            allocator: ByteBufferAllocator(),
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
     }
 
     private func exchangePreamble(client: HTTP2Settings = HTTP2Settings(), server: HTTP2Settings = HTTP2Settings()) {
