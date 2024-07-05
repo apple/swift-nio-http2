@@ -513,7 +513,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
 
     public func write0(_ data: NIOAny, promise userPromise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
-            userPromise?.fail(ChannelError.ioOnClosedChannel)
+            userPromise?.fail(ChannelError._ioOnClosedChannel)
             return
         }
 
@@ -584,7 +584,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         // If the stream is already closed, we can fail this early and abort processing. If it's not, we need to emit a
         // RST_STREAM frame.
         guard self.state != .closed else {
-            promise?.fail(ChannelError.alreadyClosed)
+            promise?.fail(ChannelError._alreadyClosed)
             return
         }
 
@@ -643,7 +643,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         }
         self.modifyingState { $0.completeClosing() }
         self.dropPendingReads()
-        self.failPendingWrites(error: ChannelError.eof)
+        self.failPendingWrites(error: ChannelError._eof)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
             promise.succeed(())
@@ -842,7 +842,7 @@ internal extension HTTP2StreamChannel {
     ///   - promise: The promise associated with the frame write.
     private func receiveOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
-            let error = ChannelError.alreadyClosed
+            let error = ChannelError._alreadyClosed
             promise?.fail(error)
             self.errorEncountered(error: error)
             return
