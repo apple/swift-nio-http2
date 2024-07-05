@@ -1764,7 +1764,7 @@ extension ConnectionStateWithRole {
         switch self.role {
         case .client:
             return .server
-        default:
+        case .server:
             return .client
         }
     }
