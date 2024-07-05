@@ -17,7 +17,7 @@ import NIOHPACK
 /// can validly accept headers.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol ReceivingHeadersState: HasFlowControlWindows, HasLocalExtendedConnectSettings, HasRemoteExtendedConnectSettings {
+protocol ReceivingHeadersState: HasFlowControlWindows, HasLocalExtendedConnectSettings, HasRemoteExtendedConnectSettings, ConnectionStateWithRole {
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
 
     var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
