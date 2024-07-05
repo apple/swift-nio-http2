@@ -61,19 +61,6 @@ extension ReceivingHeadersState {
     }
 }
 
-extension HTTP2ConnectionStateMachine.ConnectionRole {
-    /// Obtain the inverse role to self
-    /// - Returns: The inverse role
-    fileprivate func inverse() -> Self {
-        switch self {
-        case .server:
-            return .client
-        case .client:
-            return .server
-        }
-    }
-}
-
 extension ReceivingHeadersState where Self: LocallyQuiescingState {
     /// Called when we receive a HEADERS frame in this state.
     ///
@@ -86,10 +73,10 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
         let localSupportsExtendedConnect = self.localSupportsExtendedConnect
         let remoteSupportsExtendedConnect = self.remoteSupportsExtendedConnect
 
-        // We are in `LocallyQuiescingState`. The sender of the GOAWAY is `self.role`, so the receiver is the inverse of `self.role`.
-        let receiver = self.role.inverse()
+        // We are in `LocallyQuiescingState`. The sender of the GOAWAY is `self.role`, so the remote peer is the inverse of `self.role`.
+        let remotePeer = self.peerRole
 
-        if streamID.mayBeInitiatedBy(receiver) && streamID > self.lastRemoteStreamID {
+        if streamID.mayBeInitiatedBy(remotePeer) && streamID > self.lastRemoteStreamID {
             return StateMachineResultWithEffect(result: .ignoreFrame, effect: nil)
         }
 

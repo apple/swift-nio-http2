@@ -1753,20 +1753,27 @@ extension HTTP2StreamID {
     }
 }
 
+extension HTTP2ConnectionStateMachine.ConnectionRole {
+    /// Obtain the inverse role to self
+    /// - Returns: The inverse role
+    fileprivate func inverse() -> Self {
+        switch self {
+        case .server:
+            return .client
+        case .client:
+            return .server
+        }
+    }
+}
 
 /// A simple protocol that provides helpers that apply to all connection states that keep track of a role.
-private protocol ConnectionStateWithRole {
+protocol ConnectionStateWithRole {
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
 }
 
 extension ConnectionStateWithRole {
     var peerRole: HTTP2ConnectionStateMachine.ConnectionRole {
-        switch self.role {
-        case .client:
-            return .server
-        case .server:
-            return .client
-        }
+        return self.role.inverse()
     }
 }
 

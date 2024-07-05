@@ -988,7 +988,7 @@ class ConnectionStateMachineTests: XCTestCase {
     func testHeadersOnOpenStreamLocallyQuiescing() {
         let streamOne = HTTP2StreamID(1)
 
-        exchangePreamble()
+        self.exchangePreamble()
 
         // Client sends headers
         assertSucceeds(client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
