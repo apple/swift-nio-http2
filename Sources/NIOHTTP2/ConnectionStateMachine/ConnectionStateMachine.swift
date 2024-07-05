@@ -1753,6 +1753,7 @@ extension HTTP2StreamID {
     }
 }
 
+
 /// A simple protocol that provides helpers that apply to all connection states that keep track of a role.
 protocol ConnectionStateWithRole {
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
