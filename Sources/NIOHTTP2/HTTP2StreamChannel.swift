@@ -728,7 +728,7 @@ private extension HTTP2StreamChannel {
     /// Drop all pending reads.
     private func dropPendingReads() {
         /// We don't need to report the dropped reads, just remove them all.
-        self.pendingReads.removeAll()
+        self.pendingReads.removeAll(keepingCapacity: true)
     }
 
     /// Deliver all pending reads to the channel.
