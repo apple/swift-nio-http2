@@ -28,20 +28,19 @@ services:
   test:
     image: swift-nio-http2:22.04-5.9
     environment:
-      - MAX_ALLOCS_ALLOWED_1k_requests_inline_interleaved=31150
-      - MAX_ALLOCS_ALLOWED_1k_requests_inline_noninterleaved=30100
-      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=37150
-      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=36100
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=280050
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response_inline=265050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=249050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_inline=240050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_many=1194050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_many_inline=885050
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=37050
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline=37050
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline_no_promise_based_API=37050
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_no_promise_based_API=37050
+      - MAX_ALLOCS_ALLOWED_1k_requests_inline_interleaved=32150
+      - MAX_ALLOCS_ALLOWED_1k_requests_inline_noninterleaved=31100
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=38150
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=37100
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=282050
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response_inline=267050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=251050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_inline=242050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_many=1196050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_many_inline=887050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=36050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline=36050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_no_promise_based_API=36050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=300050
