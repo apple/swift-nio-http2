@@ -925,7 +925,7 @@ internal extension HTTP2StreamChannel {
             // Do nothing here.
             return
         case .remoteActive, .active, .closing, .closingNeverActivated, .closed:
-            self.flags.withLockedValue { $0.isActive = localValue }
+            self.flags.withLockedValue { $0.isWritable = localValue }
             self.pipeline.fireChannelWritabilityChanged()
         }
     }
