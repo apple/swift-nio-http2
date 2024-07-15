@@ -268,6 +268,23 @@ extension HTTP2StreamMultiplexer {
     /// > Note: Resources for the stream will be freed after it has been closed.
     ///
     /// - Parameters:
+    ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
+    ///         `ChannelPipeline` for the newly created channel.
+    /// - Returns: A future for the initialized `Channel`.
+    public func createStreamChannel(_ initializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {
+        let promise = self.channel.eventLoop.makePromise(of: Channel.self)
+        self.createStreamChannel(promise: promise, initializer)
+        return promise.futureResult
+    }
+
+    /// Create a new `Channel` for a new stream initiated by this peer.
+    ///
+    /// This method is intended for situations where the NIO application is initiating the stream. For clients,
+    /// this is for all request streams. For servers, this is for pushed streams.
+    ///
+    /// > Note: Resources for the stream will be freed after it has been closed.
+    ///
+    /// - Parameters:
     ///   - promise: An `EventLoopPromise` that will be succeeded with the new activated channel, or
     ///         failed if an error occurs.
     ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
