@@ -38,12 +38,10 @@ services:
       - MAX_ALLOCS_ALLOWED_client_server_request_response_inline=244050
       - MAX_ALLOCS_ALLOWED_client_server_request_response_many=1198050
       - MAX_ALLOCS_ALLOWED_client_server_request_response_many_inline=889050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_no_promise_on_channel_creation=253050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_no_promise_on_channel_creation_inline=251050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_no_promise_on_channel_creation_many=1198050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_no_promise_on_channel_creation_many_inline=896050
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel=37050
       - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline=37050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline_no_promise_based_API=44050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_no_promise_based_API=37050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=300050
