@@ -466,6 +466,47 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         }
     }
 
+    func testAsyncPipelineConfiguresStreamDelegate() async throws {
+        let clientRecorder = StreamRecorder()
+        let clientMultiplexer = try await self.clientChannel.configureAsyncHTTP2Pipeline(
+            mode: .client,
+            streamDelegate: clientRecorder
+        ) { channel in
+            channel.eventLoop.makeSucceededVoidFuture()
+        }.get()
+
+        let serverRecorder = StreamRecorder()
+        _ = try await self.serverChannel.configureAsyncHTTP2Pipeline(
+            mode: .server,
+            streamDelegate: serverRecorder
+        ) { channel in
+            channel.pipeline.addHandler(OKResponder())
+        }.get()
+
+        try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
+
+        for _ in 0 ..< 3 {
+            try await clientMultiplexer.openStream { stream in
+                return stream.pipeline.addHandlers(SimpleRequest())
+            }
+
+            try await Self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
+            try await Self.deliverAllBytes(from: self.serverChannel, to: self.clientChannel)
+        }
+
+        let expected: [StreamRecorder.Event] = [
+            .init(streamID: 1, operation: .opened), .init(streamID: 1, operation: .closed),
+            .init(streamID: 3, operation: .opened), .init(streamID: 3, operation: .closed),
+            .init(streamID: 5, operation: .opened), .init(streamID: 5, operation: .closed),
+        ]
+
+        XCTAssertEqual(clientRecorder.events, expected)
+        XCTAssertEqual(serverRecorder.events, expected)
+
+        try await self.clientChannel.close()
+        try await self.serverChannel.close()
+    }
+
     // Simple handler which maps server response parts to remove references to `IOData` which isn't Sendable
     internal final class HTTP1ServerSendability: ChannelOutboundHandler {
         public typealias ResponsePart = HTTPPart<HTTPResponseHead, ByteBuffer>
@@ -503,9 +544,43 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             context.fireChannelRead(data)
         }
     }
+
+    final class StreamRecorder: NIOHTTP2StreamDelegate, Sendable {
+        private let _events: NIOLockedValueBox<[Event]>
+
+        struct Event: Sendable, Hashable {
+            var streamID: HTTP2StreamID
+            var operation: Operation
+        }
+
+        enum Operation: Sendable, Hashable {
+            case opened
+            case closed
+        }
+
+        var events: [Event] {
+            self._events.withLockedValue { $0 }
+        }
+
+        init() {
+            self._events = NIOLockedValueBox([])
+        }
+
+        func streamCreated(_ id: HTTP2StreamID, channel: any Channel) {
+            self._events.withLockedValue {
+                $0.append(Event(streamID: id, operation: .opened))
+            }
+        }
+
+        func streamClosed(_ id: HTTP2StreamID, channel: any Channel) {
+            self._events.withLockedValue {
+                $0.append(Event(streamID: id, operation: .closed))
+            }
+        }
+    }
 }
 
-#if swift(<5.9)
+#if compiler(<5.9)
 // this should be available in the std lib from 5.9 onwards
 extension AsyncStream {
     internal static func makeStream(

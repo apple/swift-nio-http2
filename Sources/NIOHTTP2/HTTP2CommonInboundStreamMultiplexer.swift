@@ -533,7 +533,7 @@ extension NIOHTTP2AsyncSequence.AsyncIterator: Sendable {}
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension NIOHTTP2AsyncSequence: Sendable where Output: Sendable {}
 
-#if swift(<5.9)
+#if compiler(<5.9)
 // this should be available in the std lib from 5.9 onwards
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension AsyncThrowingStream {

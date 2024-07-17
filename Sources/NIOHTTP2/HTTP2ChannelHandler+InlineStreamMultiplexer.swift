@@ -152,6 +152,11 @@ extension InlineStreamMultiplexer {
     }
 
     @inlinable
+    internal func createStreamChannel<Output: Sendable>(promise: EventLoopPromise<Output>?, _ initializer: @escaping NIOChannelInitializerWithOutput<Output>) {
+        self._commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), promise: promise, initializer)
+    }
+
+    @inlinable
     internal func createStreamChannel<Output: Sendable>(_ initializer: @escaping NIOChannelInitializerWithOutput<Output>) -> EventLoopFuture<Output> {
         self._commonStreamMultiplexer.createStreamChannel(multiplexer: .inline(self), initializer)
     }
@@ -284,9 +289,11 @@ extension InlineStreamMultiplexer {
             // Always create streams channels on the next event loop tick. This avoids re-entrancy
             // issues where handlers interposed between the two HTTP/2 handlers could create streams
             // in channel active which become activated twice.
-            return self._eventLoop.flatSubmit {
-                self._inlineStreamMultiplexer.createStreamChannel(initializer)
+            let promise: EventLoopPromise<Channel> = self._eventLoop.makePromise()
+            self._eventLoop.execute {
+                self._inlineStreamMultiplexer.createStreamChannel(promise: promise, initializer)
             }
+            return promise.futureResult
         }
 
         @inlinable
@@ -294,9 +301,11 @@ extension InlineStreamMultiplexer {
             // Always create streams channels on the next event loop tick. This avoids re-entrancy
             // issues where handlers interposed between the two HTTP/2 handlers could create streams
             // in channel active which become activated twice.
-            return self._eventLoop.flatSubmit {
-                self._inlineStreamMultiplexer.createStreamChannel(initializer)
+            let promise: EventLoopPromise<Output> = self._eventLoop.makePromise()
+            self._eventLoop.execute {
+                self._inlineStreamMultiplexer.createStreamChannel(promise: promise, initializer)
             }
+            return promise.futureResult
         }
 
         internal func setChannelContinuation(_ streamChannels: any AnyContinuation) {

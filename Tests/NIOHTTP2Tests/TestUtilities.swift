@@ -14,9 +14,10 @@
 
 #if canImport(Darwin)
 import Darwin.C
-#elseif os(Linux) || os(FreeBSD) || os(Android)
+#elseif canImport(Glibc)
 import Glibc
-#else
+#elseif canImport(Bionic)
+import Bionic
 #endif
 
 import XCTest
@@ -263,7 +264,11 @@ extension EmbeddedChannel {
     func decodedSentFrames(file: StaticString = #filePath, line: UInt = #line) throws -> [HTTP2Frame] {
         var receivedFrames: [HTTP2Frame] = Array()
 
-        var frameDecoder = HTTP2FrameDecoder(allocator: self.allocator, expectClientMagic: false)
+        var frameDecoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: 5
+        )
         while let buffer = try assertNoThrowWithValue(self.readOutbound(as: ByteBuffer.self), file: (file), line: line) {
             frameDecoder.append(bytes: buffer)
             if let (frame, _) = try frameDecoder.nextFrame() {
@@ -516,7 +521,7 @@ extension HTTP2Frame.FramePayload {
 
         switch type {
         case .some(.request):
-            XCTAssertNoThrow(try actualPayload.headers.validateRequestBlock(),
+            XCTAssertNoThrow(try actualPayload.headers.validateRequestBlock(supportsExtendedConnect: true),
                              "\(actualPayload.headers) not a valid \(type!) headers block", file: (file), line: line)
         case .some(.response):
             XCTAssertNoThrow(try actualPayload.headers.validateResponseBlock(),
@@ -527,7 +532,7 @@ extension HTTP2Frame.FramePayload {
         case .some(.doNotValidate):
             () // alright, let's not validate then
         case .none:
-            XCTAssertTrue((try? actualPayload.headers.validateRequestBlock()) != nil ||
+            XCTAssertTrue((try? actualPayload.headers.validateRequestBlock(supportsExtendedConnect: true)) != nil ||
                             (try? actualPayload.headers.validateResponseBlock()) != nil ||
                             (try? actualPayload.headers.validateTrailersBlock()) != nil,
                           "\(actualPayload.headers) not a valid request/response/trailers header block",

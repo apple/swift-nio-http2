@@ -185,6 +185,10 @@ public enum NIOHTTP2Errors {
         return UnknownPseudoHeader(name, file: file, line: line)
     }
 
+    public static func unsupportedPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> UnsupportedPseudoHeader {
+        return UnsupportedPseudoHeader(name, file: file, line: line)
+    }
+
     /// Creates a ``InvalidPseudoHeaders`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -292,6 +296,11 @@ public enum NIOHTTP2Errors {
     /// Creates a ``ExcessiveRSTFrames`` error with appropriate source context.
     public static func excessiveRSTFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveRSTFrames {
         return ExcessiveRSTFrames(file: file, line: line)
+    }
+
+    /// Creates an ``ExcessiveContinuationFrames`` error with appropriate source context.
+    public static func excessiveContinuationFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveContinuationFrames {
+        return ExcessiveContinuationFrames(file: file, line: line)
     }
 
     /// Creates a ``StreamError`` error with appropriate source context.
@@ -1111,6 +1120,45 @@ public enum NIOHTTP2Errors {
         }
     }
 
+    /// An unsupported pseudo-header was received.
+    public struct UnsupportedPseudoHeader: NIOHTTP2Error, CustomStringConvertible, @unchecked Sendable {
+        // @unchecked Sendable because access is controlled by getters and copy-on-write setters giving this value semantics
+
+        private var storage: StringAndLocationStorage
+
+        private mutating func copyStorageIfNotUniquelyReferenced() {
+            if !isKnownUniquelyReferenced(&self.storage) {
+                self.storage = self.storage.copy()
+            }
+        }
+
+        /// The name of the unsupported pseudo-header field.
+        public var name: String {
+            get {
+                return self.storage.value
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.value = newValue
+            }
+        }
+
+        /// The file and line where the error was created.
+        public var location: String {
+            get {
+                return self.storage.location
+            }
+        }
+
+        public var description: String {
+            return "UnsupportedPseudoHeader(name: \(self.name), location: \(self.location))"
+        }
+
+        fileprivate init(_ name: String, file: String, line: UInt) {
+            self.storage = .init(name, file: file, line: line)
+        }
+    }
+
     /// A header block was received with an invalid set of pseudo-headers for the block type.
     public struct InvalidPseudoHeaders: NIOHTTP2Error {
         /// The header block containing the invalid set of pseudo-headers.
@@ -1694,6 +1742,26 @@ public enum NIOHTTP2Errors {
 
     /// The client has issued RST frames at an excessive rate resulting in the connection being defensively closed.
     public struct ExcessiveRSTFrames: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            return _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func ==(lhs: Self, rhs: Self) -> Bool {
+            return true
+        }
+    }
+
+    /// A remote peer has sent a sequence of `CONTINUATION` frames longer than the configured limit.
+    public struct ExcessiveContinuationFrames: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 

@@ -277,7 +277,8 @@ struct HTTP2FrameDecoder {
                         header: syntheticHeader,
                         initialPayload: payloadBytes,
                         incomingPayload: self.accumulatedBytes,
-                        originalPaddingBytes: self.expectedPadding
+                        originalPaddingBytes: self.expectedPadding,
+                        continuationSequenceCount: 1
                     )
                 )
             }
@@ -504,6 +505,7 @@ struct HTTP2FrameDecoder {
         private var currentFrameBytes: ByteBuffer
         private var continuationPayload: ByteBuffer
         private var originalPaddingBytes: Int?
+        private var continuationSequenceCount: Int
 
         init(fromAccumulatingHeaderBlockFragments acc: AccumulatingHeaderBlockFragmentsParserState,
              continuationHeader: FrameHeader) {
@@ -515,6 +517,7 @@ struct HTTP2FrameDecoder {
             self.currentFrameBytes = acc.accumulatedPayload
             self.continuationPayload = acc.incomingPayload
             self.originalPaddingBytes = acc.originalPaddingBytes
+            self.continuationSequenceCount = acc.continuationSequenceCount
         }
 
         /// The result of successful processing: we either produce a frame and move to the new accumulating state,
@@ -537,13 +540,27 @@ struct HTTP2FrameDecoder {
 
             // we have collected enough bytes: is this the last CONTINUATION frame?
             guard self.continuationHeader.flags.contains(.endHeaders) else {
+                // When accumulating a sequence of CONTINUATION frames the buffer will continue to
+                // grow as bytes are appended to it and the reader index will continue to advance
+                // as frames are read. However this allows for an ever increasing buffer where only
+                // the unread bytes are useful. The read bytes should be periodically discarded.
+                //
+                // As a basic heuristic is to discard the read bytes when more than 1KB has been
+                // read, and that 1KB accounts for more than half of the capacity.
+                let readerIndex = self.continuationPayload.readerIndex
+                let capacity = self.continuationPayload.capacity
+                if readerIndex > 1024 && readerIndex > (capacity / 2) {
+                    self.continuationPayload.discardReadBytes()
+                }
+
                 // nope, switch back to accumulating fragments
                 return .accumulateContinuationHeader(
                     AccumulatingHeaderBlockFragmentsParserState(
                         header: header,
                         initialPayload: payload,
                         incomingPayload: self.continuationPayload,
-                        originalPaddingBytes: self.originalPaddingBytes
+                        originalPaddingBytes: self.originalPaddingBytes,
+                        continuationSequenceCount: self.continuationSequenceCount + 1
                     )
                 )
             }
@@ -569,16 +586,27 @@ struct HTTP2FrameDecoder {
         private(set) var accumulatedPayload: ByteBuffer
         private(set) var incomingPayload: ByteBuffer
         private(set) var originalPaddingBytes: Int?
+        private(set) var continuationSequenceCount: Int
 
-        init(header: FrameHeader, initialPayload: ByteBuffer, incomingPayload: ByteBuffer, originalPaddingBytes: Int?) {
+        init(
+            header: FrameHeader,
+            initialPayload: ByteBuffer,
+            incomingPayload: ByteBuffer,
+            originalPaddingBytes: Int?,
+            continuationSequenceCount: Int
+        ) {
             precondition(header.beginsContinuationSequence)
             self.header = header
             self.accumulatedPayload = initialPayload
             self.incomingPayload = incomingPayload
             self.originalPaddingBytes = originalPaddingBytes
+            self.continuationSequenceCount = continuationSequenceCount
         }
 
-        mutating func process(maxHeaderListSize: Int) throws -> AccumulatingContinuationPayloadParserState? {
+        mutating func process(
+            maxHeaderListSize: Int,
+            maximumSequentialContinuationFrames: Int
+        ) throws -> AccumulatingContinuationPayloadParserState? {
             // we have an entire HEADERS/PUSH_PROMISE frame, but one or more CONTINUATION frames
             // are arriving. Wait for them.
             guard let header = self.incomingPayload.readFrameHeader() else {
@@ -599,6 +627,11 @@ struct HTTP2FrameDecoder {
             // If there isn't, kill it.
             guard self.header.length + header.length <= maxHeaderListSize else {
                 throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
+            }
+
+            // The sequence of CONTINUATION frames received is not longer than the configured limit
+            guard self.continuationSequenceCount <= maximumSequentialContinuationFrames else {
+                throw NIOHTTP2Errors.excessiveContinuationFrames()
             }
 
             return AccumulatingContinuationPayloadParserState(fromAccumulatingHeaderBlockFragments: self, continuationHeader: header)
@@ -685,6 +718,7 @@ struct HTTP2FrameDecoder {
 
     internal var headerDecoder: HPACKDecoder
     private var state: ParserState
+    private let maximumSequentialContinuationFrames: Int
 
     // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
     internal var maxFrameSize: UInt32 = 1<<14
@@ -695,8 +729,14 @@ struct HTTP2FrameDecoder {
     ///                        and decoding headers.
     /// - parameter expectClientMagic: Whether the parser should expect to receive the bytes of
     ///                                client magic string before frame parsing begins.
-    init(allocator: ByteBufferAllocator, expectClientMagic: Bool) {
+    /// - parameter maximumSequentialContinuationFrames: The maximum number of sequential CONTINUATION frames.
+    init(
+        allocator: ByteBufferAllocator,
+        expectClientMagic: Bool,
+        maximumSequentialContinuationFrames: Int
+    ) {
         self.headerDecoder = HPACKDecoder(allocator: allocator)
+        self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
 
         if expectClientMagic {
             self.state = .awaitingClientMagic(ClientMagicState())
@@ -781,60 +821,117 @@ struct HTTP2FrameDecoder {
 
     }
 
+    fileprivate enum ProcessAccumulatingResult {
+        case `continue`
+        case needMoreData
+        case parseFrame(header: FrameHeader, payloadBytes: ByteBuffer, paddingBytes: Int?)
+    }
+    
     private mutating func processNextState() throws -> ParseResult {
         switch self.state {
         case .awaitingClientMagic(var state):
-            guard let newState = try state.process() else {
-                return .needMoreData
+            return try self.avoidingParserCoW { newState in
+                let result = Result<ParseResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .awaitingClientMagic(state)
+                        return .needMoreData
+                    }
+                    newState = .accumulatingFrameHeader(processResult)
+                    return .continue
+                }
+                switch result {
+                case let .success(parseResult):
+                    return parseResult
+                case let .failure(error):
+                    newState = .awaitingClientMagic(state)
+                    throw error
+                }
             }
-
-            self.state = .accumulatingFrameHeader(newState)
-            return .continue
-
+            
         case .initialized:
             // no bytes, no frame
             return .needMoreData
 
         case .accumulatingFrameHeader(var state):
-            guard let targetState = try state.process(maxFrameSize: self.maxFrameSize, maxHeaderListSize: self.headerDecoder.maxHeaderListSize) else {
-                return .needMoreData
+            let maxFrameSize = self.maxFrameSize
+            let maxHeaderListSize = self.headerDecoder.maxHeaderListSize
+            return try self.avoidingParserCoW { newState in
+                let result = Result<ParseResult, Error> {
+                    guard let targetState = try state.process(maxFrameSize: maxFrameSize, maxHeaderListSize: maxHeaderListSize) else {
+                        newState = .accumulatingFrameHeader(state)
+                        return .needMoreData
+                    }
+                    
+                    newState = .init(targetState)
+                    return .continue
+                }
+                
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .accumulatingFrameHeader(state)
+                    throw error
+                }
             }
-
-            self.state = .init(targetState)
-            return .continue
-
+            
         case .awaitingPaddingLengthByte(var state):
-            guard let targetState = try state.process() else {
-                return .needMoreData
+            return try self.avoidingParserCoW { newState in
+                let result = Result<ParseResult, Error> {
+                    guard let targetState = try state.process() else {
+                        newState = .awaitingPaddingLengthByte(state)
+                        return .needMoreData
+                    }
+                    
+                    newState = .init(targetState)
+                    return .continue
+                }
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .awaitingPaddingLengthByte(state)
+                    throw error
+                }
             }
-
-            self.state = .init(targetState)
-            return .continue
-
-
+            
         case .accumulatingPayload(var state):
-            guard let processResult = try state.process() else {
-                return .needMoreData
+            let accumulatingResult: ProcessAccumulatingResult = try self.avoidingParserCoW { newState in
+                let result = Result<ProcessAccumulatingResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .accumulatingPayload(state)
+                        return .needMoreData
+                    }
+                    
+                    switch processResult {
+                    case .accumulateHeaderBlockFragments(let nextState):
+                        newState = .accumulatingHeaderBlockFragments(nextState)
+                        return .continue
+                    case .parseFrame(header: let header, payloadBytes: let payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
+                        // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
+                        newState = .accumulatingFrameHeader(nextState)
+                        return .parseFrame(header: header, payloadBytes: payloadBytes, paddingBytes: paddingBytes)
+                    }
+                }
+                
+                switch result {
+                case let .success(processAccumulatingResult):
+                    return processAccumulatingResult
+                case let .failure(error):
+                    newState = .accumulatingPayload(state)
+                    throw error
+                }
             }
-
-            switch processResult {
-            case .accumulateHeaderBlockFragments(let state):
-                self.state = .accumulatingHeaderBlockFragments(state)
-                return .continue
-
-            case .parseFrame(header: let header, payloadBytes: var payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
-                // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
-                self.state = .accumulatingFrameHeader(nextState)
-
+            
+            switch accumulatingResult {
+            case .parseFrame(header: let header, payloadBytes: var payloadBytes, paddingBytes: let paddingBytes):
                 // an entire frame's data, including HEADERS/PUSH_PROMISE with the END_HEADERS flag set
                 // this may legitimately return nil if we ignore the frame
                 let result = try self.readFrame(withHeader: header, from: &payloadBytes, paddingBytes: paddingBytes)
-
                 if payloadBytes.readableBytes > 0 {
                     // Enforce that we consumed all the bytes.
                     throw InternalError.codecError(code: .frameSizeError)
                 }
-
                 // if we got a frame, return it. If not that means we consumed and ignored a frame, so we
                 // should go round again.
                 // We cannot emit DATA frames from here, so the flow controlled length is always 0.
@@ -843,38 +940,70 @@ struct HTTP2FrameDecoder {
                 } else {
                     return .continue
                 }
+            case .continue:
+                return .continue
+            case .needMoreData:
+                return .needMoreData
             }
 
         case .simulatingDataFrames(var state):
-            guard let processResult = try state.process() else {
-                return .needMoreData
+            return try self.avoidingParserCoW { newState in
+                let result = Result<ParseResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .simulatingDataFrames(state)
+                        return .needMoreData
+                    }
+                    newState = .init(processResult.nextState)
+                    return .frame(processResult.frame, flowControlledLength: processResult.flowControlledLength)
+                }
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .simulatingDataFrames(state)
+                    throw error
+                }
             }
-
-            self.state = .init(processResult.nextState)
-            return .frame(processResult.frame, flowControlledLength: processResult.flowControlledLength)
 
         case .strippingTrailingPadding(var state):
-            guard let nextState = state.process() else {
-                return .needMoreData
+            return self.avoidingParserCoW { newState in
+                guard let nextState = state.process() else {
+                    newState = .strippingTrailingPadding(state)
+                    return .needMoreData
+                }
+                
+                newState = .init(nextState)
+                return .continue
             }
-
-            self.state = .init(nextState)
-            return .continue
 
         case .accumulatingContinuationPayload(var state):
-            guard let processResult = try state.process() else {
-                return .needMoreData
+            let accumulatingResult: ProcessAccumulatingResult = try self.avoidingParserCoW { newState in
+                let result = Result<ProcessAccumulatingResult, Error> {
+                    guard let processResult = try state.process() else {
+                        newState = .accumulatingContinuationPayload(state)
+                        return .needMoreData
+                    }
+                    switch processResult {
+                    case .accumulateContinuationHeader(let nextState):
+                        newState = .accumulatingHeaderBlockFragments(nextState)
+                        return .continue
+                    case .parseFrame(header: let header, payloadBytes: let payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
+                        // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
+                        newState = .accumulatingFrameHeader(nextState)
+                        return .parseFrame(header: header, payloadBytes: payloadBytes, paddingBytes: paddingBytes)
+                    }
+                }
+                switch result {
+                case let .success(processAccumulatingResult):
+                    return processAccumulatingResult
+                case let .failure(error):
+                    newState = .accumulatingContinuationPayload(state)
+                    throw error
+                }
             }
-
-            switch processResult {
-            case .accumulateContinuationHeader(let state):
-                self.state = .accumulatingHeaderBlockFragments(state)
-                return .continue
-
-            case .parseFrame(header: let header, payloadBytes: var payloadBytes, paddingBytes: let paddingBytes, nextState: let nextState):
-                // Save off the state first, because if the frame payload parse throws we want to be able to skip over the frame.
-                self.state = .accumulatingFrameHeader(nextState)
-
+            
+            switch accumulatingResult {
+            case .parseFrame(header: let header, payloadBytes: var payloadBytes, paddingBytes: let paddingBytes):
                 // an entire frame's data, including HEADERS/PUSH_PROMISE with the END_HEADERS flag set
                 // this may legitimately return nil if we ignore the frame
                 let result = try self.readFrame(withHeader: header, from: &payloadBytes, paddingBytes: paddingBytes)
@@ -883,7 +1012,6 @@ struct HTTP2FrameDecoder {
                     // Enforce that we consumed all the bytes.
                     throw InternalError.codecError(code: .frameSizeError)
                 }
-
                 // if we got a frame, return it. If not that means we consumed and ignored a frame, so we
                 // should go round again.
                 // We cannot emit DATA frames from here, so the flow controlled length is always 0.
@@ -892,16 +1020,37 @@ struct HTTP2FrameDecoder {
                 } else {
                     return .continue
                 }
-            }
-
-        case .accumulatingHeaderBlockFragments(var state):
-            guard let processResult = try state.process(maxHeaderListSize: self.headerDecoder.maxHeaderListSize) else {
+            case .continue:
+                return .continue
+            case .needMoreData:
                 return .needMoreData
             }
 
-            self.state = .accumulatingContinuationPayload(processResult)
-            return .continue
+        case .accumulatingHeaderBlockFragments(var state):
+            let maxHeaderListSize = self.headerDecoder.maxHeaderListSize
+            let maximumSequentialContinuationFrames = self.maximumSequentialContinuationFrames
 
+            return try self.avoidingParserCoW { newState in
+                let result = Result<ParseResult, Error> {
+                    guard let processResult = try state.process(
+                        maxHeaderListSize: maxHeaderListSize,
+                        maximumSequentialContinuationFrames: maximumSequentialContinuationFrames
+                    ) else {
+                        newState = .accumulatingHeaderBlockFragments(state)
+                        return .needMoreData
+                    }
+                    newState = .accumulatingContinuationPayload(processResult)
+                    return .continue
+                }
+                switch result {
+                case let .success(processResult):
+                    return processResult
+                case let .failure(error):
+                    newState = .accumulatingHeaderBlockFragments(state)
+                    throw error
+                }
+            }
+            
         case .appending:
             preconditionFailure("Attempting to process in appending state")
         }
@@ -1346,13 +1495,13 @@ extension HTTP2FrameDecoder {
     /// Sadly, because it's generic and has a closure, we need to force it to be inlined at all call sites, which is
     /// not ideal.
     @inline(__always)
-    private mutating func avoidingParserCoW<ReturnType>(_ body: (inout ParserState) -> ReturnType) -> ReturnType {
+    private mutating func avoidingParserCoW<ReturnType>(_ body: (inout ParserState) throws -> ReturnType) rethrows -> ReturnType {
         self.state = .appending
         defer {
             assert(!self.isAppending)
         }
 
-        return body(&self.state)
+        return try body(&self.state)
     }
 
     private var isAppending: Bool {

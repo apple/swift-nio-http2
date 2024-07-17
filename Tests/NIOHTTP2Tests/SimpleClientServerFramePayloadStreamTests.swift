@@ -201,13 +201,16 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
     func basicHTTP2Connection(clientSettings: HTTP2Settings = nioDefaultSettings,
                               serverSettings: HTTP2Settings = nioDefaultSettings,
                               maximumBufferedControlFrames: Int = 10000,
+                              maximumSequentialContinuationFrames: Int = 5,
                               withMultiplexerCallback multiplexerCallback: NIOChannelInitializer? = nil) throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client,
                                                                                     initialSettings: clientSettings,
-                                                                                    maximumBufferedControlFrames: maximumBufferedControlFrames)).wait())
+                                                                                    maximumBufferedControlFrames: maximumBufferedControlFrames,
+                                                                                    maximumSequentialContinuationFrames: maximumSequentialContinuationFrames)).wait())
         XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server,
                                                                                     initialSettings: serverSettings,
-                                                                                    maximumBufferedControlFrames: maximumBufferedControlFrames)).wait())
+                                                                                    maximumBufferedControlFrames: maximumBufferedControlFrames,
+                                                                                    maximumSequentialContinuationFrames: maximumSequentialContinuationFrames)).wait())
 
         if let multiplexerCallback = multiplexerCallback {
             XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .client,
@@ -1706,7 +1709,9 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
 
     func testForbidsExceedingMaxHeaderListSizeBeforeDecoding() throws {
         // Begin by getting the connection up.
-        try self.basicHTTP2Connection()
+        // Ensure that the limit for the number of sequential CONTINUATION frames is enough to
+        // accommodate exceeding the set max header list size.
+        try self.basicHTTP2Connection(maximumSequentialContinuationFrames: 225)
 
         // The server is going to shrink its value for max header list size.
         let newSettings = [HTTP2Setting(parameter: .maxHeaderListSize, value: 225)]
@@ -1787,6 +1792,63 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
 
         try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: UInt32(HTTP2ErrorCode.protocolError.networkCode), opaqueData: nil)
+    }
+
+    func testForbidsExceedingMaximumSequentialContinuationFrames() throws {
+        let maximumSequentialContinuationFrames = 5
+
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection(
+            maximumSequentialContinuationFrames: maximumSequentialContinuationFrames
+        )
+
+        let headersFrame: [UInt8] = [
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x01,                       // 1-byte frame type (HEADERS)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x03,     // 4-byte stream identifier
+        ]
+        let continuationFrame: [UInt8] = [
+            0x00, 0x00, 0x00,           // 3-byte payload length (0 bytes)
+            0x09,                       // 1-byte frame type (CONTINUATION)
+            0x00,                       // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x03      // 4-byte stream identifier
+        ]
+
+        var firstBuffer = self.serverChannel.allocator.buffer(capacity: 128)
+        firstBuffer.writeBytes(headersFrame)
+        for _ in 0..<maximumSequentialContinuationFrames {
+            firstBuffer.writeBytes(continuationFrame)
+        }
+
+        // Sending this should not result in an error.
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(firstBuffer))
+        XCTAssertNoThrow(XCTAssertNil(try self.serverChannel.readOutbound(as: ByteBuffer.self)))
+
+        // But if we send one more frame, that will be treated as an excess CONTINUATION frame.
+        XCTAssertThrowsError(
+            try self.serverChannel.writeInbound(
+                firstBuffer.getSlice(at: firstBuffer.writerIndex - 9, length: 9)!
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? NIOHTTP2Errors.ExcessiveContinuationFrames,
+                NIOHTTP2Errors.excessiveContinuationFrames()
+            )
+        }
+        guard let responseFrame = try assertNoThrowWithValue(
+            self.serverChannel.readOutbound(as: ByteBuffer.self)
+        ) else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(
+            lastStreamID: .maxID,
+            errorCode: UInt32(HTTP2ErrorCode.enhanceYourCalm.networkCode),
+            opaqueData: nil
+        )
     }
 
     func testNoStreamWindowUpdateOnEndStreamFrameFromServer() throws {
@@ -2095,6 +2157,30 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
                 }
             }
         }
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testExtendedConnect() throws {
+        // Begin by getting the connection up.
+        try self.basicHTTP2Connection(serverSettings: [HTTP2Setting(parameter: .enableConnectProtocol, value: 1)])
+
+        // We're now going to try to send a request from the client to the server with the protocol pseudoheader present
+        let headers = HPACKHeaders([(":path", "/"), (":method", "CONNECT"), (":scheme", "https"), (":authority", "localhost"), (":protocol", "foo")])
+        var requestBody = self.clientChannel.allocator.buffer(capacity: 128)
+        requestBody.writeStaticString("A simple HTTP/2 request.")
+
+        let clientStreamID = HTTP2StreamID(1)
+        let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers)))
+        let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .byteBuffer(requestBody), endStream: true)))
+
+        let serverStreamID = try self.assertFramesRoundTrip(frames: [reqFrame, reqBodyFrame], sender: self.clientChannel, receiver: self.serverChannel).first!.streamID
+
+        // Let's send a quick response back.
+        let responseHeaders = HPACKHeaders([(":status", "200"), ("content-length", "0")])
+        let respFrame = HTTP2Frame(streamID: serverStreamID, payload: .headers(.init(headers: responseHeaders, endStream: true)))
+        try self.assertFramesRoundTrip(frames: [respFrame], sender: self.serverChannel, receiver: self.clientChannel)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())

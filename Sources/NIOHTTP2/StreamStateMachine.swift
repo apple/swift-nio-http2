@@ -265,7 +265,7 @@ extension HTTP2StreamStateMachine {
     /// it meets the requirements of RFC 7540 for containing a well-formed header block, and additionally
     /// checks whether the value of the end stream bit is acceptable. If all checks pass, transitions the
     /// state to the appropriate next entry.
-    mutating func sendHeaders(headers: HPACKHeaders, validateHeaderBlock: Bool, validateContentLength: Bool, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
+    mutating func sendHeaders(headers: HPACKHeaders, validateHeaderBlock: Bool, validateContentLength: Bool, localSupportsExtendedConnect: Bool, remoteSupportsExtendedConnect: Bool, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         do {
             // We can send headers in the following states:
             //
@@ -297,6 +297,9 @@ extension HTTP2StreamStateMachine {
                 let targetEffect: StreamStateChange = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
                 return self.processRequestHeaders(headers,
                                                   validateHeaderBlock: validateHeaderBlock,
+                                                  localRole: .client,
+                                                  localSupportsExtendedConnect: localSupportsExtendedConnect,
+                                                  remoteSupportsExtendedConnect: remoteSupportsExtendedConnect,
                                                   targetState: targetState,
                                                   targetEffect: targetEffect)
 
@@ -396,7 +399,7 @@ extension HTTP2StreamStateMachine {
         }
     }
 
-    mutating func receiveHeaders(headers: HPACKHeaders, validateHeaderBlock: Bool, validateContentLength: Bool, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
+    mutating func receiveHeaders(headers: HPACKHeaders, validateHeaderBlock: Bool, validateContentLength: Bool, localSupportsExtendedConnect: Bool, remoteSupportsExtendedConnect: Bool, isEndStreamSet endStream: Bool) -> StateMachineResultWithStreamEffect {
         do {
             // We can receive headers in the following states:
             //
@@ -428,6 +431,9 @@ extension HTTP2StreamStateMachine {
                 let targetEffect: StreamStateChange = .streamCreated(.init(streamID: self.streamID, localStreamWindowSize: Int(localWindow), remoteStreamWindowSize: Int(remoteWindow)))
                 return self.processRequestHeaders(headers,
                                                   validateHeaderBlock: validateHeaderBlock,
+                                                  localRole: .server,
+                                                  localSupportsExtendedConnect: localSupportsExtendedConnect,
+                                                  remoteSupportsExtendedConnect: remoteSupportsExtendedConnect,
                                                   targetState: targetState,
                                                   targetEffect: targetEffect)
 
@@ -686,7 +692,7 @@ extension HTTP2StreamStateMachine {
             .halfOpenRemoteLocalIdle(localWindow: _, remoteContentLength: _, remoteWindow: _, requestVerb: _),
              .halfClosedRemoteLocalIdle(localWindow: _),
              .halfClosedRemoteLocalActive(localRole: .server, initiatedBy: .client, localContentLength: _, localWindow: _):
-            return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
+            return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, localRole: .server, localSupportsExtendedConnect: false, remoteSupportsExtendedConnect: false, targetState: self.state, targetEffect: nil)
 
         // Sending a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
@@ -713,7 +719,7 @@ extension HTTP2StreamStateMachine {
             .halfOpenLocalPeerIdle(localWindow: _, localContentLength: _, remoteWindow: _, requestVerb: _),
              .halfClosedLocalPeerIdle(remoteWindow: _),
              .halfClosedLocalPeerActive(localRole: .client, initiatedBy: .client, remoteContentLength: _, remoteWindow: _):
-            return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, targetState: self.state, targetEffect: nil)
+            return self.processRequestHeaders(headers, validateHeaderBlock: validateHeaderBlock, localRole: .client, localSupportsExtendedConnect: false, remoteSupportsExtendedConnect: false, targetState: self.state, targetEffect: nil)
 
         // Receiving a PUSH_PROMISE frame outside any of these states is a stream error of type PROTOCOL_ERROR.
         // Authors note: I cannot find a citation for this in RFC 7540, but this seems a sensible choice.
@@ -958,10 +964,11 @@ extension HTTP2StreamStateMachine {
 extension HTTP2StreamStateMachine {
     /// Validate that the request headers meet the requirements of RFC 7540. If they do,
     /// transitions to the target state.
-    private mutating func processRequestHeaders(_ headers: HPACKHeaders, validateHeaderBlock: Bool, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
+    private mutating func processRequestHeaders(_ headers: HPACKHeaders, validateHeaderBlock: Bool, localRole: StreamRole, localSupportsExtendedConnect: Bool, remoteSupportsExtendedConnect: Bool, targetState target: State, targetEffect effect: StreamStateChange?) -> StateMachineResultWithStreamEffect {
         if validateHeaderBlock {
             do {
-                try headers.validateRequestBlock()
+                let supportsExtendedConnect = (localRole == .client && remoteSupportsExtendedConnect) || (localRole == .server && localSupportsExtendedConnect)
+                try headers.validateRequestBlock(supportsExtendedConnect: supportsExtendedConnect)
             } catch {
                 return StateMachineResultWithStreamEffect(result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError), effect: nil)
             }

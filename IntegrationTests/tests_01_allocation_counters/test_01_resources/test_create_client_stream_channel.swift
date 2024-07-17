@@ -20,7 +20,7 @@ import NIOHTTP2
 
 
 func run(identifier: String) {
-    testRun(identifier: identifier) { channel in
+    testRun(identifier: identifier, usePromiseBasedAPI: true) { channel in
         let http2Handler = NIOHTTP2Handler(mode: .client)
         let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: channel, inboundStreamInitializer: nil)
         try! channel.pipeline.addHandlers([
@@ -30,9 +30,26 @@ func run(identifier: String) {
         return multiplexer
     }
 
-    //
+    testRun(identifier: identifier + "_no_promise_based_API", usePromiseBasedAPI: false) { channel in
+        let http2Handler = NIOHTTP2Handler(mode: .client)
+        let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: channel, inboundStreamInitializer: nil)
+        try! channel.pipeline.addHandlers([
+            http2Handler,
+            multiplexer
+        ]).wait()
+        return multiplexer
+    }
+
     // MARK: - Inline HTTP2 multiplexer tests
-    testRun(identifier: identifier + "_inline") { channel in
+    testRun(identifier: identifier + "_inline", usePromiseBasedAPI: true) { channel in
+        let http2Handler = NIOHTTP2Handler(mode: .client, eventLoop: channel.eventLoop) { channel in
+            return channel.eventLoop.makeSucceededVoidFuture()
+        }
+        try! channel.pipeline.addHandler(http2Handler).wait()
+        return try! http2Handler.multiplexer.wait()
+    }
+
+    testRun(identifier: identifier + "_inline_no_promise_based_API", usePromiseBasedAPI: false) { channel in
         let http2Handler = NIOHTTP2Handler(mode: .client, eventLoop: channel.eventLoop) { channel in
             return channel.eventLoop.makeSucceededVoidFuture()
         }
@@ -41,7 +58,11 @@ func run(identifier: String) {
     }
 }
 
-private func testRun(identifier: String, pipelineConfigurator: (Channel) throws -> MultiplexerChannelCreator) {
+private func testRun(
+    identifier: String,
+    usePromiseBasedAPI: Bool,
+    pipelineConfigurator: (Channel) throws -> MultiplexerChannelCreator
+) {
     let channel = EmbeddedChannel(handler: nil)
     let multiplexer = try! pipelineConfigurator(channel)
     try! channel.connect(to: SocketAddress(ipAddress: "1.2.3.4", port: 5678)).wait()
@@ -50,12 +71,20 @@ private func testRun(identifier: String, pipelineConfigurator: (Channel) throws 
         var streams = 0
 
         for _ in 0..<1000 {
-            let promise = channel.eventLoop.makePromise(of: Channel.self)
-            multiplexer.createStreamChannel(promise: promise) { channel in
-                return channel.eventLoop.makeSucceededFuture(())
+            let channelFuture: EventLoopFuture<Channel>
+            if usePromiseBasedAPI {
+                let promise = channel.eventLoop.makePromise(of: Channel.self)
+                multiplexer.createStreamChannel(promise: promise) { channel in
+                    return channel.eventLoop.makeSucceededFuture(())
+                }
+                channelFuture = promise.futureResult
+            } else {
+                channelFuture = multiplexer.createStreamChannel { channel in
+                    return channel.eventLoop.makeSucceededFuture(())
+                }
             }
             channel.embeddedEventLoop.run()
-            let child = try! promise.futureResult.wait()
+            let child = try! channelFuture.wait()
             streams += 1
 
             let closeFuture = child.close()

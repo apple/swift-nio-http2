@@ -27,25 +27,27 @@ services:
   test:
     image: swift-nio-http2:22.04-main
     environment:
-      - MAX_ALLOCS_ALLOWED_1k_requests_inline_interleaved=35150
-      - MAX_ALLOCS_ALLOWED_1k_requests_inline_noninterleaved=34100
-      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=41150
-      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=40100
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=288050
-      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response_inline=273050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response=257050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_inline=248050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_many=1202050
-      - MAX_ALLOCS_ALLOWED_client_server_request_response_many_inline=893050
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=39050
-      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline=39050
+      - MAX_ALLOCS_ALLOWED_1k_requests_inline_interleaved=33150
+      - MAX_ALLOCS_ALLOWED_1k_requests_inline_noninterleaved=32100
+      - MAX_ALLOCS_ALLOWED_1k_requests_interleaved=39150
+      - MAX_ALLOCS_ALLOWED_1k_requests_noninterleaved=38100
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response=284050
+      - MAX_ALLOCS_ALLOWED_client_server_h1_request_response_inline=269050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response=253050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_inline=244050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_many=1198050
+      - MAX_ALLOCS_ALLOWED_client_server_request_response_many_inline=889050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel=37050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline=37050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_inline_no_promise_based_API=37050
+      - MAX_ALLOCS_ALLOWED_create_client_stream_channel_no_promise_based_API=37050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace=200050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_long_string=300050
       - MAX_ALLOCS_ALLOWED_get_100000_headers_canonical_form_trimming_whitespace_from_short_string=200050
       - MAX_ALLOCS_ALLOWED_hpack_decoding=5050
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=292650
-      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent_inline=291750
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent=282650
+      - MAX_ALLOCS_ALLOWED_stream_teardown_100_concurrent_inline=281750
       - IMPORT_CHECK_ARG=--explicit-target-dependency-import-check error
 
   shell:
