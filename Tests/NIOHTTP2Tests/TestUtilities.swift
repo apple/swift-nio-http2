@@ -14,9 +14,10 @@
 
 #if canImport(Darwin)
 import Darwin.C
-#elseif os(Linux) || os(FreeBSD) || os(Android)
+#elseif canImport(Glibc)
 import Glibc
-#else
+#elseif canImport(Bionic)
+import Bionic
 #endif
 
 import XCTest

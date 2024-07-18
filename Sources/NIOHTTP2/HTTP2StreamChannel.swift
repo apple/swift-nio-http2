@@ -169,8 +169,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         self.streamID = streamID
         self.multiplexer = multiplexer
         self.windowManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
-        self._isActiveAtomic = .init(false)
-        self._isWritable = .init(true)
+        self.flags = NIOLockedValueBox(Flags(isActive: false, isWritable: true))
         self.state = .idle
         self.streamDataType = streamDataType
         self.writabilityManager = StreamChannelFlowController(highWatermark: outboundBytesHighWatermark,
@@ -334,10 +333,18 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         }
         self.modifyingState { $0.networkActive() }
 
-        if self.writabilityManager.isWritable != self._isWritable.load(ordering: .relaxed) {
-            // We have probably delayed telling the user that this channel isn't writable, but we should do
-            // it now.
-            self._isWritable.store(self.writabilityManager.isWritable, ordering: .relaxed)
+        let writabilityChanged = self.flags.withLockedValue {
+            if self.writabilityManager.isWritable != $0.isWritable {
+                $0.isWritable.toggle()
+                return true
+            } else {
+                return false
+            }
+        }
+
+        // We have probably delayed telling the user that this channel isn't writable, but we should do
+        // it now.
+        if writabilityChanged {
             self.pipeline.fireChannelWritabilityChanged()
         }
 
@@ -433,21 +440,24 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         }
     }
 
-    public var isWritable: Bool {
-        return self._isWritable.load(ordering: .relaxed)
+    private struct Flags {
+        var isActive: Bool
+        var isWritable: Bool
     }
 
-    private let _isWritable: ManagedAtomic<Bool>
+    private let flags: NIOLockedValueBox<Flags>
+
+    public var isWritable: Bool {
+        self.flags.withLockedValue { $0.isWritable }
+    }
 
     private var _isActive: Bool {
         return self.state == .active || self.state == .closing || self.state == .localActive
     }
 
     public var isActive: Bool {
-        return self._isActiveAtomic.load(ordering: .relaxed)
+        self.flags.withLockedValue { $0.isActive }
     }
-
-    private let _isActiveAtomic: ManagedAtomic<Bool>
 
     public var _channelCore: ChannelCore {
         return self
@@ -513,7 +523,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
 
     public func write0(_ data: NIOAny, promise userPromise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
-            userPromise?.fail(ChannelError.ioOnClosedChannel)
+            userPromise?.fail(ChannelError._ioOnClosedChannel)
             return
         }
 
@@ -584,7 +594,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         // If the stream is already closed, we can fail this early and abort processing. If it's not, we need to emit a
         // RST_STREAM frame.
         guard self.state != .closed else {
-            promise?.fail(ChannelError.alreadyClosed)
+            promise?.fail(ChannelError._alreadyClosed)
             return
         }
 
@@ -643,7 +653,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         }
         self.modifyingState { $0.completeClosing() }
         self.dropPendingReads()
-        self.failPendingWrites(error: ChannelError.eof)
+        self.failPendingWrites(error: ChannelError._eof)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
             promise.succeed(())
@@ -709,7 +719,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     }
 
     private func changeWritability(to newWritability: Bool) {
-        self._isWritable.store(newWritability, ordering: .relaxed)
+        self.flags.withLockedValue { $0.isWritable = newWritability }
         self.pipeline.fireChannelWritabilityChanged()
     }
 
@@ -728,7 +738,7 @@ private extension HTTP2StreamChannel {
     /// Drop all pending reads.
     private func dropPendingReads() {
         /// We don't need to report the dropped reads, just remove them all.
-        self.pendingReads.removeAll()
+        self.pendingReads.removeAll(keepingCapacity: true)
     }
 
     /// Deliver all pending reads to the channel.
@@ -842,7 +852,7 @@ internal extension HTTP2StreamChannel {
     ///   - promise: The promise associated with the frame write.
     private func receiveOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
         guard self.state != .closed else {
-            let error = ChannelError.alreadyClosed
+            let error = ChannelError._alreadyClosed
             promise?.fail(error)
             self.errorEncountered(error: error)
             return
@@ -915,7 +925,7 @@ internal extension HTTP2StreamChannel {
             // Do nothing here.
             return
         case .remoteActive, .active, .closing, .closingNeverActivated, .closed:
-            self._isWritable.store(localValue, ordering: .relaxed)
+            self.flags.withLockedValue { $0.isWritable = localValue }
             self.pipeline.fireChannelWritabilityChanged()
         }
     }
@@ -930,7 +940,7 @@ extension HTTP2StreamChannel {
     // A helper function used to ensure that state modification leads to changes in the channel active atomic.
     private func modifyingState<ReturnType>(_ closure: (inout StreamChannelState) throws -> ReturnType) rethrows -> ReturnType {
         defer {
-            self._isActiveAtomic.store(self._isActive, ordering: .relaxed)
+            self.flags.withLockedValue { $0.isActive = self._isActive }
         }
         return try closure(&self.state)
     }

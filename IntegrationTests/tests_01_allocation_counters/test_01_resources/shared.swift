@@ -19,6 +19,7 @@ import NIOHTTP2
 /// Test use only. Allows abstracting over the two multiplexer implementations to write common testing code
 internal protocol MultiplexerChannelCreator {
     func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer)
+    func createStreamChannel(_ initializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel>
 }
 
 extension HTTP2StreamMultiplexer: MultiplexerChannelCreator { }
