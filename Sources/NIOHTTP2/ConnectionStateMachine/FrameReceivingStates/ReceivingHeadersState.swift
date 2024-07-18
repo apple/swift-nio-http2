@@ -17,7 +17,7 @@ import NIOHPACK
 /// can validly accept headers.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol ReceivingHeadersState: HasFlowControlWindows, HasLocalExtendedConnectSettings, HasRemoteExtendedConnectSettings {
+protocol ReceivingHeadersState: HasFlowControlWindows, HasLocalExtendedConnectSettings, HasRemoteExtendedConnectSettings, ConnectionStateWithRole {
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
 
     var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
@@ -74,7 +74,10 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
         let localSupportsExtendedConnect = self.localSupportsExtendedConnect
         let remoteSupportsExtendedConnect = self.remoteSupportsExtendedConnect
 
-        if streamID.mayBeInitiatedBy(.client) && streamID > self.lastRemoteStreamID {
+        // We are in `LocallyQuiescingState`. The sender of the GOAWAY is `self.role`, so the remote peer is the inverse of `self.role`.
+        let remotePeer = self.peerRole
+
+        if streamID.mayBeInitiatedBy(remotePeer) && streamID > self.lastRemoteStreamID {
             return StateMachineResultWithEffect(result: .ignoreFrame, effect: nil)
         }
 

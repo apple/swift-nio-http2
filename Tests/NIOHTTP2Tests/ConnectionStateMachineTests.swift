@@ -985,6 +985,29 @@ class ConnectionStateMachineTests: XCTestCase {
         XCTAssertTrue(self.client.fullyQuiesced)
     }
 
+    func testHeadersOnOpenStreamLocallyQuiescing() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        // Client sends headers
+        assertSucceeds(client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+
+        // Server responds with headers
+        assertSucceeds(server.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+        assertSucceeds(client.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.responseHeaders, isEndStreamSet: false))
+
+        // Client sends a GOAWAY with lastStreamID = 0
+        assertGoawaySucceeds(client.sendGoaway(lastStreamID: 0), droppingStreams: nil)
+        assertGoawaySucceeds(server.receiveGoaway(lastStreamID: 0), droppingStreams: nil)
+
+        // Server sends a header frame with end stream = true
+        let headerFrame = HPACKHeaders([("content-length", "0")])
+        assertSucceeds(server.sendHeaders(streamID: streamOne, headers: headerFrame, isEndStreamSet: true))
+        assertSucceeds(client.receiveHeaders(streamID: streamOne, headers: headerFrame, isEndStreamSet: true))
+    }
+
     func testImplicitConnectionCompletion() {
         // Connections can become totally idle by way of the server quiescing the client, and then having no outstanding streams.
         // This test validates that we spot it and consider the connection closed at this stage.
