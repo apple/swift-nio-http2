@@ -1187,15 +1187,12 @@ extension HTTP2ConnectionStateMachine {
         // RFC 7540 that says that sending PINGs with ACK flags set when no PING ACKs are expected is forbidden. This is
         // very strange, but we allow it.
         switch self.state {
-        case .prefaceSent, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceSent:
+        case .prefaceSent, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceSent, .fullyQuiesced:
             return .init(result: .succeed, effect: nil)
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the local preface.
             return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
-
-        case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")

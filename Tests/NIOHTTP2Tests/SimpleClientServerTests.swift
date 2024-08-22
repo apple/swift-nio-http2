@@ -864,6 +864,42 @@ class SimpleClientServerTests: XCTestCase {
             XCTAssertTrue(error is NIOHTTP2Errors.UnableToParseFrame)
         }
     }
+
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    func testSuccessfullyReceiveAndSendPingEvenWhenConnectionIsFullyQuiesced() throws {
+        let serverHandler = FrameRecorderHandler()
+        try self.basicHTTP2Connection() { channel, streamID in
+            return channel.pipeline.addHandler(serverHandler)
+        }
+
+        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .noError, opaqueData: nil))
+
+        // Fully quiesce the connection on the server.
+        serverChannel.writeAndFlush(goAwayFrame, promise: nil)
+
+        let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(), ack: false))
+
+        // Send PING frame to the server.
+        clientChannel.writeAndFlush(pingFrame, promise: nil)
+
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The client receives the GOAWAY frame and fully quiesces the connection.
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .rootStream, errorCode: 0, opaqueData: nil)
+
+        // The server receives and responds to the PING.
+        try self.serverChannel.assertReceivedFrame().assertPingFrame(ack: false, opaqueData: HTTP2PingData())
+
+        // The client receives the PING response.
+        try self.clientChannel.assertReceivedFrame().assertPingFrame(ack: true, opaqueData: HTTP2PingData())
+
+        // No frames left.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }
 
 final class ActionOnFlushHandler: ChannelOutboundHandler {
