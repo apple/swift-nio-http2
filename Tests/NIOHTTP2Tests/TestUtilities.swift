@@ -63,6 +63,60 @@ extension XCTestCase {
         } while operated
     }
 
+    /// Have two `EmbeddedChannel` objects send and receive data from each and throw errors other until
+    /// they make no forward progress.
+    func interactInMemoryExpectingErrors(
+        _ first: EmbeddedChannel,
+        _ second: EmbeddedChannel,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ errorHandler: (_ error: any Error) -> Void = { _ in }
+    ) {
+        var operated: Bool
+        var encounteredError = false
+
+        func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
+            guard let data = try? assertNoThrowWithValue(channel.readOutbound(as: IOData.self)) else {
+                return nil
+            }
+            switch data {
+            case .byteBuffer(let b):
+                return b
+            case .fileRegion(let f):
+                return f.asByteBuffer(allocator: channel.allocator)
+            }
+        }
+
+        repeat {
+            operated = false
+
+            if let data = readBytesFromChannel(first) {
+                operated = true
+
+                do {
+                    try second.writeInbound(data)
+                } catch(let error) {
+                    encounteredError = true
+                    errorHandler(error)
+                }
+            }
+            if let data = readBytesFromChannel(second) {
+                operated = true
+
+                do {
+                    try first.writeInbound(data)
+                } catch(let error) {
+                    encounteredError = true
+                    errorHandler(error)
+                }
+            }
+        } while operated
+
+        if !encounteredError {
+            XCTFail("Expected an error but did not encounter one", file: (file), line: line)
+        }
+    }
+
     /// Have two `NIOAsyncTestingChannel` objects send and receive data from each other until
     /// they make no forward progress.
     ///

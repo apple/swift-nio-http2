@@ -578,6 +578,24 @@ class ConnectionStateMachineTests: XCTestCase {
         assertIgnored(temporaryServer.receiveHeaders(streamID: streamSeven, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
     }
 
+    func testClientInitiatesNewStreamBeforeReceivingAlreadySentGoaway() {
+        let streamOne = HTTP2StreamID(1)
+
+        self.exchangePreamble()
+
+        var temporaryServer = self.server!
+        var temporaryClient = self.client!
+
+        assertSucceeds(temporaryServer.sendGoaway(lastStreamID: .maxID))
+        assertSucceeds(temporaryClient.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(temporaryClient.receiveGoaway(lastStreamID: .maxID))
+
+        // The server should throw a stream error (and as a result, respond with a RST_STREAM frame) when it receives the headers.
+        assertStreamError(type: .refusedStream, temporaryServer.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: false))
+        assertSucceeds(temporaryServer.sendRstStream(streamID: streamOne, reason: .refusedStream))
+        assertSucceeds(temporaryClient.receiveRstStream(streamID: streamOne, reason: .refusedStream))
+    }
+
     func testHeadersOnClosedStreamAfterClientGoaway() {
         let streamOne = HTTP2StreamID(1)
         let streamTwo = HTTP2StreamID(2)
@@ -1053,12 +1071,11 @@ class ConnectionStateMachineTests: XCTestCase {
 
         // Stream specific things don't work.
         assertConnectionError(type: .protocolError, self.client.sendHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
-        assertConnectionError(type: .protocolError, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
+        assertStreamError(type: .refusedStream, self.server.receiveHeaders(streamID: streamOne, headers: ConnectionStateMachineTests.requestHeaders, isEndStreamSet: true))
         assertConnectionError(type: .protocolError, self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.server.receiveData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false))
         assertConnectionError(type: .protocolError, self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024))
         assertConnectionError(type: .protocolError, self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
-        assertConnectionError(type: .protocolError, self.client.sendRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.server.receiveRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(type: .protocolError, self.server.sendPushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
@@ -1074,6 +1091,9 @@ class ConnectionStateMachineTests: XCTestCase {
         // Duplicate goaway is cool though.
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
         assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+
+        // Sending RST_STREAM is cool too.
+        assertSucceeds(self.client.sendRstStream(streamID: streamOne, reason: .noError))
     }
 
     func testPushesAfterSendingPrefaceAreInvalid() {
