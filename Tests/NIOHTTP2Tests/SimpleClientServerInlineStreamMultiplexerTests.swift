@@ -328,4 +328,37 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         promise.succeed(())
         stream.writeAndFlush(headerPayload, promise: promise)
     }
+
+    func testSuccessfullyReceiveAndSendPingEvenWhenConnectionIsFullyQuiesced() throws {
+        let serverHandler = InboundFramePayloadRecorder()
+        try self.basicHTTP2Connection() { channel in
+            return channel.pipeline.addHandler(serverHandler)
+        }
+
+        // Fully quiesce the connection on the server.
+        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .noError, opaqueData: nil))
+        serverChannel.writeAndFlush(goAwayFrame, promise: nil)
+
+        // Send PING frame to the server.
+        let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(), ack: false))
+        clientChannel.writeAndFlush(pingFrame, promise: nil)
+
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The client receives the GOAWAY frame and fully quiesces the connection.
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .rootStream, errorCode: 0, opaqueData: nil)
+
+        // The server receives and responds to the PING.
+        try self.serverChannel.assertReceivedFrame().assertPingFrame(ack: false, opaqueData: HTTP2PingData())
+
+        // The client receives the PING response.
+        try self.clientChannel.assertReceivedFrame().assertPingFrame(ack: true, opaqueData: HTTP2PingData())
+
+        // No frames left.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

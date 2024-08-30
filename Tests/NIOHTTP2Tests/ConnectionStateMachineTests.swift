@@ -1064,8 +1064,6 @@ class ConnectionStateMachineTests: XCTestCase {
         assertConnectionError(type: .protocolError, self.client.receivePushPromise(originalStreamID: streamOne, childStreamID: streamTwo, headers: ConnectionStateMachineTests.requestHeaders))
 
         // Connectiony things don't work either.
-        assertConnectionError(type: .protocolError, self.client.sendPing())
-        assertConnectionError(type: .protocolError, self.server.receivePing(ackFlagSet: false))
         assertConnectionError(type: .protocolError, self.client.sendPriority())
         assertConnectionError(type: .protocolError, self.server.receivePriority())
         assertConnectionError(type: .protocolError, self.client.sendSettings([]))
@@ -1074,6 +1072,11 @@ class ConnectionStateMachineTests: XCTestCase {
         // Duplicate goaway is cool though.
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
         assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+
+        // PINGing is cool too.
+        assertSucceeds(self.client.sendPing())
+        assertSucceeds(self.server.receivePing(ackFlagSet: false))
+        assertSucceeds(self.client.receivePing(ackFlagSet: true))
     }
 
     func testPushesAfterSendingPrefaceAreInvalid() {
