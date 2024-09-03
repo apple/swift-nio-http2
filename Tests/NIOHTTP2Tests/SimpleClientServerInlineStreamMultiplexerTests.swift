@@ -337,11 +337,11 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
         let clientHandler = InboundFramePayloadRecorder()
         let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
-        let multiplexer = try (self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler as! NIOHTTP2Handler).multiplexer.wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait().multiplexer.wait()
         multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
             return channel.pipeline.addHandler(clientHandler)
         }
-        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+        self.clientChannel.embeddedEventLoop.run()
         let childChannel = try childChannelPromise.futureResult.wait()
 
         // Server sends GOAWAY frame.
@@ -353,7 +353,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
         childChannel.writeAndFlush(reqFramePayload, promise: nil)
 
-        self.interactInMemoryExpectingErrors(self.clientChannel, self.serverChannel) { error in
+        self.interactInMemory(self.clientChannel, self.serverChannel, expectError: true) { error in
             XCTAssert(error is NIOHTTP2Errors.IOOnClosedConnection)
         }
 

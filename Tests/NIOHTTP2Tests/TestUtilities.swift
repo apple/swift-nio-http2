@@ -34,40 +34,10 @@ struct NoFrameReceived: Error { }
 extension XCTestCase {
     /// Have two `EmbeddedChannel` objects send and receive data from each other until
     /// they make no forward progress.
-    func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel, file: StaticString = #filePath, line: UInt = #line) {
-        var operated: Bool
-
-        func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
-            guard let data = try? assertNoThrowWithValue(channel.readOutbound(as: IOData.self)) else {
-                return nil
-            }
-            switch data {
-            case .byteBuffer(let b):
-                return b
-            case .fileRegion(let f):
-                return f.asByteBuffer(allocator: channel.allocator)
-            }
-        }
-
-        repeat {
-            operated = false
-
-            if let data = readBytesFromChannel(first) {
-                operated = true
-                XCTAssertNoThrow(try second.writeInbound(data), file: (file), line: line)
-            }
-            if let data = readBytesFromChannel(second) {
-                operated = true
-                XCTAssertNoThrow(try first.writeInbound(data), file: (file), line: line)
-            }
-        } while operated
-    }
-
-    /// Have two `EmbeddedChannel` objects send and receive data from each and throw errors other until
-    /// they make no forward progress.
-    func interactInMemoryExpectingErrors(
+    func interactInMemory(
         _ first: EmbeddedChannel,
         _ second: EmbeddedChannel,
+        expectError: Bool = false,
         file: StaticString = #filePath,
         line: UInt = #line,
         _ errorHandler: (_ error: any Error) -> Void = { _ in }
@@ -93,27 +63,35 @@ extension XCTestCase {
             if let data = readBytesFromChannel(first) {
                 operated = true
 
-                do {
-                    try second.writeInbound(data)
-                } catch(let error) {
-                    encounteredError = true
-                    errorHandler(error)
+                if expectError {
+                    do {
+                        try second.writeInbound(data)
+                    } catch {
+                        encounteredError = true
+                        errorHandler(error)
+                    }
+                } else {
+                    XCTAssertNoThrow(try second.writeInbound(data), file: (file), line: line)
                 }
             }
             if let data = readBytesFromChannel(second) {
                 operated = true
 
-                do {
-                    try first.writeInbound(data)
-                } catch(let error) {
-                    encounteredError = true
-                    errorHandler(error)
+                if expectError {
+                    do {
+                        try first.writeInbound(data)
+                    } catch {
+                        encounteredError = true
+                        errorHandler(error)
+                    }
+                } else {
+                    XCTAssertNoThrow(try first.writeInbound(data), file: (file), line: line)
                 }
             }
         } while operated
 
-        if !encounteredError {
-            XCTFail("Expected an error but did not encounter one", file: (file), line: line)
+        if expectError && !encounteredError {
+            XCTFail("Expected an error but didn't encounter one", file: (file), line: line)
         }
     }
 

@@ -1042,6 +1042,9 @@ extension HTTP2ConnectionStateMachine {
             return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
+            // We allow RST_STREAM frames to be sent because when a server receives a HEADERS frame in this state (say, a client sends
+            // a HEADERS frame before receiving the GOAWAY frame that the server has already sent), it throws a stream
+            // error which causes the emission of a RST_STREAM frame. This RST_STREAM frame needs to be passed on successfully.
             return .init(result: .succeed, effect: nil)
 
         case .modifying:
