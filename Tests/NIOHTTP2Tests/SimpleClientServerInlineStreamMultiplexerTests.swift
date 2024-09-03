@@ -354,7 +354,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         childChannel.writeAndFlush(reqFramePayload, promise: nil)
 
         self.interactInMemory(self.clientChannel, self.serverChannel, expectError: true) { error in
-            XCTAssert(error is NIOHTTP2Errors.IOOnClosedConnection)
+            XCTAssert(error is NIOHTTP2Errors.CreatedStreamAfterGoaway)
         }
 
         // Client receives GOAWAY and RST_STREAM frames.
