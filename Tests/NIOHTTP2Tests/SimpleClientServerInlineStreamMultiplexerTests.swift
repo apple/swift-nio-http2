@@ -357,7 +357,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             if let error = error as? NIOHTTP2Errors.StreamError {
                 XCTAssert(error.baseError is NIOHTTP2Errors.CreatedStreamAfterGoaway)
             } else {
-                XCTFail("Expected error to be of type StreamError, got error of type \(type(of: error)).", file: #file, line: #line)
+                XCTFail("Expected error to be of type StreamError, got error of type \(type(of: error)).")
             }
         }
 
