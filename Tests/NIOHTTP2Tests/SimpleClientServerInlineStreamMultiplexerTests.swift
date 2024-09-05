@@ -354,7 +354,11 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         childChannel.writeAndFlush(reqFramePayload, promise: nil)
 
         self.interactInMemory(self.clientChannel, self.serverChannel, expectError: true) { error in
-            XCTAssert(error is NIOHTTP2Errors.CreatedStreamAfterGoaway)
+            if let error = error as? NIOHTTP2Errors.StreamError {
+                XCTAssert(error.baseError is NIOHTTP2Errors.CreatedStreamAfterGoaway)
+            } else {
+                XCTFail("Expected error to be of type StreamError, got error of type \(type(of: error)).", file: #file, line: #line)
+            }
         }
 
         // Client receives GOAWAY and RST_STREAM frames.

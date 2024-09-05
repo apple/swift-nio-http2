@@ -704,7 +704,7 @@ extension HTTP2ConnectionStateMachine {
             return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
 
         case .fullyQuiesced:
-            return .init(result: .streamError(streamID: streamID, underlyingError: NIOHTTP2Errors.createdStreamAfterGoaway(), type: .refusedStream), effect: nil)
+            return .init(result: .streamError(streamID: streamID, underlyingError: NIOHTTP2Errors.streamError(streamID: streamID, baseError: NIOHTTP2Errors.createdStreamAfterGoaway()), type: .refusedStream), effect: nil)
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
