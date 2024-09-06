@@ -329,12 +329,59 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         stream.writeAndFlush(headerPayload, promise: promise)
     }
 
-    func testSuccessfullyReceiveAndSendPingEvenWhenConnectionIsFullyQuiesced() throws {
+    func testOpenStreamBeforeReceivingAlreadySentGoAway() throws {
         let serverHandler = InboundFramePayloadRecorder()
         try self.basicHTTP2Connection() { channel in
             return channel.pipeline.addHandler(serverHandler)
         }
 
+        let clientHandler = InboundFramePayloadRecorder()
+        let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait().multiplexer.wait()
+        multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
+            return channel.pipeline.addHandler(clientHandler)
+        }
+        self.clientChannel.embeddedEventLoop.run()
+        let childChannel = try childChannelPromise.futureResult.wait()
+
+        // Server sends GOAWAY frame.
+        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: .noError, opaqueData: nil))
+        serverChannel.writeAndFlush(goAwayFrame, promise: nil)
+
+        // Client sends headers.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
+        childChannel.writeAndFlush(reqFramePayload, promise: nil)
+
+        self.interactInMemory(self.clientChannel, self.serverChannel, expectError: true) { error in
+            if let error = error as? NIOHTTP2Errors.StreamError {
+                XCTAssert(error.baseError is NIOHTTP2Errors.CreatedStreamAfterGoaway)
+            } else {
+                XCTFail("Expected error to be of type StreamError, got error of type \(type(of: error)).")
+            }
+        }
+
+        // Client receives GOAWAY and RST_STREAM frames.
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: 0, opaqueData: nil)
+        clientHandler.receivedFrames.assertFramePayloadsMatch([HTTP2Frame.FramePayload.rstStream(.refusedStream)])
+
+        // No frames left.
+        self.clientChannel.assertNoFramesReceived()
+        self.serverChannel.assertNoFramesReceived()
+
+        // The stream closes with an error.
+        self.clientChannel.embeddedEventLoop.run()
+        XCTAssertThrowsError(try childChannel.closeFuture.wait())
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
+    func testSuccessfullyReceiveAndSendPingEvenWhenConnectionIsFullyQuiesced() throws {
+        let serverHandler = InboundFramePayloadRecorder()
+        try self.basicHTTP2Connection() { channel in
+            return channel.pipeline.addHandler(serverHandler)
+        }
         // Fully quiesce the connection on the server.
         let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .noError, opaqueData: nil))
         serverChannel.writeAndFlush(goAwayFrame, promise: nil)

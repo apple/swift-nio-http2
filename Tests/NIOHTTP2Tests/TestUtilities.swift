@@ -34,8 +34,16 @@ struct NoFrameReceived: Error { }
 extension XCTestCase {
     /// Have two `EmbeddedChannel` objects send and receive data from each other until
     /// they make no forward progress.
-    func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel, file: StaticString = #filePath, line: UInt = #line) {
+    func interactInMemory(
+        _ first: EmbeddedChannel,
+        _ second: EmbeddedChannel,
+        expectError: Bool = false,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ errorHandler: (_ error: any Error) -> Void = { _ in }
+    ) {
         var operated: Bool
+        var encounteredError = false
 
         func readBytesFromChannel(_ channel: EmbeddedChannel) -> ByteBuffer? {
             guard let data = try? assertNoThrowWithValue(channel.readOutbound(as: IOData.self)) else {
@@ -54,13 +62,37 @@ extension XCTestCase {
 
             if let data = readBytesFromChannel(first) {
                 operated = true
-                XCTAssertNoThrow(try second.writeInbound(data), file: (file), line: line)
+
+                if expectError {
+                    do {
+                        try second.writeInbound(data)
+                    } catch {
+                        encounteredError = true
+                        errorHandler(error)
+                    }
+                } else {
+                    XCTAssertNoThrow(try second.writeInbound(data), file: (file), line: line)
+                }
             }
             if let data = readBytesFromChannel(second) {
                 operated = true
-                XCTAssertNoThrow(try first.writeInbound(data), file: (file), line: line)
+
+                if expectError {
+                    do {
+                        try first.writeInbound(data)
+                    } catch {
+                        encounteredError = true
+                        errorHandler(error)
+                    }
+                } else {
+                    XCTAssertNoThrow(try first.writeInbound(data), file: (file), line: line)
+                }
             }
         } while operated
+
+        if expectError && !encounteredError {
+            XCTFail("Expected an error but didn't encounter one", file: (file), line: line)
+        }
     }
 
     /// Have two `NIOAsyncTestingChannel` objects send and receive data from each other until
