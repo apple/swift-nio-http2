@@ -119,6 +119,15 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         }
     }
 
+    func userInboundEventReceived(_ event: Any) {
+        switch self {
+        case .inline(let multiplexer):
+            multiplexer.receivedUserInboundEvent(event)
+        case .legacy:
+            ()  // No-op: already sent down the pipeline by the `NIOHTTP2Handler`.
+        }
+    }
+
     func channelWritabilityChangedReceived() {
         switch self {
         case .inline(let inlineStreamMultiplexer):

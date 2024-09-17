@@ -209,6 +209,24 @@ extension HTTP2CommonInboundStreamMultiplexer {
         self.streamChannelContinuation?.finish()
     }
 
+    internal func selectivelyPropagateUserInboundEvent(context: ChannelHandlerContext, event: Any) {
+        func propagateEvent(_ event: Any) {
+            for channel in self.streams.values {
+                channel.baseChannel.pipeline.fireUserInboundEventTriggered(event)
+            }
+            for channel in self._pendingStreams.values {
+                channel.baseChannel.pipeline.fireUserInboundEventTriggered(event)
+            }
+        }
+
+        switch event {
+        case is ChannelShouldQuiesceEvent:
+            propagateEvent(event)
+        default:
+            ()
+        }
+    }
+
     internal func propagateChannelWritabilityChanged(context: ChannelHandlerContext) {
         for channel in self.streams.values {
             channel.parentChannelWritabilityChanged(newValue: context.channel.isWritable)
