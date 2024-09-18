@@ -35,7 +35,7 @@ and the stream channels:
 
 ## Inline
 
-`_Inline_` multiplexing is the newer way of multiplexer stream and is
+`_Inline_` multiplexing is the newer way of multiplexing streams and is
 implemented inline in the ``NIOHTTP2Handler``. It was created to reduce the cost
 of multiplexing incurred by the legacy multiplexer by removing the out-of-band
 passing of information as user-inbound events. Like the legacy multiplexer, it
