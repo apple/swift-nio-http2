@@ -445,6 +445,11 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         }
     }
 
+    public func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        self.inboundStreamMultiplexer?.userInboundEventReceived(event)
+        context.fireUserInboundEventTriggered(event)
+    }
+
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let data = self.unwrapInboundIn(data)
         self.frameDecoder.append(bytes: data)

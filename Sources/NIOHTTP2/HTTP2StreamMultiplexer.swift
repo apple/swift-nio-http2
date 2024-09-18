@@ -102,7 +102,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
         case let evt as NIOHTTP2StreamCreatedEvent:
             _ = self.commonStreamMultiplexer.streamCreated(event: evt)
         default:
-            break
+            self.commonStreamMultiplexer.selectivelyPropagateUserInboundEvent(context: context, event: event)
         }
 
         context.fireUserInboundEventTriggered(event)
