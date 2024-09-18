@@ -2185,4 +2185,62 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testChannelShouldQuiesceIsPropagated() throws {
+        // Setup the connection.
+        let receivedShouldQuiesceEvent = self.clientChannel.eventLoop.makePromise(of: Void.self)
+        try self.basicHTTP2Connection { stream in
+            stream.pipeline.addHandler(ShouldQuiesceEventWaiter(promise: receivedShouldQuiesceEvent))
+        }
+
+        let connectionReceivedShouldQuiesceEvent = self.clientChannel.eventLoop.makePromise(of: Void.self)
+        try self.serverChannel.pipeline.addHandler(ShouldQuiesceEventWaiter(promise: connectionReceivedShouldQuiesceEvent)).wait()
+
+        // Create the stream channel.
+        let multiplexer = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
+        let streamPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamPromise) {
+            $0.eventLoop.makeSucceededVoidFuture()
+        }
+        self.clientChannel.embeddedEventLoop.run()
+        let stream = try streamPromise.futureResult.wait()
+
+        // Initiate request to open the stream on the server.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "http")])
+        let frame: HTTP2Frame.FramePayload = .headers(.init(headers: headers))
+        stream.writeAndFlush(frame, promise: nil)
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // Fire the event on the server pipeline, this should propagate to the stream channel and
+        // the connection channel.
+        self.serverChannel.pipeline.fireUserInboundEventTriggered(ChannelShouldQuiesceEvent())
+        XCTAssertNoThrow(try receivedShouldQuiesceEvent.futureResult.wait())
+        XCTAssertNoThrow(try connectionReceivedShouldQuiesceEvent.futureResult.wait())
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+}
+
+
+final class ShouldQuiesceEventWaiter: ChannelInboundHandler {
+    typealias InboundIn = Never
+
+    private let promise: EventLoopPromise<Void>
+
+    init(promise: EventLoopPromise<Void>) {
+        self.promise = promise
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        self.promise.fail(ChannelError.eof)
+        context.fireChannelInactive()
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        if event is ChannelShouldQuiesceEvent {
+            self.promise.succeed(())
+        }
+        context.fireUserInboundEventTriggered(event)
+    }
 }

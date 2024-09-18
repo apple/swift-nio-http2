@@ -46,6 +46,10 @@ extension InlineStreamMultiplexer: HTTP2InboundStreamMultiplexer {
         self._commonStreamMultiplexer.receivedFrame(frame, context: self.context, multiplexer: .inline(self))
     }
 
+    func receivedUserInboundEvent(_ event: Any) {
+        self._commonStreamMultiplexer.selectivelyPropagateUserInboundEvent(context: self.context, event: event)
+    }
+
     func streamError(streamID: HTTP2StreamID, error: Error) {
         let streamError = NIOHTTP2Errors.streamError(streamID: streamID, baseError: error)
         self._commonStreamMultiplexer.streamError(context: self.context, streamError)

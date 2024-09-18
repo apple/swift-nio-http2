@@ -2322,3 +2322,22 @@ private final class ReadAndFrameConsumer: ChannelInboundHandler, ChannelOutbound
         }
     }
 }
+
+final class UserInboundEventRecorder: ChannelInboundHandler {
+    typealias InboundIn = Any
+
+    private let receivedEvents: NIOLockedValueBox<[Any]>
+
+    var events: [Any] {
+        self.receivedEvents.withLockedValue { $0 }
+    }
+
+    init() {
+        self.receivedEvents = NIOLockedValueBox([])
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        self.receivedEvents.withLockedValue { $0.append(event) }
+        context.fireUserInboundEventTriggered(event)
+    }
+}
