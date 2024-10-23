@@ -215,13 +215,13 @@ struct ConcurrentStreamBuffer {
         // Ok, we need to buffer this frame, and we know we have the index for it. What we do here depends on this frame type. For
         // almost all frames, we just append them to the buffer. For RST_STREAM, however, we're in a different spot. RST_STREAM is a
         // request to drop all resources for a given stream. We know we have some, but we shouldn't wait to unblock them, we should
-        // just kill them now and immediately free the resources.
+        // just remove them now and immediately free the resources.
         if case .rstStream(let reason) = frame.payload {
             // We're going to remove the buffer and fail all the writes.
             let writeBuffer = self.bufferedFrames.remove(at: index)
 
             // If we're currently unbuffering this stream, we need to pass the RST_STREAM frame on for correctness. If we aren't, just
-            // kill it.
+            // drop it.
             if writeBuffer.currentlyUnblocking {
                 return .forwardAndDrop(writeBuffer.frames, NIOHTTP2Errors.streamClosed(streamID: frame.streamID, errorCode: reason))
             } else {

@@ -613,11 +613,11 @@ extension Channel {
     ///   - http1ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
     ///     is HTTP/1.1 to configure the connection channel.
     ///   - http2ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
-    ///     is HTTP/2 to configure the connection channel. The channel has an ``ChannelOutboundHandler/OutboundIn`` type of ``HTTP2Frame``.
+    ///     is HTTP/2 to configure the connection channel. The channel has an `ChannelOutboundHandler/OutboundIn` type of ``HTTP2Frame``.
     ///   - http2StreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
     ///     The output of this closure is the element type of the returned multiplexer
-    /// - Returns: An `EventLoopFuture` containing a ``NIOTypedApplicationProtocolNegotiationHandler`` that completes when the channel
-    ///     is ready to negotiate. This can then be used to access the ``NIOProtocolNegotiationResult`` which may itself
+    /// - Returns: An `EventLoopFuture` containing a `NIOTypedApplicationProtocolNegotiationHandler` that completes when the channel
+    ///     is ready to negotiate. This can then be used to access the `NIOProtocolNegotiationResult` which may itself
     ///     be waited on to retrieve the result of the negotiation.
     @inlinable
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)

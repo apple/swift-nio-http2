@@ -268,7 +268,7 @@ extension HTTP2StreamMultiplexer {
     /// > Note: Resources for the stream will be freed after it has been closed.
     ///
     /// - Parameters:
-    ///   - streamStateInitializer: A callback that will be invoked to allow you to configure the
+    ///   - initializer: A callback that will be invoked to allow you to configure the
     ///         `ChannelPipeline` for the newly created channel.
     /// - Returns: A future for the initialized `Channel`.
     public func createStreamChannel(_ initializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel> {

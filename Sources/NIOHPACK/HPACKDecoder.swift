@@ -82,15 +82,19 @@ public struct HPACKDecoder: Sendable {
     
     /// Creates a new decoder
     ///
-    /// - Parameter maxDynamicTableSize: Maximum allowed size of the dynamic header table.
+    /// - Parameters:
+    ///   - allocator:  Allocator for headers view byte buffer (which is deprecated)
+    ///   - maxDynamicTableSize: Maximum allowed size of the dynamic header table.
     public init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = HPACKDecoder.maxDynamicTableSize) {
         self.init(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize, maxHeaderListSize: HPACKDecoder.defaultMaxHeaderListSize)
     }
 
     /// Creates a new decoder
     ///
-    /// - Parameter maxDynamicTableSize: Maximum allowed size of the dynamic header table.
-    /// - Parameter maxHeaderListSize: Maximum allowed size of a decoded header list.
+    /// - Parameters:
+    ///   - allocator:  Allocator for headers view byte buffer (which is deprecated)
+    ///   - maxDynamicTableSize: Maximum allowed size of the dynamic header table.
+    ///   - maxHeaderListSize: Maximum allowed size of a decoded header list.
     public init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int, maxHeaderListSize: Int) {
         precondition(maxHeaderListSize > 0, "Max header list size must be positive!")
         self.headerTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)

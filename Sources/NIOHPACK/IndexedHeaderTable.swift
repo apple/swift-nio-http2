@@ -138,7 +138,6 @@ public struct IndexedHeaderTable {
     /// - Parameters:
     ///   - name: The name of the header to insert.
     ///   - value: The value of the header to insert.
-    /// - Returns: `true` if the header was added to the table, `false` if not.
     public mutating func add(headerNamed name: String, value: String) throws {
         // This function is unnecessarily marked throws, but none of its underlying functions throw anymore.
         self.dynamicTable.addHeader(named: name, value: value)
