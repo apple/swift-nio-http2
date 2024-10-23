@@ -579,17 +579,3 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         }
     }
 }
-
-#if compiler(<5.9)
-// this should be available in the std lib from 5.9 onwards
-extension AsyncStream {
-    internal static func makeStream(
-        of elementType: Element.Type = Element.self,
-        bufferingPolicy limit: Continuation.BufferingPolicy = .unbounded
-    ) -> (stream: AsyncStream<Element>, continuation: AsyncStream<Element>.Continuation) {
-        var continuation: AsyncStream<Element>.Continuation!
-        let stream = AsyncStream<Element>(bufferingPolicy: limit) { continuation = $0 }
-        return (stream: stream, continuation: continuation!)
-    }
-}
-#endif

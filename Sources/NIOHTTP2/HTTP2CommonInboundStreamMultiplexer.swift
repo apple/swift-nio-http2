@@ -550,19 +550,3 @@ extension NIOHTTP2AsyncSequence.AsyncIterator: Sendable {}
 
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension NIOHTTP2AsyncSequence: Sendable where Output: Sendable {}
-
-#if compiler(<5.9)
-// this should be available in the std lib from 5.9 onwards
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-extension AsyncThrowingStream {
-    static func makeStream(
-        of elementType: Element.Type = Element.self,
-        throwing failureType: Failure.Type = Failure.self,
-        bufferingPolicy limit: Continuation.BufferingPolicy = .unbounded
-    ) -> (stream: AsyncThrowingStream<Element, Failure>, continuation: AsyncThrowingStream<Element, Failure>.Continuation) where Failure == Error {
-        var continuation: AsyncThrowingStream<Element, Failure>.Continuation!
-        let stream = AsyncThrowingStream<Element, Failure>(bufferingPolicy: limit) { continuation = $0 }
-        return (stream: stream, continuation: continuation!)
-    }
-}
-#endif
