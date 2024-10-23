@@ -37,6 +37,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - streamID: The ``HTTP2StreamID`` for the stream that does not exist.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func noSuchStream(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> NoSuchStream {
         return NoSuchStream(streamID: streamID, file: file, line: line)
     }
@@ -46,11 +48,17 @@ public enum NIOHTTP2Errors {
     /// - Parameters:
     ///   - streamID: The ``HTTP2StreamID`` for the stream that is or has been closed
     ///   - errorCode: The ``HTTP2ErrorCode`` representing the reason for closure of the stream.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func streamClosed(streamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, file: String = #fileID, line: UInt = #line) -> StreamClosed {
         return StreamClosed(streamID: streamID, errorCode: errorCode, file: file, line: line)
     }
 
     /// Creates a ``BadClientMagic`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func badClientMagic(file: String = #fileID, line: UInt = #line) -> BadClientMagic {
         return BadClientMagic(file: file, line: line)
     }
@@ -59,6 +67,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - state: The ``NIOHTTP2StreamState`` representing the state of the stream from which we were trying to transition
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func badStreamStateTransition(from state: NIOHTTP2StreamState? = nil, file: String = #fileID, line: UInt = #line) -> BadStreamStateTransition {
         return BadStreamStateTransition(from: state, file: file, line: line)
     }
@@ -68,11 +78,17 @@ public enum NIOHTTP2Errors {
     /// - Parameters:
     ///   - delta: The change in the window size that was proposed in error
     ///   - currentWindowSize: The current size of the stream flow control window
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func invalidFlowControlWindowSize(delta: Int, currentWindowSize: Int, file: String = #fileID, line: UInt = #line) -> InvalidFlowControlWindowSize {
         return InvalidFlowControlWindowSize(delta: delta, currentWindowSize: currentWindowSize, file: file, line: line)
     }
 
     /// Creates a ``FlowControlViolation`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func flowControlViolation(file: String = #fileID, line: UInt = #line) -> FlowControlViolation {
         return FlowControlViolation(file: file, line: line)
     }
@@ -81,56 +97,98 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - setting: The invalid setting in question
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func invalidSetting(setting: HTTP2Setting, file: String = #fileID, line: UInt = #line) -> InvalidSetting {
         return InvalidSetting(setting: setting, file: file, line: line)
     }
 
     /// Creates an ``IOOnClosedConnection`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func ioOnClosedConnection(file: String = #fileID, line: UInt = #line) -> IOOnClosedConnection {
         return IOOnClosedConnection(file: file, line: line)
     }
 
     /// Creates a ``ReceivedBadSettings`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func receivedBadSettings(file: String = #fileID, line: UInt = #line) -> ReceivedBadSettings {
         return ReceivedBadSettings(file: file, line: line)
     }
 
     /// Creates a ``MaxStreamsViolation`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func maxStreamsViolation(file: String = #fileID, line: UInt = #line) -> MaxStreamsViolation {
         return MaxStreamsViolation(file: file, line: line)
     }
 
     /// Creates a ``StreamIDTooSmall`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func streamIDTooSmall(file: String = #fileID, line: UInt = #line) -> StreamIDTooSmall {
         return StreamIDTooSmall(file: file, line: line)
     }
 
     /// Creates a ``MissingPreface`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func missingPreface(file: String = #fileID, line: UInt = #line) -> MissingPreface {
         return MissingPreface(file: file, line: line)
     }
 
     /// Creates a ``CreatedStreamAfterGoaway`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func createdStreamAfterGoaway(file: String = #fileID, line: UInt = #line) -> CreatedStreamAfterGoaway {
         return CreatedStreamAfterGoaway(file: file, line: line)
     }
 
     /// Creates a ``InvalidStreamIDForPeer`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func invalidStreamIDForPeer(file: String = #fileID, line: UInt = #line) -> InvalidStreamIDForPeer {
         return InvalidStreamIDForPeer(file: file, line: line)
     }
 
     /// Creates a ``RaisedGoawayLastStreamID`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func raisedGoawayLastStreamID(file: String = #fileID, line: UInt = #line) -> RaisedGoawayLastStreamID {
         return RaisedGoawayLastStreamID(file: file, line: line)
     }
 
     /// Creates a ``InvalidWindowIncrementSize`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func invalidWindowIncrementSize(file: String = #fileID, line: UInt = #line) -> InvalidWindowIncrementSize {
         return InvalidWindowIncrementSize(file: file, line: line)
     }
 
     /// Creates a ``PushInViolationOfSetting`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func pushInViolationOfSetting(file: String = #fileID, line: UInt = #line) -> PushInViolationOfSetting {
         return PushInViolationOfSetting(file: file, line: line)
     }
@@ -139,16 +197,26 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - info: Human-readable information describing _what_ is unsupported.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func unsupported(info: String, file: String = #fileID, line: UInt = #line) -> Unsupported {
         return Unsupported(info: info, file: file, line: line)
     }
 
     /// Creates a ``UnableToSerializeFrame`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func unableToSerializeFrame(file: String = #fileID, line: UInt = #line) -> UnableToSerializeFrame {
         return UnableToSerializeFrame(file: file, line: line)
     }
 
     /// Creates a ``UnableToParseFrame`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func unableToParseFrame(file: String = #fileID, line: UInt = #line) -> UnableToParseFrame {
         return UnableToParseFrame(file: file, line: line)
     }
@@ -157,6 +225,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - name: The name of the pseudo-header that was missing from the header block.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func missingPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> MissingPseudoHeader {
         return MissingPseudoHeader(name, file: file, line: line)
     }
@@ -165,6 +235,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - name: The name of the pseudo-header that was duplicated within the header block.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func duplicatePseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> DuplicatePseudoHeader {
         return DuplicatePseudoHeader(name, file: file, line: line)
     }
@@ -173,6 +245,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - name: The name of the pseudo-header that appeared after a regular header in the header block.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func pseudoHeaderAfterRegularHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> PseudoHeaderAfterRegularHeader {
         return PseudoHeaderAfterRegularHeader(name, file: file, line: line)
     }
@@ -181,10 +255,18 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - name: The name of the pseudo-header that was not recognised by ``NIOHTTP2``.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func unknownPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> UnknownPseudoHeader {
         return UnknownPseudoHeader(name, file: file, line: line)
     }
 
+    /// Creates a ``UnsupportedPseudoHeader`` with with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the pseudo-header that was not supported by ``NIOHTTP2``.
+    ///   - file: Source file of the caller.
+    ///   - line:  Source line number of the caller.
     public static func unsupportedPseudoHeader(_ name: String, file: String = #fileID, line: UInt = #line) -> UnsupportedPseudoHeader {
         return UnsupportedPseudoHeader(name, file: file, line: line)
     }
@@ -193,21 +275,35 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - block: The block of `HPACKHeaders` that contain the invalid pseudo headers.
+    ///   - file: Source file of the caller.
+    ///   - line:  Source line number of the caller.
     public static func invalidPseudoHeaders(_ block: HPACKHeaders, file: String = #fileID, line: UInt = #line) -> InvalidPseudoHeaders {
         return InvalidPseudoHeaders(block, file: file, line: line)
     }
 
     /// Creates a ``MissingHostHeader`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func missingHostHeader(file: String = #fileID, line: UInt = #line) -> MissingHostHeader {
         return MissingHostHeader(file: file, line: line)
     }
 
     /// Creates a ``DuplicateHostHeader`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func duplicateHostHeader(file: String = #fileID, line: UInt = #line) -> DuplicateHostHeader {
         return DuplicateHostHeader(file: file, line: line)
     }
 
     /// Creates a ``EmptyPathHeader`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func emptyPathHeader(file: String = #fileID, line: UInt = #line) -> EmptyPathHeader {
         return EmptyPathHeader(file: file, line: line)
     }
@@ -216,6 +312,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - value: The value of the `:status` header that is invalid.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func invalidStatusValue(_ value: String, file: String = #fileID, line: UInt = #line) -> InvalidStatusValue {
         return InvalidStatusValue(value, file: file, line: line)
     }
@@ -224,6 +322,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - streamID: The ``HTTP2StreamID`` representing the stream that created the priority cycle.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func priorityCycle(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> PriorityCycle {
         return PriorityCycle(streamID: streamID, file: file, line: line)
     }
@@ -232,6 +332,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - streamID: The ``HTTP2StreamID`` on which the `HEADERS` frame without `END_STREAM` was received.
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func trailersWithoutEndStream(streamID: HTTP2StreamID, file: String = #fileID, line: UInt = #line) -> TrailersWithoutEndStream {
         return TrailersWithoutEndStream(streamID: streamID, file: file, line: line)
     }
@@ -240,6 +342,8 @@ public enum NIOHTTP2Errors {
     ///
     /// - Parameters:
     ///   - fieldName: The invalid HTTP/2 header field name
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func invalidHTTP2HeaderFieldName(_ fieldName: String, file: String = #fileID, line: UInt = #line) -> InvalidHTTP2HeaderFieldName {
         return InvalidHTTP2HeaderFieldName(fieldName, file: file, line: line)
     }
@@ -249,56 +353,98 @@ public enum NIOHTTP2Errors {
     /// - Parameters:
     ///   - name: The field name for the forbidden header field
     ///   - value: The field value for the forbidden header field
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func forbiddenHeaderField(name: String, value: String, file: String = #fileID, line: UInt = #line) -> ForbiddenHeaderField {
         return ForbiddenHeaderField(name: name, value: value, file: file, line: line)
     }
 
     /// Creates a ``ContentLengthViolated`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func contentLengthViolated(file: String = #fileID, line: UInt = #line) -> ContentLengthViolated {
         return ContentLengthViolated(file: file, line: line)
     }
 
     /// Creates a ``ContentLengthHeadersMismatch`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func contentLengthHeadersMismatch(file: String = #fileID, line: UInt = #line) -> ContentLengthHeadersMismatch {
         return ContentLengthHeadersMismatch(file: file, line: line)
     }
 
     /// Creates a ``ContentLengthHeaderNegative`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func contentLengthHeaderNegative(file: String = #fileID, line: UInt = #line) -> ContentLengthHeaderNegative {
         return ContentLengthHeaderNegative(file: file, line: line)
     }
 
     /// Creates a ``ContentLengthHeaderMalformedValue`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func contentLengthHeaderMalformedValue(file: String = #fileID, line: UInt = #line) -> ContentLengthHeaderMalformedValue {
         return ContentLengthHeaderMalformedValue(file: file, line: line)
     }
 
     /// Creates a ``ExcessiveEmptyDataFrames`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func excessiveEmptyDataFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveEmptyDataFrames {
         return ExcessiveEmptyDataFrames(file: file, line: line)
     }
 
     /// Creates a ``ExcessivelyLargeHeaderBlock`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func excessivelyLargeHeaderBlock(file: String = #fileID, line: UInt = #line) -> ExcessivelyLargeHeaderBlock {
         return ExcessivelyLargeHeaderBlock(file: file, line: line)
     }
 
     /// Creates a ``NoStreamIDAvailable`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func noStreamIDAvailable(file: String = #fileID, line: UInt = #line) -> NoStreamIDAvailable {
         return NoStreamIDAvailable(file: file, line: line)
     }
 
     /// Creates a ``MissingMultiplexer`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func missingMultiplexer(file: String = #fileID, line: UInt = #line) -> MissingMultiplexer {
         return MissingMultiplexer(file: file, line: line)
     }
 
     /// Creates a ``ExcessiveRSTFrames`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func excessiveRSTFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveRSTFrames {
         return ExcessiveRSTFrames(file: file, line: line)
     }
 
     /// Creates an ``ExcessiveContinuationFrames`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
     public static func excessiveContinuationFrames(file: String = #fileID, line: UInt = #line) -> ExcessiveContinuationFrames {
         return ExcessiveContinuationFrames(file: file, line: line)
     }

@@ -147,8 +147,11 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// This method is strictly additive: if there are other entries with the same header
     /// name already in the block, this will add new entries.
     ///
-    /// - Parameter contentsOf: The sequence of header name/value pairs. Header names must be ASCII
+    /// - Parameters:
+    ///   - other: The sequence of header name/value pairs. Header names must be ASCII
     ///     strings. For HTTP/2 lowercase header names are strongly recommended.
+    ///   - indexing:  The types of indexing and rewriting operations a decoder may take with
+    ///         regard to this header.
     @inlinable
     public mutating func add<S: Sequence>(contentsOf other: S, indexing: HPACKIndexing = .indexable) where S.Element == (String, String) {
         self.reserveCapacity(self.headers.count + other.underestimatedCount)
@@ -162,7 +165,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     /// This method is strictly additive: if there are other entries with the same header
     /// name already in the block, this will add new entries.
     ///
-    /// - Parameter contentsOf: The sequence of header name/value/indexing triplets. Header names
+    /// - Parameter other: The sequence of header name/value/indexing triplets. Header names
     ///     must be ASCII strings. For HTTP/2 lowercase header names are strongly recommended.
     @inlinable
     public mutating func add<S: Sequence>(contentsOf other: S) where S.Element == HPACKHeaders.Element {
@@ -198,7 +201,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     ///
     /// This method uses case-insensitive comparisons for the header field name.
     ///
-    /// - Parameter name: The name of the header field to remove from the block.
+    /// - Parameter nameToRemove: The name of the header field to remove from the block.
     @inlinable
     public mutating func remove(name nameToRemove: String) {
         self.headers.removeAll { header in

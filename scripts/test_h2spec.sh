@@ -21,16 +21,16 @@ function server_lsof() {
 
 function stop_server() {
     sleep 0.5 # just to make sure all the fds could be closed
-    kill -0 "$1" # assert server is still running
-    kill "$1" # tell server to shut down gracefully
+    kill -0 "$1" # assert server is still running    # ignore-unacceptable-language
+    kill "$1" # tell server to shut down gracefully    # ignore-unacceptable-language
     for f in $(seq 20); do
-        if ! kill -0 "$1" 2> /dev/null; then
+        if ! kill -0 "$1" 2> /dev/null; then    # ignore-unacceptable-language
             break # good, dead
         fi
         ps auxw | grep "$1" || true
         sleep 0.1
     done
-    if kill -0 "$1" 2> /dev/null; then
+    if kill -0 "$1" 2> /dev/null; then    # ignore-unacceptable-language
         fail "server $1 still running"
     fi
 }

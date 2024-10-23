@@ -31,7 +31,7 @@ struct ControlFrameBuffer {
     private var pendingControlFrames: MarkedCircularBuffer<PendingControlFrame>
 
     /// The maximum size of the buffer. If we have to buffer more frames than this,
-    /// we'll kill the connection.
+    /// we'll close the connection.
     internal var maximumBufferSize: Int
 }
 
