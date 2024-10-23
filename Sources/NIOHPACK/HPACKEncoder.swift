@@ -106,6 +106,7 @@ public struct HPACKEncoder {
     ///
     /// - Parameters:
     ///   - allocator: An allocator for `ByteBuffer`s.
+    ///   - useHuffmanEncoding: Should huffman enccoding be used.
     ///   - maxDynamicTableSize: An initial maximum size for the encoder's dynamic header table.
     public init(allocator: ByteBufferAllocator, useHuffmanEncoding: Bool = true, maxDynamicTableSize: Int = HPACKEncoder.defaultDynamicTableSize) {
         self.headerIndexTable = IndexedHeaderTable(allocator: allocator, maxDynamicTableSize: maxDynamicTableSize)

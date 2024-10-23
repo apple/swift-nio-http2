@@ -624,7 +624,7 @@ struct HTTP2FrameDecoder {
             }
 
             // Check whether there is any possibility of this payload decompressing and fitting in max header list size.
-            // If there isn't, kill it.
+            // If there isn't, drop it.
             guard self.header.length + header.length <= maxHeaderListSize else {
                 throw NIOHTTP2Errors.excessivelyLargeHeaderBlock()
             }
