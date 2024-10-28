@@ -106,7 +106,7 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         case .inline(let inlineStreamMultiplexer):
             inlineStreamMultiplexer.propagateChannelActive()
         case .legacy:
-            break // do nothing
+            break  // do nothing
         }
     }
 
@@ -115,7 +115,7 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         case .inline(let inlineStreamMultiplexer):
             inlineStreamMultiplexer.propagateChannelInactive()
         case .legacy:
-            break // do nothing
+            break  // do nothing
         }
     }
 
@@ -133,7 +133,7 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         case .inline(let inlineStreamMultiplexer):
             inlineStreamMultiplexer.propagateChannelWritabilityChanged()
         case .legacy:
-            break // do nothing
+            break  // do nothing
         }
     }
 
@@ -142,7 +142,7 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         case .inline(let inlineStreamMultiplexer):
             inlineStreamMultiplexer.propagateReadComplete()
         case .legacy:
-            break // do nothing
+            break  // do nothing
         }
     }
 
@@ -151,7 +151,7 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         case .inline(let inlineStreamMultiplexer):
             inlineStreamMultiplexer.processedFrame(frame: frame)
         case .legacy:
-            break // do nothing
+            break  // do nothing
         }
     }
 }
@@ -163,7 +163,6 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
 internal struct LegacyInboundStreamMultiplexer {
     let context: ChannelHandlerContext
 }
-
 
 extension LegacyInboundStreamMultiplexer: HTTP2InboundStreamMultiplexer {
     func receivedFrame(_ frame: HTTP2Frame) {

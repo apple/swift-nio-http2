@@ -24,17 +24,29 @@ protocol ReceivingDataState: HasFlowControlWindows {
 
 extension ReceivingDataState {
     /// Called to receive a DATA frame.
-    mutating func receiveData(streamID: HTTP2StreamID, contentLength: Int, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func receiveData(
+        streamID: HTTP2StreamID,
+        contentLength: Int,
+        flowControlledBytes: Int,
+        isEndStreamSet endStream: Bool
+    ) -> StateMachineResultWithEffect {
         do {
             try self.inboundFlowControlWindow.consume(flowControlledBytes: flowControlledBytes)
         } catch let error where error is NIOHTTP2Errors.FlowControlViolation {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .flowControlError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(underlyingError: error, type: .flowControlError),
+                effect: nil
+            )
         } catch {
             preconditionFailure("Unexpected error: \(error)")
         }
 
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
-            $0.receiveData(contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+            $0.receiveData(
+                contentLength: contentLength,
+                flowControlledBytes: flowControlledBytes,
+                isEndStreamSet: endStream
+            )
         }
 
         // We need to be a bit careful here. The backing code may have triggered either an ignoreFrame or streamError. While both of these
@@ -43,16 +55,26 @@ extension ReceivingDataState {
     }
 }
 
-
-private extension StateMachineResultWithEffect {
-    static func withGuaranteedFlowControlEffect<ConnectionState: ReceivingDataState>(_ result: StateMachineResultWithStreamEffect, connectionState: ConnectionState) -> StateMachineResultWithEffect {
+extension StateMachineResultWithEffect {
+    fileprivate static func withGuaranteedFlowControlEffect<ConnectionState: ReceivingDataState>(
+        _ result: StateMachineResultWithStreamEffect,
+        connectionState: ConnectionState
+    ) -> StateMachineResultWithEffect {
         // In most cases, this will update the underlying effect with the new flow control window info.
-        var newResult = StateMachineResultWithEffect(result,
-                                                     inboundFlowControlWindow: connectionState.inboundFlowControlWindow,
-                                                     outboundFlowControlWindow: connectionState.outboundFlowControlWindow)
+        var newResult = StateMachineResultWithEffect(
+            result,
+            inboundFlowControlWindow: connectionState.inboundFlowControlWindow,
+            outboundFlowControlWindow: connectionState.outboundFlowControlWindow
+        )
         if newResult.effect == nil {
             // But if we aren't noting it anywhere else, we note it here.
-            newResult.effect = .flowControlChange(.init(localConnectionWindowSize: Int(connectionState.outboundFlowControlWindow), remoteConnectionWindowSize: Int(connectionState.inboundFlowControlWindow), localStreamWindowSize: nil))
+            newResult.effect = .flowControlChange(
+                .init(
+                    localConnectionWindowSize: Int(connectionState.outboundFlowControlWindow),
+                    remoteConnectionWindowSize: Int(connectionState.inboundFlowControlWindow),
+                    localStreamWindowSize: nil
+                )
+            )
         }
 
         return newResult

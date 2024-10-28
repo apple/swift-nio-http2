@@ -18,7 +18,7 @@ import PackageDescription
 let package = Package(
     name: "swift-nio-http2",
     products: [
-        .library(name: "NIOHTTP2", targets: ["NIOHTTP2"]),
+        .library(name: "NIOHTTP2", targets: ["NIOHTTP2"])
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0"),
@@ -32,7 +32,8 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
-            ]),
+            ]
+        ),
         .executableTarget(
             name: "NIOHTTP2PerformanceTester",
             dependencies: [
@@ -40,7 +41,8 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOEmbedded", package: "swift-nio"),
-            ]),
+            ]
+        ),
         .target(
             name: "NIOHTTP2",
             dependencies: [
@@ -51,7 +53,8 @@ let package = Package(
                 .product(name: "NIOTLS", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "Atomics", package: "swift-atomics"),
-            ]),
+            ]
+        ),
         .target(
             name: "NIOHPACK",
             dependencies: [
@@ -59,7 +62,8 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
-            ]),
+            ]
+        ),
         .testTarget(
             name: "NIOHTTP2Tests",
             dependencies: [
@@ -70,7 +74,8 @@ let package = Package(
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
                 .product(name: "Atomics", package: "swift-atomics"),
-            ]),
+            ]
+        ),
         .testTarget(
             name: "NIOHPACKTests",
             dependencies: [
@@ -82,6 +87,6 @@ let package = Package(
                 .copy("Fixtures/large_complex_huffman_b64.txt"),
                 .copy("Fixtures/large_huffman_b64.txt"),
             ]
-        )
+        ),
     ]
 )

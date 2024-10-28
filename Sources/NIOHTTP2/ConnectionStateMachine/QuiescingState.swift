@@ -17,6 +17,6 @@
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
 protocol QuiescingState {
     var streamState: ConnectionStreamState { get }
-    
+
     var quiescedByServer: Bool { get }
 }

@@ -35,7 +35,7 @@ public struct HTTP2SettingsParameter: Sendable {
     internal init(fromNetwork value: Int32) {
         self.networkRepresentation = UInt16(value)
     }
-    
+
     /// Initialize a ``HTTP2SettingsParameter`` from a network `UInt16`.
     internal init(fromPayload value: UInt16) {
         self.networkRepresentation = value
@@ -63,14 +63,14 @@ public struct HTTP2SettingsParameter: Sendable {
 
     /// Corresponds to `SETTINGS_MAX_HEADER_LIST_SIZE`
     public static let maxHeaderListSize = HTTP2SettingsParameter(6)
-    
+
     /// Corresponds to `SETTINGS_ENABLE_CONNECT_PROTOCOL` from RFC 8441.
     public static let enableConnectProtocol = HTTP2SettingsParameter(8)
 }
 
-extension HTTP2SettingsParameter: Equatable { }
+extension HTTP2SettingsParameter: Equatable {}
 
-extension HTTP2SettingsParameter: Hashable { }
+extension HTTP2SettingsParameter: Hashable {}
 
 /// A single setting for HTTP/2, a combination of a ``HTTP2SettingsParameter`` and its value.
 public struct HTTP2Setting: Sendable {
@@ -80,7 +80,7 @@ public struct HTTP2Setting: Sendable {
     /// The value of the settings parameter. This must be a 32-bit number.
     public var value: Int {
         get {
-            return Int(self._value)
+            Int(self._value)
         }
         set {
             self._value = UInt32(newValue)
@@ -100,8 +100,8 @@ public struct HTTP2Setting: Sendable {
 }
 
 extension HTTP2Setting: Equatable {
-    public static func ==(lhs: HTTP2Setting, rhs: HTTP2Setting) -> Bool {
-        return lhs.parameter == rhs.parameter && lhs._value == rhs._value
+    public static func == (lhs: HTTP2Setting, rhs: HTTP2Setting) -> Bool {
+        lhs.parameter == rhs.parameter && lhs._value == rhs._value
     }
 }
 

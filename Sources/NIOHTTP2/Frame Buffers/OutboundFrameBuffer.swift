@@ -53,11 +53,13 @@ internal struct CompoundOutboundBuffer {
     private var controlFrameBuffer: ControlFrameBuffer
 }
 
-
 // MARK: CompoundOutboundBuffer initializers
 extension CompoundOutboundBuffer {
     internal init(mode: NIOHTTP2Handler.ParserMode, initialMaxOutboundStreams: Int, maxBufferedControlFrames: Int) {
-        self.concurrentStreamsBuffer = ConcurrentStreamBuffer(mode: mode, initialMaxOutboundStreams: initialMaxOutboundStreams)
+        self.concurrentStreamsBuffer = ConcurrentStreamBuffer(
+            mode: mode,
+            initialMaxOutboundStreams: initialMaxOutboundStreams
+        )
         self.flowControlBuffer = OutboundFlowControlBuffer()
         self.controlFrameBuffer = ControlFrameBuffer(maximumBufferSize: maxBufferedControlFrames)
     }
@@ -72,9 +74,15 @@ extension CompoundOutboundBuffer {
     /// which MarkedCircularBuffer is based, has internal invariants which require it to have a non-zero capacity).
     /// This static empty buffer allows us to avoid that allocation in each `processOutboundFrame` call when there
     /// are no frames to drop.
-    private static let emptyFramesToDrop = MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>(initialCapacity: 0)
+    private static let emptyFramesToDrop = MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>(
+        initialCapacity: 0
+    )
 
-    mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?, channelWritable: Bool) throws -> OutboundFrameAction {
+    mutating func processOutboundFrame(
+        _ frame: HTTP2Frame,
+        promise: EventLoopPromise<Void>?,
+        channelWritable: Bool
+    ) throws -> OutboundFrameAction {
         var framesToDrop = Self.emptyFramesToDrop
         var error: NIOHTTP2Errors.StreamClosed? = nil
 
@@ -86,7 +94,11 @@ extension CompoundOutboundBuffer {
         //        to the dropped frames.
         // 4. If a buffer returns .succeedAndDrop, return .succeedAndDrop.
         // The return value of the last buffer is the return value of the compound buffer, unless we returned early.
-        switch try self.concurrentStreamsBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable) {
+        switch try self.concurrentStreamsBuffer.processOutboundFrame(
+            frame,
+            promise: promise,
+            channelWritable: channelWritable
+        ) {
         case .nothing:
             return .nothing
         case .succeedAndDrop(let framesToDrop, let error):
@@ -116,7 +128,11 @@ extension CompoundOutboundBuffer {
             break
         }
 
-        switch try self.controlFrameBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable) {
+        switch try self.controlFrameBuffer.processOutboundFrame(
+            frame,
+            promise: promise,
+            channelWritable: channelWritable
+        ) {
         case .nothing:
             return .nothing
         case .forward:
@@ -177,8 +193,13 @@ extension CompoundOutboundBuffer {
         // Ok, now to move on to work on the concurrent streams buffer.
         while let (frame, promise) = self.concurrentStreamsBuffer.nextFlushedWritableFrame() {
             do {
-                if try self.flowControlBuffer.processOutboundFrame(frame, promise: promise).shouldForward &&
-                    self.controlFrameBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable).shouldForward {
+                if try self.flowControlBuffer.processOutboundFrame(frame, promise: promise).shouldForward
+                    && self.controlFrameBuffer.processOutboundFrame(
+                        frame,
+                        promise: promise,
+                        channelWritable: channelWritable
+                    ).shouldForward
+                {
                     return .frame(frame, promise)
                 }
             } catch {
@@ -191,7 +212,11 @@ extension CompoundOutboundBuffer {
 
         while let (frame, promise) = self.flowControlBuffer.nextFlushedWritableFrame() {
             do {
-                if try self.controlFrameBuffer.processOutboundFrame(frame, promise: promise, channelWritable: channelWritable).shouldForward {
+                if try self.controlFrameBuffer.processOutboundFrame(
+                    frame,
+                    promise: promise,
+                    channelWritable: channelWritable
+                ).shouldForward {
                     return .frame(frame, promise)
                 }
             } catch {
@@ -244,7 +269,7 @@ extension CompoundOutboundBuffer {
 
     var maxFrameSize: Int {
         get {
-            return self.flowControlBuffer.maxFrameSize
+            self.flowControlBuffer.maxFrameSize
         }
         set {
             self.flowControlBuffer.maxFrameSize = newValue
@@ -253,7 +278,7 @@ extension CompoundOutboundBuffer {
 
     var connectionWindowSize: Int {
         get {
-            return self.flowControlBuffer.connectionWindowSize
+            self.flowControlBuffer.connectionWindowSize
         }
         set {
             self.flowControlBuffer.connectionWindowSize = newValue
@@ -262,7 +287,7 @@ extension CompoundOutboundBuffer {
 
     var maxOutboundStreams: Int {
         get {
-            return self.concurrentStreamsBuffer.maxOutboundStreams
+            self.concurrentStreamsBuffer.maxOutboundStreams
         }
         set {
             self.concurrentStreamsBuffer.maxOutboundStreams = newValue
@@ -301,7 +326,7 @@ extension CompoundOutboundBuffer.DroppedPromisesCollection: Collection {
         static func < (lhs: Index, rhs: Index) -> Bool {
             switch (lhs.backingIndex, rhs.backingIndex) {
             case (.concurrentStreams, .flowControl),
-                 (.concurrentStreams, .endIndex):
+                (.concurrentStreams, .endIndex):
                 return true
             case (.concurrentStreams(let lhsBackingIndex), .concurrentStreams(let rhsBackingIndex)):
                 return lhsBackingIndex < rhsBackingIndex
@@ -328,7 +353,7 @@ extension CompoundOutboundBuffer.DroppedPromisesCollection: Collection {
     }
 
     var endIndex: Index {
-        return Index(.endIndex)
+        Index(.endIndex)
     }
 
     func index(after index: Index) -> Index {
@@ -376,7 +401,6 @@ extension CompoundOutboundBuffer.DroppedPromisesCollection: Collection {
         return droppedConcurrentStreams + droppedFlowControl
     }
 }
-
 
 extension OutboundFrameAction {
     /// Whether this frame should be forwarded. Must only be used in cases where the frame

@@ -22,4 +22,5 @@ protocol MayReceiveFrames:
     ReceivingPushPromiseState,
     ReceivingWindowUpdateState,
     ReceivingRstStreamState,
-    ReceivingGoawayState { }
+    ReceivingGoawayState
+{}

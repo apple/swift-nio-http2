@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 /// A linked list for storing MultiplexerAbstractChannels.
 ///
 /// Note that while this object *could* conform to `Sequence`, there is minimal value in doing
@@ -34,9 +33,8 @@ struct StreamChannelListNode {
 
     fileprivate var state: ListState = .notInList
 
-    internal init() { }
+    internal init() {}
 }
-
 
 extension StreamChannelList {
     /// Append an element to the linked list.
@@ -80,10 +78,9 @@ extension StreamChannelList {
     }
 
     mutating func removeAll() {
-        while self.removeFirst() != nil { }
+        while self.removeFirst() != nil {}
     }
 }
-
 
 // MARK:- IntrusiveLinkedListElement helpers.
 extension HTTP2StreamChannel {

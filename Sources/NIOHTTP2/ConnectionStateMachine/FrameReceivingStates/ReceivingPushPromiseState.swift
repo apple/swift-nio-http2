@@ -30,11 +30,19 @@ protocol ReceivingPushPromiseState: HasFlowControlWindows {
 }
 
 extension ReceivingPushPromiseState {
-    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
-        return self._receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+    mutating func receivePushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
+        self._receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
     }
 
-    fileprivate mutating func _receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
+    fileprivate mutating func _receivePushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
         // In states that support a push promise we have two steps. Firstly, we want to create the child stream; then we want to
         // pass the PUSH_PROMISE frame through the stream state machine for the parent stream.
         //
@@ -46,38 +54,62 @@ extension ReceivingPushPromiseState {
         //
         // Before any of this, though, we need to check whether the remote peer is even allowed to push!
         guard self.peerMayPush else {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(
+                    underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(),
+                    type: .protocolError
+                ),
+                effect: nil
+            )
         }
 
         let validateHeaderBlock = self.headerBlockValidation == .enabled
         let requestVerb = headers.first(name: ":method")
         do {
-            try self.streamState.createRemotelyPushedStream(streamID: childStreamID,
-                                                            remoteInitialWindowSize: self.remoteInitialWindowSize, requestVerb: requestVerb)
+            try self.streamState.createRemotelyPushedStream(
+                streamID: childStreamID,
+                remoteInitialWindowSize: self.remoteInitialWindowSize,
+                requestVerb: requestVerb
+            )
 
             let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: true) {
                 $0.receivePushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
             }
-            return StateMachineResultWithEffect(result,
-                                                inboundFlowControlWindow: self.inboundFlowControlWindow,
-                                                outboundFlowControlWindow: self.outboundFlowControlWindow)
+            return StateMachineResultWithEffect(
+                result,
+                inboundFlowControlWindow: self.inboundFlowControlWindow,
+                outboundFlowControlWindow: self.outboundFlowControlWindow
+            )
         } catch {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(underlyingError: error, type: .protocolError),
+                effect: nil
+            )
         }
     }
 
     /// Whether the remote peer may push.
     var peerMayPush: Bool {
         // In the case where we don't have local settings, we have to assume the default value, in which servers may push and clients may not.
-        return self.role == .client
+        self.role == .client
     }
 }
 
 extension ReceivingPushPromiseState where Self: LocallyQuiescingState {
-    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
+    mutating func receivePushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
         // This check is duplicated here, because the protocol error of violating this setting is more important than ignoring the frame.
         guard self.peerMayPush else {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(
+                    underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(),
+                    type: .protocolError
+                ),
+                effect: nil
+            )
         }
 
         // If we're a client, the server is forbidden from initiating new streams, as we quiesced. However, RFC 7540 wants us to ignore this.
@@ -87,12 +119,16 @@ extension ReceivingPushPromiseState where Self: LocallyQuiescingState {
 
         // We're a server, so the remote peer can't initiate a stream with a PUSH_PROMISE, but that's ok, the stream state machine
         // will forbid this as it normally does.
-        return self._receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+        return self._receivePushPromise(
+            originalStreamID: originalStreamID,
+            childStreamID: childStreamID,
+            headers: headers
+        )
     }
 }
 
 extension ReceivingPushPromiseState where Self: HasLocalSettings {
     var peerMayPush: Bool {
-        return self.localSettings.enablePush == 1 && self.role == .client
+        self.localSettings.enablePush == 1 && self.role == .client
     }
 }

@@ -13,8 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
-import NIOHTTP1
 import NIOHPACK
+import NIOHTTP1
 
 /// A representation of a single HTTP/2 frame.
 public struct HTTP2Frame: Sendable {
@@ -44,7 +44,7 @@ public struct HTTP2Frame: Sendable {
         ///
         /// See [RFC 7540 § 6.1](https://httpwg.org/specs/rfc7540.html#rfc.section.6.1).
         case data(FramePayload.Data)
-        
+
         /// A `HEADERS` frame, containing all headers or trailers associated with a request
         /// or response.
         ///
@@ -53,25 +53,25 @@ public struct HTTP2Frame: Sendable {
         ///
         /// See [RFC 7540 § 6.2](https://httpwg.org/specs/rfc7540.html#rfc.section.6.2).
         case headers(Headers)
-        
+
         /// A `PRIORITY` frame, used to change priority and dependency ordering among
         /// streams.
         ///
         /// See [RFC 7540 § 6.3](https://httpwg.org/specs/rfc7540.html#rfc.section.6.3).
         case priority(StreamPriorityData)
-        
+
         /// A `RST_STREAM` (reset stream) frame, sent when a stream has encountered an error
         /// condition and needs to be terminated as a result.
         ///
         /// See [RFC 7540 § 6.4](https://httpwg.org/specs/rfc7540.html#rfc.section.6.4).
         case rstStream(HTTP2ErrorCode)
-        
+
         /// A `SETTINGS` frame, containing various connection--level settings and their
         /// desired values.
         ///
         /// See [RFC 7540 § 6.5](https://httpwg.org/specs/rfc7540.html#rfc.section.6.5).
         case settings(Settings)
-        
+
         /// A `PUSH_PROMISE` frame, used to notify a peer in advance of streams that a sender
         /// intends to initiate. It performs much like a request's `HEADERS` frame, informing
         /// a peer that the response for a theoretical request like the one in the promise
@@ -86,12 +86,12 @@ public struct HTTP2Frame: Sendable {
         /// For more information on server push in HTTP/2, see
         /// [RFC 7540 § 8.2](https://httpwg.org/specs/rfc7540.html#rfc.section.8.2).
         indirect case pushPromise(PushPromise)
-        
+
         /// A `PING` frame, used to measure round-trip time between endpoints.
         ///
         /// See [RFC 7540 § 6.7](https://httpwg.org/specs/rfc7540.html#rfc.section.6.7).
         case ping(HTTP2PingData, ack: Bool)
-        
+
         /// A `GOAWAY` frame, used to request that a peer immediately cease communication with
         /// the sender. It contains a stream ID indicating the last stream that will be processed
         /// by the sender, an error code (if the shutdown was caused by an error), and optionally
@@ -99,14 +99,14 @@ public struct HTTP2Frame: Sendable {
         ///
         /// See [RFC 7540 § 6.8](https://httpwg.org/specs/rfc7540.html#rfc.section.6.8).
         indirect case goAway(lastStreamID: HTTP2StreamID, errorCode: HTTP2ErrorCode, opaqueData: ByteBuffer?)
-        
+
         /// A `WINDOW_UPDATE` frame. This is used to implement flow control of DATA frames,
         /// allowing peers to advertise and update the amount of data they are prepared to
         /// process at any given moment.
         ///
         /// See [RFC 7540 § 6.9](https://httpwg.org/specs/rfc7540.html#rfc.section.6.9).
         case windowUpdate(windowSizeIncrement: Int)
-        
+
         /// An `ALTSVC` frame. This is sent by an HTTP server to indicate alternative origin
         /// locations for accessing the same resource, for instance via another protocol,
         /// or over TLS. It consists of an origin and a list of alternate protocols and
@@ -117,7 +117,7 @@ public struct HTTP2Frame: Sendable {
         /// - Important: ALTSVC frames are not currently supported. Any received ALTSVC frames will
         ///   be ignored. Attempting to send an ALTSVC frame will result in a fatal error.
         indirect case alternativeService(origin: String?, field: ByteBuffer?)
-        
+
         /// An `ORIGIN` frame. This allows servers which allow access to multiple origins
         /// via the same socket connection to identify which origins may be accessed in
         /// this manner.
@@ -134,7 +134,7 @@ public struct HTTP2Frame: Sendable {
             @inlinable
             public var data: IOData {
                 get {
-                    return self._backing.data
+                    self._backing.data
                 }
                 set {
                     self._copyIfNeeded()
@@ -146,7 +146,7 @@ public struct HTTP2Frame: Sendable {
             @inlinable
             public var endStream: Bool {
                 get {
-                    return self._backing.endStream
+                    self._backing.endStream
                 }
                 set {
                     self._copyIfNeeded()
@@ -158,12 +158,15 @@ public struct HTTP2Frame: Sendable {
             @inlinable
             public var paddingBytes: Int? {
                 get {
-                    return self._backing.paddingBytes.map { Int($0) }
+                    self._backing.paddingBytes.map { Int($0) }
                 }
                 set {
                     self._copyIfNeeded()
                     if let newValue = newValue {
-                        precondition(newValue >= 0 && newValue <= Int(UInt8.max), "Invalid padding byte length: \(newValue)")
+                        precondition(
+                            newValue >= 0 && newValue <= Int(UInt8.max),
+                            "Invalid padding byte length: \(newValue)"
+                        )
                         self._backing.paddingBytes = UInt8(newValue)
                     } else {
                         self._backing.paddingBytes = nil
@@ -211,7 +214,7 @@ public struct HTTP2Frame: Sendable {
 
                 @inlinable
                 func copy() -> _Backing {
-                    return _Backing(data: self.data, endStream: self.endStream, paddingBytes: self.paddingBytes)
+                    _Backing(data: self.data, endStream: self.endStream, paddingBytes: self.paddingBytes)
                 }
             }
         }
@@ -303,7 +306,10 @@ public struct HTTP2Frame: Sendable {
                 }
                 set {
                     if let newValue = newValue {
-                        precondition(newValue >= 0 && newValue <= Int(UInt8.max), "Invalid padding byte length: \(newValue)")
+                        precondition(
+                            newValue >= 0 && newValue <= Int(UInt8.max),
+                            "Invalid padding byte length: \(newValue)"
+                        )
                         self._paddingBytes = UInt8(newValue)
                         self.booleans.insert(.paddingPresent)
                     } else {
@@ -312,7 +318,12 @@ public struct HTTP2Frame: Sendable {
                 }
             }
 
-            public init(headers: HPACKHeaders, priorityData: StreamPriorityData? = nil, endStream: Bool = false, paddingBytes: Int? = nil) {
+            public init(
+                headers: HPACKHeaders,
+                priorityData: StreamPriorityData? = nil,
+                endStream: Bool = false,
+                paddingBytes: Int? = nil
+            ) {
                 self.headers = headers
                 self.booleans = .init(rawValue: 0)
                 self._paddingBytes = 0
@@ -347,11 +358,14 @@ public struct HTTP2Frame: Sendable {
             /// The number of padding bytes sent in this frame. If nil, this frame was not padded.
             public var paddingBytes: Int? {
                 get {
-                    return self._paddingBytes.map { Int($0) }
+                    self._paddingBytes.map { Int($0) }
                 }
                 set {
                     if let newValue = newValue {
-                        precondition(newValue >= 0 && newValue <= Int(UInt8.max), "Invalid padding byte length: \(newValue)")
+                        precondition(
+                            newValue >= 0 && newValue <= Int(UInt8.max),
+                            "Invalid padding byte length: \(newValue)"
+                        )
                         self._paddingBytes = UInt8(newValue)
                     } else {
                         self._paddingBytes = nil
@@ -365,21 +379,21 @@ public struct HTTP2Frame: Sendable {
                 self.paddingBytes = paddingBytes
             }
         }
-        
+
         /// The one-byte identifier used to indicate the type of a frame on the wire.
         var code: UInt8 {
             switch self {
-            case .data:                 return 0x0
-            case .headers:              return 0x1
-            case .priority:             return 0x2
-            case .rstStream:            return 0x3
-            case .settings:             return 0x4
-            case .pushPromise:          return 0x5
-            case .ping:                 return 0x6
-            case .goAway:               return 0x7
-            case .windowUpdate:         return 0x8
-            case .alternativeService:   return 0xa
-            case .origin:               return 0xc
+            case .data: return 0x0
+            case .headers: return 0x1
+            case .priority: return 0x2
+            case .rstStream: return 0x3
+            case .settings: return 0x4
+            case .pushPromise: return 0x5
+            case .ping: return 0x6
+            case .goAway: return 0x7
+            case .windowUpdate: return 0x8
+            case .alternativeService: return 0xa
+            case .origin: return 0xc
             }
         }
     }
@@ -417,4 +431,3 @@ extension HTTP2Frame.FramePayload {
 /// Marking them non-Sendable would sadly be API breaking.
 extension HTTP2Frame.FramePayload: @unchecked Sendable {}
 extension HTTP2Frame.FramePayload.Data: @unchecked Sendable {}
-

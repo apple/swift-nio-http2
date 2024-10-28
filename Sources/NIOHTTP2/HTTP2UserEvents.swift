@@ -35,8 +35,7 @@ public struct StreamClosedEvent: Sendable {
     }
 }
 
-extension StreamClosedEvent: Hashable { }
-
+extension StreamClosedEvent: Hashable {}
 
 /// A ``NIOHTTP2WindowUpdatedEvent`` is fired whenever a flow control window is changed.
 /// This includes changes on the connection flow control window, which is signalled by
@@ -49,7 +48,7 @@ public struct NIOHTTP2WindowUpdatedEvent {
     /// The new inbound window size for this stream, if any. May be nil if this stream is half-closed.
     public var inboundWindowSize: Int? {
         get {
-            return self._inboundWindowSize.map { Int($0) }
+            self._inboundWindowSize.map { Int($0) }
         }
         set {
             self._inboundWindowSize = newValue.map { Int32($0) }
@@ -59,7 +58,7 @@ public struct NIOHTTP2WindowUpdatedEvent {
     /// The new outbound window size for this stream, if any. May be nil if this stream is half-closed.
     public var outboundWindowSize: Int? {
         get {
-            return self._outboundWindowSize.map { Int($0) }
+            self._outboundWindowSize.map { Int($0) }
         }
         set {
             self._outboundWindowSize = newValue.map { Int32($0) }
@@ -83,8 +82,7 @@ public struct NIOHTTP2WindowUpdatedEvent {
     }
 }
 
-extension NIOHTTP2WindowUpdatedEvent: Hashable { }
-
+extension NIOHTTP2WindowUpdatedEvent: Hashable {}
 
 /// A ``NIOHTTP2StreamCreatedEvent`` is fired whenever a HTTP/2 stream is created.
 public struct NIOHTTP2StreamCreatedEvent {
@@ -110,7 +108,7 @@ public struct NIOHTTP2StreamCreatedEvent {
     }
 }
 
-extension NIOHTTP2StreamCreatedEvent: Hashable { }
+extension NIOHTTP2StreamCreatedEvent: Hashable {}
 
 /// A ``NIOHTTP2BulkStreamWindowChangeEvent`` is fired whenever all of the remote flow control windows for a given stream have been changed.
 ///
@@ -125,4 +123,4 @@ public struct NIOHTTP2BulkStreamWindowChangeEvent {
     }
 }
 
-extension NIOHTTP2BulkStreamWindowChangeEvent: Hashable  { }
+extension NIOHTTP2BulkStreamWindowChangeEvent: Hashable {}

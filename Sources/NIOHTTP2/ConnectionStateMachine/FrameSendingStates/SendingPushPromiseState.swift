@@ -30,11 +30,19 @@ protocol SendingPushPromiseState: HasFlowControlWindows {
 }
 
 extension SendingPushPromiseState {
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
-        return self._sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+    mutating func sendPushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
+        self._sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
     }
 
-    fileprivate mutating func _sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
+    fileprivate mutating func _sendPushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
         let validateHeaderBlock = self.headerBlockValidation == .enabled
 
         // While receivePushPromise has a two step process involving creating the child stream first, here we do it the other
@@ -42,17 +50,27 @@ extension SendingPushPromiseState {
         // we don't have to emit a frame to report the error (we just return it to the user), we don't have to have a stream
         // whose state we can modify.
         func parentStateModifier(stateMachine: inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect {
-            return stateMachine.sendPushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
+            stateMachine.sendPushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
         }
 
         // First, however, we need to check we can push at all!
         guard self.mayPush else {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(
+                    underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(),
+                    type: .protocolError
+                ),
+                effect: nil
+            )
         }
 
         do {
             let result = StateMachineResultWithEffect(
-                self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: false, parentStateModifier),
+                self.streamState.modifyStreamState(
+                    streamID: originalStreamID,
+                    ignoreRecentlyReset: false,
+                    parentStateModifier
+                ),
                 inboundFlowControlWindow: self.inboundFlowControlWindow,
                 outboundFlowControlWindow: self.outboundFlowControlWindow
             )
@@ -60,23 +78,34 @@ extension SendingPushPromiseState {
                 return result
             }
             let requestVerb = headers.first(name: ":method")
-            try self.streamState.createLocallyPushedStream(streamID: childStreamID, localInitialWindowSize: self.localInitialWindowSize, requestVerb: requestVerb)
+            try self.streamState.createLocallyPushedStream(
+                streamID: childStreamID,
+                localInitialWindowSize: self.localInitialWindowSize,
+                requestVerb: requestVerb
+            )
             return result
         } catch {
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(underlyingError: error, type: .protocolError),
+                effect: nil
+            )
         }
     }
 
     /// Whether we may push.
     var mayPush: Bool {
         // In the case where we don't have remote settings, we have to assume the default value, in which case if we're a server we may push.
-        return self.role == .server
+        self.role == .server
     }
 
 }
 
 extension SendingPushPromiseState where Self: RemotelyQuiescingState {
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
+    mutating func sendPushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
         // This call should never be used, but we do want to ensure that conforming types cannot enter the above method.
         // The state machine should return early in all cases where we might end up calling this function.
         preconditionFailure("Must not be called")
@@ -85,6 +114,6 @@ extension SendingPushPromiseState where Self: RemotelyQuiescingState {
 
 extension SendingPushPromiseState where Self: HasRemoteSettings {
     var mayPush: Bool {
-        return self.remoteSettings.enablePush == 1 && self.role == .server
+        self.remoteSettings.enablePush == 1 && self.role == .server
     }
 }

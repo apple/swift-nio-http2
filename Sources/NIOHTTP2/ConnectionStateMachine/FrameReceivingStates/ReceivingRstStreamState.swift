@@ -25,11 +25,17 @@ extension ReceivingRstStreamState {
     mutating func receiveRstStream(streamID: HTTP2StreamID, reason: HTTP2ErrorCode) -> StateMachineResultWithEffect {
         // RFC 7540 § 6.4 <https://httpwg.org/specs/rfc7540.html#RST_STREAM> does not explicitly forbid a peer sending
         // multiple RST_STREAMs for the same stream which means we should ignore subsequent RST_STREAMs.
-        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true, ignoreClosed: true) {
+        let result = self.streamState.modifyStreamState(
+            streamID: streamID,
+            ignoreRecentlyReset: true,
+            ignoreClosed: true
+        ) {
             $0.receiveRstStream(reason: reason)
         }
-        return StateMachineResultWithEffect(result,
-                                            inboundFlowControlWindow: self.inboundFlowControlWindow,
-                                            outboundFlowControlWindow: self.outboundFlowControlWindow)
+        return StateMachineResultWithEffect(
+            result,
+            inboundFlowControlWindow: self.inboundFlowControlWindow,
+            outboundFlowControlWindow: self.outboundFlowControlWindow
+        )
     }
 }

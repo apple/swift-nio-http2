@@ -14,7 +14,7 @@
 
 import NIOCore
 
-fileprivate let binarySearchThreshold = 200
+private let binarySearchThreshold = 200
 
 /// StreamMap is a specialized data structure built to optimise lookups of per-stream state.
 ///
@@ -75,7 +75,10 @@ struct StreamMap<Element: PerStreamData> {
     }
 
     /// Calls the closure with the given element, if it is present. Returns nil if the element is not present.
-    mutating func modify<ReturnType>(streamID: HTTP2StreamID, _ body: (inout Element) throws -> ReturnType) rethrows -> ReturnType? {
+    mutating func modify<ReturnType>(
+        streamID: HTTP2StreamID,
+        _ body: (inout Element) throws -> ReturnType
+    ) rethrows -> ReturnType? {
         if streamID.mayBeInitiatedBy(.client) {
             guard let index = self.clientInitiated.findIndexForStreamID(streamID) else {
                 return nil
@@ -139,9 +142,11 @@ struct StreamMap<Element: PerStreamData> {
     ///
     /// This helper can turn a complex operation that involves repeated resizing of the base objects into a much faster one that also avoids
     /// allocation.
-    mutating func dropDataWithStreamIDGreaterThan(_ streamID: HTTP2StreamID,
-                                                  initiatedBy role: HTTP2ConnectionStateMachine.ConnectionRole,
-                                                  _ block: (CircularBuffer<Element>.SubSequence) -> Void) {
+    mutating func dropDataWithStreamIDGreaterThan(
+        _ streamID: HTTP2StreamID,
+        initiatedBy role: HTTP2ConnectionStateMachine.ConnectionRole,
+        _ block: (CircularBuffer<Element>.SubSequence) -> Void
+    ) {
         switch role {
         case .client:
             let index = self.clientInitiated.findIndexForFirstStreamIDLargerThan(streamID)
@@ -155,7 +160,7 @@ struct StreamMap<Element: PerStreamData> {
     }
 }
 
-internal extension StreamMap where Element == HTTP2StreamStateMachine {
+extension StreamMap where Element == HTTP2StreamStateMachine {
     // This function exists as a performance optimisation: we can keep track of the index and where we are, and
     // thereby avoid searching the array twice.
     //
@@ -173,12 +178,13 @@ internal extension StreamMap where Element == HTTP2StreamStateMachine {
         }
     }
 
-
     // This function exists as a performance optimisation: we can keep track of the index and where we are, and
     // thereby avoid searching the array twice.
-    mutating func transformOrCreateAutoClose<T>(streamID: HTTP2StreamID,
-                                                _ creator: () throws -> Element,
-                                                _ transformer: (inout Element) -> T) rethrows -> T? {
+    mutating func transformOrCreateAutoClose<T>(
+        streamID: HTTP2StreamID,
+        _ creator: () throws -> Element,
+        _ transformer: (inout Element) -> T
+    ) rethrows -> T? {
         if streamID.mayBeInitiatedBy(.client) {
             return try self.clientInitiated.transformOrCreateAutoClose(streamID: streamID, creator, transformer)
         } else {
@@ -299,7 +305,10 @@ extension CircularBuffer where Element == HTTP2StreamStateMachine {
     ///   - modifier: A block that will modify the contained value in the
     ///         map, if there is one present.
     /// - Returns: The return value of the block or `nil` if the element was not in the map.
-    mutating func autoClosingTransform<ResultType>(streamID: HTTP2StreamID, _ modifier: (inout Element) -> ResultType) -> ResultType? {
+    mutating func autoClosingTransform<ResultType>(
+        streamID: HTTP2StreamID,
+        _ modifier: (inout Element) -> ResultType
+    ) -> ResultType? {
         guard let index = self.findIndexForStreamID(streamID) else {
             return nil
         }
@@ -309,9 +318,11 @@ extension CircularBuffer where Element == HTTP2StreamStateMachine {
 
     // This function exists as a performance optimisation: we can keep track of the index and where we are, and
     // thereby avoid searching the array twice.
-    mutating func transformOrCreateAutoClose<ResultType>(streamID: HTTP2StreamID,
-                                                         _ creator: () throws -> Element,
-                                                         _ transformer: (inout Element) -> ResultType) rethrows -> ResultType? {
+    mutating func transformOrCreateAutoClose<ResultType>(
+        streamID: HTTP2StreamID,
+        _ creator: () throws -> Element,
+        _ transformer: (inout Element) -> ResultType
+    ) rethrows -> ResultType? {
         if let index = self.findIndexForStreamID(streamID) {
             return self.modifyAutoClose(index: index, transformer)
         } else {
@@ -321,7 +332,10 @@ extension CircularBuffer where Element == HTTP2StreamStateMachine {
         }
     }
 
-    private mutating func modifyAutoClose<ResultType>(index: Index, _ modifier: (inout Element) -> ResultType) -> ResultType {
+    private mutating func modifyAutoClose<ResultType>(
+        index: Index,
+        _ modifier: (inout Element) -> ResultType
+    ) -> ResultType {
         let (result, closed): (ResultType, HTTP2StreamStateMachine.StreamClosureState) = self.modify(index) {
             let result = modifier(&$0)
             return (result, $0.closed)

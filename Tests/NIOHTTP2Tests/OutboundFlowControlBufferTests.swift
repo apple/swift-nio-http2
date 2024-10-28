@@ -12,14 +12,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import Atomics
 import NIOCore
 import NIOEmbedded
-import NIOHTTP1
-@testable import NIOHTTP2
 import NIOHPACK
+import NIOHTTP1
+import XCTest
 
+@testable import NIOHTTP2
 
 class OutboundFlowControlBufferTests: XCTestCase {
     var loop: EmbeddedEventLoop!
@@ -37,7 +37,7 @@ class OutboundFlowControlBufferTests: XCTestCase {
     }
 
     private func makeWritePromise() -> EventLoopPromise<Void> {
-        return self.loop.makePromise()
+        self.loop.makePromise()
     }
 
     private func receivedFrames(file: StaticString = #filePath, line: UInt = #line) -> [HTTP2Frame] {
@@ -137,7 +137,10 @@ class OutboundFlowControlBufferTests: XCTestCase {
 
         // We also send a WindowUpdate frame, a RST_STREAM frame, and a PRIORITY frame.
         let windowUpdateFrame = HTTP2Frame(streamID: streamOne, payload: .windowUpdate(windowSizeIncrement: 500))
-        let priorityFrame = HTTP2Frame(streamID: streamOne, payload: .priority(.init(exclusive: false, dependency: 0, weight: 50)))
+        let priorityFrame = HTTP2Frame(
+            streamID: streamOne,
+            payload: .priority(.init(exclusive: false, dependency: 0, weight: 50))
+        )
         let rstStreamFrame = HTTP2Frame(streamID: streamOne, payload: .rstStream(.protocolError))
 
         // All of these frames are written.
@@ -196,7 +199,10 @@ class OutboundFlowControlBufferTests: XCTestCase {
         let streamOne = HTTP2StreamID(1)
 
         // Start by sending a headers frame through, even before createStream is fired. This should pass unmolested.
-        let headers = HTTP2Frame(streamID: streamOne, payload: .headers(.init(headers: HPACKHeaders([("name", "value")]))))
+        let headers = HTTP2Frame(
+            streamID: streamOne,
+            payload: .headers(.init(headers: HPACKHeaders([("name", "value")])))
+        )
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(headers, promise: nil).assertForward())
 
         // Now send createStream, and another headers frame. This is also fine.
@@ -204,7 +210,10 @@ class OutboundFlowControlBufferTests: XCTestCase {
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(headers, promise: nil).assertForward())
 
         // Now send a large DATA frame that is going to be buffered, followed by a HEADERS frame.
-        let endHeaders = HTTP2Frame(streamID: streamOne, payload: .headers(.init(headers: HPACKHeaders([("name", "value")]), endStream: true)))
+        let endHeaders = HTTP2Frame(
+            streamID: streamOne,
+            payload: .headers(.init(headers: HPACKHeaders([("name", "value")]), endStream: true))
+        )
         var frame = self.createDataFrame(streamOne, byteBufferSize: 50)
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(frame, promise: nil).assertNothing())
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(endHeaders, promise: nil).assertNothing())
@@ -232,7 +241,10 @@ class OutboundFlowControlBufferTests: XCTestCase {
         let headersPromise = self.loop.makePromise(of: Void.self)
 
         var dataFrame = self.createDataFrame(streamOne, byteBufferSize: 50)
-        let headersFrame = HTTP2Frame(streamID: streamOne, payload: .headers(.init(headers: HPACKHeaders([("key", "value")]))))
+        let headersFrame = HTTP2Frame(
+            streamID: streamOne,
+            payload: .headers(.init(headers: HPACKHeaders([("key", "value")])))
+        )
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: dataPromise).assertNothing())
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(headersFrame, promise: headersPromise).assertNothing())
         self.buffer.flushReceived()
@@ -281,16 +293,18 @@ class OutboundFlowControlBufferTests: XCTestCase {
 
     func testOverlargeFramesAreSplitOnMaxFrameSizeByteBuffer() {
         let streamOne = HTTP2StreamID(1)
-        self.buffer.streamCreated(streamOne, initialWindowSize: 1<<16)
-        self.buffer.connectionWindowSize = 1<<24
+        self.buffer.streamCreated(streamOne, initialWindowSize: 1 << 16)
+        self.buffer.connectionWindowSize = 1 << 24
 
         var dataFrame = self.createDataFrame(streamOne, byteBufferSize: (1 << 16) + 1)
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: nil).assertNothing())
         XCTAssertEqual(0, self.receivedFrames().count)
 
-        self.buffer.maxFrameSize = 1<<15
+        self.buffer.maxFrameSize = 1 << 15
         self.buffer.flushReceived()
-        self.receivedFrames().assertFramesMatch([dataFrame.sliceDataFrame(length: 1<<15), dataFrame.sliceDataFrame(length: 1<<15)])
+        self.receivedFrames().assertFramesMatch([
+            dataFrame.sliceDataFrame(length: 1 << 15), dataFrame.sliceDataFrame(length: 1 << 15),
+        ])
 
         // Update the window.
         self.buffer.updateWindowOfStream(streamOne, newSize: 20)
@@ -299,16 +313,19 @@ class OutboundFlowControlBufferTests: XCTestCase {
 
     func testOverlargeFramesAreSplitOnMaxFrameSizeFileRegion() {
         let streamOne = HTTP2StreamID(1)
-        self.buffer.streamCreated(streamOne, initialWindowSize: 1<<16)
-        self.buffer.connectionWindowSize = 1<<24
+        self.buffer.streamCreated(streamOne, initialWindowSize: 1 << 16)
+        self.buffer.connectionWindowSize = 1 << 24
 
         var dataFrame = self.createDataFrame(streamOne, fileRegionSize: (1 << 16) + 1)
         XCTAssertNoThrow(try self.buffer.processOutboundFrame(dataFrame, promise: nil).assertNothing())
         XCTAssertEqual(0, self.receivedFrames().count)
 
-        self.buffer.maxFrameSize = 1<<15
+        self.buffer.maxFrameSize = 1 << 15
         self.buffer.flushReceived()
-        self.receivedFrames().assertFramesMatch([dataFrame.sliceDataFrame(length: 1<<15), dataFrame.sliceDataFrame(length: 1<<15)], dataFileRegionToByteBuffer: false)
+        self.receivedFrames().assertFramesMatch(
+            [dataFrame.sliceDataFrame(length: 1 << 15), dataFrame.sliceDataFrame(length: 1 << 15)],
+            dataFileRegionToByteBuffer: false
+        )
 
         // Update the window.
         self.buffer.updateWindowOfStream(streamOne, newSize: 20)
@@ -354,7 +371,9 @@ class OutboundFlowControlBufferTests: XCTestCase {
 
         // Let the window be consumed.
         self.buffer.flushReceived()
-        self.receivedFrames().sorted(by: { $0.streamID < $1.streamID }).assertFramesMatch([oneFrame.sliceDataFrame(length: 15), threeFrame])
+        self.receivedFrames().sorted(by: { $0.streamID < $1.streamID }).assertFramesMatch([
+            oneFrame.sliceDataFrame(length: 15), threeFrame,
+        ])
 
         // Ok, now we can increase the window size for all streams. This makes more data available.
         self.buffer.initialWindowSizeChanged(10)
@@ -375,10 +394,17 @@ class OutboundFlowControlBufferTests: XCTestCase {
     }
 
     func testRejectsPrioritySelfDependency() {
-        XCTAssertThrowsError(try self.buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: false, dependency: 1, weight: 36))) { error in
+        XCTAssertThrowsError(
+            try self.buffer.priorityUpdate(
+                streamID: 1,
+                priorityData: .init(exclusive: false, dependency: 1, weight: 36)
+            )
+        ) { error in
             XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
-        XCTAssertThrowsError(try self.buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))) { error in
+        XCTAssertThrowsError(
+            try self.buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))
+        ) { error in
             XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
     }
@@ -471,7 +497,6 @@ class OutboundFlowControlBufferTests: XCTestCase {
     }
 }
 
-
 /// Various helpers that make tests easier to understand.
 extension OutboundFlowControlBufferTests {
     func createDataFrame(_ streamID: HTTP2StreamID, byteBufferSize: Int, endStream: Bool = false) -> HTTP2Frame {
@@ -489,7 +514,6 @@ extension OutboundFlowControlBufferTests {
     }
 }
 
-
 extension IOData {
     mutating func readSlice(length: Int) -> IOData {
         switch self {
@@ -498,14 +522,17 @@ extension IOData {
             self = .byteBuffer(buf)
             return .byteBuffer(slice)
         case .fileRegion(var region):
-            let slice = FileRegion(fileHandle: region.fileHandle, readerIndex: region.readerIndex, endIndex: region.readerIndex + length)
+            let slice = FileRegion(
+                fileHandle: region.fileHandle,
+                readerIndex: region.readerIndex,
+                endIndex: region.readerIndex + length
+            )
             region.moveReaderIndex(forwardBy: length)
             self = .fileRegion(region)
             return .fileRegion(slice)
         }
     }
 }
-
 
 extension HTTP2Frame {
     mutating func sliceDataFrame(length: Int) -> HTTP2Frame {

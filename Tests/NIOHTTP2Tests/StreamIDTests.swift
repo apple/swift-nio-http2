@@ -12,14 +12,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOHTTP2
-
+import XCTest
 
 final class StreamIDTests: XCTestCase {
     func testStreamIDsAreStrideable() {
-        XCTAssertEqual(Array(HTTP2StreamID(1)..<HTTP2StreamID(30)), Array(stride(from: HTTP2StreamID(1), to: HTTP2StreamID(30), by: 1)))
-        XCTAssertEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], Array(stride(from: HTTP2StreamID(10), through: HTTP2StreamID(1), by: -1)))
+        XCTAssertEqual(
+            Array(HTTP2StreamID(1)..<HTTP2StreamID(30)),
+            Array(stride(from: HTTP2StreamID(1), to: HTTP2StreamID(30), by: 1))
+        )
+        XCTAssertEqual(
+            [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+            Array(stride(from: HTTP2StreamID(10), through: HTTP2StreamID(1), by: -1))
+        )
         XCTAssertEqual([1, 3, 5, 7, 9], Array(stride(from: HTTP2StreamID(1), to: HTTP2StreamID(10), by: 2)))
     }
 

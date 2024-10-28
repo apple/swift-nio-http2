@@ -41,14 +41,12 @@ struct StreamChannelFlowController {
     }
 }
 
-
 extension StreamChannelFlowController {
     /// Whether the `HTTP2StreamChannel` should be writable.
     var isWritable: Bool {
-        return self.watermarkedController.isWritable && self.parentIsWritable
+        self.watermarkedController.isWritable && self.parentIsWritable
     }
 }
-
 
 extension StreamChannelFlowController {
     /// A value representing a change in writability.
@@ -61,29 +59,29 @@ extension StreamChannelFlowController {
     }
 }
 
-
 extension StreamChannelFlowController {
     /// Notifies the flow controller that we have queued some bytes for writing to the network.
     mutating func bufferedBytes(_ bufferedBytes: Int) -> WritabilityChange {
-        return self.mayChangeWritability {
+        self.mayChangeWritability {
             $0.watermarkedController.bufferedBytes(bufferedBytes)
         }
     }
 
     /// Notifies the flow controller that we have successfully written some bytes to the network.
     mutating func wroteBytes(_ writtenBytes: Int) -> WritabilityChange {
-        return self.mayChangeWritability {
+        self.mayChangeWritability {
             $0.watermarkedController.wroteBytes(writtenBytes)
         }
     }
 
     mutating func parentWritabilityChanged(_ newWritability: Bool) -> WritabilityChange {
-        return self.mayChangeWritability {
+        self.mayChangeWritability {
             $0.parentIsWritable = newWritability
         }
     }
 
-    private mutating func mayChangeWritability(_ body: (inout StreamChannelFlowController) -> Void) -> WritabilityChange {
+    private mutating func mayChangeWritability(_ body: (inout StreamChannelFlowController) -> Void) -> WritabilityChange
+    {
         let wasWritable = self.isWritable
         body(&self)
         let isWritable = self.isWritable
@@ -96,12 +94,10 @@ extension StreamChannelFlowController {
     }
 }
 
-
-extension StreamChannelFlowController: Equatable { }
-
+extension StreamChannelFlowController: Equatable {}
 
 extension StreamChannelFlowController: CustomDebugStringConvertible {
     var debugDescription: String {
-        return "StreamChannelFlowController(parentIsWritable: \(self.parentIsWritable), watermarkedController: \(self.watermarkedController.debugDescription))"
+        "StreamChannelFlowController(parentIsWritable: \(self.parentIsWritable), watermarkedController: \(self.watermarkedController.debugDescription))"
     }
 }

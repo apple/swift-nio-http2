@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 /// Keeps track of whether or not a `Channel` should be able to write based on watermarks.
 ///
 /// A `WatermarkedFlowController` is a straightforward object that keeps track of
@@ -49,7 +48,10 @@ struct WatermarkedFlowController {
     internal private(set) var isWritable: Bool
 
     internal init(highWatermark: Int, lowWatermark: Int) {
-        precondition(lowWatermark < highWatermark, "Low watermark \(lowWatermark) exceeds or meets High watermark \(highWatermark)")
+        precondition(
+            lowWatermark < highWatermark,
+            "Low watermark \(lowWatermark) exceeds or meets High watermark \(highWatermark)"
+        )
         precondition(lowWatermark >= 0, "Low watermark \(lowWatermark) is negative")
 
         self.highWatermark = highWatermark
@@ -58,7 +60,6 @@ struct WatermarkedFlowController {
         self.isWritable = true
     }
 }
-
 
 extension WatermarkedFlowController {
     /// Notifies the flow controller that we have buffered some bytes to send to the network.
@@ -91,12 +92,10 @@ extension WatermarkedFlowController {
     }
 }
 
-
-extension WatermarkedFlowController: Equatable { }
-
+extension WatermarkedFlowController: Equatable {}
 
 extension WatermarkedFlowController: CustomDebugStringConvertible {
     var debugDescription: String {
-        return "WatermarkedFlowController(highWatermark: \(self.highWatermark), lowWatermark: \(self.lowWatermark), pendingBytes: \(self.pendingBytes), isWritable: \(self.isWritable))"
+        "WatermarkedFlowController(highWatermark: \(self.highWatermark), lowWatermark: \(self.lowWatermark), pendingBytes: \(self.pendingBytes), isWritable: \(self.isWritable))"
     }
 }

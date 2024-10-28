@@ -30,9 +30,15 @@ extension SendingWindowUpdateState {
                 try self.inboundFlowControlWindow.windowUpdate(by: increment)
                 return StateMachineResultWithEffect(result: .succeed, effect: nil)
             } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .flowControlError), effect: nil)
+                return StateMachineResultWithEffect(
+                    result: .connectionError(underlyingError: error, type: .flowControlError),
+                    effect: nil
+                )
             } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+                return StateMachineResultWithEffect(
+                    result: .connectionError(underlyingError: error, type: .protocolError),
+                    effect: nil
+                )
             } catch {
                 preconditionFailure("Unexpected error: \(error)")
             }
@@ -41,9 +47,11 @@ extension SendingWindowUpdateState {
             let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: false) {
                 $0.sendWindowUpdate(windowIncrement: increment)
             }
-            return StateMachineResultWithEffect(result,
-                                                inboundFlowControlWindow: self.inboundFlowControlWindow,
-                                                outboundFlowControlWindow: self.outboundFlowControlWindow)
+            return StateMachineResultWithEffect(
+                result,
+                inboundFlowControlWindow: self.inboundFlowControlWindow,
+                outboundFlowControlWindow: self.outboundFlowControlWindow
+            )
         }
     }
 }

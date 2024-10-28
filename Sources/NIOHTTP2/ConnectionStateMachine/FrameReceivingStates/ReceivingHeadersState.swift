@@ -17,7 +17,9 @@ import NIOHPACK
 /// can validly accept headers.
 ///
 /// This protocol should only be conformed to by states for the HTTP/2 connection state machine.
-protocol ReceivingHeadersState: HasFlowControlWindows, HasLocalExtendedConnectSettings, HasRemoteExtendedConnectSettings, ConnectionStateWithRole {
+protocol ReceivingHeadersState: HasFlowControlWindows, HasLocalExtendedConnectSettings,
+    HasRemoteExtendedConnectSettings, ConnectionStateWithRole
+{
     var role: HTTP2ConnectionStateMachine.ConnectionRole { get }
 
     var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
@@ -33,7 +35,11 @@ protocol ReceivingHeadersState: HasFlowControlWindows, HasLocalExtendedConnectSe
 
 extension ReceivingHeadersState {
     /// Called when we receive a HEADERS frame in this state.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func receiveHeaders(
+        streamID: HTTP2StreamID,
+        headers: HPACKHeaders,
+        isEndStreamSet endStream: Bool
+    ) -> StateMachineResultWithEffect {
         let result: StateMachineResultWithStreamEffect
         let validateHeaderBlock = self.headerBlockValidation == .enabled
         let validateContentLength = self.contentLengthValidation == .enabled
@@ -42,25 +48,48 @@ extension ReceivingHeadersState {
 
         if self.role == .server && streamID.mayBeInitiatedBy(.client) {
             do {
-                result = try self.streamState.modifyStreamStateCreateIfNeeded(streamID: streamID, localRole: .server, localInitialWindowSize: self.localInitialWindowSize, remoteInitialWindowSize: self.remoteInitialWindowSize) {
-                    $0.receiveHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, localSupportsExtendedConnect: localSupportsExtendedConnect, remoteSupportsExtendedConnect: remoteSupportsExtendedConnect, isEndStreamSet: endStream)
+                result = try self.streamState.modifyStreamStateCreateIfNeeded(
+                    streamID: streamID,
+                    localRole: .server,
+                    localInitialWindowSize: self.localInitialWindowSize,
+                    remoteInitialWindowSize: self.remoteInitialWindowSize
+                ) {
+                    $0.receiveHeaders(
+                        headers: headers,
+                        validateHeaderBlock: validateHeaderBlock,
+                        validateContentLength: validateContentLength,
+                        localSupportsExtendedConnect: localSupportsExtendedConnect,
+                        remoteSupportsExtendedConnect: remoteSupportsExtendedConnect,
+                        isEndStreamSet: endStream
+                    )
                 }
             } catch {
-                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+                return StateMachineResultWithEffect(
+                    result: .connectionError(underlyingError: error, type: .protocolError),
+                    effect: nil
+                )
             }
         } else {
             // HEADERS cannot create streams for servers, so this must be for a stream we already know about.
             result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
-                $0.receiveHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, localSupportsExtendedConnect: localSupportsExtendedConnect, remoteSupportsExtendedConnect: remoteSupportsExtendedConnect, isEndStreamSet: endStream)
+                $0.receiveHeaders(
+                    headers: headers,
+                    validateHeaderBlock: validateHeaderBlock,
+                    validateContentLength: validateContentLength,
+                    localSupportsExtendedConnect: localSupportsExtendedConnect,
+                    remoteSupportsExtendedConnect: remoteSupportsExtendedConnect,
+                    isEndStreamSet: endStream
+                )
             }
         }
 
-        return StateMachineResultWithEffect(result,
-                                            inboundFlowControlWindow: self.inboundFlowControlWindow,
-                                            outboundFlowControlWindow: self.outboundFlowControlWindow)
+        return StateMachineResultWithEffect(
+            result,
+            inboundFlowControlWindow: self.inboundFlowControlWindow,
+            outboundFlowControlWindow: self.outboundFlowControlWindow
+        )
     }
 }
-
 
 extension ReceivingHeadersState where Self: LocallyQuiescingState {
     /// Called when we receive a HEADERS frame in this state.
@@ -68,7 +97,11 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
     /// If we've quiesced this connection, the remote peer is no longer allowed to create new streams.
     /// We ignore any frame that appears to be creating a new stream, and then prevent this from creating
     /// new streams.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func receiveHeaders(
+        streamID: HTTP2StreamID,
+        headers: HPACKHeaders,
+        isEndStreamSet endStream: Bool
+    ) -> StateMachineResultWithEffect {
         let validateHeaderBlock = self.headerBlockValidation == .enabled
         let validateContentLength = self.contentLengthValidation == .enabled
         let localSupportsExtendedConnect = self.localSupportsExtendedConnect
@@ -83,10 +116,19 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
 
         // At this stage we've quiesced, so the remote peer is not allowed to create new streams.
         let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
-            $0.receiveHeaders(headers: headers, validateHeaderBlock: validateHeaderBlock, validateContentLength: validateContentLength, localSupportsExtendedConnect: localSupportsExtendedConnect, remoteSupportsExtendedConnect: remoteSupportsExtendedConnect, isEndStreamSet: endStream)
+            $0.receiveHeaders(
+                headers: headers,
+                validateHeaderBlock: validateHeaderBlock,
+                validateContentLength: validateContentLength,
+                localSupportsExtendedConnect: localSupportsExtendedConnect,
+                remoteSupportsExtendedConnect: remoteSupportsExtendedConnect,
+                isEndStreamSet: endStream
+            )
         }
-        return StateMachineResultWithEffect(result,
-                                            inboundFlowControlWindow: self.inboundFlowControlWindow,
-                                            outboundFlowControlWindow: self.outboundFlowControlWindow)
+        return StateMachineResultWithEffect(
+            result,
+            inboundFlowControlWindow: self.inboundFlowControlWindow,
+            outboundFlowControlWindow: self.outboundFlowControlWindow
+        )
     }
 }

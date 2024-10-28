@@ -18,21 +18,27 @@ import NIOHTTP2
 
 /// Test use only. Allows abstracting over the two multiplexer implementations to write common testing code
 internal protocol MultiplexerChannelCreator {
-    func createStreamChannel(promise: EventLoopPromise<Channel>?, _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer)
+    func createStreamChannel(
+        promise: EventLoopPromise<Channel>?,
+        _ streamStateInitializer: @escaping NIOHTTP2Handler.StreamInitializer
+    )
     func createStreamChannel(_ initializer: @escaping NIOChannelInitializer) -> EventLoopFuture<Channel>
 }
 
-extension HTTP2StreamMultiplexer: MultiplexerChannelCreator { }
-extension NIOHTTP2Handler.StreamMultiplexer: MultiplexerChannelCreator { }
+extension HTTP2StreamMultiplexer: MultiplexerChannelCreator {}
+extension NIOHTTP2Handler.StreamMultiplexer: MultiplexerChannelCreator {}
 
 /// Have two `EmbeddedChannel` objects send and receive data from each other until
 /// they make no forward progress.
 func interactInMemory(_ first: EmbeddedChannel, _ second: EmbeddedChannel) throws {
-    precondition(first.eventLoop === second.eventLoop, "interactInMemory assumes both channels are on the same event loop.")
+    precondition(
+        first.eventLoop === second.eventLoop,
+        "interactInMemory assumes both channels are on the same event loop."
+    )
     var operated: Bool
 
     func readBytesFromChannel(_ channel: EmbeddedChannel) throws -> ByteBuffer? {
-        return try channel.readOutbound(as: ByteBuffer.self)
+        try channel.readOutbound(as: ByteBuffer.self)
     }
 
     repeat {

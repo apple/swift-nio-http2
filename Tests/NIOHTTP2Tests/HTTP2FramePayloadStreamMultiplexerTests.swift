@@ -12,25 +12,30 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import Atomics
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHTTP1
-@testable import NIOHPACK       // for HPACKHeaders initializers
+import XCTest
+
+@testable import NIOHPACK  // for HPACKHeaders initializers
 @testable import NIOHTTP2
 
-private extension Channel {
+extension Channel {
     /// Adds a simple no-op `HTTP2StreamMultiplexer` to the pipeline.
-    func addNoOpMultiplexer(mode: NIOHTTP2Handler.ParserMode) {
-        XCTAssertNoThrow(try self.pipeline.addHandler(HTTP2StreamMultiplexer(mode: mode, channel: self) { channel in
-            self.eventLoop.makeSucceededFuture(())
-        }).wait())
+    fileprivate func addNoOpMultiplexer(mode: NIOHTTP2Handler.ParserMode) {
+        XCTAssertNoThrow(
+            try self.pipeline.addHandler(
+                HTTP2StreamMultiplexer(mode: mode, channel: self) { channel in
+                    self.eventLoop.makeSucceededFuture(())
+                }
+            ).wait()
+        )
     }
 }
 
-private struct MyError: Error { }
+private struct MyError: Error {}
 
 /// A handler that asserts the frames received match the expected set.
 internal final class FramePayloadExpecter: ChannelInboundHandler {
@@ -76,14 +81,21 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     }
 
     private func activateStream(_ streamID: HTTP2StreamID) {
-        let activated = NIOHTTP2StreamCreatedEvent(streamID: streamID, localInitialWindowSize: 16384, remoteInitialWindowSize: 16384)
+        let activated = NIOHTTP2StreamCreatedEvent(
+            streamID: streamID,
+            localInitialWindowSize: 16384,
+            remoteInitialWindowSize: 16384
+        )
         self.channel.pipeline.fireUserInboundEventTriggered(activated)
     }
 
     func testMultiplexerIgnoresFramesOnStream0() throws {
         self.channel.addNoOpMultiplexer(mode: .server)
 
-        let simplePingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5), ack: false))
+        let simplePingFrame = HTTP2Frame(
+            streamID: .rootStream,
+            payload: .ping(HTTP2PingData(withInteger: 5), ack: false)
+        )
         XCTAssertNoThrow(try self.channel.writeInbound(simplePingFrame))
         XCTAssertNoThrow(try self.channel.assertReceivedFrame().assertFrameMatches(this: simplePingFrame))
 
@@ -111,7 +123,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testChannelsCloseThemselvesWhenToldTo() throws {
         let completedChannelCount = ManagedAtomic<Int>(0)
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
-            channel.closeFuture.whenSuccess { completedChannelCount.wrappingIncrement(ordering: .sequentiallyConsistent) }
+            channel.closeFuture.whenSuccess {
+                completedChannelCount.wrappingIncrement(ordering: .sequentiallyConsistent)
+            }
             return channel.eventLoop.makeSucceededFuture(())
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -119,7 +133,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Let's send a bunch of headers frames with endStream on them. This should open some streams.
         let streamIDs = stride(from: 1, to: 100, by: 2).map { HTTP2StreamID($0) }
         for streamID in streamIDs {
-            let frame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(), endStream: true)))
+            let frame = HTTP2Frame(
+                streamID: streamID,
+                payload: .headers(.init(headers: HPACKHeaders(), endStream: true))
+            )
             XCTAssertNoThrow(try self.channel.writeInbound(frame))
         }
         XCTAssertEqual(completedChannelCount.load(ordering: .sequentiallyConsistent), 0)
@@ -155,7 +172,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
                     closeError = error
                 }
             }
-            return channel.pipeline.addHandler(FramePayloadExpecter(expectedPayload: [frame.payload, rstStreamFrame.payload]))
+            return channel.pipeline.addHandler(
+                FramePayloadExpecter(expectedPayload: [frame.payload, rstStreamFrame.payload])
+            )
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
@@ -176,8 +195,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // At this stage the stream should be closed with the appropriate error code.
         closeError.withLockedValue { closeError in
-            XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
-                           NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel))
+            XCTAssertEqual(
+                closeError as? NIOHTTP2Errors.StreamClosed,
+                NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
+            )
         }
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -190,7 +211,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // First, set up the frames we want to send/receive.
         let streamID = HTTP2StreamID(1)
         let frame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(), endStream: true)))
-        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil))
+        let goAwayFrame = HTTP2Frame(
+            streamID: .rootStream,
+            payload: .goAway(lastStreamID: .rootStream, errorCode: .http11Required, opaqueData: nil)
+        )
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
             closeError.withLockedValue { closeError in
@@ -223,8 +247,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // At this stage the stream should be closed with the appropriate manufactured error code.
         closeError.withLockedValue { closeError in
-            XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed,
-                           NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .refusedStream))
+            XCTAssertEqual(
+                closeError as? NIOHTTP2Errors.StreamClosed,
+                NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .refusedStream)
+            )
         }
         XCTAssertNoThrow(try self.channel.finish())
     }
@@ -306,7 +332,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
-
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
         // Let's send a headers frame to open the stream.
@@ -336,7 +361,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
-
 
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -376,7 +400,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
-
 
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -463,7 +486,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let userEvent = StreamClosedEvent(streamID: streamID, reason: .cancel)
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
         closeError.withLockedValue { closeError in
-            XCTAssertEqual(closeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel))
+            XCTAssertEqual(
+                closeError as? NIOHTTP2Errors.StreamClosed,
+                NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
+            )
         }
 
         XCTAssertNoThrow(try self.channel.finish())
@@ -479,7 +505,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             }
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
-
 
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -606,7 +631,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let firstStreamID = HTTP2StreamID(1)
         let secondStreamID = HTTP2StreamID(3)
         for streamID in [firstStreamID, secondStreamID] {
-            let frame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders(), endStream: true)))
+            let frame = HTTP2Frame(
+                streamID: streamID,
+                payload: .headers(.init(headers: HPACKHeaders(), endStream: true))
+            )
             XCTAssertNoThrow(try self.channel.writeInbound(frame))
             self.activateStream(streamID)
         }
@@ -705,7 +733,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         self.channel.pipeline.fireUserInboundEventTriggered(userEvent)
 
         writeError.withLockedValue { writeError in
-            XCTAssertEqual(writeError as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel))
+            XCTAssertEqual(
+                writeError as? NIOHTTP2Errors.StreamClosed,
+                NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
+            )
         }
 
         XCTAssertNoThrow(try self.channel.finish())
@@ -749,7 +780,8 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testReadPullsInAllFrames() throws {
         let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         let frameRecorder = InboundFramePayloadRecorder()
-        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel -> EventLoopFuture<Void> in
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) {
+            channel -> EventLoopFuture<Void> in
             childChannelPromise.succeed(channel)
 
             // We're going to disable autoRead on this channel.
@@ -766,7 +798,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             }
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
-
 
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -812,7 +843,8 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let autoRead = ManagedAtomic<Bool>(false)
 
         let (channelsStream, channelsContinuation) = AsyncStream.makeStream(of: Channel.self)
-        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel -> EventLoopFuture<Void> in
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) {
+            channel -> EventLoopFuture<Void> in
             channelsContinuation.yield(channel)
             // We'll disable auto read on the first channel only.
             let autoReadValue = autoRead.exchange(true, ordering: .sequentiallyConsistent)
@@ -865,7 +897,8 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testReadWillCauseAutomaticFrameDelivery() throws {
         let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         let frameRecorder = InboundFramePayloadRecorder()
-        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel -> EventLoopFuture<Void> in
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) {
+            channel -> EventLoopFuture<Void> in
             childChannelPromise.succeed(channel)
 
             // We're going to disable autoRead on this channel.
@@ -919,7 +952,8 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         let readCounter = ReadCounter()
         let frameRecorder = InboundFramePayloadRecorder()
-        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel -> EventLoopFuture<Void> in
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) {
+            channel -> EventLoopFuture<Void> in
             childChannelPromise.succeed(channel)
 
             // We're going to disable autoRead on this channel.
@@ -1004,7 +1038,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testHandlersAreRemovedOnClosure() throws {
         let handlerRemoved = ManagedAtomic<Bool>(false)
         let handlerRemovedPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
-        handlerRemovedPromise.futureResult.whenComplete { _ in handlerRemoved.store(true, ordering: .sequentiallyConsistent) }
+        handlerRemovedPromise.futureResult.whenComplete { _ in
+            handlerRemoved.store(true, ordering: .sequentiallyConsistent)
+        }
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
             return channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
@@ -1034,7 +1070,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testHandlersAreRemovedOnClosureWithError() throws {
         let handlerRemoved = ManagedAtomic<Bool>(false)
         let handlerRemovedPromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
-        handlerRemovedPromise.futureResult.whenComplete { _ in handlerRemoved.store(true, ordering: .sequentiallyConsistent) }
+        handlerRemovedPromise.futureResult.whenComplete { _ in
+            handlerRemoved.store(true, ordering: .sequentiallyConsistent)
+        }
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
             return channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
@@ -1065,7 +1103,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         let createdChannelCount = ManagedAtomic<Int>(0)
         let configuredChannelCount = ManagedAtomic<Int>(0)
-        let streamIDs = NIOLockedValueBox(Array<HTTP2StreamID>())
+        let streamIDs = NIOLockedValueBox([HTTP2StreamID]())
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
             XCTFail("Must not be called")
             return channel.eventLoop.makeFailedFuture(MyError())
@@ -1115,7 +1153,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let configurePromise: EventLoopPromise<Void> = self.channel.eventLoop.makePromise()
         let createdChannelCount = ManagedAtomic<Int>(0)
         let configuredChannelCount = ManagedAtomic<Int>(0)
-        let streamIDs = NIOLockedValueBox(Array<HTTP2StreamID>())
+        let streamIDs = NIOLockedValueBox([HTTP2StreamID]())
         let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.channel) { channel in
             XCTFail("Must not be called")
             return channel.eventLoop.makeFailedFuture(MyError())
@@ -1180,7 +1218,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         }
         (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
-
         let childChannel = try childChannelPromise.futureResult.wait()
         childChannel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders())), promise: nil)
 
@@ -1211,18 +1248,19 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let childChannel = try childChannelPromise.futureResult.wait()
 
         let writeError = NIOLockedValueBox<Error?>(nil)
-        childChannel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders()))).whenFailure { error in
-            writeError.withLockedValue{ writeError in
+        childChannel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: HPACKHeaders()))).whenFailure {
+            error in
+            writeError.withLockedValue { writeError in
                 writeError = error
             }
         }
-        writeError.withLockedValue{ writeError in
+        writeError.withLockedValue { writeError in
             XCTAssertNil(writeError)
         }
 
         configurePromise.fail(MyError())
 
-        writeError.withLockedValue{ writeError in
+        writeError.withLockedValue { writeError in
             XCTAssertNotNil(writeError)
             XCTAssertTrue(writeError is MyError)
         }
@@ -1241,7 +1279,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
         multiplexer.createStreamChannel(promise: nil) { channel in
-            return configurePromise.futureResult
+            configurePromise.futureResult
         }
         (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
@@ -1341,7 +1379,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testMultiplexerIgnoresPriorityFrames() throws {
         self.channel.addNoOpMultiplexer(mode: .server)
 
-        let simplePingFrame = HTTP2Frame(streamID: 106, payload: .priority(.init(exclusive: true, dependency: .rootStream, weight: 15)))
+        let simplePingFrame = HTTP2Frame(
+            streamID: 106,
+            payload: .priority(.init(exclusive: true, dependency: .rootStream, weight: 15))
+        )
         XCTAssertNoThrow(try self.channel.writeInbound(simplePingFrame))
         XCTAssertNoThrow(try self.channel.assertReceivedFrame().assertFrameMatches(this: simplePingFrame))
 
@@ -1396,7 +1437,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         let channelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: channelPromise) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         self.channel.embeddedEventLoop.run()
 
@@ -1450,7 +1491,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         let channelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: channelPromise) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         self.channel.embeddedEventLoop.run()
 
@@ -1481,10 +1522,14 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
         // We're going to send in 10 request frames.
-        let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let requestHeaders = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         XCTAssertEqual(flushCounter.flushCount, 0)
-        let framesToSend = stride(from: 1, through: 19, by: 2).map { HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(.init(headers: requestHeaders, endStream: true))) }
-        for frame in framesToSend  {
+        let framesToSend = stride(from: 1, through: 19, by: 2).map {
+            HTTP2Frame(streamID: HTTP2StreamID($0), payload: .headers(.init(headers: requestHeaders, endStream: true)))
+        }
+        for frame in framesToSend {
             self.channel.pipeline.fireChannelRead(NIOAny(frame))
         }
         self.channel.embeddedEventLoop.run()
@@ -1519,7 +1564,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         }
 
         // Wake up and activate the stream.
-        let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let requestHeaders = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let requestFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: requestHeaders, endStream: false)))
         self.channel.pipeline.fireChannelRead(NIOAny(requestFrame))
         self.activateStream(1)
@@ -1533,7 +1580,10 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Now we're going to send 9 data frames.
         var requestData = self.channel.allocator.buffer(capacity: 1024)
         requestData.writeBytes("Hello world!".utf8)
-        let dataFrames = repeatElement(HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(requestData), endStream: false))), count: 9)
+        let dataFrames = repeatElement(
+            HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(requestData), endStream: false))),
+            count: 9
+        )
 
         for frame in dataFrames {
             self.channel.pipeline.fireChannelRead(NIOAny(frame))
@@ -1584,10 +1634,15 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         }
 
         // Wake up and activate the streams.
-        let requestHeaders = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let requestHeaders = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
 
         for streamID in [HTTP2StreamID(1), HTTP2StreamID(3), HTTP2StreamID(5)] {
-            let requestFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders, endStream: false)))
+            let requestFrame = HTTP2Frame(
+                streamID: streamID,
+                payload: .headers(.init(headers: requestHeaders, endStream: false))
+            )
             self.channel.pipeline.fireChannelRead(NIOAny(requestFrame))
             self.activateStream(streamID)
         }
@@ -1636,10 +1691,12 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     }
 
     func testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokens() throws {
-        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
-                                                 channel: self.channel,
-                                                 outboundBufferSizeHighWatermark: 100,
-                                                 outboundBufferSizeLowWatermark: 50) { channel in
+        let multiplexer = HTTP2StreamMultiplexer(
+            mode: .client,
+            channel: self.channel,
+            outboundBufferSizeHighWatermark: 100,
+            outboundBufferSizeLowWatermark: 50
+        ) { channel in
             XCTFail("Must not be called")
             return channel.eventLoop.makeFailedFuture(MyError())
         }
@@ -1651,7 +1708,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Now we want to create a new child stream.
         let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: childChannelPromise) { childChannel in
-            return childChannel.eventLoop.makeSucceededFuture(())
+            childChannel.eventLoop.makeSucceededFuture(())
         }
         self.channel.embeddedEventLoop.run()
 
@@ -1660,7 +1717,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // We're going to write a HEADERS frame (not counted towards flow control calculations) and a 90 byte DATA frame (90 bytes). This will not flip the
         // writability state.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
 
         var dataBuffer = childChannel.allocator.buffer(capacity: 90)
@@ -1704,7 +1763,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let promises = (0..<5).map { _ in self.channel.eventLoop.makePromise(of: Channel.self) }
         for promise in promises {
             multiplexer.createStreamChannel(promise: promise) { childChannel in
-                return childChannel.eventLoop.makeSucceededFuture(())
+                childChannel.eventLoop.makeSucceededFuture(())
             }
         }
         self.channel.embeddedEventLoop.run()
@@ -1716,7 +1775,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // We need to write (and flush) some data so that the streams get stream IDs.
         for childChannel in channels {
-            XCTAssertNoThrow(try childChannel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: [:]))).wait())
+            XCTAssertNoThrow(
+                try childChannel.writeAndFlush(HTTP2Frame.FramePayload.headers(.init(headers: [:]))).wait()
+            )
         }
 
         // Mark the parent channel not writable. This currently changes nothing.
@@ -1741,10 +1802,12 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     }
 
     func testMultiplexerModifiesStreamChannelWritabilityBasedOnFixedSizeTokensAndChannelWritability() throws {
-        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
-                                                 channel: self.channel,
-                                                 outboundBufferSizeHighWatermark: 100,
-                                                 outboundBufferSizeLowWatermark: 50) { channel in
+        let multiplexer = HTTP2StreamMultiplexer(
+            mode: .client,
+            channel: self.channel,
+            outboundBufferSizeHighWatermark: 100,
+            outboundBufferSizeLowWatermark: 50
+        ) { channel in
             XCTFail("Must not be called")
             return channel.eventLoop.makeFailedFuture(MyError())
         }
@@ -1756,7 +1819,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Now we want to create a new child stream.
         let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: childChannelPromise) { childChannel in
-            return childChannel.eventLoop.makeSucceededFuture(())
+            childChannel.eventLoop.makeSucceededFuture(())
         }
         self.channel.embeddedEventLoop.run()
 
@@ -1769,7 +1832,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // We're going to write a HEADERS frame (not counted towards flow control calculations) and a 90 byte DATA frame (90 bytes). This will not flip the
         // writability state.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
 
         var dataBuffer = childChannel.allocator.buffer(capacity: 90)
@@ -1810,10 +1875,12 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
     func testStreamChannelToleratesFailingInitializer() {
         struct DummyError: Error {}
-        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
-                                                 channel: self.channel,
-                                                 outboundBufferSizeHighWatermark: 100,
-                                                 outboundBufferSizeLowWatermark: 50) { channel in
+        let multiplexer = HTTP2StreamMultiplexer(
+            mode: .client,
+            channel: self.channel,
+            outboundBufferSizeHighWatermark: 100,
+            outboundBufferSizeLowWatermark: 50
+        ) { channel in
             XCTFail("Must not be called")
             return channel.eventLoop.makeFailedFuture(MyError())
         }
@@ -1835,9 +1902,11 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testInboundChannelWindowSizeIsCustomisable() throws {
         let targetWindowSize = 1 << 18
 
-        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
-                                                 channel: self.channel,
-                                                 targetWindowSize: targetWindowSize) { channel in
+        let multiplexer = HTTP2StreamMultiplexer(
+            mode: .client,
+            channel: self.channel,
+            targetWindowSize: targetWindowSize
+        ) { channel in
             return channel.eventLoop.makeSucceededFuture(())
         }
 
@@ -1850,12 +1919,20 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // Now claim that the window got consumed. Nothing happens.
         XCTAssertNoThrow(try XCTAssertNil(self.channel.readOutbound(as: HTTP2Frame.self)))
-        var windowEvent = NIOHTTP2WindowUpdatedEvent(streamID: 1, inboundWindowSize: (targetWindowSize / 2) + 1, outboundWindowSize: nil)
+        var windowEvent = NIOHTTP2WindowUpdatedEvent(
+            streamID: 1,
+            inboundWindowSize: (targetWindowSize / 2) + 1,
+            outboundWindowSize: nil
+        )
         channel.pipeline.fireUserInboundEventTriggered(windowEvent)
         XCTAssertNoThrow(try XCTAssertNil(self.channel.readOutbound(as: HTTP2Frame.self)))
 
         // Consume the last byte.
-        windowEvent = NIOHTTP2WindowUpdatedEvent(streamID: 1, inboundWindowSize: (targetWindowSize / 2), outboundWindowSize: nil)
+        windowEvent = NIOHTTP2WindowUpdatedEvent(
+            streamID: 1,
+            inboundWindowSize: (targetWindowSize / 2),
+            outboundWindowSize: nil
+        )
         channel.pipeline.fireUserInboundEventTriggered(windowEvent)
         guard let receivedFrame = try assertNoThrowWithValue(self.channel.readOutbound(as: HTTP2Frame.self)) else {
             XCTFail("No frame received")
@@ -1878,7 +1955,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Create a payload based stream.
         let streamAPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamAPromise) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         self.channel.embeddedEventLoop.run()
         let streamA = try assertNoThrowWithValue(try streamAPromise.futureResult.wait())
@@ -1898,7 +1975,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let streamB = try assertNoThrowWithValue(try streamBPromise.futureResult.wait())
 
         // Do some writes on A and B.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
 
         // (We checked the streamID above.)
@@ -1909,14 +1988,17 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // Stream A must have an ID now.
         XCTAssertEqual(try streamA.getOption(HTTP2StreamChannelOptions.streamID).wait(), HTTP2StreamID(3))
 
-        frameRecorder.flushedWrites.assertFramesMatch([HTTP2Frame(streamID: 1, payload: headersPayload),
-                                                       HTTP2Frame(streamID: 3, payload: headersPayload)])
+        frameRecorder.flushedWrites.assertFramesMatch([
+            HTTP2Frame(streamID: 1, payload: headersPayload),
+            HTTP2Frame(streamID: 3, payload: headersPayload),
+        ])
     }
 
     func testReadWhenUsingAutoreadOnChildChannel() throws {
         let childChannelPromise = self.channel.eventLoop.makePromise(of: Channel.self)
         let readCounter = ReadCounter()
-        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel -> EventLoopFuture<Void> in
+        let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) {
+            channel -> EventLoopFuture<Void> in
             childChannelPromise.succeed(channel)
 
             // We're going to _enable_ autoRead on this channel.
@@ -1933,7 +2015,6 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let frame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: HPACKHeaders())))
         XCTAssertNoThrow(try self.channel.writeInbound(frame))
         self.activateStream(streamID)
-
 
         _ = try childChannelPromise.futureResult.wait()
 
@@ -1966,9 +2047,11 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
     func testWindowUpdateIsNotEmittedAfterStreamIsClosed() throws {
         let targetWindowSize = 1024
-        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
-                                                 channel: self.channel,
-                                                 targetWindowSize: targetWindowSize) { channel in
+        let multiplexer = HTTP2StreamMultiplexer(
+            mode: .client,
+            channel: self.channel,
+            targetWindowSize: targetWindowSize
+        ) { channel in
             return channel.eventLoop.makeSucceededFuture(())
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -1977,7 +2060,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
 
         // Write a headers frame.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let headersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers)))
         self.channel.pipeline.fireChannelRead(NIOAny(headersFrame))
 
@@ -1995,7 +2080,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // The inbound window size should now be our target: 1024. Write enough bytes to consume the
         // inbound window.
-        let data = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(.init(repeating: 0, count: targetWindowSize + 1))))
+        let data = HTTP2Frame.FramePayload.data(
+            .init(data: .byteBuffer(.init(repeating: 0, count: targetWindowSize + 1)))
+        )
         let dataFrame = HTTP2Frame(streamID: 1, payload: data)
         self.channel.pipeline.fireChannelRead(NIOAny(dataFrame))
 
@@ -2009,9 +2096,11 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
     func testWindowUpdateIsNotEmittedAfterStreamIsClosedEvenOnLaterFrame() throws {
         let targetWindowSize = 128
-        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
-                                                 channel: self.channel,
-                                                 targetWindowSize: targetWindowSize) { channel in
+        let multiplexer = HTTP2StreamMultiplexer(
+            mode: .client,
+            channel: self.channel,
+            targetWindowSize: targetWindowSize
+        ) { channel in
             return channel.eventLoop.makeSucceededFuture(())
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -2020,7 +2109,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 80)).wait())
 
         // Write a headers frame.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let headersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers)))
         self.channel.pipeline.fireChannelRead(NIOAny(headersFrame))
 
@@ -2035,8 +2126,12 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         // The inbound window size should now be our target: 128. Write enough bytes to consume the
         // inbound window as two frames: a 127-byte frame, followed by a 1-byte with END_STREAM set.
         let bytes = ByteBuffer(repeating: 0, count: targetWindowSize)
-        let firstData = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bytes.getSlice(at: bytes.readerIndex, length: targetWindowSize - 1)!)))
-        let secondData = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bytes.getSlice(at: bytes.readerIndex, length: 1)!), endStream: true))
+        let firstData = HTTP2Frame.FramePayload.data(
+            .init(data: .byteBuffer(bytes.getSlice(at: bytes.readerIndex, length: targetWindowSize - 1)!))
+        )
+        let secondData = HTTP2Frame.FramePayload.data(
+            .init(data: .byteBuffer(bytes.getSlice(at: bytes.readerIndex, length: 1)!), endStream: true)
+        )
         let firstDataFrame = HTTP2Frame(streamID: 1, payload: firstData)
         let secondDataFrame = HTTP2Frame(streamID: 1, payload: secondData)
 
@@ -2085,14 +2180,15 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
     func testStreamErrorIsDeliveredToChannel() throws {
         let goodHeaders = HPACKHeaders([
-            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
         ])
         var badHeaders = goodHeaders
         badHeaders.add(name: "transfer-encoding", value: "chunked")
 
-
-        let multiplexer = HTTP2StreamMultiplexer(mode: .client,
-                                                 channel: self.channel) { channel in
+        let multiplexer = HTTP2StreamMultiplexer(
+            mode: .client,
+            channel: self.channel
+        ) { channel in
             return channel.eventLoop.makeSucceededFuture(())
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -2166,12 +2262,18 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         XCTAssertEqual(frames.count, 2)
 
         frames[0].assertHeadersFrame(endStream: false, streamID: 1, headers: goodHeaders, priority: nil, type: .request)
-        frames[1].assertHeadersFrame(endStream: false, streamID: 3, headers: badHeaders, priority: nil, type: .doNotValidate)
+        frames[1].assertHeadersFrame(
+            endStream: false,
+            streamID: 3,
+            headers: badHeaders,
+            priority: nil,
+            type: .doNotValidate
+        )
     }
 
     func testPendingReadsAreFlushedEvenWithoutUnsatisfiedReadOnChannelInactive() throws {
         let goodHeaders = HPACKHeaders([
-            (":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")
+            (":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost"),
         ])
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.channel) { channel in
@@ -2230,7 +2332,9 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
         // 3. pass on more body - should not change a thing, since read is pending in consumer
 
-        let responseBody2 = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(.init(string: "bar")), endStream: true))
+        let responseBody2 = HTTP2Frame.FramePayload.data(
+            .init(data: .byteBuffer(.init(string: "bar")), endStream: true)
+        )
         XCTAssertNoThrow(try self.channel.writeInbound(HTTP2Frame(streamID: streamID, payload: responseBody2)))
 
         try childChannel.pipeline.handler(type: ReadAndFrameConsumer.self).flatMapThrowing { consumer in

@@ -12,11 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
+import XCTest
+
 @testable import NIOHTTP2
 
 typealias FrameRecorderHandler = InboundFrameRecorder
@@ -37,23 +38,47 @@ class SimpleClientServerTests: XCTestCase {
 
     /// Establish a basic HTTP/2 connection.
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
-    func basicHTTP2Connection(clientSettings: HTTP2Settings = nioDefaultSettings,
-                              serverSettings: HTTP2Settings = nioDefaultSettings,
-                              withMultiplexerCallback multiplexerCallback: NIOChannelInitializerWithStreamID? = nil) throws {
-        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, initialSettings: clientSettings)).wait())
-        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server, initialSettings: serverSettings)).wait())
+    func basicHTTP2Connection(
+        clientSettings: HTTP2Settings = nioDefaultSettings,
+        serverSettings: HTTP2Settings = nioDefaultSettings,
+        withMultiplexerCallback multiplexerCallback: NIOChannelInitializerWithStreamID? = nil
+    ) throws {
+        XCTAssertNoThrow(
+            try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, initialSettings: clientSettings))
+                .wait()
+        )
+        XCTAssertNoThrow(
+            try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server, initialSettings: serverSettings))
+                .wait()
+        )
 
         if let multiplexerCallback = multiplexerCallback {
-            XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .client,
-                                                                                               channel: self.clientChannel,
-                                                                                               inboundStreamStateInitializer: multiplexerCallback)).wait())
-            XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .server,
-                                                                                               channel: self.serverChannel,
-                                                                                               inboundStreamStateInitializer: multiplexerCallback)).wait())
+            XCTAssertNoThrow(
+                try self.clientChannel.pipeline.addHandler(
+                    HTTP2StreamMultiplexer(
+                        mode: .client,
+                        channel: self.clientChannel,
+                        inboundStreamStateInitializer: multiplexerCallback
+                    )
+                ).wait()
+            )
+            XCTAssertNoThrow(
+                try self.serverChannel.pipeline.addHandler(
+                    HTTP2StreamMultiplexer(
+                        mode: .server,
+                        channel: self.serverChannel,
+                        inboundStreamStateInitializer: multiplexerCallback
+                    )
+                ).wait()
+            )
         }
 
-        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel,
-                                   clientSettings: clientSettings, serverSettings: serverSettings)
+        try self.assertDoHandshake(
+            client: self.clientChannel,
+            server: self.serverChannel,
+            clientSettings: clientSettings,
+            serverSettings: serverSettings
+        )
     }
 
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
@@ -61,13 +86,13 @@ class SimpleClientServerTests: XCTestCase {
         // Begin by getting the connection up.
         // We add the stream multiplexer because it'll emit WINDOW_UPDATE frames, which we need.
         let serverHandler = FrameRecorderHandler()
-        try self.basicHTTP2Connection() { channel, streamID in
-            return channel.pipeline.addHandler(serverHandler)
+        try self.basicHTTP2Connection { channel, streamID in
+            channel.pipeline.addHandler(serverHandler)
         }
 
         // We're going to create a largish temp file: 3 data frames in size.
-        var bodyData = self.clientChannel.allocator.buffer(capacity: 1<<14)
-        for val in (0..<((1<<14) / MemoryLayout<Int>.size)) {
+        var bodyData = self.clientChannel.allocator.buffer(capacity: 1 << 14)
+        for val in (0..<((1 << 14) / MemoryLayout<Int>.size)) {
             bodyData.writeInteger(val)
         }
 
@@ -80,14 +105,18 @@ class SimpleClientServerTests: XCTestCase {
 
             let clientHandler = FrameRecorderHandler()
             let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
-            try (self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler as! HTTP2StreamMultiplexer).createStreamChannel(promise: childChannelPromise) { channel, streamID in
-                return channel.pipeline.addHandler(clientHandler)
-            }
+            try
+                (self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler
+                as! HTTP2StreamMultiplexer).createStreamChannel(promise: childChannelPromise) { channel, streamID in
+                    channel.pipeline.addHandler(clientHandler)
+                }
             (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
             let childChannel = try childChannelPromise.futureResult.wait()
 
             // Start by sending the headers.
-            let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+            let headers = HPACKHeaders([
+                (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+            ])
             let clientStreamID = HTTP2StreamID(1)
             let reqFrame = HTTP2Frame(streamID: clientStreamID, payload: .headers(.init(headers: headers)))
             childChannel.writeAndFlush(reqFrame, promise: nil)
@@ -98,17 +127,27 @@ class SimpleClientServerTests: XCTestCase {
             self.serverChannel.assertNoFramesReceived()
 
             // Ok, we're gonna send the body here.
-            let reqBodyFrame = HTTP2Frame(streamID: clientStreamID, payload: .data(.init(data: .fileRegion(region), endStream: true)))
+            let reqBodyFrame = HTTP2Frame(
+                streamID: clientStreamID,
+                payload: .data(.init(data: .fileRegion(region), endStream: true))
+            )
             childChannel.writeAndFlush(reqBodyFrame, promise: nil)
             self.interactInMemory(self.clientChannel, self.serverChannel)
 
             // We now expect 3 frames.
-            let dataFrames = (0..<3).map { idx in HTTP2Frame(streamID: clientStreamID,  payload: .data(.init(data: .byteBuffer(bodyData), endStream: idx == 2))) }
+            let dataFrames = (0..<3).map { idx in
+                HTTP2Frame(
+                    streamID: clientStreamID,
+                    payload: .data(.init(data: .byteBuffer(bodyData), endStream: idx == 2))
+                )
+            }
             serverHandler.receivedFrames.assertFramesMatch([reqFrame] + dataFrames)
 
             // The client will have seen a pair of window updates: one on the connection, one on the stream.
             try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
-            clientHandler.receivedFrames.assertFramesMatch([HTTP2Frame(streamID: clientStreamID, payload: .windowUpdate(windowSizeIncrement: 32768))])
+            clientHandler.receivedFrames.assertFramesMatch([
+                HTTP2Frame(streamID: clientStreamID, payload: .windowUpdate(windowSizeIncrement: 32768))
+            ])
 
             // No frames left.
             self.clientChannel.assertNoFramesReceived()
@@ -123,19 +162,23 @@ class SimpleClientServerTests: XCTestCase {
     func testAutomaticFlowControl() throws {
         // Begin by getting the connection up.
         // We add the stream multiplexer here because it manages automatic flow control.
-        try self.basicHTTP2Connection() { channel, streamID in
-            return channel.eventLoop.makeSucceededFuture(())
+        try self.basicHTTP2Connection { channel, streamID in
+            channel.eventLoop.makeSucceededFuture(())
         }
 
         // Now we're going to send a request, including a very large body: 65536 bytes in size. To avoid spending too much
         // time initializing buffers, we're going to send the same 1kB data frame 64 times.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
         var _requestBody = self.clientChannel.allocator.buffer(capacity: 1024)
         _requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 1024))
         let requestBody = _requestBody
 
         // We're going to open a stream and queue up the frames for that stream.
-        let handler = try self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler as! HTTP2StreamMultiplexer
+        let handler =
+            try self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler
+            as! HTTP2StreamMultiplexer
         let childHandler = FrameRecorderHandler()
         handler.createStreamChannel(promise: nil) { channel, streamID in
             let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
@@ -177,13 +220,19 @@ class SimpleClientServerTests: XCTestCase {
 
         // Begin by getting the connection up and add a stream multiplexer.
         try self.basicHTTP2Connection()
-        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(HTTP2StreamMultiplexer(mode: .server, channel: self.serverChannel)).wait())
+        XCTAssertNoThrow(
+            try self.serverChannel.pipeline.addHandler(
+                HTTP2StreamMultiplexer(mode: .server, channel: self.serverChannel)
+            ).wait()
+        )
 
         var largeBuffer = self.clientChannel.allocator.buffer(capacity: 32767)
         largeBuffer.writeBytes(repeatElement(UInt8(0xFF), count: 32767))
 
         // Let's open a stream, and write a DATA frame that consumes slightly less than half the window.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost"),
+        ])
         let headersFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers)))
         let bodyFrame = HTTP2Frame(streamID: 1, payload: .data(.init(data: .byteBuffer(largeBuffer))))
 
@@ -199,18 +248,30 @@ class SimpleClientServerTests: XCTestCase {
         // When it does this, the stream multiplexer will be told, and the stream will set its new expected maintained window size accordingly.
         // However, the new *actual* window size will now be small enough to emit a window update for. Note that the connection will not have a window
         // update frame sent as well maintain its size.
-        try self.assertSettingsUpdateWithAck([(HTTP2Setting(parameter: .initialWindowSize, value: 32768))], sender: self.serverChannel, receiver: self.clientChannel)
+        try self.assertSettingsUpdateWithAck(
+            [(HTTP2Setting(parameter: .initialWindowSize, value: 32768))],
+            sender: self.serverChannel,
+            receiver: self.clientChannel
+        )
         try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 1, windowIncrement: 32767)
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
 
         // Shrink it further. We shouldn't emit another window update.
-        try self.assertSettingsUpdateWithAck([(HTTP2Setting(parameter: .initialWindowSize, value: 16384))], sender: self.serverChannel, receiver: self.clientChannel)
+        try self.assertSettingsUpdateWithAck(
+            [(HTTP2Setting(parameter: .initialWindowSize, value: 16384))],
+            sender: self.serverChannel,
+            receiver: self.clientChannel
+        )
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
 
         // And resize up. No window update either.
-        try self.assertSettingsUpdateWithAck([(HTTP2Setting(parameter: .initialWindowSize, value: 65535))], sender: self.serverChannel, receiver: self.clientChannel)
+        try self.assertSettingsUpdateWithAck(
+            [(HTTP2Setting(parameter: .initialWindowSize, value: 65535))],
+            sender: self.serverChannel,
+            receiver: self.clientChannel
+        )
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
 
@@ -238,14 +299,19 @@ class SimpleClientServerTests: XCTestCase {
             channel.write(respFrame, promise: nil)
 
             // Now prepare the large body.
-            let respBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(responseBody), endStream: true)))
+            let respBodyFrame = HTTP2Frame(
+                streamID: streamID,
+                payload: .data(.init(data: .byteBuffer(responseBody), endStream: true))
+            )
             channel.writeAndFlush(respBodyFrame, promise: nil)
 
             return channel.pipeline.addHandler(childHandler)
         }
 
         // Now we're going to send a small request.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
 
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
@@ -288,11 +354,13 @@ class SimpleClientServerTests: XCTestCase {
         // to correctly confirm we don't receive a frame for the child stream.
         let childHandler = FrameRecorderHandler()
         try self.basicHTTP2Connection(serverSettings: serverSettings) { channel, streamID in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
 
         // Now we're going to send a large request: 65535 bytes in size
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
 
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
@@ -305,7 +373,10 @@ class SimpleClientServerTests: XCTestCase {
             requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
 
             // Now prepare the large body. We need END_STREAM set.
-            let reqBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(requestBody), endStream: true)))
+            let reqBodyFrame = HTTP2Frame(
+                streamID: streamID,
+                payload: .data(.init(data: .byteBuffer(requestBody), endStream: true))
+            )
             channel.writeAndFlush(reqBodyFrame, promise: nil)
 
             return channel.pipeline.addHandler(childHandler)
@@ -335,30 +406,34 @@ class SimpleClientServerTests: XCTestCase {
 
         let streamAPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamAPromise) { channel, _ in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         self.clientChannel.embeddedEventLoop.run()
         let streamA = try assertNoThrowWithValue(try streamAPromise.futureResult.wait())
 
         let streamBPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamBPromise) { channel, _ in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         self.clientChannel.embeddedEventLoop.run()
         let streamB = try assertNoThrowWithValue(try streamBPromise.futureResult.wait())
 
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let headersFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
 
         // Write on 'B' first.
-        let streamBHeadersWritten = streamB.getOption(HTTP2StreamChannelOptions.streamID).flatMap { streamID -> EventLoopFuture<Void> in
+        let streamBHeadersWritten = streamB.getOption(HTTP2StreamChannelOptions.streamID).flatMap {
+            streamID -> EventLoopFuture<Void> in
             let frame = HTTP2Frame(streamID: streamID, payload: headersFramePayload)
             return streamB.writeAndFlush(frame)
         }
         XCTAssertNoThrow(try streamBHeadersWritten.wait())
 
         // Now write on stream 'A', it will fail. (This failure motivated the frame-payload based stream channel.)
-        let streamAHeadersWritten = streamA.getOption(HTTP2StreamChannelOptions.streamID).flatMap { streamID -> EventLoopFuture<Void> in
+        let streamAHeadersWritten = streamA.getOption(HTTP2StreamChannelOptions.streamID).flatMap {
+            streamID -> EventLoopFuture<Void> in
             let frame = HTTP2Frame(streamID: streamID, payload: headersFramePayload)
             return streamA.writeAndFlush(frame)
         }
@@ -407,7 +482,7 @@ class SimpleClientServerTests: XCTestCase {
                 0x06,  // frame type, ping
                 0x00,  // flags, zeros
                 0x00, 0x00, 0x00, 0x00,  // stream ID, 0
-                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // 8 byte payload, all zeros
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // 8 byte payload, all zeros
             ])
         )
     }
@@ -440,7 +515,7 @@ class SimpleClientServerTests: XCTestCase {
         try channel.pipeline.syncOperations.addHandlers(
             [
                 NIOHTTP2Handler(mode: .client),
-                recorder
+                recorder,
             ]
         )
 
@@ -472,7 +547,7 @@ class SimpleClientServerTests: XCTestCase {
             try channel.pipeline.syncOperations.addHandlers(
                 [
                     NIOHTTP2Handler(mode: .client, tolerateImpossibleStateTransitionsInDebugMode: true),
-                    recorder
+                    recorder,
                 ]
             )
 
@@ -484,7 +559,10 @@ class SimpleClientServerTests: XCTestCase {
 
         // First impossible state transition: channelActive on channelActive.
         var (channel, recorder) = try setUpChannel()
-        try channel.pipeline.syncOperations.addHandler(ActionOnFlushHandler { $0.pipeline.fireChannelActive() }, position: .first)
+        try channel.pipeline.syncOperations.addHandler(
+            ActionOnFlushHandler { $0.pipeline.fireChannelActive() },
+            position: .first
+        )
         channel.pipeline.fireChannelActive()
         recorder.errors.withLockedValue { errors in
             XCTAssertEqual(errors.count, 1)
@@ -613,28 +691,28 @@ class SimpleClientServerTests: XCTestCase {
         // We expect the following frame bytes. The use of incremental indexing here is fine,
         // as the value shouldn't actually be added to the dynamic table.
         var expectedBytes = ByteBuffer(bytes: [
-            0x00, 0x00, 0x1f,       // Frame length: 31 bytes
-            0x01,                   // Frame type: 1, HEADERS
-            0x05,                   // Frame flags: END_HEADERS | END_STREAM
-            0x00, 0x00, 0x00, 0x01, // Stream ID: 1
-            0x20,                   // Max dynamic table size change, 0
-            0x84,                   // Indexed field, index number 4, static table
-            0x87,                   // Indexed field, index number 7, static table
-            0x41,                   // Literal field with incremental indexing, index 1,
-                0x88,             // Huffman-coded value with length 8,
-                0x2f, 0x91, 0xd3,
-                0x5d, 0x05, 0x5c,
-                0x87, 0xa7,
-            0x82,                   // Indexed field, index number 2, static table
-            0x40,                   // Literal field with incremental indexing, new name,
-                0x8a,             // Huffman-coded name with length 10
-                0x1a, 0xd3, 0x94,
-                0x72, 0x16, 0xc5,
-                0xa5, 0x31, 0x68,
-                0x93,
-                0x84,             // Huffman-coded value with length 4
-                0x32, 0x14, 0x41,
-                0x53
+            0x00, 0x00, 0x1f,  // Frame length: 31 bytes
+            0x01,  // Frame type: 1, HEADERS
+            0x05,  // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x01,  // Stream ID: 1
+            0x20,  // Max dynamic table size change, 0
+            0x84,  // Indexed field, index number 4, static table
+            0x87,  // Indexed field, index number 7, static table
+            0x41,  // Literal field with incremental indexing, index 1,
+            0x88,  // Huffman-coded value with length 8,
+            0x2f, 0x91, 0xd3,
+            0x5d, 0x05, 0x5c,
+            0x87, 0xa7,
+            0x82,  // Indexed field, index number 2, static table
+            0x40,  // Literal field with incremental indexing, new name,
+            0x8a,  // Huffman-coded name with length 10
+            0x1a, 0xd3, 0x94,
+            0x72, 0x16, 0xc5,
+            0xa5, 0x31, 0x68,
+            0x93,
+            0x84,  // Huffman-coded value with length 4
+            0x32, 0x14, 0x41,
+            0x53,
         ])
 
         XCTAssertEqual(expectedBytes, reads.last)
@@ -648,27 +726,27 @@ class SimpleClientServerTests: XCTestCase {
 
         // This should be similar to the first, but without the dynamic table size change and a new stream ID.
         expectedBytes = ByteBuffer(bytes: [
-            0x00, 0x00, 0x1e,       // Frame length: 30 bytes
-            0x01,                   // Frame type: 1, HEADERS
-            0x05,                   // Frame flags: END_HEADERS | END_STREAM
-            0x00, 0x00, 0x00, 0x03, // Stream ID: 3
-            0x84,                   // Indexed field, index number 4, static table
-            0x87,                   // Indexed field, index number 7, static table
-            0x41,                   // Literal field with incremental indexing, index 1,
-                  0x88,             // Huffman-coded value with length 8,
-                  0x2f, 0x91, 0xd3,
-                  0x5d, 0x05, 0x5c,
-                  0x87, 0xa7,
-            0x82,                   // Indexed field, index number 2, static table
-            0x40,                   // Literal field with incremental indexing, new name,
-                  0x8a,             // Huffman-coded name with length 10
-                  0x1a, 0xd3, 0x94,
-                  0x72, 0x16, 0xc5,
-                  0xa5, 0x31, 0x68,
-                  0x93,
-                  0x84,             // Huffman-coded value with length 4
-                  0x32, 0x14, 0x41,
-                  0x53
+            0x00, 0x00, 0x1e,  // Frame length: 30 bytes
+            0x01,  // Frame type: 1, HEADERS
+            0x05,  // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x03,  // Stream ID: 3
+            0x84,  // Indexed field, index number 4, static table
+            0x87,  // Indexed field, index number 7, static table
+            0x41,  // Literal field with incremental indexing, index 1,
+            0x88,  // Huffman-coded value with length 8,
+            0x2f, 0x91, 0xd3,
+            0x5d, 0x05, 0x5c,
+            0x87, 0xa7,
+            0x82,  // Indexed field, index number 2, static table
+            0x40,  // Literal field with incremental indexing, new name,
+            0x8a,  // Huffman-coded name with length 10
+            0x1a, 0xd3, 0x94,
+            0x72, 0x16, 0xc5,
+            0xa5, 0x31, 0x68,
+            0x93,
+            0x84,  // Huffman-coded value with length 4
+            0x32, 0x14, 0x41,
+            0x53,
         ])
         XCTAssertEqual(expectedBytes, reads.first)
     }
@@ -705,8 +783,12 @@ class SimpleClientServerTests: XCTestCase {
 
         // Send the frame twice. This should error.
         buffer.clear()
-        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 1, payload: .headers(framePayload)), to: &buffer))
-        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 3, payload: .headers(framePayload)), to: &buffer))
+        XCTAssertNil(
+            try frameEncoder.encode(frame: HTTP2Frame(streamID: 1, payload: .headers(framePayload)), to: &buffer)
+        )
+        XCTAssertNil(
+            try frameEncoder.encode(frame: HTTP2Frame(streamID: 3, payload: .headers(framePayload)), to: &buffer)
+        )
         XCTAssertThrowsError(try channel.writeInbound(buffer)) { error in
             XCTAssertTrue(error is NIOHTTP2Errors.UnableToParseFrame)
         }
@@ -748,27 +830,27 @@ class SimpleClientServerTests: XCTestCase {
         // We expect the following frame bytes. The use of incremental indexing here is expected,
         // as the value will be added to the dynamic table.
         var expectedBytes = ByteBuffer(bytes: [
-            0x00, 0x00, 0x1e,       // Frame length: 30 bytes
-            0x01,                   // Frame type: 1, HEADERS
-            0x05,                   // Frame flags: END_HEADERS | END_STREAM
-            0x00, 0x00, 0x00, 0x01, // Stream ID: 1
-            0x84,                   // Indexed field, index number 4, static table
-            0x87,                   // Indexed field, index number 7, static table
-            0x41,                   // Literal field with incremental indexing, index 1,
-                  0x88,             // Huffman-coded value with length 8,
-                  0x2f, 0x91, 0xd3,
-                  0x5d, 0x05, 0x5c,
-                  0x87, 0xa7,
-            0x82,                   // Indexed field, index number 2, static table
-            0x40,                   // Literal field with incremental indexing, new name,
-                  0x8a,             // Huffman-coded name with length 10
-                  0x1a, 0xd3, 0x94,
-                  0x72, 0x16, 0xc5,
-                  0xa5, 0x31, 0x68,
-                  0x93,
-                  0x84,             // Huffman-coded value with length 4
-                  0x32, 0x14, 0x41,
-                  0x53
+            0x00, 0x00, 0x1e,  // Frame length: 30 bytes
+            0x01,  // Frame type: 1, HEADERS
+            0x05,  // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x01,  // Stream ID: 1
+            0x84,  // Indexed field, index number 4, static table
+            0x87,  // Indexed field, index number 7, static table
+            0x41,  // Literal field with incremental indexing, index 1,
+            0x88,  // Huffman-coded value with length 8,
+            0x2f, 0x91, 0xd3,
+            0x5d, 0x05, 0x5c,
+            0x87, 0xa7,
+            0x82,  // Indexed field, index number 2, static table
+            0x40,  // Literal field with incremental indexing, new name,
+            0x8a,  // Huffman-coded name with length 10
+            0x1a, 0xd3, 0x94,
+            0x72, 0x16, 0xc5,
+            0xa5, 0x31, 0x68,
+            0x93,
+            0x84,  // Huffman-coded value with length 4
+            0x32, 0x14, 0x41,
+            0x53,
         ])
 
         XCTAssertEqual(expectedBytes, reads.last)
@@ -789,28 +871,28 @@ class SimpleClientServerTests: XCTestCase {
 
         // This should be similar to the first, but without a dynamic table size change and a new stream ID.
         expectedBytes = ByteBuffer(bytes: [
-            0x00, 0x00, 0x1f,       // Frame length: 31 bytes
-            0x01,                   // Frame type: 1, HEADERS
-            0x05,                   // Frame flags: END_HEADERS | END_STREAM
-            0x00, 0x00, 0x00, 0x03, // Stream ID: 3
-            0x20,                   // Max dynamic table size change, 0
-            0x84,                   // Indexed field, index number 4, static table
-            0x87,                   // Indexed field, index number 7, static table
-            0x41,                   // Literal field with incremental indexing, index 1,
-                  0x88,             // Huffman-coded value with length 8,
-                  0x2f, 0x91, 0xd3,
-                  0x5d, 0x05, 0x5c,
-                  0x87, 0xa7,
-            0x82,                   // Indexed field, index number 2, static table
-            0x40,                   // Literal field with incremental indexing, new name,
-                  0x8a,             // Huffman-coded name with length 10
-                  0x1a, 0xd3, 0x94,
-                  0x72, 0x16, 0xc5,
-                  0xa5, 0x31, 0x68,
-                  0x93,
-                  0x84,             // Huffman-coded value with length 4
-                  0x32, 0x14, 0x41,
-                  0x53
+            0x00, 0x00, 0x1f,  // Frame length: 31 bytes
+            0x01,  // Frame type: 1, HEADERS
+            0x05,  // Frame flags: END_HEADERS | END_STREAM
+            0x00, 0x00, 0x00, 0x03,  // Stream ID: 3
+            0x20,  // Max dynamic table size change, 0
+            0x84,  // Indexed field, index number 4, static table
+            0x87,  // Indexed field, index number 7, static table
+            0x41,  // Literal field with incremental indexing, index 1,
+            0x88,  // Huffman-coded value with length 8,
+            0x2f, 0x91, 0xd3,
+            0x5d, 0x05, 0x5c,
+            0x87, 0xa7,
+            0x82,  // Indexed field, index number 2, static table
+            0x40,  // Literal field with incremental indexing, new name,
+            0x8a,  // Huffman-coded name with length 10
+            0x1a, 0xd3, 0x94,
+            0x72, 0x16, 0xc5,
+            0xa5, 0x31, 0x68,
+            0x93,
+            0x84,  // Huffman-coded value with length 4
+            0x32, 0x14, 0x41,
+            0x53,
         ])
         XCTAssertEqual(expectedBytes, reads.last)
     }
@@ -847,7 +929,9 @@ class SimpleClientServerTests: XCTestCase {
 
         // Send the first frame.
         buffer.clear()
-        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 1, payload: .headers(framePayload)), to: &buffer))
+        XCTAssertNil(
+            try frameEncoder.encode(frame: HTTP2Frame(streamID: 1, payload: .headers(framePayload)), to: &buffer)
+        )
         XCTAssertNoThrow(try channel.writeInbound(buffer))
 
         // Now, we send a settings frame that updates our settings.
@@ -859,7 +943,9 @@ class SimpleClientServerTests: XCTestCase {
         // be rejected.
         buffer.clear()
         XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 0, payload: .settings(.ack)), to: &buffer))
-        XCTAssertNil(try frameEncoder.encode(frame: HTTP2Frame(streamID: 3, payload: .headers(framePayload)), to: &buffer))
+        XCTAssertNil(
+            try frameEncoder.encode(frame: HTTP2Frame(streamID: 3, payload: .headers(framePayload)), to: &buffer)
+        )
         XCTAssertThrowsError(try channel.writeInbound(buffer)) { error in
             XCTAssertTrue(error is NIOHTTP2Errors.UnableToParseFrame)
         }

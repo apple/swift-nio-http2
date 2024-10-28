@@ -55,16 +55,20 @@ struct HTTP2FlowControlWindow {
 
     init(initialValue: Int) {
         precondition(initialValue >= 0, "Flow control windows may not begin negative")
-        precondition(initialValue <= HTTP2FlowControlWindow.maxSize,
-                     "Flow control windows may not exceed \(HTTP2FlowControlWindow.maxSize) bytes")
+        precondition(
+            initialValue <= HTTP2FlowControlWindow.maxSize,
+            "Flow control windows may not exceed \(HTTP2FlowControlWindow.maxSize) bytes"
+        )
 
         self.windowSize = Int32(initialValue)
     }
 
     init(initialValue: Int32) {
         precondition(initialValue >= 0, "Flow control windows may not begin negative")
-        precondition(initialValue <= HTTP2FlowControlWindow.maxSize,
-                     "Flow control windows may not exceed \(HTTP2FlowControlWindow.maxSize) bytes")
+        precondition(
+            initialValue <= HTTP2FlowControlWindow.maxSize,
+            "Flow control windows may not exceed \(HTTP2FlowControlWindow.maxSize) bytes"
+        )
 
         self.windowSize = initialValue
     }
@@ -94,7 +98,10 @@ struct HTTP2FlowControlWindow {
         // subtraction to avoid integer overflow. Note that if the current window size is negative then all window
         // update increments are valid.
         guard (self.windowSize < 0) || (HTTP2FlowControlWindow.maxSize - self.windowSize >= amount) else {
-            throw NIOHTTP2Errors.invalidFlowControlWindowSize(delta: Int(amount), currentWindowSize: Int(self.windowSize))
+            throw NIOHTTP2Errors.invalidFlowControlWindowSize(
+                delta: Int(amount),
+                currentWindowSize: Int(self.windowSize)
+            )
         }
 
         self.windowSize += Int32(amount)
@@ -116,7 +123,10 @@ struct HTTP2FlowControlWindow {
         assert(amount >= -(Int32.max))
 
         guard (self.windowSize < 0) || (HTTP2FlowControlWindow.maxSize - self.windowSize >= amount) else {
-            throw NIOHTTP2Errors.invalidFlowControlWindowSize(delta: Int(amount), currentWindowSize: Int(self.windowSize))
+            throw NIOHTTP2Errors.invalidFlowControlWindowSize(
+                delta: Int(amount),
+                currentWindowSize: Int(self.windowSize)
+            )
         }
 
         self.windowSize += amount
@@ -146,8 +156,10 @@ extension HTTP2FlowControlWindow: ExpressibleByIntegerLiteral {
 
     init(integerLiteral initialValue: Int32) {
         precondition(initialValue >= 0, "Flow control windows may not begin negative")
-        precondition(initialValue <= HTTP2FlowControlWindow.maxSize,
-                     "Flow control windows may not exceed \(HTTP2FlowControlWindow.maxSize) bytes")
+        precondition(
+            initialValue <= HTTP2FlowControlWindow.maxSize,
+            "Flow control windows may not exceed \(HTTP2FlowControlWindow.maxSize) bytes"
+        )
 
         self.windowSize = initialValue
     }
@@ -155,29 +167,29 @@ extension HTTP2FlowControlWindow: ExpressibleByIntegerLiteral {
 
 extension HTTP2FlowControlWindow: CustomStringConvertible {
     var description: String {
-        return self.windowSize.description
+        self.windowSize.description
     }
 }
 
-extension HTTP2FlowControlWindow: Equatable { }
+extension HTTP2FlowControlWindow: Equatable {}
 
-extension HTTP2FlowControlWindow: Hashable { }
+extension HTTP2FlowControlWindow: Hashable {}
 
 extension HTTP2FlowControlWindow: Comparable {
     static func < (lhs: HTTP2FlowControlWindow, rhs: HTTP2FlowControlWindow) -> Bool {
-        return lhs.windowSize < rhs.windowSize
+        lhs.windowSize < rhs.windowSize
     }
 
     static func > (lhs: HTTP2FlowControlWindow, rhs: HTTP2FlowControlWindow) -> Bool {
-        return lhs.windowSize > rhs.windowSize
+        lhs.windowSize > rhs.windowSize
     }
 
     static func <= (lhs: HTTP2FlowControlWindow, rhs: HTTP2FlowControlWindow) -> Bool {
-        return lhs.windowSize <= rhs.windowSize
+        lhs.windowSize <= rhs.windowSize
     }
 
     static func >= (lhs: HTTP2FlowControlWindow, rhs: HTTP2FlowControlWindow) -> Bool {
-        return lhs.windowSize >= rhs.windowSize
+        lhs.windowSize >= rhs.windowSize
     }
 }
 

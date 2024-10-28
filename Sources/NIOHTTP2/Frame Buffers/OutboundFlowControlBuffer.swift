@@ -61,7 +61,7 @@ internal struct OutboundFlowControlBuffer {
     /// The current value of SETTINGS_MAX_FRAME_SIZE set by the peer.
     internal var maxFrameSize: Int
 
-    internal init(initialConnectionWindowSize: Int = 65535, initialMaxFrameSize: Int = 1<<14) {
+    internal init(initialConnectionWindowSize: Int = 65535, initialMaxFrameSize: Int = 1 << 14) {
         // TODO(cory): HEAP! This should be a heap, sorted off the number of pending bytes!
         self.streamDataBuffers = StreamMap()
         self.connectionWindowSize = initialConnectionWindowSize
@@ -72,7 +72,10 @@ internal struct OutboundFlowControlBuffer {
         self.flushableStreams.reserveCapacity(16)
     }
 
-    internal mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) throws -> OutboundFrameAction {
+    internal mutating func processOutboundFrame(
+        _ frame: HTTP2Frame,
+        promise: EventLoopPromise<Void>?
+    ) throws -> OutboundFrameAction {
         // A side note: there is no special handling for RST_STREAM frames here, unlike in the concurrent streams buffer. This is because
         // RST_STREAM frames will cause stream closure notifications, which will force us to drop our buffers. For this reason we can
         // simplify our code here, which helps a lot.
@@ -93,7 +96,8 @@ internal struct OutboundFlowControlBuffer {
             // Headers are special. If we have a data frame buffered, we buffer behind it to avoid frames
             // being reordered. However, if we don't have a data frame buffered we pass the headers frame on
             // immediately, as there is no risk of violating ordering guarantees.
-            let bufferResult = self.streamDataBuffers.modify(streamID: streamID) { (state: inout StreamFlowControlState) -> Bool in
+            let bufferResult = self.streamDataBuffers.modify(streamID: streamID) {
+                (state: inout StreamFlowControlState) -> Bool in
                 if state.haveBufferedDataFrame {
                     state.bufferWrite((frame.payload, promise))
                     return true
@@ -135,7 +139,7 @@ internal struct OutboundFlowControlBuffer {
     }
 
     private func nextStreamToSend() -> HTTP2StreamID? {
-        return self.flushableStreams.first
+        self.flushableStreams.first
     }
 
     internal mutating func updateWindowOfStream(_ streamID: HTTP2StreamID, newSize: Int32) {
@@ -172,7 +176,9 @@ internal struct OutboundFlowControlBuffer {
     // We received a stream closed event. Drop any stream state we're holding.
     //
     // - returns: Any buffered stream state we may have been holding so their promises can be failed.
-    internal mutating func streamClosed(_ streamID: HTTP2StreamID) -> MarkedCircularBuffer<(HTTP2Frame.FramePayload, EventLoopPromise<Void>?)>? {
+    internal mutating func streamClosed(
+        _ streamID: HTTP2StreamID
+    ) -> MarkedCircularBuffer<(HTTP2Frame.FramePayload, EventLoopPromise<Void>?)>? {
         self.flushableStreams.remove(streamID)
         guard var streamData = self.streamDataBuffers.removeValue(forStreamID: streamID) else {
             // Huh, we didn't have any data for this stream. Oh well. That was easy.
@@ -194,8 +200,11 @@ internal struct OutboundFlowControlBuffer {
             return nil
         }
 
-        let nextWrite = self.streamDataBuffers.modify(streamID: nextStreamID) { (state: inout StreamFlowControlState) -> DataBuffer.BufferElement in
-            let (nextWrite, writabilityState) = state.nextWrite(maxSize: min(self.connectionWindowSize, self.maxFrameSize))
+        let nextWrite = self.streamDataBuffers.modify(streamID: nextStreamID) {
+            (state: inout StreamFlowControlState) -> DataBuffer.BufferElement in
+            let (nextWrite, writabilityState) = state.nextWrite(
+                maxSize: min(self.connectionWindowSize, self.maxFrameSize)
+            )
 
             switch writabilityState {
             case .changed(newValue: false):
@@ -233,7 +242,6 @@ internal struct OutboundFlowControlBuffer {
     }
 }
 
-
 // MARK: Priority API
 extension OutboundFlowControlBuffer {
     /// A frame with new priority data has been received that affects prioritisation of outbound frames.
@@ -247,18 +255,17 @@ extension OutboundFlowControlBuffer {
     }
 }
 
-
 private struct StreamFlowControlState: PerStreamData {
     let streamID: HTTP2StreamID
     internal private(set) var currentWindowSize: Int
     private var dataBuffer: DataBuffer
 
     var haveBufferedDataFrame: Bool {
-        return self.dataBuffer.haveBufferedDataFrame
+        self.dataBuffer.haveBufferedDataFrame
     }
 
     var hasFlowControlWindowSpaceForNextWrite: Bool {
-        return self.currentWindowSize > 0 || self.dataBuffer.nextWriteIsZeroSized
+        self.currentWindowSize > 0 || self.dataBuffer.nextWriteIsZeroSized
     }
 
     init(streamID: HTTP2StreamID, initialWindowSize: Int) {
@@ -303,7 +310,7 @@ private struct StreamFlowControlState: PerStreamData {
 
     /// Removes all pending writes, invalidating this structure as it does so.
     mutating func evacuatePendingWrites() -> MarkedCircularBuffer<DataBuffer.BufferElement> {
-        return self.dataBuffer.evacuatePendingWrites()
+        self.dataBuffer.evacuatePendingWrites()
     }
 
     func failAllWrites(error: ChannelError) {
@@ -336,22 +343,21 @@ private struct StreamFlowControlState: PerStreamData {
     }
 }
 
-
 private struct DataBuffer {
     typealias BufferElement = (HTTP2Frame.FramePayload, EventLoopPromise<Void>?)
 
     private var bufferedChunks: MarkedCircularBuffer<BufferElement>
 
     var haveBufferedDataFrame: Bool {
-        return self.bufferedChunks.count > 0
+        self.bufferedChunks.count > 0
     }
 
     var nextWriteIsZeroSized: Bool {
-        return self.bufferedChunks.first?.0.isZeroSizedWrite ?? false
+        self.bufferedChunks.first?.0.isZeroSizedWrite ?? false
     }
 
     var hasMark: Bool {
-        return self.bufferedChunks.hasMark
+        self.bufferedChunks.hasMark
     }
 
     /// An empty buffer, we use this avoid an allocation in 'evacuatePendingWrites'.
@@ -410,16 +416,14 @@ private struct DataBuffer {
     }
 }
 
-
 /// Used to communicate whether a stream has had its writability state change.
-fileprivate enum WritabilityState {
+private enum WritabilityState {
     case changed(newValue: Bool)
     case unchanged
 }
 
-
-private extension IOData {
-    mutating func slicePrefix(_ length: Int) -> IOData {
+extension IOData {
+    fileprivate mutating func slicePrefix(_ length: Int) -> IOData {
         assert(length < self.readableBytes)
 
         switch self {
@@ -430,14 +434,17 @@ private extension IOData {
             return .byteBuffer(newBuf)
 
         case .fileRegion(var region):
-            let newRegion = FileRegion(fileHandle: region.fileHandle, readerIndex: region.readerIndex, endIndex: region.readerIndex + length)
+            let newRegion = FileRegion(
+                fileHandle: region.fileHandle,
+                readerIndex: region.readerIndex,
+                endIndex: region.readerIndex + length
+            )
             region.moveReaderIndex(forwardBy: length)
             self = .fileRegion(region)
             return .fileRegion(newRegion)
         }
     }
 }
-
 
 extension HTTP2Frame.FramePayload {
     fileprivate var isZeroSizedWrite: Bool {
@@ -450,7 +457,6 @@ extension HTTP2Frame.FramePayload {
     }
 }
 
-
 extension StreamMap where Element == StreamFlowControlState {
     //
     /// Apply a transform to a wrapped DataBuffer.
@@ -461,6 +467,6 @@ extension StreamMap where Element == StreamFlowControlState {
     /// - Returns: Whether the value was present or not.
     @discardableResult
     fileprivate mutating func apply(streamID: HTTP2StreamID, _ body: (inout Element) -> Void) -> Bool {
-        return self.modify(streamID: streamID, body) != nil
+        self.modify(streamID: streamID, body) != nil
     }
 }

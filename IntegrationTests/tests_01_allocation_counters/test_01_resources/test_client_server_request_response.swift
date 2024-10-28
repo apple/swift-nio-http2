@@ -41,7 +41,6 @@ final class ServerHandler: ChannelInboundHandler {
     }
 }
 
-
 final class ClientHandler: ChannelInboundHandler {
     typealias InboundIn = HTTP2Frame.FramePayload
     typealias OutboundOut = HTTP2Frame.FramePayload
@@ -56,10 +55,12 @@ final class ClientHandler: ChannelInboundHandler {
 
     func channelActive(context: ChannelHandlerContext) {
         // Send a request.
-        let headers = HPACKHeaders([(":path", "/"),
-                                    (":authority", "localhost"),
-                                    (":method", "GET"),
-                                    (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"),
+            (":authority", "localhost"),
+            (":method", "GET"),
+            (":scheme", "https"),
+        ])
 
         if self.dataBlockCount > 0 {
             let requestFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
@@ -67,10 +68,18 @@ final class ClientHandler: ChannelInboundHandler {
 
             let buffer = ByteBuffer(repeating: 0, count: self.dataBlockLengthBytes)
 
-            for _ in 0 ..< self.dataBlockCount-1 {
-                context.write(self.wrapOutboundOut(HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(buffer), endStream: false))), promise: nil)
+            for _ in 0..<self.dataBlockCount - 1 {
+                context.write(
+                    self.wrapOutboundOut(
+                        HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(buffer), endStream: false))
+                    ),
+                    promise: nil
+                )
             }
-            context.writeAndFlush(self.wrapOutboundOut(HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(buffer), endStream: true))), promise: nil)
+            context.writeAndFlush(
+                self.wrapOutboundOut(HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(buffer), endStream: true))),
+                promise: nil
+            )
         } else {
             let requestFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: true))
             context.writeAndFlush(self.wrapOutboundOut(requestFramePayload), promise: nil)
@@ -80,49 +89,71 @@ final class ClientHandler: ChannelInboundHandler {
 
 func run(identifier: String) {
     testRun(identifier: identifier) { clientChannel in
-        return try! clientChannel.configureHTTP2Pipeline(mode: .client) { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+        try! clientChannel.configureHTTP2Pipeline(mode: .client) { channel in
+            channel.eventLoop.makeSucceededVoidFuture()
         }.wait()
     } serverPipelineConfigurator: { serverChannel in
         _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
-            return channel.pipeline.addHandler(ServerHandler())
+            channel.pipeline.addHandler(ServerHandler())
         }.wait()
     }
 
     testRun(identifier: identifier + "_many", dataBlockCount: 100, dataBlockLengthBytes: 1000) { clientChannel in
-        return try! clientChannel.configureHTTP2Pipeline(mode: .client) { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+        try! clientChannel.configureHTTP2Pipeline(mode: .client) { channel in
+            channel.eventLoop.makeSucceededVoidFuture()
         }.wait()
     } serverPipelineConfigurator: { serverChannel in
         _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
-            return channel.pipeline.addHandler(ServerHandler())
+            channel.pipeline.addHandler(ServerHandler())
         }.wait()
     }
 
     //
     // MARK: - Inline HTTP2 multiplexer tests
     testRun(identifier: identifier + "_inline") { clientChannel in
-        return try! clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+        try! clientChannel.configureHTTP2Pipeline(
+            mode: .client,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.eventLoop.makeSucceededVoidFuture()
         }.wait()
     } serverPipelineConfigurator: { serverChannel in
-        _ = try! serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
-            return channel.pipeline.addHandler(ServerHandler())
+        _ = try! serverChannel.configureHTTP2Pipeline(
+            mode: .server,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.pipeline.addHandler(ServerHandler())
         }.wait()
     }
 
     testRun(identifier: identifier + "_many_inline", dataBlockCount: 100, dataBlockLengthBytes: 1000) { clientChannel in
-        return try! clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+        try! clientChannel.configureHTTP2Pipeline(
+            mode: .client,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.eventLoop.makeSucceededVoidFuture()
         }.wait()
     } serverPipelineConfigurator: { serverChannel in
-        _ = try! serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
-            return channel.pipeline.addHandler(ServerHandler())
+        _ = try! serverChannel.configureHTTP2Pipeline(
+            mode: .server,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.pipeline.addHandler(ServerHandler())
         }.wait()
     }
 }
 
-private func testRun(identifier: String, dataBlockCount: Int = 0, dataBlockLengthBytes: Int = 0, clientPipelineConfigurator: (Channel) throws -> MultiplexerChannelCreator, serverPipelineConfigurator: (Channel) throws -> ()) {
+private func testRun(
+    identifier: String,
+    dataBlockCount: Int = 0,
+    dataBlockLengthBytes: Int = 0,
+    clientPipelineConfigurator: (Channel) throws -> MultiplexerChannelCreator,
+    serverPipelineConfigurator: (Channel) throws -> Void
+) {
     let loop = EmbeddedEventLoop()
 
     measure(identifier: identifier) {
@@ -139,7 +170,9 @@ private func testRun(identifier: String, dataBlockCount: Int = 0, dataBlockLengt
 
             let promise = clientChannel.eventLoop.makePromise(of: Channel.self)
             clientMultiplexer.createStreamChannel(promise: promise) { channel in
-                return channel.pipeline.addHandler(ClientHandler(dataBlockCount: dataBlockCount, dataBlockLengthBytes: dataBlockLengthBytes))
+                channel.pipeline.addHandler(
+                    ClientHandler(dataBlockCount: dataBlockCount, dataBlockLengthBytes: dataBlockLengthBytes)
+                )
             }
             clientChannel.embeddedEventLoop.run()
             let child = try! promise.futureResult.wait()
@@ -156,4 +189,3 @@ private func testRun(identifier: String, dataBlockCount: Int = 0, dataBlockLengt
         return sumOfStreamIDs
     }
 }
-

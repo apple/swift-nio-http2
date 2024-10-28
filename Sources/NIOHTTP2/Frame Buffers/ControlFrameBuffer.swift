@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 import NIOCore
 
-
 /// A buffer that stores outbound control frames.
 ///
 /// In general it is preferential to buffer outbound frames instead of passing them into the channel.
@@ -35,7 +34,6 @@ struct ControlFrameBuffer {
     internal var maximumBufferSize: Int
 }
 
-
 // MARK:- ControlFrameBuffer initializers
 extension ControlFrameBuffer {
     internal init(maximumBufferSize: Int) {
@@ -46,10 +44,13 @@ extension ControlFrameBuffer {
     }
 }
 
-
 // MARK:- ControlFrameBuffer frame processing
 extension ControlFrameBuffer {
-    internal mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?, channelWritable: Bool) throws -> OutboundFrameAction {
+    internal mutating func processOutboundFrame(
+        _ frame: HTTP2Frame,
+        promise: EventLoopPromise<Void>?,
+        channelWritable: Bool
+    ) throws -> OutboundFrameAction {
         switch frame.payload {
         case .data:
             // These frames are not buffered here. If it reached us, it's because we believe the channel is writable,
@@ -96,7 +97,6 @@ extension ControlFrameBuffer {
         self.pendingControlFrames.append(PendingControlFrame(frame: frame, promise: promise))
     }
 }
-
 
 // MARK:- ControlFrameBuffer.PendingControlFrame definition
 extension ControlFrameBuffer {

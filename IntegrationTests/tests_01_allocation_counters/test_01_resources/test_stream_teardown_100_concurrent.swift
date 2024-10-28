@@ -12,11 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+import Atomics
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
 import NIOHTTP2
-import Atomics
 
 struct StreamTeardownBenchmark {
     private let concurrentStreams: Int
@@ -28,9 +28,12 @@ struct StreamTeardownBenchmark {
         headers.add(name: ":authority", value: "localhost", indexing: .nonIndexable)
         headers.add(name: ":path", value: "/", indexing: .indexable)
         headers.add(name: ":scheme", value: "https", indexing: .indexable)
-        headers.add(name: "user-agent",
-                    value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36",
-                    indexing: .nonIndexable)
+        headers.add(
+            name: "user-agent",
+            value:
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36",
+            indexing: .nonIndexable
+        )
         headers.add(name: "accept-encoding", value: "gzip, deflate", indexing: .indexable)
 
         var hpackEncoder = HPACKEncoder(allocator: .init())
@@ -88,7 +91,7 @@ struct StreamTeardownBenchmark {
         self.concurrentStreams = concurrentStreams
     }
 
-    private func createChannel(pipelineConfigurator: (Channel, Int) throws -> ()) throws -> EmbeddedChannel {
+    private func createChannel(pipelineConfigurator: (Channel, Int) throws -> Void) throws -> EmbeddedChannel {
         let channel = EmbeddedChannel()
         try! pipelineConfigurator(channel, self.concurrentStreams)
 
@@ -100,7 +103,7 @@ struct StreamTeardownBenchmark {
         initialBytes.writeImmutableBuffer(self.settingsACK)
 
         try channel.writeInbound(initialBytes)
-        while try channel.readOutbound(as: ByteBuffer.self) != nil { }
+        while try channel.readOutbound(as: ByteBuffer.self) != nil {}
 
         return channel
     }
@@ -109,7 +112,7 @@ struct StreamTeardownBenchmark {
         _ = try channel.finish()
     }
 
-    fileprivate mutating func run(pipelineConfigurator: (Channel, Int) throws -> ()) throws -> Int {
+    fileprivate mutating func run(pipelineConfigurator: (Channel, Int) throws -> Void) throws -> Int {
         var bodyByteCount = 0
         var completedIterations = 0
         while completedIterations < 10_000 {
@@ -121,10 +124,13 @@ struct StreamTeardownBenchmark {
         return bodyByteCount
     }
 
-    private mutating func sendInterleavedRequestsAndTerminate(_ interleavedRequests: Int, _ channel: EmbeddedChannel) throws -> Int {
+    private mutating func sendInterleavedRequestsAndTerminate(
+        _ interleavedRequests: Int,
+        _ channel: EmbeddedChannel
+    ) throws -> Int {
         var streamID = HTTP2StreamID(1)
 
-        for _ in 0 ..< interleavedRequests {
+        for _ in 0..<interleavedRequests {
             self.headersFrame.setInteger(UInt32(Int32(streamID)), at: self.headersFrame.readerIndex + 5)
             try channel.writeInbound(self.headersFrame)
             streamID = streamID.advanced(by: 2)
@@ -142,17 +148,18 @@ struct StreamTeardownBenchmark {
     }
 }
 
-fileprivate class DoNothingServer: ChannelInboundHandler {
+private class DoNothingServer: ChannelInboundHandler {
     public typealias InboundIn = HTTP2Frame.FramePayload
     public typealias OutboundOut = HTTP2Frame.FramePayload
 }
 
-fileprivate class SendGoawayHandler: ChannelInboundHandler {
+private class SendGoawayHandler: ChannelInboundHandler {
     public typealias InboundIn = HTTP2Frame
     public typealias OutboundOut = HTTP2Frame
 
     private static let goawayFrame: HTTP2Frame = HTTP2Frame(
-        streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .enhanceYourCalm, opaqueData: nil)
+        streamID: .rootStream,
+        payload: .goAway(lastStreamID: .rootStream, errorCode: .enhanceYourCalm, opaqueData: nil)
     )
 
     private let expectedStreams: Int
@@ -174,9 +181,10 @@ fileprivate class SendGoawayHandler: ChannelInboundHandler {
     }
 }
 
-fileprivate class SendGoawayDelegate {
+private class SendGoawayDelegate {
     private static let goawayFrame: HTTP2Frame = HTTP2Frame(
-        streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .enhanceYourCalm, opaqueData: nil)
+        streamID: .rootStream,
+        payload: .goAway(lastStreamID: .rootStream, errorCode: .enhanceYourCalm, opaqueData: nil)
     )
 
     private let expectedStreams: Int
@@ -206,25 +214,24 @@ func run(identifier: String) {
     var benchmark = StreamTeardownBenchmark(concurrentStreams: 100)
 
     measure(identifier: identifier) {
-        return try! benchmark.run() { channel, concurrentStreams in
+        try! benchmark.run { channel, concurrentStreams in
             _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-                return streamChannel.pipeline.addHandler(DoNothingServer())
+                streamChannel.pipeline.addHandler(DoNothingServer())
             }.wait()
             try channel.pipeline.addHandler(SendGoawayHandler(expectedStreams: concurrentStreams)).wait()
         }
     }
 
     measure(identifier: identifier + "_inline") {
-        return try! benchmark.run() { channel, concurrentStreams in
+        try! benchmark.run { channel, concurrentStreams in
             _ = try channel.configureHTTP2Pipeline(
                 mode: .server,
                 connectionConfiguration: .init(),
                 streamConfiguration: .init(),
                 streamDelegate: SendGoawayDelegate(expectedStreams: concurrentStreams)
             ) { streamChannel -> EventLoopFuture<Void> in
-                return streamChannel.pipeline.addHandler(DoNothingServer())
+                streamChannel.pipeline.addHandler(DoNothingServer())
             }.wait()
         }
     }
 }
-

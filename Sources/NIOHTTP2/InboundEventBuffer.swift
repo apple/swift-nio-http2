@@ -53,13 +53,12 @@ class InboundEventBuffer {
     }
 }
 
-
 // MARK:- Sequence conformance
 extension InboundEventBuffer: Sequence {
     typealias Element = BufferedHTTP2UserEvent
 
     func makeIterator() -> InboundEventBufferIterator {
-        return InboundEventBufferIterator(self)
+        InboundEventBufferIterator(self)
     }
 
     struct InboundEventBufferIterator: IteratorProtocol {
@@ -81,10 +80,9 @@ extension InboundEventBuffer: Sequence {
     }
 }
 
-
 // MARK:- CustomStringConvertible conformance
 extension InboundEventBuffer: CustomStringConvertible {
     var description: String {
-        return "InboundEventBuffer { \(self.buffer) }"
+        "InboundEventBuffer { \(self.buffer) }"
     }
 }

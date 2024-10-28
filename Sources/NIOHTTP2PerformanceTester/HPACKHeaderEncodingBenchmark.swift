@@ -15,7 +15,6 @@
 import NIOCore
 import NIOHPACK
 
-
 final class HPACKHeaderEncodingBenchmark {
     private let headers: HPACKHeaders
     private let loopCount: Int
@@ -30,11 +29,10 @@ final class HPACKHeaderEncodingBenchmark {
     }
 }
 
-
 extension HPACKHeaderEncodingBenchmark: Benchmark {
-    func setUp() throws { }
+    func setUp() throws {}
 
-    func tearDown() { }
+    func tearDown() {}
 
     func run() throws -> Int {
         for _ in 0..<self.loopCount {
@@ -46,26 +44,37 @@ extension HPACKHeaderEncodingBenchmark: Benchmark {
     }
 }
 
-
 extension HPACKHeaders {
     static let indexable: HPACKHeaders = {
         var headers = HPACKHeaders()
-        headers.add(contentsOf: [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost"), ("foo", "bar")],
-                    indexing: .indexable)
+        headers.add(
+            contentsOf: [
+                (":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost"), ("foo", "bar"),
+            ],
+            indexing: .indexable
+        )
         return headers
     }()
 
     static let nonIndexable: HPACKHeaders = {
         var headers = HPACKHeaders()
-        headers.add(contentsOf: [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost"), ("foo", "bar")],
-                    indexing: .nonIndexable)
+        headers.add(
+            contentsOf: [
+                (":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost"), ("foo", "bar"),
+            ],
+            indexing: .nonIndexable
+        )
         return headers
     }()
 
     static let neverIndexed: HPACKHeaders = {
         var headers = HPACKHeaders()
-        headers.add(contentsOf: [(":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost"), ("foo", "bar")],
-                    indexing: .neverIndexed)
+        headers.add(
+            contentsOf: [
+                (":method", "GET"), (":path", "/"), (":scheme", "https"), (":authority", "localhost"), ("foo", "bar"),
+            ],
+            indexing: .neverIndexed
+        )
         return headers
     }()
 }

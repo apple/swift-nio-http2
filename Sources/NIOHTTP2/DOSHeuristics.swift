@@ -30,15 +30,25 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
 
     private var resetFrameRateControlStateMachine: HTTP2ResetFrameRateControlStateMachine
 
-    internal init(maximumSequentialEmptyDataFrames: Int, maximumResetFrameCount: Int, resetFrameCounterWindow: TimeAmount, clock: DeadlineClock = RealNIODeadlineClock()) {
-        precondition(maximumSequentialEmptyDataFrames >= 0,
-                     "maximum sequential empty data frames must be positive, got \(maximumSequentialEmptyDataFrames)")
+    internal init(
+        maximumSequentialEmptyDataFrames: Int,
+        maximumResetFrameCount: Int,
+        resetFrameCounterWindow: TimeAmount,
+        clock: DeadlineClock = RealNIODeadlineClock()
+    ) {
+        precondition(
+            maximumSequentialEmptyDataFrames >= 0,
+            "maximum sequential empty data frames must be positive, got \(maximumSequentialEmptyDataFrames)"
+        )
         self.maximumSequentialEmptyDataFrames = maximumSequentialEmptyDataFrames
         self.receivedEmptyDataFrames = 0
-        self.resetFrameRateControlStateMachine = .init(countThreshold: maximumResetFrameCount, timeWindow: resetFrameCounterWindow, clock: clock)
+        self.resetFrameRateControlStateMachine = .init(
+            countThreshold: maximumResetFrameCount,
+            timeWindow: resetFrameCounterWindow,
+            clock: clock
+        )
     }
 }
-
 
 extension DOSHeuristics {
     mutating func process(_ frame: HTTP2Frame) throws {
@@ -120,7 +130,7 @@ extension DOSHeuristics {
                     self._state = .rateTooHigh
                 }
             case .rateTooHigh:
-                break // no-op, there is no way to de-escalate from an excessive rate
+                break  // no-op, there is no way to de-escalate from an excessive rate
             }
         }
     }

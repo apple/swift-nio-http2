@@ -12,8 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOCore
+import XCTest
+
 @testable import NIOHTTP2
 
 final class CircularBufferExtensionsTests: XCTestCase {
@@ -49,7 +50,6 @@ final class CircularBufferExtensionsTests: XCTestCase {
         XCTAssertEqual(Array(buffer), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
         XCTAssertEqual(buffer.count, 15)
         XCTAssertEqual(buffer.effectiveCapacity, 15)
-
 
         buffer.prependWithoutExpanding(17)
         XCTAssertEqual(Array(buffer), [17, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14])

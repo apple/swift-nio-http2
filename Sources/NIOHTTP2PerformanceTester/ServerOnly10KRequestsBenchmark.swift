@@ -52,9 +52,12 @@ final class ServerOnly10KRequestsBenchmark: Benchmark {
         headers.add(name: ":authority", value: "localhost", indexing: .nonIndexable)
         headers.add(name: ":path", value: "/", indexing: .indexable)
         headers.add(name: ":scheme", value: "https", indexing: .indexable)
-        headers.add(name: "user-agent",
-                    value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36",
-                    indexing: .nonIndexable)
+        headers.add(
+            name: "user-agent",
+            value:
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36",
+            indexing: .nonIndexable
+        )
         headers.add(name: "accept-encoding", value: "gzip, deflate", indexing: .indexable)
 
         var hpackEncoder = HPACKEncoder(allocator: .init())
@@ -115,7 +118,7 @@ final class ServerOnly10KRequestsBenchmark: Benchmark {
     func setUp() throws {
         let channel = EmbeddedChannel()
         _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
 
         try channel.connect(to: .init(unixDomainSocketPath: "/fake"), promise: nil)
@@ -126,7 +129,7 @@ final class ServerOnly10KRequestsBenchmark: Benchmark {
         initialBytes.writeImmutableBuffer(self.settingsACK)
 
         try channel.writeInbound(initialBytes)
-        while try channel.readOutbound(as: ByteBuffer.self) != nil { }
+        while try channel.readOutbound(as: ByteBuffer.self) != nil {}
 
         self.channel = channel
     }
@@ -149,7 +152,7 @@ final class ServerOnly10KRequestsBenchmark: Benchmark {
     private func sendInterleavedRequests(_ interleavedRequests: Int) throws -> Int {
         var streamID = self.streamID
 
-        for _ in 0 ..< interleavedRequests {
+        for _ in 0..<interleavedRequests {
             self.headersFrame.setInteger(UInt32(Int32(streamID)), at: self.headersFrame.readerIndex + 5)
             try self.channel!.writeInbound(self.headersFrame)
             streamID = streamID.advanced(by: 2)
@@ -157,7 +160,7 @@ final class ServerOnly10KRequestsBenchmark: Benchmark {
 
         streamID = self.streamID
 
-        for _ in 0 ..< interleavedRequests {
+        for _ in 0..<interleavedRequests {
             self.dataFrame.setInteger(UInt32(Int32(streamID)), at: self.dataFrame.readerIndex + 5)
             try self.channel!.writeInbound(self.dataFrame)
             streamID = streamID.advanced(by: 2)
@@ -176,7 +179,7 @@ final class ServerOnly10KRequestsBenchmark: Benchmark {
     }
 }
 
-fileprivate class TestServer: ChannelInboundHandler {
+private class TestServer: ChannelInboundHandler {
     public typealias InboundIn = HTTP2Frame.FramePayload
     public typealias OutboundOut = HTTP2Frame.FramePayload
 

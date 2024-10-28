@@ -28,35 +28,41 @@ struct MultiplexerAbstractChannel {
     @usableFromInline private(set) var baseChannel: HTTP2StreamChannel
 
     @usableFromInline
-    init(allocator: ByteBufferAllocator,
-         parent: Channel,
-         multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
-         streamID: HTTP2StreamID?,
-         targetWindowSize: Int32,
-         outboundBytesHighWatermark: Int,
-         outboundBytesLowWatermark: Int,
-         inboundStreamStateInitializer: InboundStreamStateInitializer) {
+    init(
+        allocator: ByteBufferAllocator,
+        parent: Channel,
+        multiplexer: HTTP2StreamChannel.OutboundStreamMultiplexer,
+        streamID: HTTP2StreamID?,
+        targetWindowSize: Int32,
+        outboundBytesHighWatermark: Int,
+        outboundBytesLowWatermark: Int,
+        inboundStreamStateInitializer: InboundStreamStateInitializer
+    ) {
         switch inboundStreamStateInitializer {
         case .includesStreamID:
             assert(streamID != nil)
-            self.baseChannel = .init(allocator: allocator,
-                                     parent: parent,
-                                     multiplexer: multiplexer,
-                                     streamID: streamID,
-                                     targetWindowSize: targetWindowSize,
-                                     outboundBytesHighWatermark: outboundBytesHighWatermark,
-                                     outboundBytesLowWatermark: outboundBytesLowWatermark,
-                                     streamDataType: .frame)
+            self.baseChannel = .init(
+                allocator: allocator,
+                parent: parent,
+                multiplexer: multiplexer,
+                streamID: streamID,
+                targetWindowSize: targetWindowSize,
+                outboundBytesHighWatermark: outboundBytesHighWatermark,
+                outboundBytesLowWatermark: outboundBytesLowWatermark,
+                streamDataType: .frame
+            )
 
         case .excludesStreamID, .returnsAny:
-            self.baseChannel = .init(allocator: allocator,
-                                     parent: parent,
-                                     multiplexer: multiplexer,
-                                     streamID: streamID,
-                                     targetWindowSize: targetWindowSize,
-                                     outboundBytesHighWatermark: outboundBytesHighWatermark,
-                                     outboundBytesLowWatermark: outboundBytesLowWatermark,
-                                     streamDataType: .framePayload)
+            self.baseChannel = .init(
+                allocator: allocator,
+                parent: parent,
+                multiplexer: multiplexer,
+                streamID: streamID,
+                targetWindowSize: targetWindowSize,
+                outboundBytesHighWatermark: outboundBytesHighWatermark,
+                outboundBytesLowWatermark: outboundBytesLowWatermark,
+                streamDataType: .framePayload
+            )
         }
     }
 }
@@ -73,21 +79,21 @@ extension MultiplexerAbstractChannel {
 // MARK: API for HTTP2StreamMultiplexer
 extension MultiplexerAbstractChannel {
     var streamID: HTTP2StreamID? {
-        return self.baseChannel.streamID
+        self.baseChannel.streamID
     }
 
     @usableFromInline
     var channelID: ObjectIdentifier {
-        return ObjectIdentifier(self.baseChannel)
+        ObjectIdentifier(self.baseChannel)
     }
 
     var inList: Bool {
-        return self.baseChannel.inList
+        self.baseChannel.inList
     }
 
     var streamChannelListNode: StreamChannelListNode {
         get {
-            return self.baseChannel.streamChannelListNode
+            self.baseChannel.streamChannelListNode
         }
         nonmutating set {
             self.baseChannel.streamChannelListNode = newValue
@@ -108,7 +114,9 @@ extension MultiplexerAbstractChannel {
     func configureInboundStream(initializer: InboundStreamStateInitializer, promise: EventLoopPromise<any Sendable>?) {
         switch initializer {
         case .includesStreamID, .excludesStreamID:
-            preconditionFailure("Configuration with a supplied `Any` promise is not supported with this initializer type.")
+            preconditionFailure(
+                "Configuration with a supplied `Any` promise is not supported with this initializer type."
+            )
         case .returnsAny(let initializer):
             self.baseChannel.configure(initializer: initializer, userPromise: promise)
         }
@@ -126,7 +134,10 @@ extension MultiplexerAbstractChannel {
 
     // used for async multiplexer
     @usableFromInline
-    func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<any Sendable>?) {
+    func configure(
+        initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>,
+        userPromise promise: EventLoopPromise<any Sendable>?
+    ) {
         self.baseChannel.configure(initializer: initializer, userPromise: promise)
     }
 
@@ -173,8 +184,8 @@ extension MultiplexerAbstractChannel {
 
 extension MultiplexerAbstractChannel: Equatable {
     @inlinable
-    static func ==(lhs: MultiplexerAbstractChannel, rhs: MultiplexerAbstractChannel) -> Bool {
-        return lhs.baseChannel === rhs.baseChannel
+    static func == (lhs: MultiplexerAbstractChannel, rhs: MultiplexerAbstractChannel) -> Bool {
+        lhs.baseChannel === rhs.baseChannel
     }
 }
 

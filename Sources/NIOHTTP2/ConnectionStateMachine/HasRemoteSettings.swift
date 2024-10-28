@@ -32,7 +32,10 @@ extension HasRemoteExtendedConnectSettings where Self: HasRemoteSettings {
 }
 
 extension HasRemoteSettings {
-    mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameEncoder: inout HTTP2FrameEncoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
+    mutating func receiveSettingsChange(
+        _ settings: HTTP2Settings,
+        frameEncoder: inout HTTP2FrameEncoder
+    ) -> (StateMachineResultWithEffect, PostFrameOperation) {
         // We do a little switcheroo here to avoid problems with overlapping accesses to
         // self. It's a little more complex than normal because HTTP2SettingsState has
         // two CoWable objects, and we don't want to CoW either of them, so we shove a dummy
@@ -74,7 +77,9 @@ extension HasRemoteSettings {
                 case .enableConnectProtocol:
                     // Must not transition from 1 -> 0
                     if originalValue == 1 && newValue == 0 {
-                        throw NIOHTTP2Errors.invalidSetting(setting: HTTP2Setting(parameter: setting, value: Int(newValue)))
+                        throw NIOHTTP2Errors.invalidSetting(
+                            setting: HTTP2Setting(parameter: setting, value: Int(newValue))
+                        )
                     }
                     effect.enableConnectProtocol = newValue == 1
                 default:
@@ -84,7 +89,9 @@ extension HasRemoteSettings {
             }
             return (.init(result: .succeed, effect: .remoteSettingsChanged(effect)), .sendAck)
         } catch let err where err is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-            return (.init(result: .connectionError(underlyingError: err, type: .flowControlError), effect: nil), .nothing)
+            return (
+                .init(result: .connectionError(underlyingError: err, type: .flowControlError), effect: nil), .nothing
+            )
         } catch let err where err is NIOHTTP2Errors.InvalidSetting {
             return (.init(result: .connectionError(underlyingError: err, type: .protocolError), effect: nil), .nothing)
         } catch {

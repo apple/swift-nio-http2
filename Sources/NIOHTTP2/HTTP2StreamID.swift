@@ -41,13 +41,13 @@ public struct HTTP2StreamID: Sendable {
 
     /// Returns a boolean indicating whether this stream ID relates to a client initiated stream.
     public var isClientInitiated: Bool {
-        return self.networkStreamID % 2 == 1
+        self.networkStreamID % 2 == 1
     }
 
     /// Returns a boolean indicating whether this stream ID relates to a server initiated stream.
     public var isServerInitiated: Bool {
         // Noone may initiate the root stream.
-        return self.networkStreamID % 2 == 0 && self != .rootStream
+        self.networkStreamID % 2 == 0 && self != .rootStream
     }
 
     /// Create a ``HTTP2StreamID`` for a specific integer value.
@@ -61,7 +61,7 @@ public struct HTTP2StreamID: Sendable {
         precondition(integerID >= 0, "\(integerID) is not a valid HTTP/2 stream ID value")
         self.networkStreamID = integerID
     }
-    
+
     /// Create a ``HTTP2StreamID`` from a 32-bit value received as part of a frame.
     ///
     /// This will ignore the most significant bit of the provided value.
@@ -71,40 +71,36 @@ public struct HTTP2StreamID: Sendable {
 }
 
 // MARK:- Equatable conformance for HTTP2StreamID
-extension HTTP2StreamID: Equatable { }
-
+extension HTTP2StreamID: Equatable {}
 
 // MARK:- Hashable conformance for HTTP2StreamID
-extension HTTP2StreamID: Hashable { }
-
+extension HTTP2StreamID: Hashable {}
 
 // MARK:- Comparable conformance for HTTP2StreamID
 extension HTTP2StreamID: Comparable {
-    public static func <(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        return lhs.networkStreamID < rhs.networkStreamID
+    public static func < (lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        lhs.networkStreamID < rhs.networkStreamID
     }
 
-    public static func >(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        return lhs.networkStreamID > rhs.networkStreamID
+    public static func > (lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        lhs.networkStreamID > rhs.networkStreamID
     }
 
-    public static func <=(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        return lhs.networkStreamID <= rhs.networkStreamID
+    public static func <= (lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        lhs.networkStreamID <= rhs.networkStreamID
     }
 
-    public static func >=(lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
-        return lhs.networkStreamID >= rhs.networkStreamID
+    public static func >= (lhs: HTTP2StreamID, rhs: HTTP2StreamID) -> Bool {
+        lhs.networkStreamID >= rhs.networkStreamID
     }
 }
-
 
 // MARK:- CustomStringConvertible conformance for HTTP2StreamID
 extension HTTP2StreamID: CustomStringConvertible {
     public var description: String {
-        return "HTTP2StreamID(\(String(describing: self.networkStreamID)))"
+        "HTTP2StreamID(\(String(describing: self.networkStreamID)))"
     }
 }
-
 
 // MARK:- ExpressibleByIntegerLiteral conformance for HTTP2StreamID
 extension HTTP2StreamID: ExpressibleByIntegerLiteral {
@@ -116,39 +112,35 @@ extension HTTP2StreamID: ExpressibleByIntegerLiteral {
     }
 }
 
-
 // MARK:- Strideable conformance for HTTP2StreamID
 extension HTTP2StreamID: Strideable {
     public typealias Stride = Int
 
     public func advanced(by n: Stride) -> HTTP2StreamID {
-        return HTTP2StreamID(self.networkStreamID + Int32(n))
+        HTTP2StreamID(self.networkStreamID + Int32(n))
     }
 
     public func distance(to other: HTTP2StreamID) -> Stride {
-        return Int(other.networkStreamID - self.networkStreamID)
+        Int(other.networkStreamID - self.networkStreamID)
     }
 }
 
-
 // MARK:- Helper initializers for integer conversion.
-public extension Int {
+extension Int {
     /// Create an Int holding the integer value of this streamID.
-    init(_ http2StreamID: HTTP2StreamID) {
+    public init(_ http2StreamID: HTTP2StreamID) {
         self = Int(http2StreamID.networkStreamID)
     }
 }
 
-
-public extension Int32 {
+extension Int32 {
     /// Create an Int32 holding the integer value of this streamID.
-    init(_ http2StreamID: HTTP2StreamID) {
+    public init(_ http2StreamID: HTTP2StreamID) {
         self = http2StreamID.networkStreamID
     }
 }
 
-
-internal extension UInt32 {
+extension UInt32 {
     /// Create a UInt32 holding the integer value of this streamID.
     init(_ http2StreamID: HTTP2StreamID) {
         self = UInt32(http2StreamID.networkStreamID)

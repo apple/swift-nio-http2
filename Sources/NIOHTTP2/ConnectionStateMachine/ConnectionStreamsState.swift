@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 import NIOCore
 
-
 /// A representation of the state of the HTTP/2 streams in a single HTTP/2 connection.
 struct ConnectionStreamState {
     /// The "safe" default value of SETTINGS_MAX_CONCURRENT_STREAMS.
@@ -61,7 +60,7 @@ struct ConnectionStreamState {
 
     /// The total number of streams currently active.
     var openStreams: Int {
-        return Int(self.clientStreamCount) + Int(self.serverStreamCount)
+        Int(self.clientStreamCount) + Int(self.serverStreamCount)
     }
 
     init() {
@@ -79,9 +78,17 @@ struct ConnectionStreamState {
     ///   - remoteInitialWindowSize: The initial window size of the remote peer.
     ///   - requestVerb: the HTTP method used on the request
     /// - throws: If the stream ID is invalid.
-    mutating func createRemotelyPushedStream(streamID: HTTP2StreamID, remoteInitialWindowSize: UInt32, requestVerb: String?) throws {
+    mutating func createRemotelyPushedStream(
+        streamID: HTTP2StreamID,
+        remoteInitialWindowSize: UInt32,
+        requestVerb: String?
+    ) throws {
         try self.reserveServerStreamID(streamID)
-        let streamState = HTTP2StreamStateMachine(receivedPushPromiseCreatingStreamID: streamID, remoteInitialWindowSize: remoteInitialWindowSize, requestVerb: requestVerb)
+        let streamState = HTTP2StreamStateMachine(
+            receivedPushPromiseCreatingStreamID: streamID,
+            remoteInitialWindowSize: remoteInitialWindowSize,
+            requestVerb: requestVerb
+        )
         self.activeStreams.insert(streamState)
     }
 
@@ -94,9 +101,17 @@ struct ConnectionStreamState {
     ///   - streamID: The ID of the pushed stream.
     ///   - localInitialWindowSize: Our initial window size..
     /// - throws: If the stream ID is invalid.
-    mutating func createLocallyPushedStream(streamID: HTTP2StreamID, localInitialWindowSize: UInt32, requestVerb: String?) throws {
+    mutating func createLocallyPushedStream(
+        streamID: HTTP2StreamID,
+        localInitialWindowSize: UInt32,
+        requestVerb: String?
+    ) throws {
         try self.reserveServerStreamID(streamID)
-        let streamState = HTTP2StreamStateMachine(sentPushPromiseCreatingStreamID: streamID, localInitialWindowSize: localInitialWindowSize, requestVerb: requestVerb)
+        let streamState = HTTP2StreamStateMachine(
+            sentPushPromiseCreatingStreamID: streamID,
+            localInitialWindowSize: localInitialWindowSize,
+            requestVerb: requestVerb
+        )
         self.activeStreams.insert(streamState)
     }
 
@@ -113,17 +128,21 @@ struct ConnectionStreamState {
     ///   - modifier: A block that will be invoked to modify the stream state, if present.
     /// - throws: Any errors thrown from the creator.
     /// - Returns: The result of the state modification, as well as any state change that occurred to the stream.
-    mutating func modifyStreamStateCreateIfNeeded(streamID: HTTP2StreamID,
-                                                  localRole: HTTP2StreamStateMachine.StreamRole,
-                                                  localInitialWindowSize: UInt32,
-                                                  remoteInitialWindowSize: UInt32,
-                                                  modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect) throws -> StateMachineResultWithStreamEffect {
+    mutating func modifyStreamStateCreateIfNeeded(
+        streamID: HTTP2StreamID,
+        localRole: HTTP2StreamStateMachine.StreamRole,
+        localInitialWindowSize: UInt32,
+        remoteInitialWindowSize: UInt32,
+        modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect
+    ) throws -> StateMachineResultWithStreamEffect {
         func creator() throws -> HTTP2StreamStateMachine {
             try self.reserveClientStreamID(streamID)
-            let initialValue = HTTP2StreamStateMachine(streamID: streamID,
-                                                       localRole: localRole,
-                                                       localInitialWindowSize: localInitialWindowSize,
-                                                       remoteInitialWindowSize: remoteInitialWindowSize)
+            let initialValue = HTTP2StreamStateMachine(
+                streamID: streamID,
+                localRole: localRole,
+                localInitialWindowSize: localInitialWindowSize,
+                remoteInitialWindowSize: remoteInitialWindowSize
+            )
             return initialValue
         }
 
@@ -158,12 +177,21 @@ struct ConnectionStreamState {
     ///   - ignoreClosed: Whether a closed stream should be ignored. Should be set to `true` when receiving window update or reset stream frames.
     ///   - modifier: A block that will be invoked to modify the stream state, if present.
     /// - Returns: The result of the state modification, as well as any state change that occurred to the stream.
-    mutating func modifyStreamState(streamID: HTTP2StreamID,
-                                    ignoreRecentlyReset: Bool,
-                                    ignoreClosed: Bool = false,
-                                    _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect) -> StateMachineResultWithStreamEffect {
+    mutating func modifyStreamState(
+        streamID: HTTP2StreamID,
+        ignoreRecentlyReset: Bool,
+        ignoreClosed: Bool = false,
+        _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect
+    ) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams.autoClosingTransform(streamID: streamID, modifier) else {
-            return StateMachineResultWithStreamEffect(result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: ignoreRecentlyReset, ignoreClosed: ignoreClosed), effect: nil)
+            return StateMachineResultWithStreamEffect(
+                result: self.streamMissing(
+                    streamID: streamID,
+                    ignoreRecentlyReset: ignoreRecentlyReset,
+                    ignoreClosed: ignoreClosed
+                ),
+                effect: nil
+            )
         }
 
         if let effect = result.effect, effect.closedStream {
@@ -185,13 +213,17 @@ struct ConnectionStreamState {
     ///   - modifier: A block that will be invoked to modify the stream state, if present.
     /// - Returns: The result of the state modification, as well as any state change that occurred to the stream.
     @inline(__always)
-    mutating func locallyResetStreamState(streamID: HTTP2StreamID,
-                                          _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect) -> StateMachineResultWithStreamEffect {
+    mutating func locallyResetStreamState(
+        streamID: HTTP2StreamID,
+        _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect
+    ) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams.autoClosingTransform(streamID: streamID, modifier) else {
             // We never ignore recently reset streams here, as this should only ever be used when *sending* frames.
-            return StateMachineResultWithStreamEffect(result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: false, ignoreClosed: false), effect: nil)
+            return StateMachineResultWithStreamEffect(
+                result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: false, ignoreClosed: false),
+                effect: nil
+            )
         }
-
 
         guard let effect = result.effect, effect.closedStream else {
             preconditionFailure("Locally resetting stream state did not close it!")
@@ -254,9 +286,11 @@ struct ConnectionStreamState {
     ///   - droppedLocally: Whether this drop was caused by sending a GOAWAY frame or receiving it.
     ///   - initiator: The peer that sent the GOAWAY frame.
     /// - Returns: the stream IDs closed by this operation.
-    mutating func dropAllStreamsWithIDHigherThan(_ streamID: HTTP2StreamID,
-                                                 droppedLocally: Bool,
-                                                 initiatedBy initiator: HTTP2ConnectionStateMachine.ConnectionRole) -> [HTTP2StreamID]? {
+    mutating func dropAllStreamsWithIDHigherThan(
+        _ streamID: HTTP2StreamID,
+        droppedLocally: Bool,
+        initiatedBy initiator: HTTP2ConnectionStateMachine.ConnectionRole
+    ) -> [HTTP2StreamID]? {
         var droppedIDs: [HTTP2StreamID] = []
         self.activeStreams.dropDataWithStreamIDGreaterThan(streamID, initiatedBy: initiator) { data in
             droppedIDs = data.map { $0.streamID }
@@ -287,22 +321,32 @@ struct ConnectionStreamState {
     ///   - ignoreRecentlyReset: Whether a recently reset stream should be ignored.
     ///   - ignoreClosed: Whether a closed stream should be ignored.
     /// - Returns: A `StateMachineResult` for this frame error.
-    private func streamMissing(streamID: HTTP2StreamID, ignoreRecentlyReset: Bool, ignoreClosed: Bool) -> StateMachineResult {
+    private func streamMissing(
+        streamID: HTTP2StreamID,
+        ignoreRecentlyReset: Bool,
+        ignoreClosed: Bool
+    ) -> StateMachineResult {
         if ignoreRecentlyReset && self.recentlyResetStreams.contains(streamID) {
             return .ignoreFrame
         }
 
         switch streamID.mayBeInitiatedBy(.client) {
         case true where streamID > self.lastClientStreamID,
-             false where streamID > self.lastServerStreamID:
+            false where streamID > self.lastServerStreamID:
             // The stream in question is idle.
-            return .connectionError(underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID), type: .protocolError)
+            return .connectionError(
+                underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID),
+                type: .protocolError
+            )
         default:
             // This stream must have already been closed.
             if ignoreClosed {
                 return .ignoreFrame
             } else {
-                return .connectionError(underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID), type: .streamClosed)
+                return .connectionError(
+                    underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID),
+                    type: .streamClosed
+                )
             }
         }
     }
@@ -317,11 +361,10 @@ struct ConnectionStreamState {
     }
 }
 
-
 extension CircularBuffer {
     // CircularBuffer may never be "full": that is, capacity may never equal count.
     var effectiveCapacity: Int {
-        return self.capacity - 1
+        self.capacity - 1
     }
 
     /// Prepends `element` without expanding the capacity, by dropping the
@@ -356,7 +399,6 @@ extension CircularBuffer {
         self.insert(contentsOf: newElements, at: self.startIndex)
     }
 }
-
 
 extension StreamStateChange {
     fileprivate var closedStream: Bool {

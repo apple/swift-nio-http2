@@ -12,9 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOCore
 import NIOHPACK
+import XCTest
 
 class HPACKRegressionTests: XCTestCase {
 
@@ -39,44 +39,46 @@ class HPACKRegressionTests: XCTestCase {
         XCTAssertEqual(decoded, HPACKHeaders([(":status", "200"), ("date", "Tue, 16 Apr 2019 08:43:34 GMT")]))
     }
 
-
     func testHPACKDecoderForbidsZeroLengthFieldNames() throws {
         // This test validates the fix for CVE-XXXX: we reject header fields without a header field name.
         let request1 = buffer(wrapping: [
-            0x00,       // Literal Header Field without Indexing - New Name
-            0x00,       // Empty header field name, no huffman.
-            0x01, 0x42  // Header field value one character long, 'B', no huffman
+            0x00,  // Literal Header Field without Indexing - New Name
+            0x00,  // Empty header field name, no huffman.
+            0x01, 0x42,  // Header field value one character long, 'B', no huffman
         ])
         let request2 = buffer(wrapping: [
-            0x00,       // Literal Header Field without Indexing - New Name
-            0x80,       // Empty header field name with huffman.
-            0x01, 0x42  // Header field value one character long, 'B', no huffman.
+            0x00,  // Literal Header Field without Indexing - New Name
+            0x80,  // Empty header field name with huffman.
+            0x01, 0x42,  // Header field value one character long, 'B', no huffman.
         ])
         let request3 = buffer(wrapping: [
-            0x40,       // Literal Header Field with Incremental Indexing - New Name
-            0x00,       // Empty header field name, no huffman.
-            0x01, 0x42  // Header field value one character long, 'B', no huffman
+            0x40,  // Literal Header Field with Incremental Indexing - New Name
+            0x00,  // Empty header field name, no huffman.
+            0x01, 0x42,  // Header field value one character long, 'B', no huffman
         ])
         let request4 = buffer(wrapping: [
-            0x40,       // Literal Header Field with Incremental Indexing - New Name
-            0x80,       // Empty header field name with huffman.
-            0x01, 0x42  // Header field value one character long, 'B', no huffman.
+            0x40,  // Literal Header Field with Incremental Indexing - New Name
+            0x80,  // Empty header field name with huffman.
+            0x01, 0x42,  // Header field value one character long, 'B', no huffman.
         ])
         let request5 = buffer(wrapping: [
-            0x10,       // Literal Header Field Never Indexed - New Name
-            0x00,       // Empty header field name, no huffman.
-            0x01, 0x42  // Header field value one character long, 'B', no huffman
-            ])
+            0x10,  // Literal Header Field Never Indexed - New Name
+            0x00,  // Empty header field name, no huffman.
+            0x01, 0x42,  // Header field value one character long, 'B', no huffman
+        ])
         let request6 = buffer(wrapping: [
-            0x10,       // Literal Header Field Never Indexed - New Name
-            0x80,       // Empty header field name with huffman.
-            0x01, 0x42  // Header field value one character long, 'B', no huffman.
+            0x10,  // Literal Header Field Never Indexed - New Name
+            0x80,  // Empty header field name with huffman.
+            0x01, 0x42,  // Header field value one character long, 'B', no huffman.
         ])
 
         for var request in [request1, request2, request3, request4, request5, request6] {
             var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
             XCTAssertThrowsError(try decoder.decodeHeaders(from: &request)) { error in
-                XCTAssertEqual(error as? NIOHPACKErrors.EmptyLiteralHeaderFieldName, NIOHPACKErrors.EmptyLiteralHeaderFieldName())
+                XCTAssertEqual(
+                    error as? NIOHPACKErrors.EmptyLiteralHeaderFieldName,
+                    NIOHPACKErrors.EmptyLiteralHeaderFieldName()
+                )
             }
         }
     }

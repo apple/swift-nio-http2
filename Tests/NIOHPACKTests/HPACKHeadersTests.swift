@@ -12,10 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOCore
 import NIOHPACK
 import NIOHTTP1
+import XCTest
 
 final class HPACKHeadersTests: XCTestCase {
     func testHPACKHeadersAreHashable() throws {
@@ -84,7 +84,7 @@ final class HPACKHeadersTests: XCTestCase {
             "but-not-me": "",
             "keep-alive": "remove-me",
             "proxy-connection": "me too",
-            "transfer-encoding": "me three"
+            "transfer-encoding": "me three",
         ]
 
         let normalized = HPACKHeaders(httpHeaders: httpHeaders, normalizeHTTPHeaders: true)
@@ -106,7 +106,7 @@ final class HPACKHeadersTests: XCTestCase {
         // Add a bunch of connection headers to remove. We add a large number because the
         // implementation of the normalizing init branches on the number of connection header
         // values.
-        for i in 0 ..< 512 {
+        for i in 0..<512 {
             let toRemove = "value-\(i)"
             httpHeaders.add(name: "connection", value: toRemove)
             httpHeaders.add(name: toRemove, value: "")
@@ -127,7 +127,7 @@ final class HPACKHeadersTests: XCTestCase {
             "foo": "baz",
             "foo": "bar,baz",
             "foo": " bar ,baz ,,",
-            "bar": "foo"
+            "bar": "foo",
         ]
 
         let values = headers.values(forHeader: "foo", canonicalForm: false)
@@ -137,7 +137,7 @@ final class HPACKHeadersTests: XCTestCase {
         XCTAssertEqual(iterator.next(), "bar,baz")
         XCTAssertEqual(iterator.next(), " bar ,baz ,,")
         XCTAssertNil(iterator.next())
-        XCTAssertNil(iterator.next()) // Still nil
+        XCTAssertNil(iterator.next())  // Still nil
     }
 
     func testValuesSequenceInCanonicalForm() {
@@ -147,7 +147,7 @@ final class HPACKHeadersTests: XCTestCase {
             "foo": "baz",
             "foo": "bar,baz",
             "foo": " bar ,baz ,,",
-            "bar": "foo"
+            "bar": "foo",
         ]
 
         let values = headers.values(forHeader: "foo", canonicalForm: true)
@@ -159,13 +159,13 @@ final class HPACKHeadersTests: XCTestCase {
         XCTAssertEqual(iterator.next(), "bar")
         XCTAssertEqual(iterator.next(), "baz")
         XCTAssertNil(iterator.next())
-        XCTAssertNil(iterator.next()) // Still nil
+        XCTAssertNil(iterator.next())  // Still nil
     }
 
     func testValuesSequenceIgnoresCanonicalFormForSetCookie() {
         let expected = [
             "haha,you,wont,split,me,im,set-cookie",
-            "but we should still get multiple values"
+            "but we should still get multiple values",
         ]
 
         var headers = HPACKHeaders()
@@ -188,7 +188,7 @@ final class HPACKHeadersTests: XCTestCase {
             "foo": "baz",
             "foo": "bar,baz",
             "foo": " bar ,baz ,,",
-            "bar": "foo"
+            "bar": "foo",
         ]
 
         let originalCapacity = original.capacity
