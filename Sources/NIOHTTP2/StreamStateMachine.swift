@@ -11,8 +11,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 //===----------------------------------------------------------------------===//
-import NIOHPACK
+
 import NIOCore
+import NIOHPACK
 
 /// A HTTP/2 protocol implementation is fundamentally built on top of two interlocking finite
 /// state machines. The full description of this is in ConnectionStateMachine.swift.

@@ -525,7 +525,7 @@ class HPACKCodingTests: XCTestCase {
         // 2 - We can set multiple sizes, and both the smallest and the latest will be sent.
         try encoder.setDynamicTableSize(64)
         try encoder.setDynamicTableSize(75)
-        try encoder.setDynamicTableSize(oddMaxTableSize) // 81
+        try encoder.setDynamicTableSize(oddMaxTableSize)  // 81
 
         try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))

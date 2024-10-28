@@ -232,7 +232,6 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         )
         manager.streamCreated(1)
 
-
         for _ in 0..<15 {
             XCTAssertNoThrow(
                 try manager.processOutboundFrame(subsequentFrame, promise: nil, channelWritable: true)
