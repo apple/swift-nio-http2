@@ -232,23 +232,20 @@ final class ConcurrentStreamBufferTests: XCTestCase {
         )
         manager.streamCreated(1)
 
-        XCTAssertNoThrow(
-            try (0..<15).forEach { _ in
-                XCTAssertNoThrow(
-                    try manager.processOutboundFrame(subsequentFrame, promise: nil, channelWritable: true)
-                        .assertNothing()
-                )
-            }
-        )
+
+        for _ in 0..<15 {
+            XCTAssertNoThrow(
+                try manager.processOutboundFrame(subsequentFrame, promise: nil, channelWritable: true)
+                    .assertNothing()
+            )
+        }
         manager.flushReceived()
-        XCTAssertNoThrow(
-            try (0..<15).forEach { _ in
-                XCTAssertNoThrow(
-                    try manager.processOutboundFrame(subsequentFrame, promise: nil, channelWritable: true)
-                        .assertNothing()
-                )
-            }
-        )
+        for _ in 0..<15 {
+            XCTAssertNoThrow(
+                try manager.processOutboundFrame(subsequentFrame, promise: nil, channelWritable: true)
+                    .assertNothing()
+            )
+        }
 
         XCTAssertNil(manager.nextFlushedWritableFrame())
 

@@ -138,11 +138,11 @@ try measureAndPrint(
 )
 try measureAndPrint(
     desc: "huffman_encode_basic",
-    benchmark: HuffmanEncodingBenchmark(huffmanString: .basicHuffmanString, loopCount: 100)
+    benchmark: HuffmanEncodingBenchmark(huffmanString: .basicHuffman, loopCount: 100)
 )
 try measureAndPrint(
     desc: "huffman_encode_complex",
-    benchmark: HuffmanEncodingBenchmark(huffmanString: .complexHuffmanString, loopCount: 100)
+    benchmark: HuffmanEncodingBenchmark(huffmanString: .complexHuffman, loopCount: 100)
 )
 try measureAndPrint(
     desc: "huffman_decode_basic",

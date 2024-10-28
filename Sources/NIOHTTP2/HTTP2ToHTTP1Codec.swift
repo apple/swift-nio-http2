@@ -726,7 +726,9 @@ extension HTTPHeaders {
         var newHeaders: [(String, String)] = []
         newHeaders.reserveCapacity(responseHead.headers.count + 1)
         newHeaders.append((":status", String(responseHead.status.code)))
-        responseHead.headers.forEach { newHeaders.append(($0.name, $0.value)) }
+        for responseHeader in responseHead.headers {
+            newHeaders.append((responseHeader.name, responseHeader.value))
+        }
 
         self.init(newHeaders)
     }

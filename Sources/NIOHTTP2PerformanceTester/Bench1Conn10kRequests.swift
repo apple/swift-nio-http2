@@ -55,7 +55,7 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
 
         // Set the handlers that are applied to the accepted Channels
         .childChannelInitializer { channel in
-            return channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+            channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
                     () -> EventLoopFuture<Void> in
                     streamChannel.pipeline.addHandler(HTTP1TestServer())

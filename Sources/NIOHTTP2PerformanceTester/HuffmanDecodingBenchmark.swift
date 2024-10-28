@@ -56,7 +56,8 @@ extension HuffmanDecodingBenchmark: Benchmark {
         self.buffer.writeInteger(UInt8(0x10))  // Never indexed, non-indexed name
         self.buffer.encodeInteger(1, prefix: 7, prefixBits: 0x80)  // Name length, huffman encoded, 7-bit integer
         self.buffer.writeInteger(UInt8(0x97))  // Huffman encoded "f"
-        self.buffer.encodeInteger(UInt(self.testType.huffmanBytes.count), prefix: 7, prefixBits: 0x80)  // Value length, huffman encoded, 7-bit integer
+        // Value length, huffman encoded, 7-bit integer
+        self.buffer.encodeInteger(UInt(self.testType.huffmanBytes.count), prefix: 7, prefixBits: 0x80)
         self.buffer.writeBytes(self.testType.huffmanBytes)
 
         // Run a single iteration of the loop. This warms up the encoder and decoder and ensures all the pages are mapped.

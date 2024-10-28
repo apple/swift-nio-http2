@@ -39,7 +39,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
 
     // see 8.1.2.2. Connection-Specific Header Fields in RFC 7540
     @usableFromInline
-    static let illegalHeaders: [String] = [
+    static let illegalNames: [String] = [
         "connection", "keep-alive", "proxy-connection",
         "transfer-encoding", "upgrade",
     ]
@@ -57,14 +57,14 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
             if connectionHeaderValue.count > Self.connectionHeaderValueArraySizeLimit {
                 var headersToRemove = Set(connectionHeaderValue)
                 // Since we have a set we can just merge in the illegal headers.
-                headersToRemove.formUnion(Self.illegalHeaders.lazy.map { $0[...] })
+                headersToRemove.formUnion(Self.illegalNames.lazy.map { $0[...] })
                 self.headers.removeAll { header in
                     headersToRemove.contains(header.name[...])
                 }
             } else {
                 self.headers.removeAll { header in
                     connectionHeaderValue.contains(header.name[...])
-                        || HPACKHeaders.illegalHeaders.contains(header.name)
+                        || HPACKHeaders.illegalNames.contains(header.name)
                 }
             }
         } else {

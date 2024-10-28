@@ -56,7 +56,7 @@ extension HuffmanEncodingBenchmark: Benchmark {
 }
 
 extension String {
-    static let basicHuffmanString: String = {
+    static let basicHuffman: String = {
         var text =
             "Hello, world. I am a header value; I have Teh Texts. I am going on for quite a long time because I want to ensure that the encoded data buffer needs to be expanded to test out that code. I'll try some meta-characters too: \r\t\n ought to do it, no?"
         while text.count < 1024 * 128 {
@@ -65,7 +65,7 @@ extension String {
         return text
     }()
 
-    static let complexHuffmanString: String = {
+    static let complexHuffman: String = {
         var text = "午セイ谷高ぐふあト食71入ツエヘナ津県を類及オモ曜一購ごきわ致掲ぎぐず敗文輪へけり鯖審ヘ塊米卸呪おぴ。"
         while text.utf8.count < 128 * 1024 {
             text += text
