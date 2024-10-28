@@ -645,7 +645,7 @@ extension UInt8 {
     }
 }
 
-/* private but inlinable */
+// private but inlinable
 extension UTF8.CodeUnit {
     @inlinable
     var isASCIIWhitespace: Bool {

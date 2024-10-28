@@ -201,7 +201,7 @@ private class TestServer: ChannelInboundHandler {
 func run(identifier: String) {
     var interleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100) { channel in
         _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 
@@ -213,7 +213,7 @@ func run(identifier: String) {
 
     var noninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1) { channel in
         _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 
@@ -231,7 +231,7 @@ func run(identifier: String) {
             connectionConfiguration: .init(),
             streamConfiguration: .init()
         ) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 
@@ -247,7 +247,7 @@ func run(identifier: String) {
             connectionConfiguration: .init(),
             streamConfiguration: .init()
         ) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 

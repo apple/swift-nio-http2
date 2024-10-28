@@ -300,7 +300,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
     func testClosingIdleChannels() throws {
         let frameReceiver = FrameWriteRecorder()
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
-            return channel.close()
+            channel.close()
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -903,7 +903,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
 
             // We're going to disable autoRead on this channel.
             return channel.setOption(ChannelOptions.autoRead, value: false).flatMap {
-                return channel.pipeline.addHandler(frameRecorder)
+                channel.pipeline.addHandler(frameRecorder)
             }
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -1043,7 +1043,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
-            return channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
+            channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
@@ -1075,7 +1075,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { channel in
-            return channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
+            channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
@@ -1552,7 +1552,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let readCompleteCounter = ReadCompleteCounter()
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { childChannel in
-            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+            childChannel.pipeline.addHandler(frameRecorder).flatMap {
                 childChannel.pipeline.addHandler(readCompleteCounter)
             }
         }
@@ -1622,7 +1622,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
         let readCompleteCounter = ReadCompleteCounter()
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { childChannel in
-            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+            childChannel.pipeline.addHandler(frameRecorder).flatMap {
                 childChannel.pipeline.addHandler(readCompleteCounter)
             }
         }
@@ -1907,7 +1907,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             channel: self.channel,
             targetWindowSize: targetWindowSize
         ) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
 
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -2052,7 +2052,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             channel: self.channel,
             targetWindowSize: targetWindowSize
         ) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
@@ -2101,7 +2101,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             channel: self.channel,
             targetWindowSize: targetWindowSize
         ) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
@@ -2189,7 +2189,7 @@ final class HTTP2FramePayloadStreamMultiplexerTests: XCTestCase {
             mode: .client,
             channel: self.channel
         ) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 

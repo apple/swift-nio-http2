@@ -37,7 +37,7 @@ public func measure(_ fn: () throws -> Int) rethrows -> [TimeInterval] {
         return end.timeIntervalSince(start)
     }
 
-    _ = try measureOne(fn) /* pre-heat and throw away */
+    _ = try measureOne(fn) // pre-heat and throw away
     var measurements = Array(repeating: 0.0, count: 10)
     for i in 0..<10 {
         measurements[i] = try measureOne(fn)

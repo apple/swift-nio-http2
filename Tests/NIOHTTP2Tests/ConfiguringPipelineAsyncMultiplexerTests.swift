@@ -143,8 +143,8 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         for i in 0..<requestCount {
             // Let's try sending some requests.
             let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                    return channel
+                channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
+                    channel
                 }
             }
 
@@ -213,8 +213,8 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             for _ in 0..<requestCount {
                 // Let's try sending some requests
                 let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                    return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                        return channel
+                    channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
+                        channel
                     }
                 }
 
@@ -403,8 +403,8 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             for _ in 0..<requestCount {
                 // Let's try sending some requests
                 let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                    return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                        return channel
+                    channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
+                        channel
                     }
                 }
 

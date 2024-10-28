@@ -56,14 +56,14 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
         // Set the handlers that are applied to the accepted Channels
         .childChannelInitializer { channel in
             return channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-                return streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
+                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
                     () -> EventLoopFuture<Void> in
                     streamChannel.pipeline.addHandler(HTTP1TestServer())
                 }.flatMap { () -> EventLoopFuture<Void> in
                     streamChannel.pipeline.addHandler(ErrorHandler())
                 }
             }.flatMap { (_: HTTP2StreamMultiplexer) in
-                return channel.pipeline.addHandler(ErrorHandler())
+                channel.pipeline.addHandler(ErrorHandler())
             }
         }
 
@@ -78,7 +78,7 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
 func sendOneRequest(channel: Channel, multiplexer: HTTP2StreamMultiplexer) throws -> Int {
     let responseReceivedPromise = channel.eventLoop.makePromise(of: Int.self)
     let requestStreamInitializer: NIOChannelInitializer = { channel in
-        return channel.pipeline.addHandlers(
+        channel.pipeline.addHandlers(
             [
                 HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https),
                 SendRequestHandler(

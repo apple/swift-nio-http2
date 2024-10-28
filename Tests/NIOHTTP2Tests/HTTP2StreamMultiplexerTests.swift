@@ -479,7 +479,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
     func testClosingIdleChannels() throws {
         let frameReceiver = FrameWriteRecorder()
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
-            return channel.close()
+            channel.close()
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -1044,7 +1044,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
 
             // Disable autoRead on the first channel.
             return channel.setOption(ChannelOptions.autoRead, value: streamID != firstStreamID).flatMap {
-                return channel.pipeline.addHandler(recorder)
+                channel.pipeline.addHandler(recorder)
             }
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
@@ -1238,7 +1238,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
-            return channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
+            channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
@@ -1271,7 +1271,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (channel, _) in
-            return channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
+            channel.pipeline.addHandler(HandlerRemovedHandler(removedPromise: handlerRemovedPromise))
         }
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())
 
@@ -1763,7 +1763,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         let readCompleteCounter = ReadCompleteCounter()
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (childChannel, _) in
-            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+            childChannel.pipeline.addHandler(frameRecorder).flatMap {
                 childChannel.pipeline.addHandler(readCompleteCounter)
             }
         }
@@ -1834,7 +1834,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
         let readCompleteCounter = ReadCompleteCounter()
 
         let multiplexer = HTTP2StreamMultiplexer(mode: .server, channel: self.channel) { (childChannel, _) in
-            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+            childChannel.pipeline.addHandler(frameRecorder).flatMap {
                 childChannel.pipeline.addHandler(readCompleteCounter)
             }
         }
@@ -2117,7 +2117,7 @@ final class HTTP2StreamMultiplexerTests: XCTestCase {
             channel: self.channel,
             targetWindowSize: targetWindowSize
         ) { (channel, streamID) in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
 
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(multiplexer).wait())

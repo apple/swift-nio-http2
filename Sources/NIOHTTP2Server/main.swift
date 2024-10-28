@@ -107,15 +107,15 @@ let htdocs: String
 let bindTarget: BindTo
 switch (arg1, arg1.flatMap { Int($0) }, arg2, arg2.flatMap { Int($0) }, arg3) {
 case (.some(let h), _, _, .some(let p), let maybeHtdocs):
-    /* second arg an integer --> host port [htdocs] */
+    // second arg an integer --> host port [htdocs]
     bindTarget = .ip(host: h, port: p)
     htdocs = maybeHtdocs ?? defaultHtdocs
 case (_, .some(let p), let maybeHtdocs, _, _):
-    /* first arg an integer --> port [htdocs] */
+    // first arg an integer --> port [htdocs]
     bindTarget = .ip(host: defaultHost, port: p)
     htdocs = maybeHtdocs ?? defaultHtdocs
 case (.some(let portString), .none, let maybeHtdocs, .none, .none):
-    /* couldn't parse as number --> uds-path [htdocs] */
+    // couldn't parse as number --> uds-path [htdocs]
     bindTarget = .unixDomainSocket(path: portString)
     htdocs = maybeHtdocs ?? defaultHtdocs
 default:
@@ -131,15 +131,15 @@ let bootstrap = ServerBootstrap(group: group)
 
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
-        return channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
+        channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+            streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
                 () -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(HTTP1TestServer())
             }.flatMap { () -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(ErrorHandler())
             }
         }.flatMap { (_: HTTP2StreamMultiplexer) in
-            return channel.pipeline.addHandler(ErrorHandler())
+            channel.pipeline.addHandler(ErrorHandler())
         }
     }
 

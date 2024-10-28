@@ -60,7 +60,8 @@ struct DynamicHeaderTable: Sendable {
     init(maximumLength: Int = DynamicHeaderTable.defaultSize) {
         self.storage = HeaderTableStorage(maxSize: maximumLength)
         self.maximumTableLength = maximumLength
-        self.allowedLength = maximumLength  // until we're told otherwise, this is what we assume the other side expects.
+        // until we're told otherwise, this is what we assume the other side expects.
+        self.allowedLength = maximumLength
     }
 
     /// Subscripts into the dynamic table alone, using a zero-based index.

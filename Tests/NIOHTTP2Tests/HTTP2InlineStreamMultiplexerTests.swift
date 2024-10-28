@@ -302,7 +302,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         // Let's open the stream up.
         let multiplexer = try http2Handler.multiplexer.wait()
         let streamFuture = multiplexer.createStreamChannel { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+            channel.eventLoop.makeSucceededVoidFuture()
         }
 
         (self.channel.eventLoop as! EmbeddedEventLoop).run()
@@ -332,7 +332,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             mode: .server,
             eventLoop: self.channel.eventLoop,
             inboundStreamInitializer: { channel in
-                return channel.close()
+                channel.close()
             }
         )
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(frameReceiver).wait())
@@ -1111,7 +1111,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             mode: .server,
             eventLoop: self.channel.eventLoop,
             inboundStreamInitializer: { channel in
-                return channel.pipeline.addHandlers([
+                channel.pipeline.addHandlers([
                     HandlerRemovedHandler(removedPromise: handlerRemovedPromise),
                     TestHookHandler { context, payload in
                         guard case .headers(let requestHeaders) = payload else {
@@ -1156,7 +1156,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         }
 
         let http2Handler = NIOHTTP2Handler(mode: .server, eventLoop: self.channel.eventLoop) { channel in
-            return channel.pipeline.addHandlers([
+            channel.pipeline.addHandlers([
                 HandlerRemovedHandler(removedPromise: handlerRemovedPromise),
                 TestHookHandler { context, payload in
                     guard case .headers(let requestHeaders) = payload else {
@@ -1655,7 +1655,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let readCompleteCounter = ReadCompleteCounter()
 
         let http2Handler = NIOHTTP2Handler(mode: .server, eventLoop: self.channel.eventLoop) { childChannel in
-            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+            childChannel.pipeline.addHandler(frameRecorder).flatMap {
                 childChannel.pipeline.addHandler(readCompleteCounter)
             }
         }
@@ -1719,7 +1719,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let readCompleteCounter = ReadCompleteCounter()
 
         let http2Handler = NIOHTTP2Handler(mode: .server, eventLoop: self.channel.eventLoop) { childChannel in
-            return childChannel.pipeline.addHandler(frameRecorder).flatMap {
+            childChannel.pipeline.addHandler(frameRecorder).flatMap {
                 childChannel.pipeline.addHandler(readCompleteCounter)
             }
         }
@@ -2099,7 +2099,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             mode: .client,
             eventLoop: self.channel.eventLoop,
             inboundStreamInitializer: { channel in
-                return channel.eventLoop.makeSucceededFuture(())
+                channel.eventLoop.makeSucceededFuture(())
             }
         )
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(http2Handler).wait())

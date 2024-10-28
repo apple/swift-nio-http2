@@ -192,18 +192,18 @@ class ConnectionStateMachineTests: XCTestCase {
     let maximumSequentialContinuationFrames: Int = 5
 
     static let requestHeaders = {
-        return HPACKHeaders([
+        HPACKHeaders([
             (":method", "GET"), (":authority", "localhost"), (":scheme", "https"), (":path", "/"),
             ("user-agent", "test"),
         ])
     }()
 
     static let responseHeaders = {
-        return HPACKHeaders([(":status", "200"), ("server", "NIO")])
+        HPACKHeaders([(":status", "200"), ("server", "NIO")])
     }()
 
     static let trailers = {
-        return HPACKHeaders([("x-trailers", "yes")])
+        HPACKHeaders([("x-trailers", "yes")])
     }()
 
     override func setUp() {
@@ -3280,7 +3280,8 @@ class ConnectionStateMachineTests: XCTestCase {
             type: .protocolError,
             tempServer.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max))
         )
-        assertSucceeds(tempClient.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))  // Weird, but we don't have the data to enforce this.
+        // Weird, but we don't have the data to enforce this.
+        assertSucceeds(tempClient.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
 
         // If the server is active, it's fine.
         assertSucceeds(
@@ -3329,7 +3330,8 @@ class ConnectionStateMachineTests: XCTestCase {
             type: .protocolError,
             server.sendWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max))
         )
-        assertSucceeds(client.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))  // Weird, but we don't have the data to enforce this.
+        // Weird, but we don't have the data to enforce this.
+        assertSucceeds(client.receiveWindowUpdate(streamID: streamOne, windowIncrement: UInt32(Int32.max)))
 
         // What if the server pushes? This one is actually a bit tricky: the client is allowed to, but the server is not.
         assertSucceeds(

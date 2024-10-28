@@ -796,7 +796,7 @@ extension ChannelPipeline.SynchronousOperations {
             streamConfiguration: configuration.stream,
             streamDelegate: streamDelegate,
             inboundStreamInitializerWithAnyOutput: { channel in
-                streamInitializer(channel).map { return $0 }
+                streamInitializer(channel).map { $0 }
             }
         )
 

@@ -337,7 +337,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
         self._pendingStreams[channel.channelID] = channel
 
         let anyInitializer: NIOChannelInitializerWithOutput<any Sendable> = { channel in
-            streamStateInitializer(channel).map { return $0 }
+            streamStateInitializer(channel).map { $0 }
         }
 
         let anyPromise: EventLoopPromise<(any Sendable)>?

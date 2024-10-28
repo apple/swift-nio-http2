@@ -76,7 +76,7 @@ public struct HPACKDecoder: Sendable {
     /// each header it contains.
     public var maxDynamicTableLength: Int {
         get { headerTable.maxDynamicTableLength }
-        /* private but tests */
+        // private but tests
         set { headerTable.maxDynamicTableLength = newValue }
     }
 

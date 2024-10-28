@@ -102,14 +102,17 @@ class HeaderTableTests: XCTestCase {
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "custom-key", value: "custom-value")!)
         XCTAssertEqualTuple((62, false), table.firstHeaderMatch(for: "custom-key", value: "other-value")!)
         XCTAssertEqualTuple((63, true), table.firstHeaderMatch(for: "cache-control", value: "no-cache")!)
-        XCTAssertEqualTuple((1, false), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)  // will find the header name in static table
+        // will find the header name in static table
+        XCTAssertEqualTuple((1, false), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)
 
         table.dynamicTableAllowedLength = 64
         XCTAssertEqual(table.dynamicTableLength, 164 - 110)
         XCTAssertEqualTuple((62, true), table.firstHeaderMatch(for: "custom-key", value: "custom-value")!)
         XCTAssertEqualTuple((62, false), table.firstHeaderMatch(for: "custom-key", value: "other-value")!)
-        XCTAssertEqualTuple((24, false), table.firstHeaderMatch(for: "cache-control", value: "no-cache")!)  // will find the header name in static table
-        XCTAssertEqualTuple((1, false), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)  // will find the header name in static table
+        // will find the header name in static table
+        XCTAssertEqualTuple((24, false), table.firstHeaderMatch(for: "cache-control", value: "no-cache")!)
+        // will find the header name in static table
+        XCTAssertEqualTuple((1, false), table.firstHeaderMatch(for: ":authority", value: "www.example.com")!)
 
         table.dynamicTableAllowedLength = 164 - 110  // should cause no evictions
         XCTAssertEqual(table.dynamicTableLength, 164 - 110)

@@ -1395,12 +1395,12 @@ extension NIOHTTP2Handler {
         // We need to return a future here so that we can synchronize access on the underlying `self.inboundStreamMultiplexer`
         if self._eventLoop!.inEventLoop {
             return self._eventLoop!.makeCompletedFuture {
-                return try self.syncMultiplexer()
+                try self.syncMultiplexer()
             }
         } else {
             let unsafeSelf = UnsafeTransfer(self)
             return self._eventLoop!.submit {
-                return try unsafeSelf.wrappedValue.syncMultiplexer()
+                try unsafeSelf.wrappedValue.syncMultiplexer()
             }
         }
     }

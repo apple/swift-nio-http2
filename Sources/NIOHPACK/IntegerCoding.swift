@@ -14,7 +14,7 @@
 
 import NIOCore
 
-/* private but tests */
+// private but tests
 /// Encodes an integer value into a provided memory location.
 ///
 /// - Parameters:
@@ -69,13 +69,13 @@ func encodeInteger(
 private let valueMask: UInt8 = 127
 private let continuationMask: UInt8 = 128
 
-/* private but tests */
+// private but tests
 struct DecodedInteger {
     var value: Int
     var bytesRead: Int
 }
 
-/* private but tests */
+// private but tests
 func decodeInteger(from bytes: ByteBufferView, prefix: Int) throws -> DecodedInteger {
     precondition((1...8).contains(prefix))
     if bytes.isEmpty {

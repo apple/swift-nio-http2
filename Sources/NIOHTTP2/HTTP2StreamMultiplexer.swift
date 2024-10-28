@@ -75,7 +75,7 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     }
 
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        /* for now just forward */
+        // for now just forward
         context.write(data, promise: promise)
     }
 
