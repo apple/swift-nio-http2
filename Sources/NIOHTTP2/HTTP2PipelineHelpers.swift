@@ -730,6 +730,61 @@ extension Channel {
             http2ConnectionInitializer: http2ConnectionInitializer
         )
     }
+
+    /// Configures a `ChannelPipeline` to speak either HTTP/1.1 or HTTP/2 according to what can be negotiated with the client.
+    ///
+    /// This helper takes care of configuring the server pipeline such that it negotiates whether to
+    /// use HTTP/1.1 or HTTP/2.
+    ///
+    /// This function doesn't configure the TLS handler. Callers of this function need to add a TLS
+    /// handler appropriately configured to perform protocol negotiation.
+    ///
+    /// - Parameters:
+    ///   - streamDelegate: A delegate which is called when streams are created and closed.
+    ///   - http2Configuration: The settings that will be used when establishing the HTTP/2 connections and new HTTP/2 streams.
+    ///   - http1ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
+    ///     is HTTP/1.1 to configure the connection channel.
+    ///   - http2ConnectionInitializer: An optional callback that will be invoked only when the negotiated protocol
+    ///     is HTTP/2 to configure the connection channel. The channel has an `ChannelOutboundHandler/OutboundIn` type of ``HTTP2Frame``.
+    ///   - http2StreamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///     The output of this closure is the element type of the returned multiplexer
+    /// - Returns: An `EventLoopFuture` containing a `NIOTypedApplicationProtocolNegotiationHandler` that completes when the channel
+    ///     is ready to negotiate. This can then be used to access the `NIOProtocolNegotiationResult` which may itself
+    ///     be waited on to retrieve the result of the negotiation.
+    @inlinable
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput: Sendable, HTTP2ConnectionOutput: Sendable, HTTP2StreamOutput: Sendable>(
+        streamDelegate: NIOHTTP2StreamDelegate,
+        http2Configuration: NIOHTTP2Handler.Configuration = .init(),
+        http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1ConnectionOutput>,
+        http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2ConnectionOutput>,
+        http2StreamInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2StreamOutput>
+    ) -> EventLoopFuture<EventLoopFuture<NIONegotiatedHTTPVersion<
+            HTTP1ConnectionOutput,
+            (HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)
+        >>> {
+        let http2ConnectionInitializer: NIOChannelInitializerWithOutput<(HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)> = { channel in
+            channel.configureAsyncHTTP2Pipeline(
+                mode: .server,
+                streamDelegate: streamDelegate,
+                configuration: http2Configuration,
+                streamInitializer: http2StreamInitializer
+            ).flatMap { multiplexer in
+                return http2ConnectionInitializer(channel).map { connectionChannel in
+                    (connectionChannel, multiplexer)
+                }
+            }
+        }
+        let http1ConnectionInitializer: NIOChannelInitializerWithOutput<HTTP1ConnectionOutput> = { channel in
+            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
+                http1ConnectionInitializer(channel)
+            }
+        }
+        return self.configureHTTP2AsyncSecureUpgrade(
+            http1ConnectionInitializer: http1ConnectionInitializer,
+            http2ConnectionInitializer: http2ConnectionInitializer
+        )
+    }
 }
 
 extension ChannelPipeline.SynchronousOperations {
