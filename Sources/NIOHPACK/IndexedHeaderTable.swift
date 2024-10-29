@@ -24,7 +24,7 @@ public struct IndexedHeaderTable {
 
     // TODO(cory): This property should be removed, we only keep it for use in headerViews(at:).
     private var allocator: ByteBufferAllocator
-    
+
     /// Creates a new header table, optionally specifying a maximum size for the dynamic
     /// portion of the table.
     ///
@@ -34,7 +34,7 @@ public struct IndexedHeaderTable {
         self.dynamicTable = DynamicHeaderTable(maximumLength: maxDynamicTableSize)
         self.allocator = allocator
     }
-    
+
     /// Obtains the header key/value pair at the given index within the table.
     ///
     /// - note: Per RFC 7541, this uses a *1-based* index.
@@ -48,12 +48,15 @@ public struct IndexedHeaderTable {
         } else if index - self.staticTable.count < self.dynamicTable.count {
             result = self.dynamicTable[index - self.staticTable.count]
         } else {
-            throw NIOHPACKErrors.InvalidHeaderIndex(suppliedIndex: index, availableIndex: self.staticTable.count + self.dynamicTable.count - 1)
+            throw NIOHPACKErrors.InvalidHeaderIndex(
+                suppliedIndex: index,
+                availableIndex: self.staticTable.count + self.dynamicTable.count - 1
+            )
         }
 
         return (name: result.name, value: result.value)
     }
-    
+
     /// Obtains the header key/value pair at the given index within the table as sequences of
     /// raw bytes.
     ///
@@ -74,7 +77,7 @@ public struct IndexedHeaderTable {
 
         return (nameBuffer.readableBytesView, valueBuffer.readableBytesView)
     }
-    
+
     /// Searches the table to locate an existing header with the given name and value. If
     /// no item exists that contains a matching value, it will return the index of the first
     /// item with a matching header name instead, to be encoded as index+value.
@@ -107,7 +110,7 @@ public struct IndexedHeaderTable {
                 return (index, false)
             }
         }
-        
+
         // no complete match: search the dynamic table now
         if let result = self.dynamicTable.findExistingHeader(named: name, value: value) {
             if let staticIndex = firstHeaderIndex, result.containsValue == false {
@@ -127,7 +130,7 @@ public struct IndexedHeaderTable {
             return nil
         }
     }
-    
+
     /// Appends a header to the table.
     ///
     /// This call may result in an empty table, as per RFC 7541 § 4.4:
@@ -142,7 +145,7 @@ public struct IndexedHeaderTable {
         // This function is unnecessarily marked throws, but none of its underlying functions throw anymore.
         self.dynamicTable.addHeader(named: name, value: value)
     }
-    
+
     /// Appends a header to the table.
     ///
     /// This call may result in an empty table, as per RFC 7541 § 4.4:
@@ -157,38 +160,38 @@ public struct IndexedHeaderTable {
     ///   - name: A sequence of contiguous bytes containing the name of the header to insert.
     ///   - value: A sequence of contiguous bytes containing the value of the header to insert.
     @available(*, deprecated, renamed: "add(headerNamed:value:)")
-    public mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws where Name.Element == UInt8, Value.Element == UInt8 {
+    public mutating func add<Name: Collection, Value: Collection>(headerNamed name: Name, value: Value) throws
+    where Name.Element == UInt8, Value.Element == UInt8 {
         let nameString = String(decoding: name, as: UTF8.self)
         let valueString = String(decoding: value, as: UTF8.self)
-        
+
         try self.add(headerNamed: nameString, value: valueString)
     }
-    
+
     /// Internal for test access.
     internal func dumpHeaders() -> String {
-        return "\(staticTable.dumpHeaders())\n\(dynamicTable.dumpHeaders())"
+        "\(staticTable.dumpHeaders())\n\(dynamicTable.dumpHeaders())"
     }
-    
+
     /// The length, in bytes, of the dynamic portion of the header table.
     public var dynamicTableLength: Int {
-        return self.dynamicTable.length
+        self.dynamicTable.length
     }
-    
+
     /// The current allowed length of the dynamic portion of the header table. May be
     /// less than the current protocol-assigned maximum supplied by a SETTINGS frame.
     public var dynamicTableAllowedLength: Int {
-        get { return self.dynamicTable.allowedLength }
+        get { self.dynamicTable.allowedLength }
         set { self.dynamicTable.allowedLength = newValue }
     }
-    
+
     /// The hard limit on the size to which the dynamic table may grow. Only a SETTINGS
     /// frame can change this: it can't grow beyond this size due to changes within
     /// header blocks.
     public var maxDynamicTableLength: Int {
-        get { return self.dynamicTable.maximumTableLength }
+        get { self.dynamicTable.maximumTableLength }
         set { self.dynamicTable.maximumTableLength = newValue }
     }
 }
-
 
 extension IndexedHeaderTable: Sendable {}

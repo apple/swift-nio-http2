@@ -12,8 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-@testable import NIOHTTP2
 import XCTest
+
+@testable import NIOHTTP2
 
 class InboundWindowManagerTests: XCTestCase {
 

@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 internal let StaticHeaderTable: [(String, String)] = [
-    ("", ""),              // real indexing begins at 1
+    ("", ""),  // real indexing begins at 1
     (":authority", ""),
     (":method", "GET"),
     (":method", "POST"),
@@ -74,5 +74,5 @@ internal let StaticHeaderTable: [(String, String)] = [
     ("user-agent", ""),
     ("vary", ""),
     ("via", ""),
-    ("www-authenticate", "")
+    ("www-authenticate", ""),
 ]

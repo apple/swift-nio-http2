@@ -12,11 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
+import XCTest
+
 @testable import NIOHTTP2
 
 final class CompoundOutboundBufferTest: XCTestCase {
@@ -32,11 +33,18 @@ final class CompoundOutboundBufferTest: XCTestCase {
     }
 
     func testSimpleControlFramePassthrough() {
-        var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 100, maxBufferedControlFrames: 1000)
+        var buffer = CompoundOutboundBuffer(
+            mode: .client,
+            initialMaxOutboundStreams: 100,
+            maxBufferedControlFrames: 1000
+        )
 
         let frames: [HTTP2Frame] = [
             HTTP2Frame(streamID: .rootStream, payload: .ping(.init(withInteger: 0), ack: true)),
-            HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: 0, errorCode: .protocolError, opaqueData: nil)),
+            HTTP2Frame(
+                streamID: .rootStream,
+                payload: .goAway(lastStreamID: 0, errorCode: .protocolError, opaqueData: nil)
+            ),
             HTTP2Frame(streamID: .rootStream, payload: .settings(.settings([]))),
             HTTP2Frame(streamID: .rootStream, payload: .alternativeService(origin: nil, field: nil)),
             HTTP2Frame(streamID: .rootStream, payload: .origin([])),
@@ -45,7 +53,10 @@ final class CompoundOutboundBufferTest: XCTestCase {
         ]
 
         for frame in frames {
-            XCTAssertNoThrow(try buffer.processOutboundFrame(frame, promise: nil, channelWritable: true).assertForward(), "Threw on \(frame)")
+            XCTAssertNoThrow(
+                try buffer.processOutboundFrame(frame, promise: nil, channelWritable: true).assertForward(),
+                "Threw on \(frame)"
+            )
         }
     }
 
@@ -55,14 +66,21 @@ final class CompoundOutboundBufferTest: XCTestCase {
         // Let's create 100 new outbound streams.
         let firstFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders([]))))
         let subsequentFrames: [HTTP2Frame] = stride(from: 3, to: 201, by: 2).map { streamID in
-            HTTP2Frame(streamID: HTTP2StreamID(streamID), payload: .headers(.init(headers: HPACKHeaders([]), endStream: true)))
+            HTTP2Frame(
+                streamID: HTTP2StreamID(streamID),
+                payload: .headers(.init(headers: HPACKHeaders([]), endStream: true))
+            )
         }
 
         // Write the first frame, and all the subsequent frames, and flush them. This will lead to one flushed frame.
-        XCTAssertNoThrow(try buffer.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(firstFrame, promise: nil, channelWritable: true).assertForward()
+        )
         buffer.streamCreated(1, initialWindowSize: 65535)
         for frame in subsequentFrames {
-            XCTAssertNoThrow(try buffer.processOutboundFrame(frame, promise: nil, channelWritable: true).assertNothing())
+            XCTAssertNoThrow(
+                try buffer.processOutboundFrame(frame, promise: nil, channelWritable: true).assertNothing()
+            )
         }
         buffer.flushReceived()
         buffer.nextFlushedWritableFrame(channelWritable: true).assertNoFrame()
@@ -110,11 +128,13 @@ final class CompoundOutboundBufferTest: XCTestCase {
         let elevenFrame = HTTP2Frame(streamID: 11, payload: .headers(.init(headers: HPACKHeaders([]))))
         XCTAssertNoThrow(try buffer.processOutboundFrame(oneFrame, promise: nil, channelWritable: true).assertForward())
         buffer.streamCreated(1, initialWindowSize: 15)
-        XCTAssertNoThrow(try buffer.processOutboundFrame(elevenFrame, promise: nil, channelWritable: true).assertNothing())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(elevenFrame, promise: nil, channelWritable: true).assertNothing()
+        )
 
         // Now we're going to try to write a frame for stream 5. This will fail.
         let fiveFrame = HTTP2Frame(streamID: 5, payload: .headers(.init(headers: HPACKHeaders([]))))
-        XCTAssertThrowsError(try buffer.processOutboundFrame(fiveFrame, promise: nil, channelWritable: true)) {error in
+        XCTAssertThrowsError(try buffer.processOutboundFrame(fiveFrame, promise: nil, channelWritable: true)) { error in
             XCTAssertTrue(error is NIOHTTP2Errors.StreamIDTooSmall)
         }
     }
@@ -144,7 +164,9 @@ final class CompoundOutboundBufferTest: XCTestCase {
         let dataFrame = self.createDataFrame(3, byteBufferSize: 15)
         XCTAssertNoThrow(try buffer.processOutboundFrame(oneFrame, promise: nil, channelWritable: true).assertForward())
         buffer.streamCreated(1, initialWindowSize: 15)
-        XCTAssertNoThrow(try buffer.processOutboundFrame(dataFrame, promise: nil, channelWritable: true).assertNothing())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(dataFrame, promise: nil, channelWritable: true).assertNothing()
+        )
         buffer.flushReceived()
 
         buffer.nextFlushedWritableFrame(channelWritable: true).assertNoFrame()
@@ -168,14 +190,22 @@ final class CompoundOutboundBufferTest: XCTestCase {
             let startPromise = self.loop.makePromise(of: Void.self)
             let dataPromise = self.loop.makePromise(of: Void.self)
             if streamID == 1 {
-                XCTAssertNoThrow(try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true).assertForward())
+                XCTAssertNoThrow(
+                    try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true)
+                        .assertForward()
+                )
                 startPromise.succeed(())
                 buffer.streamCreated(streamID, initialWindowSize: 65535)
             } else {
-                XCTAssertNoThrow(try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true).assertNothing())
+                XCTAssertNoThrow(
+                    try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true)
+                        .assertNothing()
+                )
             }
 
-            XCTAssertNoThrow(try buffer.processOutboundFrame(dataFrame, promise: dataPromise, channelWritable: true).assertNothing())
+            XCTAssertNoThrow(
+                try buffer.processOutboundFrame(dataFrame, promise: dataPromise, channelWritable: true).assertNothing()
+            )
             futures.append(contentsOf: [startPromise.futureResult, dataPromise.futureResult])
         }
 
@@ -185,7 +215,10 @@ final class CompoundOutboundBufferTest: XCTestCase {
                     results[idx] = true
                 }
             }.whenFailure { error in
-                XCTAssertEqual(error as? NIOHTTP2Errors.StreamClosed, NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError))
+                XCTAssertEqual(
+                    error as? NIOHTTP2Errors.StreamClosed,
+                    NIOHTTP2Errors.streamClosed(streamID: 3, errorCode: .protocolError)
+                )
                 results.withLockedValue { results in
                     results[idx] = false
                 }
@@ -218,10 +251,14 @@ final class CompoundOutboundBufferTest: XCTestCase {
     func testRejectsPrioritySelfDependency() {
         var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1, maxBufferedControlFrames: 1000)
 
-        XCTAssertThrowsError(try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: false, dependency: 1, weight: 36))) { error in
+        XCTAssertThrowsError(
+            try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: false, dependency: 1, weight: 36))
+        ) { error in
             XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
-        XCTAssertThrowsError(try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))) { error in
+        XCTAssertThrowsError(
+            try buffer.priorityUpdate(streamID: 1, priorityData: .init(exclusive: true, dependency: 1, weight: 36))
+        ) { error in
             XCTAssertEqual(error as? NIOHTTP2Errors.PriorityCycle, NIOHTTP2Errors.priorityCycle(streamID: 1))
         }
     }
@@ -244,12 +281,20 @@ final class CompoundOutboundBufferTest: XCTestCase {
         let secondHeaders = HTTP2Frame(streamID: 3, payload: .headers(.init(headers: HPACKHeaders([]))))
         let secondData = self.createDataFrame(3, byteBufferSize: 5)
 
-        XCTAssertNoThrow(try buffer.processOutboundFrame(firstHeaders, promise: nil, channelWritable: true).assertForward())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(firstHeaders, promise: nil, channelWritable: true).assertForward()
+        )
         buffer.streamCreated(1, initialWindowSize: 65535)
-        XCTAssertNoThrow(try buffer.processOutboundFrame(firstData, promise: nil, channelWritable: true).assertNothing())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(firstData, promise: nil, channelWritable: true).assertNothing()
+        )
 
-        XCTAssertNoThrow(try buffer.processOutboundFrame(secondHeaders, promise: nil, channelWritable: true).assertNothing())
-        XCTAssertNoThrow(try buffer.processOutboundFrame(secondData, promise: nil, channelWritable: true).assertNothing())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(secondHeaders, promise: nil, channelWritable: true).assertNothing()
+        )
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(secondData, promise: nil, channelWritable: true).assertNothing()
+        )
 
         // Now mark them flushed.
         buffer.flushReceived()
@@ -302,20 +347,30 @@ final class CompoundOutboundBufferTest: XCTestCase {
             let startPromise = self.loop.makePromise(of: Void.self)
             let dataPromise = self.loop.makePromise(of: Void.self)
             if streamID == 1 {
-                XCTAssertNoThrow(try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true).assertForward())
+                XCTAssertNoThrow(
+                    try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true)
+                        .assertForward()
+                )
                 startPromise.succeed(())
                 buffer.streamCreated(streamID, initialWindowSize: 65535)
             } else {
-                XCTAssertNoThrow(try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true).assertNothing())
+                XCTAssertNoThrow(
+                    try buffer.processOutboundFrame(startFrame, promise: startPromise, channelWritable: true)
+                        .assertNothing()
+                )
             }
 
-            XCTAssertNoThrow(try buffer.processOutboundFrame(dataFrame, promise: dataPromise, channelWritable: true).assertNothing())
+            XCTAssertNoThrow(
+                try buffer.processOutboundFrame(dataFrame, promise: dataPromise, channelWritable: true).assertNothing()
+            )
             futures.append(contentsOf: [startPromise.futureResult, dataPromise.futureResult])
         }
 
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(.init(withInteger: 0), ack: false))
         let pingPromise = self.loop.makePromise(of: Void.self)
-        XCTAssertNoThrow(try buffer.processOutboundFrame(pingFrame, promise: pingPromise, channelWritable: false).assertNothing())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(pingFrame, promise: pingPromise, channelWritable: false).assertNothing()
+        )
         futures.append(pingPromise.futureResult)
 
         for (idx, future) in futures.enumerated() {
@@ -349,16 +404,22 @@ final class CompoundOutboundBufferTest: XCTestCase {
 
         // Send a HEADERS frame through to open up a space in the flow control buffer.
         let startFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: HPACKHeaders())))
-        XCTAssertNoThrow(try buffer.processOutboundFrame(startFrame, promise: nil, channelWritable: true).assertForward())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(startFrame, promise: nil, channelWritable: true).assertForward()
+        )
         buffer.streamCreated(1, initialWindowSize: 65535)
 
         // Send a DATA frame. This is buffered.
         let dataFrame = self.createDataFrame(1, byteBufferSize: 50)
-        XCTAssertNoThrow(try buffer.processOutboundFrame(dataFrame, promise: nil, channelWritable: true).assertNothing())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(dataFrame, promise: nil, channelWritable: true).assertNothing()
+        )
 
         // Send in a PING frame which will be buffered.
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(.init(withInteger: 9), ack: false))
-        XCTAssertNoThrow(try buffer.processOutboundFrame(pingFrame, promise: nil, channelWritable: false).assertNothing())
+        XCTAssertNoThrow(
+            try buffer.processOutboundFrame(pingFrame, promise: nil, channelWritable: false).assertNothing()
+        )
 
         buffer.flushReceived()
 
@@ -377,7 +438,6 @@ final class CompoundOutboundBufferTest: XCTestCase {
     }
 }
 
-
 extension CompoundOutboundBufferTest {
     func createDataFrame(_ streamID: HTTP2StreamID, byteBufferSize: Int) -> HTTP2Frame {
         var buffer = ByteBufferAllocator().buffer(capacity: byteBufferSize)
@@ -390,18 +450,18 @@ extension CompoundOutboundBuffer {
     fileprivate mutating func receivedFrames(file: StaticString = #filePath, line: UInt = #line) -> [HTTP2Frame] {
         var receivedFrames: [HTTP2Frame] = Array()
 
-    loop: while true {
-        switch self.nextFlushedWritableFrame(channelWritable: true) {
-        case .noFrame:
-            break loop
-        case .frame(let bufferedFrame, let promise):
-            receivedFrames.append(bufferedFrame)
-            promise?.succeed(())
-        case .error(let promise, let error):
-            promise?.fail(error)
-            XCTFail("Caught error: \(error)", file: (file), line: line)
+        loop: while true {
+            switch self.nextFlushedWritableFrame(channelWritable: true) {
+            case .noFrame:
+                break loop
+            case .frame(let bufferedFrame, let promise):
+                receivedFrames.append(bufferedFrame)
+                promise?.succeed(())
+            case .error(let promise, let error):
+                promise?.fail(error)
+                XCTFail("Caught error: \(error)", file: (file), line: line)
+            }
         }
-    }
 
         return receivedFrames
     }
@@ -415,7 +475,11 @@ extension CompoundOutboundBuffer.FlushedWritableFrameResult {
         }
     }
 
-    internal func assertError<ErrorType: Error & Equatable>(_ error: ErrorType, file: StaticString = #filePath, line: UInt = #line) {
+    internal func assertError<ErrorType: Error & Equatable>(
+        _ error: ErrorType,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         guard case .error(let promise, let thrownError) = self else {
             XCTFail("Expected .error, got \(self)", file: (file), line: line)
             return

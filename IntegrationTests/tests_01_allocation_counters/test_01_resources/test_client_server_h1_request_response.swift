@@ -39,14 +39,18 @@ final class ServerHandler: ChannelInboundHandler {
     }
 }
 
-
 final class ClientHandler: ChannelInboundHandler {
     typealias InboundIn = HTTPClientResponsePart
     typealias OutboundOut = HTTPClientRequestPart
 
     func channelActive(context: ChannelHandlerContext) {
         // Send a request.
-        let head = HTTPRequestHead(version: .init(major: 2, minor: 0), method: .GET, uri: "/", headers: HTTPHeaders([("host", "localhost")]))
+        let head = HTTPRequestHead(
+            version: .init(major: 2, minor: 0),
+            method: .GET,
+            uri: "/",
+            headers: HTTPHeaders([("host", "localhost")])
+        )
         context.write(self.wrapOutboundOut(.head(head)), promise: nil)
         context.writeAndFlush(self.wrapOutboundOut(.end(nil)), promise: nil)
     }
@@ -54,27 +58,39 @@ final class ClientHandler: ChannelInboundHandler {
 
 func run(identifier: String) {
     testRun(identifier: identifier) { clientChannel in
-        return try! clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait()
+        try! clientChannel.configureHTTP2Pipeline(mode: .client, inboundStreamInitializer: nil).wait()
     } serverPipelineConfigurator: { serverChannel in
         _ = try! serverChannel.configureHTTP2Pipeline(mode: .server) { channel in
-            return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
+            channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
         }.wait()
     }
 
     //
     // MARK: - Inline HTTP2 multiplexer tests
     testRun(identifier: identifier + "_inline") { clientChannel in
-        return try! clientChannel.configureHTTP2Pipeline(mode: .client, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+        try! clientChannel.configureHTTP2Pipeline(
+            mode: .client,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.eventLoop.makeSucceededVoidFuture()
         }.wait()
     } serverPipelineConfigurator: { serverChannel in
-        _ = try! serverChannel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { channel in
-            return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
+        _ = try! serverChannel.configureHTTP2Pipeline(
+            mode: .server,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { channel in
+            channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ServerCodec(), ServerHandler()])
         }.wait()
     }
 }
 
-private func testRun(identifier: String, clientPipelineConfigurator: (Channel) throws -> MultiplexerChannelCreator, serverPipelineConfigurator: (Channel) throws -> ()) {
+private func testRun(
+    identifier: String,
+    clientPipelineConfigurator: (Channel) throws -> MultiplexerChannelCreator,
+    serverPipelineConfigurator: (Channel) throws -> Void
+) {
     let loop = EmbeddedEventLoop()
 
     measure(identifier: identifier) {
@@ -91,7 +107,9 @@ private func testRun(identifier: String, clientPipelineConfigurator: (Channel) t
 
             let promise = clientChannel.eventLoop.makePromise(of: Channel.self)
             clientMultiplexer.createStreamChannel(promise: promise) { channel in
-                return channel.pipeline.addHandlers([HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https), ClientHandler()])
+                channel.pipeline.addHandlers([
+                    HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https), ClientHandler(),
+                ])
             }
             clientChannel.embeddedEventLoop.run()
             let child = try! promise.futureResult.wait()
@@ -108,4 +126,3 @@ private func testRun(identifier: String, clientPipelineConfigurator: (Channel) t
         return sumOfStreamIDs
     }
 }
-

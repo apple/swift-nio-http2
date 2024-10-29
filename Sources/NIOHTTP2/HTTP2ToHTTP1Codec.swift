@@ -13,17 +13,17 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
-import NIOHTTP1
 import NIOHPACK
+import NIOHTTP1
 
 // MARK: - Client
 
-fileprivate struct BaseClientCodec {
+private struct BaseClientCodec {
     private let protocolString: String
     private let normalizeHTTPHeaders: Bool
 
     private var headerStateMachine: HTTP2HeadersStateMachine = HTTP2HeadersStateMachine(mode: .client)
-    
+
     private var outgoingHTTP1RequestHead: HTTPRequestHead?
 
     /// Initializes a `BaseClientCodec`.
@@ -46,13 +46,15 @@ fileprivate struct BaseClientCodec {
         }
     }
 
-    mutating func processInboundData(_ data: HTTP2Frame.FramePayload) throws -> (first: HTTPClientResponsePart?, second: HTTPClientResponsePart?) {
+    mutating func processInboundData(
+        _ data: HTTP2Frame.FramePayload
+    ) throws -> (first: HTTPClientResponsePart?, second: HTTPClientResponsePart?) {
         switch data {
         case .headers(let headerContent):
             switch try self.headerStateMachine.newHeaders(block: headerContent.headers) {
             case .trailer:
                 return (first: .end(HTTPHeaders(regularHeadersFrom: headerContent.headers)), second: nil)
-                
+
             case .informationalResponseHead:
                 return (first: .head(try HTTPResponseHead(http2HeaderBlock: headerContent.headers)), second: nil)
 
@@ -72,7 +74,7 @@ fileprivate struct BaseClientCodec {
                     second = .end(nil)
                 }
                 return (first: first, second: second)
-                
+
             case .requestHead:
                 preconditionFailure("A client can not receive request heads")
             }
@@ -91,28 +93,42 @@ fileprivate struct BaseClientCodec {
                 }
             }
             return (first: first, second: second)
-        case .alternativeService, .rstStream, .priority, .windowUpdate, .settings, .pushPromise, .ping, .goAway, .origin:
+        case .alternativeService, .rstStream, .priority, .windowUpdate, .settings, .pushPromise, .ping, .goAway,
+            .origin:
             // These don't have an HTTP/1 equivalent, so let's drop them.
             return (first: nil, second: nil)
         }
     }
 
-    mutating func processOutboundData(_ data: HTTPClientRequestPart, allocator: ByteBufferAllocator) throws -> HTTP2Frame.FramePayload {
+    mutating func processOutboundData(
+        _ data: HTTPClientRequestPart,
+        allocator: ByteBufferAllocator
+    ) throws -> HTTP2Frame.FramePayload {
         switch data {
         case .head(let head):
             precondition(self.outgoingHTTP1RequestHead == nil, "Only a single HTTP request allowed per HTTP2 stream")
             let h1Headers = try HTTPHeaders(requestHead: head, protocolString: self.protocolString)
             self.outgoingHTTP1RequestHead = head
-            let headerContent = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1Headers,
-                                                                                      normalizeHTTPHeaders: self.normalizeHTTPHeaders))
+            let headerContent = HTTP2Frame.FramePayload.Headers(
+                headers: HPACKHeaders(
+                    httpHeaders: h1Headers,
+                    normalizeHTTPHeaders: self.normalizeHTTPHeaders
+                )
+            )
             return .headers(headerContent)
         case .body(let body):
             return .data(HTTP2Frame.FramePayload.Data(data: body))
         case .end(let trailers):
             if let trailers = trailers {
-                return .headers(.init(headers: HPACKHeaders(httpHeaders: trailers,
-                                                            normalizeHTTPHeaders: self.normalizeHTTPHeaders),
-                                      endStream: true))
+                return .headers(
+                    .init(
+                        headers: HPACKHeaders(
+                            httpHeaders: trailers,
+                            normalizeHTTPHeaders: self.normalizeHTTPHeaders
+                        ),
+                        endStream: true
+                    )
+                )
             } else {
                 return .data(.init(data: .byteBuffer(allocator.buffer(capacity: 0)), endStream: true))
             }
@@ -183,7 +199,10 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         let responsePart = self.unwrapOutboundIn(data)
 
         do {
-            let transformedPayload = try self.baseCodec.processOutboundData(responsePart, allocator: context.channel.allocator)
+            let transformedPayload = try self.baseCodec.processOutboundData(
+                responsePart,
+                allocator: context.channel.allocator
+            )
             let part = HTTP2Frame(streamID: self.streamID, payload: transformedPayload)
             context.write(self.wrapOutboundOut(part), promise: promise)
         } catch {
@@ -248,7 +267,10 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
         let requestPart = self.unwrapOutboundIn(data)
 
         do {
-            let transformedPayload = try self.baseCodec.processOutboundData(requestPart, allocator: context.channel.allocator)
+            let transformedPayload = try self.baseCodec.processOutboundData(
+                requestPart,
+                allocator: context.channel.allocator
+            )
             context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
         } catch {
             promise?.fail(error)
@@ -259,7 +281,7 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
 
 // MARK: - Server
 
-fileprivate struct BaseServerCodec {
+private struct BaseServerCodec {
     private let normalizeHTTPHeaders: Bool
     private var headerStateMachine: HTTP2HeadersStateMachine = HTTP2HeadersStateMachine(mode: .server)
 
@@ -267,13 +289,18 @@ fileprivate struct BaseServerCodec {
         self.normalizeHTTPHeaders = normalizeHTTPHeaders
     }
 
-    mutating func processInboundData(_ data: HTTP2Frame.FramePayload) throws -> (first: HTTPServerRequestPart?, second: HTTPServerRequestPart?) {
+    mutating func processInboundData(
+        _ data: HTTP2Frame.FramePayload
+    ) throws -> (first: HTTPServerRequestPart?, second: HTTPServerRequestPart?) {
         switch data {
         case .headers(let headerContent):
             if case .trailer = try self.headerStateMachine.newHeaders(block: headerContent.headers) {
                 return (first: .end(HTTPHeaders(regularHeadersFrom: headerContent.headers)), second: nil)
             } else {
-                let reqHead = try HTTPRequestHead(http2HeaderBlock: headerContent.headers, isEndStream: headerContent.endStream)
+                let reqHead = try HTTPRequestHead(
+                    http2HeaderBlock: headerContent.headers,
+                    isEndStream: headerContent.endStream
+                )
 
                 let first = HTTPServerRequestPart.head(reqHead)
                 var second: HTTPServerRequestPart? = nil
@@ -302,28 +329,40 @@ fileprivate struct BaseServerCodec {
         }
     }
 
-    mutating func processOutboundData(_ data: HTTPServerResponsePart, allocator: ByteBufferAllocator) -> HTTP2Frame.FramePayload {
+    mutating func processOutboundData(
+        _ data: HTTPServerResponsePart,
+        allocator: ByteBufferAllocator
+    ) -> HTTP2Frame.FramePayload {
         switch data {
         case .head(let head):
             let h1 = HTTPHeaders(responseHead: head)
-            let payload = HTTP2Frame.FramePayload.Headers(headers: HPACKHeaders(httpHeaders: h1,
-                                                                                normalizeHTTPHeaders: self.normalizeHTTPHeaders))
+            let payload = HTTP2Frame.FramePayload.Headers(
+                headers: HPACKHeaders(
+                    httpHeaders: h1,
+                    normalizeHTTPHeaders: self.normalizeHTTPHeaders
+                )
+            )
             return .headers(payload)
         case .body(let body):
             let payload = HTTP2Frame.FramePayload.Data(data: body)
             return .data(payload)
         case .end(let trailers):
             if let trailers = trailers {
-                return .headers(.init(headers: HPACKHeaders(httpHeaders: trailers,
-                                                            normalizeHTTPHeaders: self.normalizeHTTPHeaders),
-                                      endStream: true))
+                return .headers(
+                    .init(
+                        headers: HPACKHeaders(
+                            httpHeaders: trailers,
+                            normalizeHTTPHeaders: self.normalizeHTTPHeaders
+                        ),
+                        endStream: true
+                    )
+                )
             } else {
                 return .data(.init(data: .byteBuffer(allocator.buffer(capacity: 0)), endStream: true))
             }
         }
     }
 }
-
 
 /// A simple channel handler that translates HTTP/2 concepts into HTTP/1 data types,
 /// and vice versa, for use on the server side.
@@ -436,9 +475,9 @@ public final class HTTP2FramePayloadToHTTP1ServerCodec: ChannelInboundHandler, C
     }
 }
 
-private extension HTTPMethod {
+extension HTTPMethod {
     /// Create a `HTTPMethod` from the string representation of that method.
-    init(methodString: String) {
+    fileprivate init(methodString: String) {
         switch methodString {
         case "GET":
             self = .GET
@@ -514,7 +553,7 @@ private extension HTTPMethod {
 
 // MARK:- Methods for creating `HTTPRequestHead`/`HTTPResponseHead` objects from
 // header blocks generated by the HTTP/2 layer.
-internal extension HTTPRequestHead {
+extension HTTPRequestHead {
     /// Create a `HTTPRequestHead` from the header block.
     init(http2HeaderBlock headers: HPACKHeaders, isEndStream: Bool) throws {
         // A request head should have only up to four psuedo-headers.
@@ -567,8 +606,7 @@ internal extension HTTPRequestHead {
     }
 }
 
-
-internal extension HTTPResponseHead {
+extension HTTPResponseHead {
     /// Create a `HTTPResponseHead` from the header block. Use this for informational responses.
     init(http2HeaderBlock headers: HPACKHeaders) throws {
         // A response head should have only one psuedo-header. We strip it off.
@@ -579,15 +617,18 @@ internal extension HTTPResponseHead {
         let status = HTTPResponseStatus(statusCode: integerStatus)
         self.init(version: .init(major: 2, minor: 0), status: status, headers: HTTPHeaders(regularHeadersFrom: headers))
     }
-    
+
     /// Create a `HTTPResponseHead` from the header block. Use this for non-informational responses.
     init(http2HeaderBlock headers: HPACKHeaders, requestHead: HTTPRequestHead, endStream: Bool) throws {
         try self.init(http2HeaderBlock: headers)
-        
+
         // NOTE: We don't need to create the header array here ourselves. The HTTP/1 response
         //       headers, will not contain a :status field, but may contain a "Transfer-Encoding"
         //       field. For this reason the default allocation works great for us.
-        if self.shouldAddContentLengthOrTransferEncodingHeaderToResponse(hpackHeaders: headers, requestHead: requestHead) {
+        if self.shouldAddContentLengthOrTransferEncodingHeaderToResponse(
+            hpackHeaders: headers,
+            requestHead: requestHead
+        ) {
             if endStream {
                 self.headers.add(name: "content-length", value: "0")
             } else {
@@ -595,9 +636,10 @@ internal extension HTTPResponseHead {
             }
         }
     }
-    
+
     private func shouldAddContentLengthOrTransferEncodingHeaderToResponse(
-        hpackHeaders: HPACKHeaders, requestHead: HTTPRequestHead
+        hpackHeaders: HPACKHeaders,
+        requestHead: HTTPRequestHead
     ) -> Bool {
         let statusCode = self.status.code
         return !(100..<200).contains(statusCode)
@@ -605,10 +647,9 @@ internal extension HTTPResponseHead {
             && statusCode != 304
             && requestHead.method != .HEAD
             && requestHead.method != .CONNECT
-            && !hpackHeaders.contains(name: "content-length") // compare on h2 headers - for speed
+            && !hpackHeaders.contains(name: "content-length")  // compare on h2 headers - for speed
     }
 }
-
 
 extension HPACKHeaders {
     /// Grabs a pseudo-header from a header block. Does not remove it.
@@ -637,7 +678,6 @@ extension HPACKHeaders {
         }
     }
 }
-
 
 extension HTTPHeaders {
     fileprivate init(requestHead: HTTPRequestHead, protocolString: String) throws {
@@ -686,7 +726,9 @@ extension HTTPHeaders {
         var newHeaders: [(String, String)] = []
         newHeaders.reserveCapacity(responseHead.headers.count + 1)
         newHeaders.append((":status", String(responseHead.status.code)))
-        responseHead.headers.forEach { newHeaders.append(($0.name, $0.value)) }
+        for responseHeader in responseHead.headers {
+            newHeaders.append((responseHeader.name, responseHeader.value))
+        }
 
         self.init(newHeaders)
     }
@@ -699,7 +741,6 @@ extension HTTPHeaders {
         self.init(newHeaders)
     }
 }
-
 
 extension Array where Element == (String, String) {
     mutating func appendRegularHeaders(from headers: HPACKHeaders) {

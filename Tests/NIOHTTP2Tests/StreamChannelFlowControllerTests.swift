@@ -13,8 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 import XCTest
-@testable import NIOHTTP2
 
+@testable import NIOHTTP2
 
 final class StreamChannelFlowControllerTests: XCTestCase {
     func testChannelWritabilityChangesFromFlowControl() {

@@ -13,9 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 import Atomics
-import NIOCore
 import NIOConcurrencyHelpers
-
+import NIOCore
 
 /// The various channel options specific to `HTTP2StreamChannel`s.
 ///
@@ -46,7 +45,7 @@ extension HTTP2StreamChannelOptions.Types {
     public struct StreamIDOption: ChannelOption {
         public typealias Value = HTTP2StreamID
 
-        public init() { }
+        public init() {}
     }
 }
 
@@ -152,14 +151,16 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     /// The stream data type of the channel.
     private let streamDataType: HTTP2StreamDataType
 
-    internal init(allocator: ByteBufferAllocator,
-                  parent: Channel,
-                  multiplexer: OutboundStreamMultiplexer,
-                  streamID: HTTP2StreamID?,
-                  targetWindowSize: Int32,
-                  outboundBytesHighWatermark: Int,
-                  outboundBytesLowWatermark: Int,
-                  streamDataType: HTTP2StreamDataType) {
+    internal init(
+        allocator: ByteBufferAllocator,
+        parent: Channel,
+        multiplexer: OutboundStreamMultiplexer,
+        streamID: HTTP2StreamID?,
+        targetWindowSize: Int32,
+        outboundBytesHighWatermark: Int,
+        outboundBytesLowWatermark: Int,
+        streamDataType: HTTP2StreamDataType
+    ) {
         self.allocator = allocator
         self.closePromise = parent.eventLoop.makePromise()
         self.localAddress = parent.localAddress
@@ -172,9 +173,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         self.flags = NIOLockedValueBox(Flags(isActive: false, isWritable: true))
         self.state = .idle
         self.streamDataType = streamDataType
-        self.writabilityManager = StreamChannelFlowController(highWatermark: outboundBytesHighWatermark,
-                                                              lowWatermark: outboundBytesLowWatermark,
-                                                              parentIsWritable: parent.isWritable)
+        self.writabilityManager = StreamChannelFlowController(
+            highWatermark: outboundBytesHighWatermark,
+            lowWatermark: outboundBytesLowWatermark,
+            parentIsWritable: parent.isWritable
+        )
 
         // To begin with we initialize autoRead to false, but we are going to fetch it from our parent before we
         // go much further.
@@ -182,7 +185,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         self._pipeline = ChannelPipeline(channel: self)
     }
 
-    internal func configure(initializer: NIOChannelInitializerWithStreamID?, userPromise promise: EventLoopPromise<Channel>?) {
+    internal func configure(
+        initializer: NIOChannelInitializerWithStreamID?,
+        userPromise promise: EventLoopPromise<Channel>?
+    ) {
         assert(self.streamDataType == .frame)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -235,7 +241,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     // This variant is used in the async stream case.
     // It uses `Any`s because when called from `configureInboundStream` it is passed the initializer stored on the handler
     // which can't be a typed generic without changing the handler API.
-    internal func configure(initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>, userPromise promise: EventLoopPromise<any Sendable>?) {
+    internal func configure(
+        initializer: @escaping NIOChannelInitializerWithOutput<any Sendable>,
+        userPromise promise: EventLoopPromise<any Sendable>?
+    ) {
         assert(self.streamDataType == .framePayload)
         // We need to configure this channel. This involves doing four things:
         // 1. Setting our autoRead state from the parent
@@ -255,7 +264,10 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         }
     }
 
-    func onInitializationResult<Output: Sendable>(_ initializerResult: Result<Output, Error>, promise: EventLoopPromise<Output>?) {
+    func onInitializationResult<Output: Sendable>(
+        _ initializerResult: Result<Output, Error>,
+        promise: EventLoopPromise<Output>?
+    ) {
         switch initializerResult {
         case .success(let output):
             self.postInitializerActivate(output: output, promise: promise)
@@ -364,11 +376,11 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     private let multiplexer: OutboundStreamMultiplexer
 
     public var closeFuture: EventLoopFuture<Void> {
-        return self.closePromise.futureResult
+        self.closePromise.futureResult
     }
 
     public var pipeline: ChannelPipeline {
-        return self._pipeline
+        self._pipeline
     }
 
     public let localAddress: SocketAddress?
@@ -452,7 +464,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     }
 
     private var _isActive: Bool {
-        return self.state == .active || self.state == .closing || self.state == .localActive
+        self.state == .active || self.state == .closing || self.state == .localActive
     }
 
     public var isActive: Bool {
@@ -460,7 +472,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     }
 
     public var _channelCore: ChannelCore {
-        return self
+        self
     }
 
     public let eventLoop: EventLoop
@@ -494,7 +506,9 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
     ///
     /// To correctly respect flushes, we deliberately withold frames from the parent channel until this
     /// stream is flushed, at which time we deliver them all. This buffer holds the pending ones.
-    private var pendingWrites: MarkedCircularBuffer<(HTTP2StreamData, EventLoopPromise<Void>?)> = MarkedCircularBuffer(initialCapacity: 8)
+    private var pendingWrites: MarkedCircularBuffer<(HTTP2StreamData, EventLoopPromise<Void>?)> = MarkedCircularBuffer(
+        initialCapacity: 8
+    )
 
     /// A list node used to hold stream channels.
     internal var streamChannelListNode: StreamChannelListNode = StreamChannelListNode()
@@ -549,7 +563,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         switch self.multiplexer {
         case .inline:
             promise = userPromise
-            break // do nothing at this stage, we'll be called back
+            break  // do nothing at this stage, we'll be called back
         case .legacy:
             promise = userPromise ?? self.eventLoop.makePromise()
             promise!.futureResult.hop(to: self.eventLoop).whenComplete { (_: Result<Void, Error>) in
@@ -734,7 +748,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
 }
 
 // MARK:- Functions used to manage pending reads and writes.
-private extension HTTP2StreamChannel {
+extension HTTP2StreamChannel {
     /// Drop all pending reads.
     private func dropPendingReads() {
         /// We don't need to report the dropped reads, just remove them all.
@@ -816,7 +830,7 @@ private extension HTTP2StreamChannel {
 }
 
 // MARK:- Functions used to communicate between the `HTTP2StreamMultiplexer` and the `HTTP2StreamChannel`.
-internal extension HTTP2StreamChannel {
+extension HTTP2StreamChannel {
     /// Called when a frame is received from the network.
     ///
     /// - Parameters:
@@ -915,7 +929,8 @@ internal extension HTTP2StreamChannel {
         // This is because in this case we really want user code to send a frame as soon as possible to avoid
         // issues with their stream ID becoming out of date. Once the state transitions we can update
         // the writability if needed.
-        guard case .changed(newValue: let localValue) = self.writabilityManager.parentWritabilityChanged(newValue) else {
+        guard case .changed(newValue: let localValue) = self.writabilityManager.parentWritabilityChanged(newValue)
+        else {
             return
         }
 
@@ -938,7 +953,9 @@ internal extension HTTP2StreamChannel {
 
 extension HTTP2StreamChannel {
     // A helper function used to ensure that state modification leads to changes in the channel active atomic.
-    private func modifyingState<ReturnType>(_ closure: (inout StreamChannelState) throws -> ReturnType) rethrows -> ReturnType {
+    private func modifyingState<ReturnType>(
+        _ closure: (inout StreamChannelState) throws -> ReturnType
+    ) rethrows -> ReturnType {
         defer {
             self.flags.withLockedValue { $0.isActive = self._isActive }
         }
@@ -949,7 +966,7 @@ extension HTTP2StreamChannel {
 // MARK: Custom String Convertible
 extension HTTP2StreamChannel {
     public var description: String {
-        return "HTTP2StreamChannel(streamID: \(String(describing: self.streamID)), isActive: \(self.isActive), isWritable: \(self.isWritable))"
+        "HTTP2StreamChannel(streamID: \(String(describing: self.streamID)), isActive: \(self.isActive), isWritable: \(self.isWritable))"
     }
 }
 
@@ -972,12 +989,12 @@ extension HTTP2StreamChannel {
         ///
         /// - Important: Must be called on the `EventLoop` the `Channel` is running on.
         public func getOption<Option: ChannelOption>(_ option: Option) throws -> Option.Value {
-            return try self.channel.getOption0(option)
+            try self.channel.getOption0(option)
         }
     }
 
     /// Returns a view of the `Channel` exposing synchronous versions of `setOption` and `getOption`.
     public var syncOptions: NIOSynchronousChannelOptions? {
-        return SynchronousOptions(channel: self)
+        SynchronousOptions(channel: self)
     }
 }

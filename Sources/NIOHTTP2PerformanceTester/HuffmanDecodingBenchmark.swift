@@ -16,7 +16,6 @@ import Foundation
 import NIOCore
 import NIOHPACK
 
-
 /// This benchmark is mostly attempting to stress the Huffman Decoding implementation by
 /// way of using larger or more complex strings.
 final class HuffmanDecodingBenchmark {
@@ -27,7 +26,11 @@ final class HuffmanDecodingBenchmark {
 
     init(huffmanBytes: TestType, loopCount: Int) {
         self.loopCount = loopCount
-        self.decoder = HPACKDecoder(allocator: .init(), maxDynamicTableSize: HPACKDecoder.maxDynamicTableSize, maxHeaderListSize: .max)
+        self.decoder = HPACKDecoder(
+            allocator: .init(),
+            maxDynamicTableSize: HPACKDecoder.maxDynamicTableSize,
+            maxHeaderListSize: .max
+        )
         self.buffer = ByteBufferAllocator().buffer(capacity: 1024)
         self.testType = huffmanBytes
     }
@@ -47,21 +50,21 @@ final class HuffmanDecodingBenchmark {
     }
 }
 
-
 extension HuffmanDecodingBenchmark: Benchmark {
     func setUp() throws {
         // We encode this header with both the name and value as a huffman string, never indexed.
         self.buffer.writeInteger(UInt8(0x10))  // Never indexed, non-indexed name
         self.buffer.encodeInteger(1, prefix: 7, prefixBits: 0x80)  // Name length, huffman encoded, 7-bit integer
         self.buffer.writeInteger(UInt8(0x97))  // Huffman encoded "f"
-        self.buffer.encodeInteger(UInt(self.testType.huffmanBytes.count), prefix: 7, prefixBits: 0x80)  // Value length, huffman encoded, 7-bit integer
+        // Value length, huffman encoded, 7-bit integer
+        self.buffer.encodeInteger(UInt(self.testType.huffmanBytes.count), prefix: 7, prefixBits: 0x80)
         self.buffer.writeBytes(self.testType.huffmanBytes)
 
         // Run a single iteration of the loop. This warms up the encoder and decoder and ensures all the pages are mapped.
         try self.loopIteration()
     }
 
-    func tearDown() { }
+    func tearDown() {}
 
     func run() throws -> Int {
         for _ in 0..<self.loopCount {
@@ -76,7 +79,6 @@ extension HuffmanDecodingBenchmark: Benchmark {
         self.buffer.moveReaderIndex(to: 0)
     }
 }
-
 
 extension Array where Element == UInt8 {
     static let basicHuffmanBytes: [UInt8] = {
@@ -95,9 +97,11 @@ extension Array where Element == UInt8 {
     }()
 
     // The location of the test fixtures.
-    private static let fixtureDirectoryURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Tests").appendingPathComponent("NIOHPACKTests").appendingPathComponent("Fixtures").absoluteURL
+    private static let fixtureDirectoryURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Tests").appendingPathComponent(
+            "NIOHPACKTests"
+        ).appendingPathComponent("Fixtures").absoluteURL
 }
-
 
 extension ByteBuffer {
     // Copied directly from our internal implementation.

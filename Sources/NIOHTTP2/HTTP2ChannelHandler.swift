@@ -14,7 +14,6 @@
 import NIOCore
 import NIOHPACK
 
-
 /// NIO's default settings used for initial settings values on HTTP/2 streams, when the user hasn't
 /// overridden that. This limits the max concurrent streams to 100, and limits the max header list
 /// size to 16kB, to avoid trivial resource exhaustion on NIO HTTP/2 users.
@@ -112,7 +111,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
 
     @usableFromInline
     internal var inboundStreamMultiplexer: InboundStreamMultiplexer? {
-        return self.inboundStreamMultiplexerState.multiplexer
+        self.inboundStreamMultiplexerState.multiplexer
     }
 
     /// Holds and tracks the state of the ``InboundStreamMultiplexer``.
@@ -141,43 +140,55 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             }
         }
 
-        mutating func initialize(context: ChannelHandlerContext, http2Handler: NIOHTTP2Handler, mode: NIOHTTP2Handler.ParserMode) {
+        mutating func initialize(
+            context: ChannelHandlerContext,
+            http2Handler: NIOHTTP2Handler,
+            mode: NIOHTTP2Handler.ParserMode
+        ) {
             switch self {
             case .deinitialized:
-                preconditionFailure("This multiplexer has been de-initialized without being reconfigured with a new context.")
+                preconditionFailure(
+                    "This multiplexer has been de-initialized without being reconfigured with a new context."
+                )
             case .uninitializedLegacy:
                 self = .initialized(.legacy(LegacyInboundStreamMultiplexer(context: context)))
 
             case .uninitializedInline(let streamConfiguration, let inboundStreamInitializer, let streamDelegate):
-                self = .initialized(.inline(
-                    InlineStreamMultiplexer(
-                        context: context,
-                        outboundView: .init(http2Handler: http2Handler),
-                        mode: mode,
-                        inboundStreamStateInitializer: .excludesStreamID(inboundStreamInitializer),
-                        targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
-                        streamChannelOutboundBytesHighWatermark: streamConfiguration.outboundBufferSizeHighWatermark,
-                        streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
-                        streamDelegate: streamDelegate
+                self = .initialized(
+                    .inline(
+                        InlineStreamMultiplexer(
+                            context: context,
+                            outboundView: .init(http2Handler: http2Handler),
+                            mode: mode,
+                            inboundStreamStateInitializer: .excludesStreamID(inboundStreamInitializer),
+                            targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
+                            streamChannelOutboundBytesHighWatermark: streamConfiguration
+                                .outboundBufferSizeHighWatermark,
+                            streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
+                            streamDelegate: streamDelegate
+                        )
                     )
-                ))
+                )
 
             case .uninitializedAsync(let streamConfiguration, let inboundStreamInitializer, let streamDelegate):
-                self = .initialized(.inline(
-                    InlineStreamMultiplexer(
-                        context: context,
-                        outboundView: .init(http2Handler: http2Handler),
-                        mode: mode,
-                        inboundStreamStateInitializer: .returnsAny(inboundStreamInitializer),
-                        targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
-                        streamChannelOutboundBytesHighWatermark: streamConfiguration.outboundBufferSizeHighWatermark,
-                        streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
-                        streamDelegate: streamDelegate
+                self = .initialized(
+                    .inline(
+                        InlineStreamMultiplexer(
+                            context: context,
+                            outboundView: .init(http2Handler: http2Handler),
+                            mode: mode,
+                            inboundStreamStateInitializer: .returnsAny(inboundStreamInitializer),
+                            targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
+                            streamChannelOutboundBytesHighWatermark: streamConfiguration
+                                .outboundBufferSizeHighWatermark,
+                            streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
+                            streamDelegate: streamDelegate
+                        )
                     )
-                ))
+                )
 
             case .initialized:
-                break //no-op
+                break  //no-op
             }
         }
     }
@@ -207,20 +218,24 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///   - initialSettings: The settings that will be advertised to the peer in the preamble. Defaults to ``nioDefaultSettings``.
     ///   - headerBlockValidation: Whether to validate sent and received HTTP/2 header blocks. Defaults to ``ValidationState/enabled``.
     ///   - contentLengthValidation: Whether to validate the content length of sent and received streams. Defaults to ``ValidationState/enabled``.
-    public convenience init(mode: ParserMode,
-                            initialSettings: HTTP2Settings = nioDefaultSettings,
-                            headerBlockValidation: ValidationState = .enabled,
-                            contentLengthValidation: ValidationState = .enabled) {
-        self.init(mode: mode,
-                  eventLoop: nil,
-                  initialSettings: initialSettings,
-                  headerBlockValidation: headerBlockValidation,
-                  contentLengthValidation: contentLengthValidation,
-                  maximumSequentialEmptyDataFrames: 1,
-                  maximumBufferedControlFrames: 10000,
-                  maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
-                  maximumResetFrameCount: 200,
-                  resetFrameCounterWindow: .seconds(30))
+    public convenience init(
+        mode: ParserMode,
+        initialSettings: HTTP2Settings = nioDefaultSettings,
+        headerBlockValidation: ValidationState = .enabled,
+        contentLengthValidation: ValidationState = .enabled
+    ) {
+        self.init(
+            mode: mode,
+            eventLoop: nil,
+            initialSettings: initialSettings,
+            headerBlockValidation: headerBlockValidation,
+            contentLengthValidation: contentLengthValidation,
+            maximumSequentialEmptyDataFrames: 1,
+            maximumBufferedControlFrames: 10000,
+            maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
+            maximumResetFrameCount: 200,
+            resetFrameCounterWindow: .seconds(30)
+        )
     }
 
     /// Constructs a ``NIOHTTP2Handler``.
@@ -235,62 +250,84 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///   - maximumBufferedControlFrames: Controls the maximum buffer size of buffered outbound control frames. If we are unable to send control frames as
     ///         fast as we produce them we risk building up an unbounded buffer and exhausting our memory. To protect against this DoS vector, we put an
     ///         upper limit on the depth of this queue. Defaults to 10,000.
-    public convenience init(mode: ParserMode,
-                            initialSettings: HTTP2Settings = nioDefaultSettings,
-                            headerBlockValidation: ValidationState = .enabled,
-                            contentLengthValidation: ValidationState = .enabled,
-                            maximumSequentialEmptyDataFrames: Int = 1,
-                            maximumBufferedControlFrames: Int = 10000) {
-        self.init(mode: mode,
-                  eventLoop: nil,
-                  initialSettings: initialSettings,
-                  headerBlockValidation: headerBlockValidation,
-                  contentLengthValidation: contentLengthValidation,
-                  maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
-                  maximumBufferedControlFrames: maximumBufferedControlFrames,
-                  maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
-                  maximumResetFrameCount: 200,
-                  resetFrameCounterWindow: .seconds(30))
+    public convenience init(
+        mode: ParserMode,
+        initialSettings: HTTP2Settings = nioDefaultSettings,
+        headerBlockValidation: ValidationState = .enabled,
+        contentLengthValidation: ValidationState = .enabled,
+        maximumSequentialEmptyDataFrames: Int = 1,
+        maximumBufferedControlFrames: Int = 10000
+    ) {
+        self.init(
+            mode: mode,
+            eventLoop: nil,
+            initialSettings: initialSettings,
+            headerBlockValidation: headerBlockValidation,
+            contentLengthValidation: contentLengthValidation,
+            maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
+            maximumBufferedControlFrames: maximumBufferedControlFrames,
+            maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
+            maximumResetFrameCount: 200,
+            resetFrameCounterWindow: .seconds(30)
+        )
 
     }
 
     /// Constructs a ``NIOHTTP2Handler``.
-    /// 
+    ///
     /// - Parameters:
     ///   - mode: The mode for this handler, client or server.
     ///   - connectionConfiguration: The settings that will be used when establishing the connection.
     ///   - streamConfiguration: The settings that will be used when establishing new streams.
-    public convenience init(mode: ParserMode,
-                            connectionConfiguration: ConnectionConfiguration = .init(),
-                            streamConfiguration: StreamConfiguration = .init()) {
-        self.init(mode: mode,
-                  eventLoop: nil,
-                  initialSettings: connectionConfiguration.initialSettings,
-                  headerBlockValidation: connectionConfiguration.headerBlockValidation,
-                  contentLengthValidation: connectionConfiguration.contentLengthValidation,
-                  maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
-                  maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
-                  maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
-                  maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
-                  resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength)
+    public convenience init(
+        mode: ParserMode,
+        connectionConfiguration: ConnectionConfiguration = .init(),
+        streamConfiguration: StreamConfiguration = .init()
+    ) {
+        self.init(
+            mode: mode,
+            eventLoop: nil,
+            initialSettings: connectionConfiguration.initialSettings,
+            headerBlockValidation: connectionConfiguration.headerBlockValidation,
+            contentLengthValidation: connectionConfiguration.contentLengthValidation,
+            maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
+            maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
+            maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
+            maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
+            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
+        )
     }
 
-    private init(mode: ParserMode,
-                 eventLoop: EventLoop?,
-                 initialSettings: HTTP2Settings,
-                 headerBlockValidation: ValidationState,
-                 contentLengthValidation: ValidationState,
-                 maximumSequentialEmptyDataFrames: Int,
-                 maximumBufferedControlFrames: Int,
-                 maximumSequentialContinuationFrames: Int,
-                 maximumResetFrameCount: Int,
-                 resetFrameCounterWindow: TimeAmount) {
+    private init(
+        mode: ParserMode,
+        eventLoop: EventLoop?,
+        initialSettings: HTTP2Settings,
+        headerBlockValidation: ValidationState,
+        contentLengthValidation: ValidationState,
+        maximumSequentialEmptyDataFrames: Int,
+        maximumBufferedControlFrames: Int,
+        maximumSequentialContinuationFrames: Int,
+        maximumResetFrameCount: Int,
+        resetFrameCounterWindow: TimeAmount
+    ) {
         self._eventLoop = eventLoop
-        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
+        self.stateMachine = HTTP2ConnectionStateMachine(
+            role: .init(mode),
+            headerBlockValidation: .init(headerBlockValidation),
+            contentLengthValidation: .init(contentLengthValidation)
+        )
         self.mode = mode
         self.initialSettings = initialSettings
-        self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
-        self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames, maximumResetFrameCount: maximumResetFrameCount, resetFrameCounterWindow: resetFrameCounterWindow)
+        self.outboundBuffer = CompoundOutboundBuffer(
+            mode: mode,
+            initialMaxOutboundStreams: 100,
+            maxBufferedControlFrames: maximumBufferedControlFrames
+        )
+        self.denialOfServiceValidator = DOSHeuristics(
+            maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
+            maximumResetFrameCount: maximumResetFrameCount,
+            resetFrameCounterWindow: resetFrameCounterWindow
+        )
         self.tolerateImpossibleStateTransitionsInDebugMode = false
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
@@ -315,22 +352,36 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///         against this DoS vector we put an upper limit on this rate. Defaults to 200.
     ///   - resetFrameCounterWindow:  Controls the sliding window used to enforce the maximum permitted reset frames rate. Too many may exhaust CPU resources. To protect
     ///         against this DoS vector we put an upper limit on this rate. 30 seconds.
-    internal init(mode: ParserMode,
-                  initialSettings: HTTP2Settings = nioDefaultSettings,
-                  headerBlockValidation: ValidationState = .enabled,
-                  contentLengthValidation: ValidationState = .enabled,
-                  maximumSequentialEmptyDataFrames: Int = 1,
-                  maximumBufferedControlFrames: Int = 10000,
-                  maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
-                  tolerateImpossibleStateTransitionsInDebugMode: Bool = false,
-                  maximumResetFrameCount: Int = 200,
-                  resetFrameCounterWindow: TimeAmount = .seconds(30)) {
-        self.stateMachine = HTTP2ConnectionStateMachine(role: .init(mode), headerBlockValidation: .init(headerBlockValidation), contentLengthValidation: .init(contentLengthValidation))
+    internal init(
+        mode: ParserMode,
+        initialSettings: HTTP2Settings = nioDefaultSettings,
+        headerBlockValidation: ValidationState = .enabled,
+        contentLengthValidation: ValidationState = .enabled,
+        maximumSequentialEmptyDataFrames: Int = 1,
+        maximumBufferedControlFrames: Int = 10000,
+        maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
+        tolerateImpossibleStateTransitionsInDebugMode: Bool = false,
+        maximumResetFrameCount: Int = 200,
+        resetFrameCounterWindow: TimeAmount = .seconds(30)
+    ) {
+        self.stateMachine = HTTP2ConnectionStateMachine(
+            role: .init(mode),
+            headerBlockValidation: .init(headerBlockValidation),
+            contentLengthValidation: .init(contentLengthValidation)
+        )
         self.mode = mode
         self._eventLoop = nil
         self.initialSettings = initialSettings
-        self.outboundBuffer = CompoundOutboundBuffer(mode: mode, initialMaxOutboundStreams: 100, maxBufferedControlFrames: maximumBufferedControlFrames)
-        self.denialOfServiceValidator = DOSHeuristics(maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames, maximumResetFrameCount: maximumResetFrameCount, resetFrameCounterWindow: resetFrameCounterWindow)
+        self.outboundBuffer = CompoundOutboundBuffer(
+            mode: mode,
+            initialMaxOutboundStreams: 100,
+            maxBufferedControlFrames: maximumBufferedControlFrames
+        )
+        self.denialOfServiceValidator = DOSHeuristics(
+            maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
+            maximumResetFrameCount: maximumResetFrameCount,
+            resetFrameCounterWindow: resetFrameCounterWindow
+        )
         self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
@@ -349,7 +400,11 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         if context.channel.isActive {
             // We jump immediately to activated here, as channelActive has probably already passed.
             if self.activationState != .idle {
-                self.impossibleActivationStateTransition(state: self.activationState, activating: true, context: context)
+                self.impossibleActivationStateTransition(
+                    state: self.activationState,
+                    activating: true,
+                    context: context
+                )
             }
             self.activationState = .activated
             self.writeAndFlushPreamble(context: context)
@@ -391,7 +446,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             //
             // We'll throw an error and then close. In debug builds, we crash.
             self.impossibleActivationStateTransition(
-                state: self.activationState, activating: true, context: context
+                state: self.activationState,
+                activating: true,
+                context: context
             )
             return
         }
@@ -418,7 +475,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             // - .activated implies that the above code didn't prevent us re-entrantly getting to this point.
             // - .inactive implies that somehow we hit channelInactive but didn't enter .inactiveWhileActivating.
             self.impossibleActivationStateTransition(
-                state: self.activationState, activating: true, context: context
+                state: self.activationState,
+                activating: true,
+                context: context
             )
         }
     }
@@ -493,7 +552,6 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     }
 }
 
-
 /// Inbound frame handling.
 extension NIOHTTP2Handler {
     /// Spins over the frame decoder parsing frames and sending them down the channel pipeline.
@@ -510,16 +568,32 @@ extension NIOHTTP2Handler {
         do {
             return try self.frameDecoder.nextFrame()
         } catch InternalError.codecError(let code) {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.unableToParseFrame(), reason: code)
+            self.inboundConnectionErrorTriggered(
+                context: context,
+                underlyingError: NIOHTTP2Errors.unableToParseFrame(),
+                reason: code
+            )
             return nil
         } catch is NIOHTTP2Errors.BadClientMagic {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.badClientMagic(), reason: .protocolError)
+            self.inboundConnectionErrorTriggered(
+                context: context,
+                underlyingError: NIOHTTP2Errors.badClientMagic(),
+                reason: .protocolError
+            )
             return nil
         } catch is NIOHTTP2Errors.ExcessivelyLargeHeaderBlock {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.excessivelyLargeHeaderBlock(), reason: .protocolError)
+            self.inboundConnectionErrorTriggered(
+                context: context,
+                underlyingError: NIOHTTP2Errors.excessivelyLargeHeaderBlock(),
+                reason: .protocolError
+            )
             return nil
         } catch is NIOHTTP2Errors.ExcessiveContinuationFrames {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: NIOHTTP2Errors.excessiveContinuationFrames(), reason: .enhanceYourCalm)
+            self.inboundConnectionErrorTriggered(
+                context: context,
+                underlyingError: NIOHTTP2Errors.excessiveContinuationFrames(),
+                reason: .enhanceYourCalm
+            )
             return nil
         } catch {
             self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .internalError)
@@ -532,7 +606,11 @@ extension NIOHTTP2Handler {
         case stop
     }
 
-    private func processFrame(_ frame: HTTP2Frame, flowControlledLength: Int, context: ChannelHandlerContext) -> FrameProcessResult {
+    private func processFrame(
+        _ frame: HTTP2Frame,
+        flowControlledLength: Int,
+        context: ChannelHandlerContext
+    ) -> FrameProcessResult {
         // All frames have one basic processing step: do we send them on, or drop them?
         // Some frames have further processing steps, regarding triggering user events or other operations.
         // Here we centralise this processing.
@@ -544,18 +622,30 @@ extension NIOHTTP2Handler {
         case .origin(let origins):
             result = self.stateMachine.receiveOrigin(origins: origins)
         case .data(let dataBody):
-            result = self.stateMachine.receiveData(streamID: frame.streamID, contentLength: dataBody.data.readableBytes, flowControlledBytes: flowControlledLength, isEndStreamSet: dataBody.endStream)
+            result = self.stateMachine.receiveData(
+                streamID: frame.streamID,
+                contentLength: dataBody.data.readableBytes,
+                flowControlledBytes: flowControlledLength,
+                isEndStreamSet: dataBody.endStream
+            )
         case .goAway(let lastStreamID, _, _):
             result = self.stateMachine.receiveGoaway(lastStreamID: lastStreamID)
         case .headers(let headerBody):
-            result = self.stateMachine.receiveHeaders(streamID: frame.streamID, headers: headerBody.headers, isEndStreamSet: headerBody.endStream)
+            result = self.stateMachine.receiveHeaders(
+                streamID: frame.streamID,
+                headers: headerBody.headers,
+                isEndStreamSet: headerBody.endStream
+            )
 
             // Apply a priority update if one is here. If this fails, it may cause a connection error.
             if let priorityData = headerBody.priorityData {
                 do {
                     try self.outboundBuffer.priorityUpdate(streamID: frame.streamID, priorityData: priorityData)
                 } catch {
-                    result = StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+                    result = StateMachineResultWithEffect(
+                        result: .connectionError(underlyingError: error, type: .protocolError),
+                        effect: nil
+                    )
                 }
             }
 
@@ -577,23 +667,36 @@ extension NIOHTTP2Handler {
             do {
                 try self.outboundBuffer.priorityUpdate(streamID: frame.streamID, priorityData: priorityData)
             } catch {
-                result = StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+                result = StateMachineResultWithEffect(
+                    result: .connectionError(underlyingError: error, type: .protocolError),
+                    effect: nil
+                )
             }
 
         case .pushPromise(let pushedStreamData):
-            result = self.stateMachine.receivePushPromise(originalStreamID: frame.streamID, childStreamID: pushedStreamData.pushedStreamID, headers: pushedStreamData.headers)
+            result = self.stateMachine.receivePushPromise(
+                originalStreamID: frame.streamID,
+                childStreamID: pushedStreamData.pushedStreamID,
+                headers: pushedStreamData.headers
+            )
         case .rstStream(let reason):
             result = self.stateMachine.receiveRstStream(streamID: frame.streamID, reason: reason)
         case .settings(let newSettings):
-            let (stateMachineResult, postSettingsOperation) = self.stateMachine.receiveSettings(newSettings,
-                                                                                                frameEncoder: &self.frameEncoder,
-                                                                                                frameDecoder: &self.frameDecoder)
+            let (stateMachineResult, postSettingsOperation) = self.stateMachine.receiveSettings(
+                newSettings,
+                frameEncoder: &self.frameEncoder,
+                frameDecoder: &self.frameDecoder
+            )
             result = stateMachineResult
             switch postSettingsOperation {
             case .nothing:
                 break
             case .sendAck:
-                self.writeBufferedFrame(context: context, frame: HTTP2Frame(streamID: .rootStream, payload: .settings(.ack)), promise: nil)
+                self.writeBufferedFrame(
+                    context: context,
+                    frame: HTTP2Frame(streamID: .rootStream, payload: .settings(.ack)),
+                    promise: nil
+                )
             }
 
         case .windowUpdate(let increment):
@@ -618,7 +721,12 @@ extension NIOHTTP2Handler {
             returnValue = .stop
         case .streamError(let streamID, let underlyingError, let errorCode):
             // We can continue parsing on stream errors in most cases, the frame is just ignored.
-            self.inboundStreamErrorTriggered(context: context, streamID: streamID, underlyingError: underlyingError, reason: errorCode)
+            self.inboundStreamErrorTriggered(
+                context: context,
+                streamID: streamID,
+                underlyingError: underlyingError,
+                reason: errorCode
+            )
             returnValue = .continue
         }
 
@@ -630,19 +738,31 @@ extension NIOHTTP2Handler {
     }
 
     /// A connection error was hit while receiving a frame.
-    private func inboundConnectionErrorTriggered(context: ChannelHandlerContext, underlyingError: Error, reason: HTTP2ErrorCode) {
+    private func inboundConnectionErrorTriggered(
+        context: ChannelHandlerContext,
+        underlyingError: Error,
+        reason: HTTP2ErrorCode
+    ) {
         // A connection error brings the entire connection down. We attempt to write a GOAWAY frame, and then report this
         // error. It's possible that we'll be unable to write the GOAWAY frame, but that also just logs the error.
         // Because we don't know what data the user handled before we got this, we propose that they may have seen all of it.
         // The user may choose to fire a more specific error if they wish.
-        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: reason, opaqueData: nil))
+        let goAwayFrame = HTTP2Frame(
+            streamID: .rootStream,
+            payload: .goAway(lastStreamID: .maxID, errorCode: reason, opaqueData: nil)
+        )
         self.writeUnbufferedFrame(context: context, frame: goAwayFrame)
         self.flushIfNecessary(context: context)
         context.fireErrorCaught(underlyingError)
     }
 
     /// A stream error was hit while receiving a frame.
-    private func inboundStreamErrorTriggered(context: ChannelHandlerContext, streamID: HTTP2StreamID, underlyingError: Error, reason: HTTP2ErrorCode) {
+    private func inboundStreamErrorTriggered(
+        context: ChannelHandlerContext,
+        streamID: HTTP2StreamID,
+        underlyingError: Error,
+        reason: HTTP2ErrorCode
+    ) {
         // A stream error brings down a single stream, causing a RST_STREAM frame. We attempt to write this, and then report
         // the error. It's possible that we'll be unable to write this, which will likely escalate this error, but that's
         // the user's issue.
@@ -684,7 +804,6 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
     }
 }
 
-
 /// Outbound frame handling.
 extension NIOHTTP2Handler {
     /// Issues the preamble when necessary.
@@ -699,15 +818,23 @@ extension NIOHTTP2Handler {
             context.write(self.wrapOutboundOut(.byteBuffer(self.writeBuffer)), promise: nil)
         }
 
-        let initialSettingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(self.initialSettings)))
+        let initialSettingsFrame = HTTP2Frame(
+            streamID: .rootStream,
+            payload: .settings(.settings(self.initialSettings))
+        )
         self.writeUnbufferedFrame(context: context, frame: initialSettingsFrame)
         self.flushIfNecessary(context: context)
     }
 
     /// Write a frame that is allowed to be buffered (that is, that participates in the outbound frame buffer).
-    private func writeBufferedFrame(context: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+    private func writeBufferedFrame(context: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?)
+    {
         do {
-            switch try self.outboundBuffer.processOutboundFrame(frame, promise: promise, channelWritable: self.channelWritable) {
+            switch try self.outboundBuffer.processOutboundFrame(
+                frame,
+                promise: promise,
+                channelWritable: self.channelWritable
+            ) {
             case .nothing:
                 // Nothing to do, got buffered.
                 break
@@ -745,7 +872,11 @@ extension NIOHTTP2Handler {
         self.processOutboundFrame(context: context, frame: frame, promise: nil)
     }
 
-    private func processOutboundFrame(context: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+    private func processOutboundFrame(
+        context: ChannelHandlerContext,
+        frame: HTTP2Frame,
+        promise: EventLoopPromise<Void>?
+    ) {
         let result: StateMachineResultWithEffect
 
         switch frame.payload {
@@ -757,17 +888,30 @@ extension NIOHTTP2Handler {
             self.stateMachine.sendOrigin(origins: origins)
         case .data(let data):
             // TODO(cory): Correctly account for padding data.
-            result = self.stateMachine.sendData(streamID: frame.streamID, contentLength: data.data.readableBytes, flowControlledBytes: data.data.readableBytes, isEndStreamSet: data.endStream)
+            result = self.stateMachine.sendData(
+                streamID: frame.streamID,
+                contentLength: data.data.readableBytes,
+                flowControlledBytes: data.data.readableBytes,
+                isEndStreamSet: data.endStream
+            )
         case .goAway(let lastStreamID, _, _):
             result = self.stateMachine.sendGoaway(lastStreamID: lastStreamID)
         case .headers(let headerContent):
-            result = self.stateMachine.sendHeaders(streamID: frame.streamID, headers: headerContent.headers, isEndStreamSet: headerContent.endStream)
+            result = self.stateMachine.sendHeaders(
+                streamID: frame.streamID,
+                headers: headerContent.headers,
+                isEndStreamSet: headerContent.endStream
+            )
         case .ping:
             result = self.stateMachine.sendPing()
         case .priority:
             result = self.stateMachine.sendPriority()
         case .pushPromise(let pushedContent):
-            result = self.stateMachine.sendPushPromise(originalStreamID: frame.streamID, childStreamID: pushedContent.pushedStreamID, headers: pushedContent.headers)
+            result = self.stateMachine.sendPushPromise(
+                originalStreamID: frame.streamID,
+                childStreamID: pushedContent.pushedStreamID,
+                headers: pushedContent.headers
+            )
         case .rstStream(let reason):
             result = self.stateMachine.sendRstStream(streamID: frame.streamID, reason: reason)
         case .settings(.settings(let newSettings)):
@@ -792,8 +936,13 @@ extension NIOHTTP2Handler {
         case .connectionError(let underlyingError, _):
             self.outboundConnectionErrorTriggered(context: context, promise: promise, underlyingError: underlyingError)
             return
-        case .streamError(streamID: let streamID, underlyingError: let underlyingError, _):
-            self.outboundStreamErrorTriggered(context: context, promise: promise, streamID: streamID, underlyingError: underlyingError)
+        case .streamError(let streamID, let underlyingError, _):
+            self.outboundStreamErrorTriggered(
+                context: context,
+                promise: promise,
+                streamID: streamID,
+                underlyingError: underlyingError
+            )
             return
         case .succeed:
             self.writeBuffer.clear()
@@ -805,13 +954,21 @@ extension NIOHTTP2Handler {
     }
 
     /// Encodes a frame and writes it to the network.
-    private func encodeAndWriteFrame(context: ChannelHandlerContext, frame: HTTP2Frame, promise: EventLoopPromise<Void>?) {
+    private func encodeAndWriteFrame(
+        context: ChannelHandlerContext,
+        frame: HTTP2Frame,
+        promise: EventLoopPromise<Void>?
+    ) {
         let extraFrameData: IOData?
 
         do {
             extraFrameData = try self.frameEncoder.encode(frame: frame, to: &self.writeBuffer)
         } catch InternalError.codecError {
-            self.outboundConnectionErrorTriggered(context: context, promise: promise, underlyingError: NIOHTTP2Errors.unableToSerializeFrame())
+            self.outboundConnectionErrorTriggered(
+                context: context,
+                promise: promise,
+                underlyingError: NIOHTTP2Errors.unableToSerializeFrame()
+            )
             return
         } catch {
             self.outboundConnectionErrorTriggered(context: context, promise: promise, underlyingError: error)
@@ -830,18 +987,26 @@ extension NIOHTTP2Handler {
     }
 
     /// A connection error was hit while attempting to send a frame.
-    private func outboundConnectionErrorTriggered(context: ChannelHandlerContext, promise: EventLoopPromise<Void>?, underlyingError: Error) {
+    private func outboundConnectionErrorTriggered(
+        context: ChannelHandlerContext,
+        promise: EventLoopPromise<Void>?,
+        underlyingError: Error
+    ) {
         promise?.fail(underlyingError)
         context.fireErrorCaught(underlyingError)
     }
 
     /// A stream error was hit while attempting to send a frame.
-    private func outboundStreamErrorTriggered(context: ChannelHandlerContext, promise: EventLoopPromise<Void>?, streamID: HTTP2StreamID, underlyingError: Error) {
+    private func outboundStreamErrorTriggered(
+        context: ChannelHandlerContext,
+        promise: EventLoopPromise<Void>?,
+        streamID: HTTP2StreamID,
+        underlyingError: Error
+    ) {
         promise?.fail(underlyingError)
         self.inboundStreamMultiplexer?.streamError(streamID: streamID, error: underlyingError)
     }
 }
-
 
 // MARK:- Helpers
 extension NIOHTTP2Handler {
@@ -853,17 +1018,35 @@ extension NIOHTTP2Handler {
         switch stateChange {
         case .streamClosed(let streamClosedData):
             self.outboundBuffer.connectionWindowSize = streamClosedData.localConnectionWindowSize
-            self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason))
-            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: streamClosedData.remoteConnectionWindowSize, outboundWindowSize: streamClosedData.localConnectionWindowSize))
+            self.inboundEventBuffer.pendingUserEvent(
+                StreamClosedEvent(streamID: streamClosedData.streamID, reason: streamClosedData.reason)
+            )
+            self.inboundEventBuffer.pendingUserEvent(
+                NIOHTTP2WindowUpdatedEvent(
+                    streamID: .rootStream,
+                    inboundWindowSize: streamClosedData.remoteConnectionWindowSize,
+                    outboundWindowSize: streamClosedData.localConnectionWindowSize
+                )
+            )
 
             let droppedPromises = self.outboundBuffer.streamClosed(streamClosedData.streamID)
-            self.failDroppedPromises(droppedPromises, streamID: streamClosedData.streamID, errorCode: streamClosedData.reason ?? .cancel)
+            self.failDroppedPromises(
+                droppedPromises,
+                streamID: streamClosedData.streamID,
+                errorCode: streamClosedData.reason ?? .cancel
+            )
         case .streamCreated(let streamCreatedData):
-            self.outboundBuffer.streamCreated(streamCreatedData.streamID, initialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init) ?? 0)
+            self.outboundBuffer.streamCreated(
+                streamCreatedData.streamID,
+                initialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init) ?? 0
+            )
             self.inboundEventBuffer.pendingUserEvent(
-                NIOHTTP2StreamCreatedEvent(streamID: streamCreatedData.streamID,
-                                           localInitialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init),
-                                           remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init)))
+                NIOHTTP2StreamCreatedEvent(
+                    streamID: streamCreatedData.streamID,
+                    localInitialWindowSize: streamCreatedData.localStreamWindowSize.map(UInt32.init),
+                    remoteInitialWindowSize: streamCreatedData.remoteStreamWindowSize.map(UInt32.init)
+                )
+            )
         case .bulkStreamClosure(let streamClosureData):
             for droppedStream in streamClosureData.closedStreams {
                 self.inboundEventBuffer.pendingUserEvent(StreamClosedEvent(streamID: droppedStream, reason: .cancel))
@@ -873,10 +1056,25 @@ extension NIOHTTP2Handler {
             }
         case .flowControlChange(let change):
             self.outboundBuffer.connectionWindowSize = change.localConnectionWindowSize
-            self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: .rootStream, inboundWindowSize: change.remoteConnectionWindowSize, outboundWindowSize: change.localConnectionWindowSize))
+            self.inboundEventBuffer.pendingUserEvent(
+                NIOHTTP2WindowUpdatedEvent(
+                    streamID: .rootStream,
+                    inboundWindowSize: change.remoteConnectionWindowSize,
+                    outboundWindowSize: change.localConnectionWindowSize
+                )
+            )
             if let streamSize = change.localStreamWindowSize {
-                self.outboundBuffer.updateStreamWindow(streamSize.streamID, newSize: streamSize.localStreamWindowSize.map(Int32.init) ?? 0)
-                self.inboundEventBuffer.pendingUserEvent(NIOHTTP2WindowUpdatedEvent(streamID: streamSize.streamID, inboundWindowSize: streamSize.remoteStreamWindowSize, outboundWindowSize: streamSize.localStreamWindowSize))
+                self.outboundBuffer.updateStreamWindow(
+                    streamSize.streamID,
+                    newSize: streamSize.localStreamWindowSize.map(Int32.init) ?? 0
+                )
+                self.inboundEventBuffer.pendingUserEvent(
+                    NIOHTTP2WindowUpdatedEvent(
+                        streamID: streamSize.streamID,
+                        inboundWindowSize: streamSize.remoteStreamWindowSize,
+                        outboundWindowSize: streamSize.localStreamWindowSize
+                    )
+                )
             }
         case .streamCreatedAndClosed(let cAndCData):
             self.outboundBuffer.streamCreated(cAndCData.streamID, initialWindowSize: 0)
@@ -895,7 +1093,9 @@ extension NIOHTTP2Handler {
             }
         case .localSettingsChanged(let settingsChange):
             if settingsChange.streamWindowSizeChange != 0 {
-                self.inboundEventBuffer.pendingUserEvent(NIOHTTP2BulkStreamWindowChangeEvent(delta: settingsChange.streamWindowSizeChange))
+                self.inboundEventBuffer.pendingUserEvent(
+                    NIOHTTP2BulkStreamWindowChangeEvent(delta: settingsChange.streamWindowSizeChange)
+                )
             }
             if let newMaxFrameSize = settingsChange.newMaxFrameSize {
                 self.frameDecoder.maxFrameSize = newMaxFrameSize
@@ -938,10 +1138,13 @@ extension NIOHTTP2Handler {
     }
 
     /// Fails any promises in the given collection with a 'StreamClosed' error.
-    private func failDroppedPromises(_ promises: CompoundOutboundBuffer.DroppedPromisesCollection,
-                                     streamID: HTTP2StreamID,
-                                     errorCode: HTTP2ErrorCode,
-                                     file: String = #fileID, line: UInt = #line) {
+    private func failDroppedPromises(
+        _ promises: CompoundOutboundBuffer.DroppedPromisesCollection,
+        streamID: HTTP2StreamID,
+        errorCode: HTTP2ErrorCode,
+        file: String = #fileID,
+        line: UInt = #line
+    ) {
         // 'NIOHTTP2Errors.streamClosed' always allocates, if there are no promises then there's no
         // need to create the error.
         guard promises.contains(where: { $0 != nil }) else {
@@ -955,9 +1158,8 @@ extension NIOHTTP2Handler {
     }
 }
 
-
-private extension HTTP2ConnectionStateMachine.ConnectionRole {
-    init(_ role: NIOHTTP2Handler.ParserMode) {
+extension HTTP2ConnectionStateMachine.ConnectionRole {
+    fileprivate init(_ role: NIOHTTP2Handler.ParserMode) {
         switch role {
         case .client:
             self = .client
@@ -966,7 +1168,6 @@ private extension HTTP2ConnectionStateMachine.ConnectionRole {
         }
     }
 }
-
 
 extension HTTP2ConnectionStateMachine.ValidationState {
     init(_ state: NIOHTTP2Handler.ValidationState) {
@@ -979,36 +1180,33 @@ extension HTTP2ConnectionStateMachine.ValidationState {
     }
 }
 
-
 extension NIOHTTP2Handler: CustomStringConvertible {
     public var description: String {
-        return "NIOHTTP2Handler(mode: \(String(describing: self.mode)))"
+        "NIOHTTP2Handler(mode: \(String(describing: self.mode)))"
     }
 }
-
 
 extension NIOHTTP2Handler: CustomDebugStringConvertible {
     public var debugDescription: String {
-        return """
-NIOHTTP2Handler(
-    stateMachine: \(String(describing: self.stateMachine)),
-    frameDecoder: \(String(describing: self.frameDecoder)),
-    frameEncoder: \(String(describing: self.frameEncoder)),
-    writeBuffer: \(String(describing: self.writeBuffer)),
-    inboundEventBuffer: \(String(describing: self.inboundEventBuffer)),
-    outboundBuffer: \(String(describing: self.outboundBuffer)),
-    wroteFrame: \(String(describing: self.wroteFrame)),
-    denialOfServiceValidator: \(String(describing: self.denialOfServiceValidator)),
-    mode: \(String(describing: self.mode)),
-    initialSettings: \(String(describing: self.initialSettings)),
-    channelClosed: \(String(describing: self.channelClosed)),
-    channelWritable: \(String(describing: self.channelWritable)),
-    activationState: \(String(describing: self.activationState))
-)
-"""
+        """
+        NIOHTTP2Handler(
+            stateMachine: \(String(describing: self.stateMachine)),
+            frameDecoder: \(String(describing: self.frameDecoder)),
+            frameEncoder: \(String(describing: self.frameEncoder)),
+            writeBuffer: \(String(describing: self.writeBuffer)),
+            inboundEventBuffer: \(String(describing: self.inboundEventBuffer)),
+            outboundBuffer: \(String(describing: self.outboundBuffer)),
+            wroteFrame: \(String(describing: self.wroteFrame)),
+            denialOfServiceValidator: \(String(describing: self.denialOfServiceValidator)),
+            mode: \(String(describing: self.mode)),
+            initialSettings: \(String(describing: self.initialSettings)),
+            channelClosed: \(String(describing: self.channelClosed)),
+            channelWritable: \(String(describing: self.channelWritable)),
+            activationState: \(String(describing: self.activationState))
+        )
+        """
     }
 }
-
 
 extension NIOHTTP2Handler {
     /// Tracks the state of activation of the handler.
@@ -1031,14 +1229,15 @@ extension NIOHTTP2Handler {
     }
 
     fileprivate func impossibleActivationStateTransition(
-        state: ActivationState, activating: Bool, context: ChannelHandlerContext
+        state: ActivationState,
+        activating: Bool,
+        context: ChannelHandlerContext
     ) {
         assert(self.tolerateImpossibleStateTransitionsInDebugMode, "Unexpected channelActive in state \(state)")
         context.fireErrorCaught(NIOHTTP2Errors.ActivationError(state: state, activating: activating))
         context.close(promise: nil)
     }
 }
-
 
 extension NIOHTTP2Handler {
     /// Exposes restricted API for use by the multiplexer
@@ -1058,7 +1257,6 @@ extension NIOHTTP2Handler {
         }
     }
 }
-
 
 extension NIOHTTP2Handler {
     /// The type of all `inboundStreamInitializer` callbacks which do not need to return data.
@@ -1100,7 +1298,11 @@ extension NIOHTTP2Handler {
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
         )
 
-        self.inboundStreamMultiplexerState = .uninitializedInline(streamConfiguration, inboundStreamInitializer, streamDelegate)
+        self.inboundStreamMultiplexerState = .uninitializedInline(
+            streamConfiguration,
+            inboundStreamInitializer,
+            streamDelegate
+        )
     }
 
     @usableFromInline
@@ -1124,7 +1326,11 @@ extension NIOHTTP2Handler {
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
         )
-        self.inboundStreamMultiplexerState = .uninitializedAsync(streamConfiguration, inboundStreamInitializerWithAnyOutput, streamDelegate)
+        self.inboundStreamMultiplexerState = .uninitializedAsync(
+            streamConfiguration,
+            inboundStreamInitializerWithAnyOutput,
+            streamDelegate
+        )
     }
 
     /// Connection-level configuration.
@@ -1151,7 +1357,7 @@ extension NIOHTTP2Handler {
         public var streamResetFrameRateLimit: StreamResetFrameRateLimitConfiguration = .init()
         public init() {}
     }
-    
+
     /// Stream reset frame rate limit configuration.
     ///
     /// The settings that control the maximum permitted reset frames within a given time window. Too many may exhaust CPU resources.
@@ -1189,12 +1395,12 @@ extension NIOHTTP2Handler {
         // We need to return a future here so that we can synchronize access on the underlying `self.inboundStreamMultiplexer`
         if self._eventLoop!.inEventLoop {
             return self._eventLoop!.makeCompletedFuture {
-                return try self.syncMultiplexer()
+                try self.syncMultiplexer()
             }
         } else {
             let unsafeSelf = UnsafeTransfer(self)
             return self._eventLoop!.submit {
-                return try unsafeSelf.wrappedValue.syncMultiplexer()
+                try unsafeSelf.wrappedValue.syncMultiplexer()
             }
         }
     }
@@ -1220,7 +1426,10 @@ extension NIOHTTP2Handler {
 
     @inlinable
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    internal func syncAsyncStreamMultiplexer<Output: Sendable>(continuation: any AnyContinuation, inboundStreamChannels: NIOHTTP2AsyncSequence<Output>) throws -> AsyncStreamMultiplexer<Output> {
+    internal func syncAsyncStreamMultiplexer<Output: Sendable>(
+        continuation: any AnyContinuation,
+        inboundStreamChannels: NIOHTTP2AsyncSequence<Output>
+    ) throws -> AsyncStreamMultiplexer<Output> {
         self._eventLoop!.preconditionInEventLoop()
         guard let inboundStreamMultiplexer = self.inboundStreamMultiplexer else {
             throw NIOHTTP2Errors.missingMultiplexer()
@@ -1228,7 +1437,12 @@ extension NIOHTTP2Handler {
 
         switch inboundStreamMultiplexer {
         case let .inline(multiplexer):
-            return AsyncStreamMultiplexer(multiplexer, eventLoop: self._eventLoop!, continuation: continuation, inboundStreamChannels: inboundStreamChannels)
+            return AsyncStreamMultiplexer(
+                multiplexer,
+                eventLoop: self._eventLoop!,
+                continuation: continuation,
+                inboundStreamChannels: inboundStreamChannels
+            )
         case .legacy:
             throw NIOHTTP2Errors.missingMultiplexer()
         }

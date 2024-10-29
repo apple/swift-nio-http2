@@ -49,7 +49,7 @@ extension ContentLengthVerifier {
 
 extension ContentLengthVerifier {
     internal init(_ headers: HPACKHeaders, requestMethod: String?) throws {
-         if let requestMethod = requestMethod {
+        if let requestMethod = requestMethod {
             if let status = headers.first(name: ":status"), status == "304" {
                 self.expectedContentLength = 0
                 return
@@ -82,13 +82,12 @@ extension ContentLengthVerifier {
 
     /// The verifier for use when content length verification is disabled.
     internal static var disabled: ContentLengthVerifier {
-        return ContentLengthVerifier(expectedContentLength: nil)
+        ContentLengthVerifier(expectedContentLength: nil)
     }
 }
 
 extension ContentLengthVerifier: CustomStringConvertible {
     var description: String {
-        return "ContentLengthVerifier(length: \(String(describing: self.expectedContentLength)))"
+        "ContentLengthVerifier(length: \(String(describing: self.expectedContentLength)))"
     }
 }
-

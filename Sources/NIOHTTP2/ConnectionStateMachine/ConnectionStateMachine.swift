@@ -70,7 +70,9 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that has sent a connection preface.
-    fileprivate struct PrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames, HasLocalSettings, HasFlowControlWindows {
+    fileprivate struct PrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames,
+        HasLocalSettings, HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -80,11 +82,11 @@ struct HTTP2ConnectionStateMachine {
         var outboundFlowControlWindow: HTTP2FlowControlWindow
 
         var localInitialWindowSize: UInt32 {
-            return HTTP2SettingsState.defaultInitialWindowSize
+            HTTP2SettingsState.defaultInitialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return self.localSettings.initialWindowSize
+            self.localSettings.initialWindowSize
         }
 
         var remoteSupportsExtendedConnect: Bool {
@@ -99,12 +101,16 @@ struct HTTP2ConnectionStateMachine {
             self.streamState = ConnectionStreamState()
 
             self.inboundFlowControlWindow = HTTP2FlowControlWindow(initialValue: settings.initialWindowSize)
-            self.outboundFlowControlWindow = HTTP2FlowControlWindow(initialValue: HTTP2SettingsState.defaultInitialWindowSize)
+            self.outboundFlowControlWindow = HTTP2FlowControlWindow(
+                initialValue: HTTP2SettingsState.defaultInitialWindowSize
+            )
         }
     }
 
     /// The state required for a connection that has received a connection preface.
-    fileprivate struct PrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MayReceiveFrames, HasRemoteSettings, HasFlowControlWindows {
+    fileprivate struct PrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
+        MayReceiveFrames, HasRemoteSettings, HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -114,11 +120,11 @@ struct HTTP2ConnectionStateMachine {
         var outboundFlowControlWindow: HTTP2FlowControlWindow
 
         var localInitialWindowSize: UInt32 {
-            return self.remoteSettings.initialWindowSize
+            self.remoteSettings.initialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return HTTP2SettingsState.defaultInitialWindowSize
+            HTTP2SettingsState.defaultInitialWindowSize
         }
 
         var localSupportsExtendedConnect: Bool {
@@ -132,13 +138,17 @@ struct HTTP2ConnectionStateMachine {
             self.remoteSettings = settings
             self.streamState = ConnectionStreamState()
 
-            self.inboundFlowControlWindow = HTTP2FlowControlWindow(initialValue: HTTP2SettingsState.defaultInitialWindowSize)
+            self.inboundFlowControlWindow = HTTP2FlowControlWindow(
+                initialValue: HTTP2SettingsState.defaultInitialWindowSize
+            )
             self.outboundFlowControlWindow = HTTP2FlowControlWindow(initialValue: settings.initialWindowSize)
         }
     }
 
     /// The state required for a connection that is active.
-    fileprivate struct ActiveConnectionState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, HasFlowControlWindows {
+    fileprivate struct ActiveConnectionState: ConnectionStateWithRole, ConnectionStateWithConfiguration, MaySendFrames,
+        MayReceiveFrames, HasLocalSettings, HasRemoteSettings, HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -149,11 +159,11 @@ struct HTTP2ConnectionStateMachine {
         var outboundFlowControlWindow: HTTP2FlowControlWindow
 
         var localInitialWindowSize: UInt32 {
-            return self.remoteSettings.initialWindowSize
+            self.remoteSettings.initialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return self.localSettings.initialWindowSize
+            self.localSettings.initialWindowSize
         }
 
         init(fromPrefaceReceived state: PrefaceReceivedState, localSettings settings: HTTP2SettingsState) {
@@ -183,7 +193,9 @@ struct HTTP2ConnectionStateMachine {
 
     /// The state required for a connection that is quiescing, but where the local peer has not yet sent its
     /// preface.
-    fileprivate struct QuiescingPrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, RemotelyQuiescingState, MayReceiveFrames, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    fileprivate struct QuiescingPrefaceReceivedState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
+        RemotelyQuiescingState, MayReceiveFrames, HasRemoteSettings, QuiescingState, HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -195,15 +207,15 @@ struct HTTP2ConnectionStateMachine {
         var lastLocalStreamID: HTTP2StreamID
 
         var localInitialWindowSize: UInt32 {
-            return self.remoteSettings.initialWindowSize
+            self.remoteSettings.initialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return HTTP2SettingsState.defaultInitialWindowSize
+            HTTP2SettingsState.defaultInitialWindowSize
         }
 
         var quiescedByServer: Bool {
-            return self.role == .client
+            self.role == .client
         }
 
         var localSupportsExtendedConnect: Bool {
@@ -225,7 +237,9 @@ struct HTTP2ConnectionStateMachine {
 
     /// The state required for a connection that is quiescing, but where the remote peer has not yet sent its
     /// preface.
-    fileprivate struct QuiescingPrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, MaySendFrames, HasLocalSettings, QuiescingState, HasFlowControlWindows {
+    fileprivate struct QuiescingPrefaceSentState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
+        LocallyQuiescingState, MaySendFrames, HasLocalSettings, QuiescingState, HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -237,15 +251,15 @@ struct HTTP2ConnectionStateMachine {
         var lastRemoteStreamID: HTTP2StreamID
 
         var localInitialWindowSize: UInt32 {
-            return HTTP2SettingsState.defaultInitialWindowSize
+            HTTP2SettingsState.defaultInitialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return self.localSettings.initialWindowSize
+            self.localSettings.initialWindowSize
         }
 
         var quiescedByServer: Bool {
-            return self.role == .server
+            self.role == .server
         }
 
         var remoteSupportsExtendedConnect: Bool {
@@ -266,7 +280,10 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to the remote peer quiescing the connection.
-    fileprivate struct RemotelyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, RemotelyQuiescingState, MayReceiveFrames, MaySendFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    fileprivate struct RemotelyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
+        RemotelyQuiescingState, MayReceiveFrames, MaySendFrames, HasLocalSettings, HasRemoteSettings, QuiescingState,
+        HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -279,15 +296,15 @@ struct HTTP2ConnectionStateMachine {
         var lastLocalStreamID: HTTP2StreamID
 
         var localInitialWindowSize: UInt32 {
-            return self.remoteSettings.initialWindowSize
+            self.remoteSettings.initialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return self.localSettings.initialWindowSize
+            self.localSettings.initialWindowSize
         }
 
         var quiescedByServer: Bool {
-            return self.role == .client
+            self.role == .client
         }
 
         init(fromActive state: ActiveConnectionState, lastLocalStreamID streamID: HTTP2StreamID) {
@@ -302,7 +319,10 @@ struct HTTP2ConnectionStateMachine {
             self.lastLocalStreamID = streamID
         }
 
-        init(fromQuiescingPrefaceReceived state: QuiescingPrefaceReceivedState, localSettings settings: HTTP2SettingsState) {
+        init(
+            fromQuiescingPrefaceReceived state: QuiescingPrefaceReceivedState,
+            localSettings settings: HTTP2SettingsState
+        ) {
             self.role = state.role
             self.headerBlockValidation = state.headerBlockValidation
             self.contentLengthValidation = state.contentLengthValidation
@@ -316,7 +336,10 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to the local user quiescing the connection.
-    fileprivate struct LocallyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    fileprivate struct LocallyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
+        LocallyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState,
+        HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -329,15 +352,15 @@ struct HTTP2ConnectionStateMachine {
         var lastRemoteStreamID: HTTP2StreamID
 
         var localInitialWindowSize: UInt32 {
-            return self.remoteSettings.initialWindowSize
+            self.remoteSettings.initialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return self.localSettings.initialWindowSize
+            self.localSettings.initialWindowSize
         }
 
         var quiescedByServer: Bool {
-            return self.role == .server
+            self.role == .server
         }
 
         init(fromActive state: ActiveConnectionState, lastRemoteStreamID streamID: HTTP2StreamID) {
@@ -366,7 +389,10 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that is quiescing due to both peers sending GOAWAY.
-    fileprivate struct BothQuiescingState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, RemotelyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings, HasRemoteSettings, QuiescingState, HasFlowControlWindows {
+    fileprivate struct BothQuiescingState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
+        LocallyQuiescingState, RemotelyQuiescingState, MaySendFrames, MayReceiveFrames, HasLocalSettings,
+        HasRemoteSettings, QuiescingState, HasFlowControlWindows
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -379,15 +405,15 @@ struct HTTP2ConnectionStateMachine {
         var lastRemoteStreamID: HTTP2StreamID
 
         var localInitialWindowSize: UInt32 {
-            return self.remoteSettings.initialWindowSize
+            self.remoteSettings.initialWindowSize
         }
 
         var remoteInitialWindowSize: UInt32 {
-            return self.localSettings.initialWindowSize
+            self.localSettings.initialWindowSize
         }
 
         var quiescedByServer: Bool {
-            return true
+            true
         }
 
         init(fromRemotelyQuiesced state: RemotelyQuiescedState, lastRemoteStreamID streamID: HTTP2StreamID) {
@@ -420,7 +446,9 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that has completely quiesced.
-    fileprivate struct FullyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration, LocallyQuiescingState, RemotelyQuiescingState, SendAndReceiveGoawayState {
+    fileprivate struct FullyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
+        LocallyQuiescingState, RemotelyQuiescingState, SendAndReceiveGoawayState
+    {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
@@ -436,7 +464,10 @@ struct HTTP2ConnectionStateMachine {
             false
         }
 
-        init<PreviousState: LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
+        init<
+            PreviousState: LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState
+                & ConnectionStateWithRole & ConnectionStateWithConfiguration
+        >(previousState: PreviousState) {
             self.role = previousState.role
             self.headerBlockValidation = previousState.headerBlockValidation
             self.contentLengthValidation = previousState.contentLengthValidation
@@ -445,7 +476,10 @@ struct HTTP2ConnectionStateMachine {
             self.lastRemoteStreamID = previousState.lastRemoteStreamID
         }
 
-        init<PreviousState: LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
+        init<
+            PreviousState: LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole
+                & ConnectionStateWithConfiguration
+        >(previousState: PreviousState) {
             self.role = previousState.role
             self.headerBlockValidation = previousState.headerBlockValidation
             self.contentLengthValidation = previousState.contentLengthValidation
@@ -454,7 +488,10 @@ struct HTTP2ConnectionStateMachine {
             self.lastRemoteStreamID = previousState.lastRemoteStreamID
         }
 
-        init<PreviousState: RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(previousState: PreviousState) {
+        init<
+            PreviousState: RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole
+                & ConnectionStateWithConfiguration
+        >(previousState: PreviousState) {
             self.role = previousState.role
             self.headerBlockValidation = previousState.headerBlockValidation
             self.contentLengthValidation = previousState.contentLengthValidation
@@ -531,8 +568,18 @@ struct HTTP2ConnectionStateMachine {
 
     private var state: State
 
-    init(role: ConnectionRole, headerBlockValidation: ValidationState = .enabled, contentLengthValidation: ValidationState = .enabled) {
-        self.state = .idle(.init(role: role, headerBlockValidation: headerBlockValidation, contentLengthValidation: contentLengthValidation))
+    init(
+        role: ConnectionRole,
+        headerBlockValidation: ValidationState = .enabled,
+        contentLengthValidation: ValidationState = .enabled
+    ) {
+        self.state = .idle(
+            .init(
+                role: role,
+                headerBlockValidation: headerBlockValidation,
+                contentLengthValidation: contentLengthValidation
+            )
+        )
     }
 
     /// Whether this connection is closed.
@@ -562,7 +609,11 @@ struct HTTP2ConnectionStateMachine {
 // performs a state transition, and can be used to validate that a specific action is acceptable on a connection in this state.
 extension HTTP2ConnectionStateMachine {
     /// Called when a SETTINGS frame has been received from the remote peer
-    mutating func receiveSettings(_ payload: HTTP2Frame.FramePayload.Settings, frameEncoder: inout HTTP2FrameEncoder, frameDecoder: inout HTTP2FrameDecoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
+    mutating func receiveSettings(
+        _ payload: HTTP2Frame.FramePayload.Settings,
+        frameEncoder: inout HTTP2FrameEncoder,
+        frameDecoder: inout HTTP2FrameDecoder
+    ) -> (StateMachineResultWithEffect, PostFrameOperation) {
         switch payload {
         case .ack:
             // No action is ever required after receiving a settings ACK
@@ -642,7 +693,10 @@ extension HTTP2ConnectionStateMachine {
             }
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -652,7 +706,11 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a HEADERS frame has been received from the remote peer.
-    mutating func receiveHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func receiveHeaders(
+        streamID: HTTP2StreamID,
+        headers: HPACKHeaders,
+        isEndStreamSet endStream: Bool
+    ) -> StateMachineResultWithEffect {
         switch self.state {
         case .prefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -701,10 +759,23 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // If we're still waiting for the remote preface, they are not allowed to send us a HEADERS frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .streamError(streamID: streamID, underlyingError: NIOHTTP2Errors.streamError(streamID: streamID, baseError: NIOHTTP2Errors.createdStreamAfterGoaway()), type: .refusedStream), effect: nil)
+            return .init(
+                result: .streamError(
+                    streamID: streamID,
+                    underlyingError: NIOHTTP2Errors.streamError(
+                        streamID: streamID,
+                        baseError: NIOHTTP2Errors.createdStreamAfterGoaway()
+                    ),
+                    type: .refusedStream
+                ),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -712,7 +783,11 @@ extension HTTP2ConnectionStateMachine {
     }
 
     // Called when a HEADERS frame has been sent by the local user.
-    mutating func sendHeaders(streamID: HTTP2StreamID, headers: HPACKHeaders, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func sendHeaders(
+        streamID: HTTP2StreamID,
+        headers: HPACKHeaders,
+        isEndStreamSet endStream: Bool
+    ) -> StateMachineResultWithEffect {
         switch self.state {
         case .prefaceSent(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -761,10 +836,16 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // If we're still waiting for the local preface, we are not allowed to send a HEADERS frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -772,25 +853,45 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a DATA frame has been received.
-    mutating func receiveData(streamID: HTTP2StreamID, contentLength: Int, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func receiveData(
+        streamID: HTTP2StreamID,
+        contentLength: Int,
+        flowControlledBytes: Int,
+        isEndStreamSet endStream: Bool
+    ) -> StateMachineResultWithEffect {
         switch self.state {
         case .prefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.receiveData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .prefaceReceived(state)
                 return result
             }
 
         case .active(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.receiveData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .active(state)
                 return result
             }
 
         case .locallyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.receiveData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .locallyQuiesced(state)
                 newState.closeIfNeeded(state)
                 return result
@@ -798,7 +899,12 @@ extension HTTP2ConnectionStateMachine {
 
         case .remotelyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.receiveData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .remotelyQuiesced(state)
                 newState.closeIfNeeded(state)
                 return result
@@ -806,7 +912,12 @@ extension HTTP2ConnectionStateMachine {
 
         case .bothQuiescing(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.receiveData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .bothQuiescing(state)
                 newState.closeIfNeeded(state)
                 return result
@@ -814,17 +925,28 @@ extension HTTP2ConnectionStateMachine {
 
         case .quiescingPrefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receiveData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.receiveData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .quiescingPrefaceReceived(state)
                 return result
             }
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // If we're still waiting for the remote preface, we are not allowed to receive a DATA frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -832,25 +954,45 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a user is trying to send a DATA frame.
-    mutating func sendData(streamID: HTTP2StreamID, contentLength: Int, flowControlledBytes: Int, isEndStreamSet endStream: Bool) -> StateMachineResultWithEffect {
+    mutating func sendData(
+        streamID: HTTP2StreamID,
+        contentLength: Int,
+        flowControlledBytes: Int,
+        isEndStreamSet endStream: Bool
+    ) -> StateMachineResultWithEffect {
         switch self.state {
         case .prefaceSent(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.sendData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .prefaceSent(state)
                 return result
             }
 
         case .active(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.sendData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .active(state)
                 return result
             }
 
         case .locallyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.sendData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .locallyQuiesced(state)
                 newState.closeIfNeeded(state)
                 return result
@@ -858,7 +1000,12 @@ extension HTTP2ConnectionStateMachine {
 
         case .remotelyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.sendData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .remotelyQuiesced(state)
                 newState.closeIfNeeded(state)
                 return result
@@ -866,7 +1013,12 @@ extension HTTP2ConnectionStateMachine {
 
         case .bothQuiescing(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.sendData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .bothQuiescing(state)
                 newState.closeIfNeeded(state)
                 return result
@@ -874,17 +1026,28 @@ extension HTTP2ConnectionStateMachine {
 
         case .quiescingPrefaceSent(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendData(streamID: streamID, contentLength: contentLength, flowControlledBytes: flowControlledBytes, isEndStreamSet: endStream)
+                let result = state.sendData(
+                    streamID: streamID,
+                    contentLength: contentLength,
+                    flowControlledBytes: flowControlledBytes,
+                    isEndStreamSet: endStream
+                )
                 newState = .quiescingPrefaceSent(state)
                 return result
             }
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // If we're still waiting for the local preface, we are not allowed to send a DATA frame yet!
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -900,10 +1063,16 @@ extension HTTP2ConnectionStateMachine {
             return StateMachineResultWithEffect(result: .succeed, effect: nil)
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return StateMachineResultWithEffect(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return StateMachineResultWithEffect(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -919,10 +1088,16 @@ extension HTTP2ConnectionStateMachine {
             return .init(result: .succeed, effect: nil)
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -979,10 +1154,16 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1039,7 +1220,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the local preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
             // We allow RST_STREAM frames to be sent because when a server receives a HEADERS frame in this state (say, a client sends
@@ -1056,7 +1240,11 @@ extension HTTP2ConnectionStateMachine {
     ///
     /// If this method returns a stream error, the stream error should be assumed to apply to both the original
     /// and child stream.
-    mutating func receivePushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
+    mutating func receivePushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
         // In states that support a push promise we have two steps. Firstly, we want to create the child stream; then we want to
         // pass the PUSH_PROMISE frame through the stream state machine for the parent stream.
         //
@@ -1068,98 +1256,160 @@ extension HTTP2ConnectionStateMachine {
         switch self.state {
         case .prefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.receivePushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .prefaceReceived(state)
                 return result
             }
 
         case .active(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.receivePushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .active(state)
                 return result
             }
 
         case .locallyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.receivePushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .locallyQuiesced(state)
                 return result
             }
 
         case .remotelyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.receivePushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .remotelyQuiesced(state)
                 return result
             }
 
         case .bothQuiescing(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.receivePushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .bothQuiescing(state)
                 return result
             }
 
         case .quiescingPrefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.receivePushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.receivePushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .quiescingPrefaceReceived(state)
                 return result
             }
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
         }
     }
 
-    mutating func sendPushPromise(originalStreamID: HTTP2StreamID, childStreamID: HTTP2StreamID, headers: HPACKHeaders) -> StateMachineResultWithEffect {
+    mutating func sendPushPromise(
+        originalStreamID: HTTP2StreamID,
+        childStreamID: HTTP2StreamID,
+        headers: HPACKHeaders
+    ) -> StateMachineResultWithEffect {
         switch self.state {
         case .prefaceSent(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.sendPushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .prefaceSent(state)
                 return result
             }
 
         case .active(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.sendPushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .active(state)
                 return result
             }
 
         case .locallyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.sendPushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .locallyQuiesced(state)
                 return result
             }
 
         case .remotelyQuiesced, .bothQuiescing:
             // We have been quiesced, and may not create new streams.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.createdStreamAfterGoaway(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(
+                    underlyingError: NIOHTTP2Errors.createdStreamAfterGoaway(),
+                    type: .protocolError
+                ),
+                effect: nil
+            )
 
         case .quiescingPrefaceSent(var state):
             return self.avoidingStateMachineCoW { newState in
-                let result = state.sendPushPromise(originalStreamID: originalStreamID, childStreamID: childStreamID, headers: headers)
+                let result = state.sendPushPromise(
+                    originalStreamID: originalStreamID,
+                    childStreamID: childStreamID,
+                    headers: headers
+                )
                 newState = .quiescingPrefaceSent(state)
                 return result
             }
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the local preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1172,12 +1422,18 @@ extension HTTP2ConnectionStateMachine {
         // RFC 7540 that says that receiving PINGs with ACK flags set when no PING ACKs are expected is forbidden. This is
         // very strange, but we allow it.
         switch self.state {
-        case .prefaceReceived, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceReceived, .fullyQuiesced:
+        case .prefaceReceived, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceReceived,
+            .fullyQuiesced:
             return (.init(result: .succeed, effect: nil), ackFlagSet ? .nothing : .sendAck)
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the remote preface.
-            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil), .nothing)
+            return (
+                .init(
+                    result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                    effect: nil
+                ), .nothing
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1190,18 +1446,21 @@ extension HTTP2ConnectionStateMachine {
         // RFC 7540 that says that sending PINGs with ACK flags set when no PING ACKs are expected is forbidden. This is
         // very strange, but we allow it.
         switch self.state {
-        case .prefaceSent, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceSent, .fullyQuiesced:
+        case .prefaceSent, .active, .locallyQuiesced, .remotelyQuiesced, .bothQuiescing, .quiescingPrefaceSent,
+            .fullyQuiesced:
             return .init(result: .succeed, effect: nil)
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the local preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
         }
     }
-
 
     /// Called when we receive a GOAWAY frame.
     mutating func receiveGoaway(lastStreamID: HTTP2StreamID) -> StateMachineResultWithEffect {
@@ -1261,7 +1520,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -1334,7 +1596,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -1350,7 +1615,8 @@ extension HTTP2ConnectionStateMachine {
     }
 
     /// Called when a WINDOW_UPDATE frame has been received.
-    mutating func receiveWindowUpdate(streamID: HTTP2StreamID, windowIncrement: UInt32) -> StateMachineResultWithEffect {
+    mutating func receiveWindowUpdate(streamID: HTTP2StreamID, windowIncrement: UInt32) -> StateMachineResultWithEffect
+    {
         switch self.state {
         case .prefaceReceived(var state):
             return self.avoidingStateMachineCoW { newState in
@@ -1396,10 +1662,16 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceSent, .quiescingPrefaceSent:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1453,10 +1725,16 @@ extension HTTP2ConnectionStateMachine {
 
         case .idle, .prefaceReceived, .quiescingPrefaceReceived:
             // We're waiting for the preface.
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.missingPreface(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1473,7 +1751,7 @@ extension HTTP2ConnectionStateMachine {
         //   > The ALTSVC frame is a non-critical extension to HTTP/2.  Endpoints
         //   > that do not support this frame will ignore it (as per the
         //   > extensibility rules defined in Section 4.1 of RFC7540).
-        return .init(result: .ignoreFrame, effect: .none)
+        .init(result: .ignoreFrame, effect: .none)
     }
 
     /// Called when an ALTSVC frame is sent.
@@ -1492,7 +1770,7 @@ extension HTTP2ConnectionStateMachine {
         // From RFC 8336 § 2.1:
         //   > The ORIGIN frame is a non-critical extension to HTTP/2.  Endpoints
         //   > that do not support this frame can safely ignore it upon receipt.
-        return .init(result: .ignoreFrame, effect: .none)
+        .init(result: .ignoreFrame, effect: .none)
     }
 
     /// Called when an ORIGIN frame is sent.
@@ -1506,7 +1784,10 @@ extension HTTP2ConnectionStateMachine {
 // Mark:- Private helper methods
 extension HTTP2ConnectionStateMachine {
     /// Called when we have received a SETTINGS frame from the remote peer. Applies the changes immediately.
-    private mutating func receiveSettingsChange(_ settings: HTTP2Settings, frameEncoder: inout HTTP2FrameEncoder) -> (StateMachineResultWithEffect, PostFrameOperation) {
+    private mutating func receiveSettingsChange(
+        _ settings: HTTP2Settings,
+        frameEncoder: inout HTTP2FrameEncoder
+    ) -> (StateMachineResultWithEffect, PostFrameOperation) {
         let validationResult = self.validateSettings(settings)
 
         guard case .succeed = validationResult else {
@@ -1516,7 +1797,10 @@ extension HTTP2ConnectionStateMachine {
         switch self.state {
         case .idle(let state):
             return self.avoidingStateMachineCoW { newState in
-                var newStateData = PrefaceReceivedState(fromIdle: state, remoteSettings: HTTP2SettingsState(localState: false))
+                var newStateData = PrefaceReceivedState(
+                    fromIdle: state,
+                    remoteSettings: HTTP2SettingsState(localState: false)
+                )
                 let result = newStateData.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .prefaceReceived(newStateData)
                 return result
@@ -1524,7 +1808,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .prefaceSent(let state):
             return self.avoidingStateMachineCoW { newState in
-                var newStateData = ActiveConnectionState(fromPrefaceSent: state, remoteSettings: HTTP2SettingsState(localState: false))
+                var newStateData = ActiveConnectionState(
+                    fromPrefaceSent: state,
+                    remoteSettings: HTTP2SettingsState(localState: false)
+                )
                 let result = newStateData.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .active(newStateData)
                 return result
@@ -1567,7 +1854,10 @@ extension HTTP2ConnectionStateMachine {
 
         case .quiescingPrefaceSent(let state):
             return self.avoidingStateMachineCoW { newState in
-                var newStateData = LocallyQuiescedState(fromQuiescingPrefaceSent: state, remoteSettings: HTTP2SettingsState(localState: false))
+                var newStateData = LocallyQuiescedState(
+                    fromQuiescingPrefaceSent: state,
+                    remoteSettings: HTTP2SettingsState(localState: false)
+                )
                 let result = newStateData.receiveSettingsChange(settings, frameEncoder: &frameEncoder)
                 newState = .locallyQuiesced(newStateData)
                 return result
@@ -1581,7 +1871,15 @@ extension HTTP2ConnectionStateMachine {
             }
 
         case .fullyQuiesced:
-            return (.init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil), .nothing)
+            return (
+                .init(
+                    result: .connectionError(
+                        underlyingError: NIOHTTP2Errors.ioOnClosedConnection(),
+                        type: .protocolError
+                    ),
+                    effect: nil
+                ), .nothing
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1621,10 +1919,16 @@ extension HTTP2ConnectionStateMachine {
             }
 
         case .idle, .prefaceSent, .prefaceReceived, .quiescingPrefaceReceived, .quiescingPrefaceSent:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.receivedBadSettings(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.receivedBadSettings(), type: .protocolError),
+                effect: nil
+            )
 
         case .fullyQuiesced:
-            return .init(result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError), effect: nil)
+            return .init(
+                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
+                effect: nil
+            )
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1641,20 +1945,32 @@ extension HTTP2ConnectionStateMachine {
             switch setting.parameter {
             case .enablePush:
                 guard setting._value == 0 || setting._value == 1 else {
-                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .protocolError)
+                    return .connectionError(
+                        underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting),
+                        type: .protocolError
+                    )
                 }
             case .initialWindowSize:
                 guard setting._value <= HTTP2FlowControlWindow.maxSize else {
-                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .flowControlError)
+                    return .connectionError(
+                        underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting),
+                        type: .flowControlError
+                    )
                 }
             case .maxFrameSize:
                 guard setting._value >= (1 << 14) && setting._value <= ((1 << 24) - 1) else {
-                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .protocolError)
+                    return .connectionError(
+                        underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting),
+                        type: .protocolError
+                    )
                 }
             case .enableConnectProtocol:
                 // Must be 0 or 1
                 guard setting._value <= 1 else {
-                    return .connectionError(underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting), type: .protocolError)
+                    return .connectionError(
+                        underlyingError: NIOHTTP2Errors.invalidSetting(setting: setting),
+                        type: .protocolError
+                    )
                 }
             default:
                 // All other settings have unrestricted ranges.
@@ -1671,7 +1987,10 @@ extension HTTP2ConnectionStateMachine.State {
     //
     // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
     // connection more work can always be done.
-    mutating func closeIfNeeded<CurrentState: QuiescingState & LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(_ state: CurrentState) {
+    mutating func closeIfNeeded<
+        CurrentState: QuiescingState & LocallyQuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState
+            & ConnectionStateWithRole & ConnectionStateWithConfiguration
+    >(_ state: CurrentState) {
         if state.quiescedByServer && state.streamState.openStreams == 0 {
             self = .fullyQuiesced(.init(previousState: state))
         }
@@ -1681,7 +2000,10 @@ extension HTTP2ConnectionStateMachine.State {
     //
     // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
     // connection more work can always be done.
-    mutating func closeIfNeeded<CurrentState: QuiescingState & LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(_ state: CurrentState) {
+    mutating func closeIfNeeded<
+        CurrentState: QuiescingState & LocallyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole
+            & ConnectionStateWithConfiguration
+    >(_ state: CurrentState) {
         if state.quiescedByServer && state.streamState.openStreams == 0 {
             self = .fullyQuiesced(.init(previousState: state))
         }
@@ -1691,7 +2013,10 @@ extension HTTP2ConnectionStateMachine.State {
     //
     // We should only call this when a server has quiesced the connection. As long as only the client has quiesced the
     // connection more work can always be done.
-    mutating func closeIfNeeded<CurrentState: QuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole & ConnectionStateWithConfiguration>(_ state: CurrentState) {
+    mutating func closeIfNeeded<
+        CurrentState: QuiescingState & RemotelyQuiescingState & SendAndReceiveGoawayState & ConnectionStateWithRole
+            & ConnectionStateWithConfiguration
+    >(_ state: CurrentState) {
         if state.quiescedByServer && state.streamState.openStreams == 0 {
             self = .fullyQuiesced(.init(previousState: state))
         }
@@ -1734,7 +2059,6 @@ extension HTTP2ConnectionStateMachine {
     }
 }
 
-
 extension HTTP2StreamID {
     /// Confirms that this kind of stream ID may be initiated by a peer in the specific role.
     ///
@@ -1749,7 +2073,6 @@ extension HTTP2StreamID {
         }
     }
 }
-
 
 /// A simple protocol that provides helpers that apply to all connection states that keep track of a role.
 protocol ConnectionStateWithRole {
@@ -1771,5 +2094,5 @@ extension ConnectionStateWithRole {
 private protocol ConnectionStateWithConfiguration {
     var headerBlockValidation: HTTP2ConnectionStateMachine.ValidationState { get }
 
-    var contentLengthValidation: HTTP2ConnectionStateMachine.ValidationState { get}
+    var contentLengthValidation: HTTP2ConnectionStateMachine.ValidationState { get }
 }

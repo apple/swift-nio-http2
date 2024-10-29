@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOHTTP1
 import NIOHPACK
+import NIOHTTP1
 
 extension HPACKHeaders {
     /// Whether this `HTTPHeaders` corresponds to a final response or not.
@@ -21,7 +21,7 @@ extension HPACKHeaders {
     /// This function is only valid if called on a response header block. If the :status header
     /// is not present, this will throw.
     fileprivate func isInformationalResponse() throws -> Bool {
-        return try self.peekPseudoHeader(name: ":status").first! == "1"
+        try self.peekPseudoHeader(name: ":status").first! == "1"
     }
 }
 
@@ -65,23 +65,23 @@ struct HTTP2HeadersStateMachine {
             // The first header block received on a server mode stream must be a request block.
             newType = .requestHead
         case (.client, .none),
-             (.client, .some(.informationalResponseHead)):
+            (.client, .some(.informationalResponseHead)):
             // The first header block received on a client mode stream may be either informational or final,
             // depending on the value of the :status pseudo-header. Alternatively, if the previous
             // header block was informational, the same possibilities apply.
             newType = try block.isInformationalResponse() ? .informationalResponseHead : .finalResponseHead
         case (.server, .some(.requestHead)),
-             (.client, .some(.finalResponseHead)):
+            (.client, .some(.finalResponseHead)):
             // If the sevrer has already received a request head, or the client has already received a final response,
             // this is a trailer block.
             newType = .trailer
         case (.server, .some(.informationalResponseHead)),
-             (.server, .some(.finalResponseHead)),
-             (.client, .some(.requestHead)):
+            (.server, .some(.finalResponseHead)),
+            (.client, .some(.requestHead)):
             // These states should not be reachable!
             preconditionFailure("Invalid internal state!")
         case (.server, .some(.trailer)),
-             (.client, .some(.trailer)):
+            (.client, .some(.trailer)):
             // TODO(cory): This should probably throw, as this can happen in malformed programs without the world ending.
             preconditionFailure("Sending too many header blocks.")
         }

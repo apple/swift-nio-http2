@@ -18,36 +18,35 @@ extension HPACKHeaders {
     ///
     /// If the header block is not valid, throws an error.
     internal func validateRequestBlock(supportsExtendedConnect: Bool) throws {
-        return try RequestBlockValidator.validateBlock(self, supportsExtendedConnect: supportsExtendedConnect)
+        try RequestBlockValidator.validateBlock(self, supportsExtendedConnect: supportsExtendedConnect)
     }
 
     /// Checks that a given HPACKHeaders block is a valid response header block, meeting all of the constraints of RFC 7540.
     ///
     /// If the header block is not valid, throws an error.
     internal func validateResponseBlock() throws {
-        return try ResponseBlockValidator.validateBlock(self)
+        try ResponseBlockValidator.validateBlock(self)
     }
 
     /// Checks that a given HPACKHeaders block is a valid trailer block, meeting all of the constraints of RFC 7540.
     ///
     /// If the header block is not valid, throws an error.
     internal func validateTrailersBlock() throws {
-        return try TrailersValidator.validateBlock(self)
+        try TrailersValidator.validateBlock(self)
     }
 }
-
 
 /// A HTTP/2 header block is divided into two sections: the leading section, containing pseudo-headers, and
 /// the regular header section. Once the first regular header has been seen and we have transitioned into the
 /// header section, it is an error to see a pseudo-header again in this block.
-fileprivate enum BlockSection {
+private enum BlockSection {
     case pseudoHeaders
     case headers
 
     fileprivate mutating func validField(_ field: HeaderFieldName) throws {
         switch (self, field.fieldType) {
         case (.pseudoHeaders, .pseudoHeaderField),
-             (.headers, .regularHeaderField):
+            (.headers, .regularHeaderField):
             // Another header of the same type we're expecting. Do nothing.
             break
 
@@ -63,9 +62,8 @@ fileprivate enum BlockSection {
     }
 }
 
-
 /// A `HeaderBlockValidator` is an object that can confirm that a HPACK block meets certain constraints.
-fileprivate protocol HeaderBlockValidator {
+private protocol HeaderBlockValidator {
     init()
 
     var allowedPseudoHeaderFields: PseudoHeaders { get }
@@ -74,7 +72,6 @@ fileprivate protocol HeaderBlockValidator {
 
     mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws
 }
-
 
 extension HeaderBlockValidator {
     /// Validates that a header block meets the requirements of this `HeaderBlockValidator`.
@@ -88,29 +85,37 @@ extension HeaderBlockValidator {
             try blockSection.validField(fieldName)
             try fieldName.legalHeaderField(value: value)
 
-            let thisPseudoHeaderFieldType = try seenPseudoHeaders.seenNewHeaderField(fieldName, supportsExtendedConnect: supportsExtendedConnect)
+            let thisPseudoHeaderFieldType = try seenPseudoHeaders.seenNewHeaderField(
+                fieldName,
+                supportsExtendedConnect: supportsExtendedConnect
+            )
 
             try validator.validateNextField(name: fieldName, value: value, pseudoHeaderType: thisPseudoHeaderFieldType)
         }
 
         // We must only have seen pseudo-header fields allowed on this type of header block,
         // and at least the mandatory set.
-        guard validator.allowedPseudoHeaderFields.isSuperset(of: seenPseudoHeaders) &&
-              validator.mandatoryPseudoHeaderFields.isSubset(of: seenPseudoHeaders) else {
+        guard
+            validator.allowedPseudoHeaderFields.isSuperset(of: seenPseudoHeaders)
+                && validator.mandatoryPseudoHeaderFields.isSubset(of: seenPseudoHeaders)
+        else {
             throw NIOHTTP2Errors.invalidPseudoHeaders(block)
         }
     }
 }
 
-
 /// An object that can be used to validate if a given header block is a valid request header block.
-fileprivate struct RequestBlockValidator {
+private struct RequestBlockValidator {
     private var isConnectRequest: Bool = false
     private var containsProtocolPseudoHeader: Bool = false
 }
 
 extension RequestBlockValidator: HeaderBlockValidator {
-    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws {
+    fileprivate mutating func validateNextField(
+        name: HeaderFieldName,
+        value: String,
+        pseudoHeaderType: PseudoHeaders?
+    ) throws {
         // We have a wrinkle here: the set of allowed and mandatory pseudo headers for requests depends on whether this request is a CONNECT request.
         // If it isn't, RFC 7540 § 8.1.2.3 rules, and says that:
         //
@@ -192,40 +197,45 @@ extension RequestBlockValidator: HeaderBlockValidator {
     }
 }
 
-
 /// An object that can be used to validate if a given header block is a valid response header block.
-fileprivate struct ResponseBlockValidator {
+private struct ResponseBlockValidator {
     let allowedPseudoHeaderFields: PseudoHeaders = .allowedResponseHeaders
 
     let mandatoryPseudoHeaderFields: PseudoHeaders = .mandatoryResponseHeaders
 }
 
 extension ResponseBlockValidator: HeaderBlockValidator {
-    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws {
+    fileprivate mutating func validateNextField(
+        name: HeaderFieldName,
+        value: String,
+        pseudoHeaderType: PseudoHeaders?
+    ) throws {
         return
     }
 }
 
-
 /// An object that can be used to validate if a given header block is a valid trailer block.
-fileprivate struct TrailersValidator {
+private struct TrailersValidator {
     let allowedPseudoHeaderFields: PseudoHeaders = []
 
     let mandatoryPseudoHeaderFields: PseudoHeaders = []
 }
 
 extension TrailersValidator: HeaderBlockValidator {
-    fileprivate mutating func validateNextField(name: HeaderFieldName, value: String, pseudoHeaderType: PseudoHeaders?) throws {
+    fileprivate mutating func validateNextField(
+        name: HeaderFieldName,
+        value: String,
+        pseudoHeaderType: PseudoHeaders?
+    ) throws {
         return
     }
 }
-
 
 /// A structure that carries the details of a specific header field name.
 ///
 /// Used to validate the correctness of a specific header field name at a given
 /// point in a header block.
-fileprivate struct HeaderFieldName {
+private struct HeaderFieldName {
     /// The type of this header-field: pseudo-header or regular.
     fileprivate var fieldType: FieldType
 
@@ -284,7 +294,6 @@ extension HeaderFieldName {
     }
 }
 
-
 extension Substring.UTF8View {
     /// Whether this is a valid HTTP/2 header field name.
     fileprivate var isValidFieldName: Bool {
@@ -322,10 +331,10 @@ extension Substring.UTF8View {
         ///
         /// We can then translate this into a straightforward switch statement to check whether the code
         /// units are valid.
-        return self.allSatisfy { codeUnit in
+        self.allSatisfy { codeUnit in
             switch codeUnit {
             case 0x21, 0x23...0x27, 0x2a, 0x2b, 0x2d, 0x2e, 0x30...0x39,
-                 0x5e...0x7a, 0x7c, 0x7e:
+                0x5e...0x7a, 0x7c, 0x7e:
                 return true
             default:
                 return false
@@ -334,9 +343,8 @@ extension Substring.UTF8View {
     }
 }
 
-
 /// A set of all pseudo-headers defined in HTTP/2.
-fileprivate struct PseudoHeaders: OptionSet {
+private struct PseudoHeaders: OptionSet {
     var rawValue: UInt8
 
     static let path = PseudoHeaders(rawValue: 1 << 0)
@@ -348,7 +356,9 @@ fileprivate struct PseudoHeaders: OptionSet {
 
     static let mandatoryRequestHeaders: PseudoHeaders = [.path, .method, .scheme]
     static let allowedRequestHeaders: PseudoHeaders = [.path, .method, .scheme, .authority]
-    static let allowedExtendedConnectRequestHeaders: PseudoHeaders = [.path, .method, .scheme, .authority, .extConnectProtocol]
+    static let allowedExtendedConnectRequestHeaders: PseudoHeaders = [
+        .path, .method, .scheme, .authority, .extConnectProtocol,
+    ]
     static let mandatoryConnectRequestHeaders: PseudoHeaders = [.method, .authority]
     static let allowedConnectRequestHeaders: PseudoHeaders = [.method, .authority]
     static let mandatoryResponseHeaders: PseudoHeaders = [.status]

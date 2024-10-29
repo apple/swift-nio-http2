@@ -19,22 +19,20 @@
 // See LICENSE.txt for license information:
 // https://github.com/apple/swift-protobuf/blob/main/LICENSE.txt
 
-
 import Foundation
-
 import NIOCore
 import NIOEmbedded
 import NIOHTTP1
 import NIOHTTP2
 
-fileprivate func fuzzInput(_ bytes: UnsafeRawBufferPointer) throws {
+private func fuzzInput(_ bytes: UnsafeRawBufferPointer) throws {
     let channel = EmbeddedChannel()
     defer {
         _ = try? channel.finish()
     }
     _ = try channel.configureHTTP2Pipeline(
         mode: .server,
-        initialLocalSettings: [HTTP2Setting(parameter: .maxConcurrentStreams, value: 1<<23)],
+        initialLocalSettings: [HTTP2Setting(parameter: .maxConcurrentStreams, value: 1 << 23)],
         inboundStreamInitializer: nil
     ).wait()
     try channel.connect(to: SocketAddress(unixDomainSocketPath: "/foo")).wait()
@@ -48,12 +46,12 @@ fileprivate func fuzzInput(_ bytes: UnsafeRawBufferPointer) throws {
 
 @_cdecl("LLVMFuzzerTestOneInput")
 public func FuzzServer(_ start: UnsafeRawPointer, _ count: Int) -> CInt {
-  let bytes = UnsafeRawBufferPointer(start: start, count: count)
-  do {
-      let _ = try fuzzInput(bytes)
-  } catch {
-    // Errors parsing are to be expected since not all inputs will be well formed.
-  }
+    let bytes = UnsafeRawBufferPointer(start: start, count: count)
+    do {
+        let _ = try fuzzInput(bytes)
+    } catch {
+        // Errors parsing are to be expected since not all inputs will be well formed.
+    }
 
-  return 0
+    return 0
 }

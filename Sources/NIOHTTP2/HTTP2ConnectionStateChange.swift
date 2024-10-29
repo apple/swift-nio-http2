@@ -73,7 +73,12 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
 
         internal var reason: HTTP2ErrorCode?
 
-        internal init(streamID: HTTP2StreamID, localConnectionWindowSize: Int, remoteConnectionWindowSize: Int, reason: HTTP2ErrorCode?) {
+        internal init(
+            streamID: HTTP2StreamID,
+            localConnectionWindowSize: Int,
+            remoteConnectionWindowSize: Int,
+            reason: HTTP2ErrorCode?
+        ) {
             self.streamID = streamID
             self.localConnectionWindowSize = localConnectionWindowSize
             self.remoteConnectionWindowSize = remoteConnectionWindowSize
@@ -124,7 +129,11 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
             }
         }
 
-        internal init(localConnectionWindowSize: Int, remoteConnectionWindowSize: Int, localStreamWindowSize: StreamWindowSizeChange?) {
+        internal init(
+            localConnectionWindowSize: Int,
+            remoteConnectionWindowSize: Int,
+            localStreamWindowSize: StreamWindowSizeChange?
+        ) {
             self.localConnectionWindowSize = localConnectionWindowSize
             self.remoteConnectionWindowSize = remoteConnectionWindowSize
             self.localStreamWindowSize = localStreamWindowSize
@@ -169,7 +178,6 @@ internal enum NIOHTTP2ConnectionStateChange: Hashable {
     }
 }
 
-
 /// A representation of a state change at the level of a single stream.
 ///
 /// While the NIOHTTP2ConnectionStateChange is an object that affects an entire connection,
@@ -195,23 +203,34 @@ internal enum StreamStateChange: Hashable {
     }
 }
 
-
-internal extension NIOHTTP2ConnectionStateChange {
-    init(_ streamChange: StreamStateChange, inboundFlowControlWindow: HTTP2FlowControlWindow, outboundFlowControlWindow: HTTP2FlowControlWindow) {
+extension NIOHTTP2ConnectionStateChange {
+    init(
+        _ streamChange: StreamStateChange,
+        inboundFlowControlWindow: HTTP2FlowControlWindow,
+        outboundFlowControlWindow: HTTP2FlowControlWindow
+    ) {
         switch streamChange {
         case .streamClosed(let streamClosedState):
-            self = .streamClosed(.init(streamID: streamClosedState.streamID,
-                                       localConnectionWindowSize: Int(outboundFlowControlWindow),
-                                       remoteConnectionWindowSize: Int(inboundFlowControlWindow),
-                                       reason: streamClosedState.reason))
+            self = .streamClosed(
+                .init(
+                    streamID: streamClosedState.streamID,
+                    localConnectionWindowSize: Int(outboundFlowControlWindow),
+                    remoteConnectionWindowSize: Int(inboundFlowControlWindow),
+                    reason: streamClosedState.reason
+                )
+            )
         case .streamCreated(let streamCreated):
             self = .streamCreated(streamCreated)
         case .streamCreatedAndClosed(let streamCreatedAndClosed):
             self = .streamCreatedAndClosed(streamCreatedAndClosed)
         case .windowSizeChange(let streamSizeChange):
-            self = .flowControlChange(.init(localConnectionWindowSize: Int(outboundFlowControlWindow),
-                                            remoteConnectionWindowSize: Int(inboundFlowControlWindow),
-                                            localStreamWindowSize: streamSizeChange))
+            self = .flowControlChange(
+                .init(
+                    localConnectionWindowSize: Int(outboundFlowControlWindow),
+                    remoteConnectionWindowSize: Int(inboundFlowControlWindow),
+                    localStreamWindowSize: streamSizeChange
+                )
+            )
         }
     }
 }

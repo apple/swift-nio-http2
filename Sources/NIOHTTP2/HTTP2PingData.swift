@@ -69,14 +69,14 @@ public struct HTTP2PingData: Sendable {
 
 extension HTTP2PingData: RandomAccessCollection, MutableCollection {
     public typealias Index = Int
-    public typealias Element =  UInt8
+    public typealias Element = UInt8
 
     public var startIndex: Index {
-        return 0
+        0
     }
 
     public var endIndex: Index {
-        return 7
+        7
     }
 
     public subscript(_ index: Index) -> Element {
@@ -128,15 +128,10 @@ extension HTTP2PingData: RandomAccessCollection, MutableCollection {
 }
 
 extension HTTP2PingData: Equatable {
-    public static func ==(lhs: HTTP2PingData, rhs: HTTP2PingData) -> Bool {
-        return lhs.bytes.0 == rhs.bytes.0 &&
-            lhs.bytes.1 == rhs.bytes.1 &&
-            lhs.bytes.2 == rhs.bytes.2 &&
-            lhs.bytes.3 == rhs.bytes.3 &&
-            lhs.bytes.4 == rhs.bytes.4 &&
-            lhs.bytes.5 == rhs.bytes.5 &&
-            lhs.bytes.6 == rhs.bytes.6 &&
-            lhs.bytes.7 == rhs.bytes.7
+    public static func == (lhs: HTTP2PingData, rhs: HTTP2PingData) -> Bool {
+        lhs.bytes.0 == rhs.bytes.0 && lhs.bytes.1 == rhs.bytes.1 && lhs.bytes.2 == rhs.bytes.2
+            && lhs.bytes.3 == rhs.bytes.3 && lhs.bytes.4 == rhs.bytes.4 && lhs.bytes.5 == rhs.bytes.5
+            && lhs.bytes.6 == rhs.bytes.6 && lhs.bytes.7 == rhs.bytes.7
     }
 }
 

@@ -39,10 +39,9 @@ final class HPACKHeaderCanonicalFormBenchmark {
     }
 }
 
-
 extension HPACKHeaderCanonicalFormBenchmark: Benchmark {
-    func setUp() throws { }
-    func tearDown() { }
+    func setUp() throws {}
+    func tearDown() {}
 
     func run() throws -> Int {
         var count = 0

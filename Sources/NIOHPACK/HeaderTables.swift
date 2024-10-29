@@ -27,7 +27,7 @@ internal struct HeaderTableEntry: Sendable {
     //      The size of an entry is calculated using the length of its name and value
     //      without any Huffman encoding applied.
     var length: Int {
-        return self.name.utf8.count + self.value.utf8.count + 32
+        self.name.utf8.count + self.value.utf8.count + 32
     }
 }
 
@@ -39,19 +39,19 @@ struct HeaderTableStorage {
     static let defaultMaxSize = 4096
 
     private var headers: CircularBuffer<HeaderTableEntry>
-    
+
     internal private(set) var maxSize: Int
     internal private(set) var length: Int = 0
-    
+
     var count: Int {
-        return self.headers.count
+        self.headers.count
     }
-    
+
     init(maxSize: Int = HeaderTableStorage.defaultMaxSize) {
         self.maxSize = maxSize
-        self.headers = CircularBuffer(initialCapacity: self.maxSize / 64)    // rough guess: 64 bytes per header
+        self.headers = CircularBuffer(initialCapacity: self.maxSize / 64)  // rough guess: 64 bytes per header
     }
-    
+
     init(staticHeaderList: [(String, String)]) {
         self.headers = CircularBuffer(initialCapacity: staticHeaderList.count)
 
@@ -64,7 +64,7 @@ struct HeaderTableStorage {
 
         self.maxSize = len
     }
-    
+
     subscript(index: Int) -> HeaderTableEntry {
         let baseIndex = self.headers.index(self.headers.startIndex, offsetBy: index)
         return self.headers[baseIndex]
@@ -114,7 +114,7 @@ struct HeaderTableStorage {
             return .none
         }
     }
-    
+
     func firstIndex(matching name: String) -> Int? {
         for (idx, header) in self.headers.enumerated() {
             if header.name.isEqualCaseInsensitiveASCIIBytes(to: name) {
@@ -123,7 +123,7 @@ struct HeaderTableStorage {
         }
         return nil
     }
-    
+
     mutating func setTableSize(to newSize: Int) {
         precondition(newSize >= 0)
         if newSize < self.length {
@@ -135,7 +135,7 @@ struct HeaderTableStorage {
 
         self.maxSize = newSize
     }
-    
+
     mutating func add(name: String, value: String) {
         let entry = HeaderTableEntry(name: name, value: value)
 
@@ -144,7 +144,6 @@ struct HeaderTableStorage {
             self.purge(toRelease: newLength - maxSize)
             newLength = self.length + entry.length
         }
-
 
         if newLength > self.maxSize {
             // We can't free up enough space. This is not an error: RFC 7541 § 4.4 explicitly allows it.
@@ -155,7 +154,7 @@ struct HeaderTableStorage {
         self.headers.prepend(entry)
         self.length = newLength
     }
-    
+
     /// Purges `toRelease` bytes from the table, where 'bytes' refers to the byte-count
     /// of a table entry specified in RFC 7541: [name octets] + [value octets] + 32.
     ///
@@ -167,14 +166,14 @@ struct HeaderTableStorage {
             self.length = 0
             return
         }
-        
+
         var available = self.maxSize - self.length
         let needed = available + count
         while available < needed && !self.headers.isEmpty {
             available += self.purgeOne()
         }
     }
-    
+
     @discardableResult
     private mutating func purgeOne() -> Int {
         precondition(self.headers.isEmpty == false, "should not call purgeOne() unless we have something to purge")
@@ -184,16 +183,16 @@ struct HeaderTableStorage {
         self.length -= entry.length
         return entry.length
     }
-    
+
     // internal for testing
     func dumpHeaders(offsetBy amount: Int = 0) -> String {
-        return self.headers.enumerated().reduce("") {
+        self.headers.enumerated().reduce("") {
             $0 + "\($1.0 + amount) - \($1.1.name) : \($1.1.value)\n"
         }
     }
 }
 
-extension HeaderTableStorage : CustomStringConvertible {
+extension HeaderTableStorage: CustomStringConvertible {
     @usableFromInline
     var description: String {
         var array: [(String, String)] = []
@@ -207,4 +206,3 @@ extension HeaderTableStorage : CustomStringConvertible {
 // The `@unchecked` is needed because at the time of writing `NIOCore` didn't have `Sendable` support.
 
 extension HeaderTableStorage: Sendable {}
-

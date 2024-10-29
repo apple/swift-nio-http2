@@ -22,7 +22,7 @@ public struct HTTP2ErrorCode: Sendable {
     /// The underlying network representation of the error code.
     public var networkCode: Int {
         get {
-            return Int(self._networkCode)
+            Int(self._networkCode)
         }
         set {
             self._networkCode = UInt32(newValue)
@@ -96,9 +96,9 @@ public struct HTTP2ErrorCode: Sendable {
     public static let http11Required = HTTP2ErrorCode(networkCode: 0x0d)
 }
 
-extension HTTP2ErrorCode: Equatable { }
+extension HTTP2ErrorCode: Equatable {}
 
-extension HTTP2ErrorCode: Hashable { }
+extension HTTP2ErrorCode: Hashable {}
 
 extension HTTP2ErrorCode: CustomDebugStringConvertible {
     public var debugDescription: String {
@@ -140,28 +140,28 @@ extension HTTP2ErrorCode: CustomDebugStringConvertible {
     }
 }
 
-public extension UInt32 {
+extension UInt32 {
     /// Create a 32-bit integer corresponding to the given ``HTTP2ErrorCode``.
-    init(http2ErrorCode code: HTTP2ErrorCode) {
+    public init(http2ErrorCode code: HTTP2ErrorCode) {
         self = code._networkCode
     }
 }
 
-public extension Int {
+extension Int {
     /// Create an integer corresponding to the given ``HTTP2ErrorCode``.
-    init(http2ErrorCode code: HTTP2ErrorCode) {
+    public init(http2ErrorCode code: HTTP2ErrorCode) {
         self = code.networkCode
     }
 }
 
-public extension ByteBuffer {
+extension ByteBuffer {
     /// Serializes a ``HTTP2ErrorCode`` into a `ByteBuffer` in the appropriate endianness
     /// for use in HTTP/2.
     ///
     /// - Parameters:
     ///   - code: The ``HTTP2ErrorCode`` to serialize.
     /// - Returns: The number of bytes written.
-    mutating func write(http2ErrorCode code: HTTP2ErrorCode) -> Int {
-        return self.writeInteger(UInt32(http2ErrorCode: code))
+    public mutating func write(http2ErrorCode code: HTTP2ErrorCode) -> Int {
+        self.writeInteger(UInt32(http2ErrorCode: code))
     }
 }

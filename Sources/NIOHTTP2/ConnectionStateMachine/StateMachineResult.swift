@@ -44,7 +44,6 @@ enum StateMachineResult {
     case succeed
 }
 
-
 /// Operations that may need to be performed after receiving a frame.
 enum PostFrameOperation {
     /// An appropriate ACK must be sent.
@@ -53,7 +52,6 @@ enum PostFrameOperation {
     /// No operation is needed.
     case nothing
 }
-
 
 /// An encapsulation of a state machine result along with a possible triggered state change.
 struct StateMachineResultWithEffect {
@@ -66,12 +64,18 @@ struct StateMachineResultWithEffect {
         self.effect = effect
     }
 
-    init(_ streamEffect: StateMachineResultWithStreamEffect,
-         inboundFlowControlWindow: HTTP2FlowControlWindow,
-         outboundFlowControlWindow: HTTP2FlowControlWindow) {
+    init(
+        _ streamEffect: StateMachineResultWithStreamEffect,
+        inboundFlowControlWindow: HTTP2FlowControlWindow,
+        outboundFlowControlWindow: HTTP2FlowControlWindow
+    ) {
         self.result = streamEffect.result
         self.effect = streamEffect.effect.map {
-            NIOHTTP2ConnectionStateChange($0, inboundFlowControlWindow: inboundFlowControlWindow, outboundFlowControlWindow: outboundFlowControlWindow)
+            NIOHTTP2ConnectionStateChange(
+                $0,
+                inboundFlowControlWindow: inboundFlowControlWindow,
+                outboundFlowControlWindow: outboundFlowControlWindow
+            )
         }
     }
 }

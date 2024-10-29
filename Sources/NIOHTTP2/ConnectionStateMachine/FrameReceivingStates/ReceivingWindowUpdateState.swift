@@ -28,25 +28,41 @@ extension ReceivingWindowUpdateState {
             // This is an update for the connection. We police the errors here.
             do {
                 try self.outboundFlowControlWindow.windowUpdate(by: increment)
-                let flowControlSize: NIOHTTP2ConnectionStateChange = .flowControlChange(.init(localConnectionWindowSize: Int(self.outboundFlowControlWindow),
-                                                                                              remoteConnectionWindowSize: Int(self.inboundFlowControlWindow),
-                                                                                              localStreamWindowSize: nil))
+                let flowControlSize: NIOHTTP2ConnectionStateChange = .flowControlChange(
+                    .init(
+                        localConnectionWindowSize: Int(self.outboundFlowControlWindow),
+                        remoteConnectionWindowSize: Int(self.inboundFlowControlWindow),
+                        localStreamWindowSize: nil
+                    )
+                )
                 return StateMachineResultWithEffect(result: .succeed, effect: flowControlSize)
             } catch let error where error is NIOHTTP2Errors.InvalidFlowControlWindowSize {
-                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .flowControlError), effect: nil)
+                return StateMachineResultWithEffect(
+                    result: .connectionError(underlyingError: error, type: .flowControlError),
+                    effect: nil
+                )
             } catch let error where error is NIOHTTP2Errors.InvalidWindowIncrementSize {
-                return StateMachineResultWithEffect(result: .connectionError(underlyingError: error, type: .protocolError), effect: nil)
+                return StateMachineResultWithEffect(
+                    result: .connectionError(underlyingError: error, type: .protocolError),
+                    effect: nil
+                )
             } catch {
                 preconditionFailure("Unexpected error: \(error)")
             }
         } else {
             // This is an update for a specific stream: it's responsible for policing any errors.
-            let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true, ignoreClosed: true) {
+            let result = self.streamState.modifyStreamState(
+                streamID: streamID,
+                ignoreRecentlyReset: true,
+                ignoreClosed: true
+            ) {
                 $0.receiveWindowUpdate(windowIncrement: increment)
             }
-            return StateMachineResultWithEffect(result,
-                                                inboundFlowControlWindow: self.inboundFlowControlWindow,
-                                                outboundFlowControlWindow: self.outboundFlowControlWindow)
+            return StateMachineResultWithEffect(
+                result,
+                inboundFlowControlWindow: self.inboundFlowControlWindow,
+                outboundFlowControlWindow: self.outboundFlowControlWindow
+            )
         }
     }
 }

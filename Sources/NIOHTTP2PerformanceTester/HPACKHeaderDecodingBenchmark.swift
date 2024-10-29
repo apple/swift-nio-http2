@@ -15,7 +15,6 @@
 import NIOCore
 import NIOHPACK
 
-
 final class HPACKHeaderDecodingBenchmark {
     private var headers: ByteBuffer
     private let loopCount: Int
@@ -28,11 +27,10 @@ final class HPACKHeaderDecodingBenchmark {
     }
 }
 
-
 extension HPACKHeaderDecodingBenchmark: Benchmark {
-    func setUp() throws { }
+    func setUp() throws {}
 
-    func tearDown() { }
+    func tearDown() {}
 
     func run() throws -> Int {
         for _ in 0..<self.loopCount {
@@ -43,7 +41,6 @@ extension HPACKHeaderDecodingBenchmark: Benchmark {
         return self.loopCount
     }
 }
-
 
 extension HPACKHeaders {
     fileprivate var encoded: ByteBuffer {

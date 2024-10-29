@@ -19,15 +19,15 @@ import NIOCore
 @usableFromInline
 struct DynamicHeaderTable: Sendable {
     public static let defaultSize = 4096
-    
+
     /// The actual table, with items looked up by index.
     private var storage: HeaderTableStorage
-    
+
     /// The length of the contents of the table.
     var length: Int {
-        return self.storage.length
+        self.storage.length
     }
-    
+
     /// The size to which the dynamic table may currently grow. Represents
     /// the current maximum length signaled by the peer via a table-resize
     /// value at the start of an encoded header block.
@@ -35,13 +35,13 @@ struct DynamicHeaderTable: Sendable {
     /// - note: This value cannot exceed `self.maximumTableLength`.
     var allowedLength: Int {
         get {
-            return self.storage.maxSize
+            self.storage.maxSize
         }
         set {
             self.storage.setTableSize(to: newValue)
         }
     }
-    
+
     /// The maximum permitted size of the dynamic header table as set
     /// through a SETTINGS_HEADER_TABLE_SIZE value in a SETTINGS frame.
     var maximumTableLength: Int {
@@ -51,33 +51,34 @@ struct DynamicHeaderTable: Sendable {
             }
         }
     }
-    
+
     /// The number of items in the table.
     var count: Int {
-        return self.storage.count
+        self.storage.count
     }
-    
+
     init(maximumLength: Int = DynamicHeaderTable.defaultSize) {
         self.storage = HeaderTableStorage(maxSize: maximumLength)
         self.maximumTableLength = maximumLength
-        self.allowedLength = maximumLength  // until we're told otherwise, this is what we assume the other side expects.
+        // until we're told otherwise, this is what we assume the other side expects.
+        self.allowedLength = maximumLength
     }
-    
+
     /// Subscripts into the dynamic table alone, using a zero-based index.
     subscript(i: Int) -> HeaderTableEntry {
-        return self.storage[i]
+        self.storage[i]
     }
-    
+
     // internal for testing
     func dumpHeaders() -> String {
-        return self.storage.dumpHeaders(offsetBy: StaticHeaderTable.count)
+        self.storage.dumpHeaders(offsetBy: StaticHeaderTable.count)
     }
-    
+
     // internal for testing -- clears the dynamic table
     mutating func clear() {
         self.storage.purge(toRelease: self.storage.length)
     }
-    
+
     /// Searches the table for a matching header, optionally with a particular value. If
     /// a match is found, returns the index of the item and an indication whether it contained
     /// the matching value as well.
@@ -97,7 +98,7 @@ struct DynamicHeaderTable: Sendable {
             // no `first` on AnySequence, just `first(where:)`
             return self.storage.firstIndex(matching: name).map { ($0, false) }
         }
-        
+
         // If we have a value, locate the index of the lowest header which contains that
         // value, but if no value matches, return the index of the lowest header with a
         // matching name alone.
@@ -110,7 +111,7 @@ struct DynamicHeaderTable: Sendable {
             return nil
         }
     }
-    
+
     /// Appends a header to the table. Note that if this succeeds, the new item's index
     /// is always zero.
     ///

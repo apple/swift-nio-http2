@@ -18,14 +18,13 @@ import NIOHPACK
 import NIOHTTP1
 import NIOHTTP2
 
-
 func run(identifier: String) {
     testRun(identifier: identifier, usePromiseBasedAPI: true) { channel in
         let http2Handler = NIOHTTP2Handler(mode: .client)
         let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: channel, inboundStreamInitializer: nil)
         try! channel.pipeline.addHandlers([
             http2Handler,
-            multiplexer
+            multiplexer,
         ]).wait()
         return multiplexer
     }
@@ -35,7 +34,7 @@ func run(identifier: String) {
         let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: channel, inboundStreamInitializer: nil)
         try! channel.pipeline.addHandlers([
             http2Handler,
-            multiplexer
+            multiplexer,
         ]).wait()
         return multiplexer
     }
@@ -43,7 +42,7 @@ func run(identifier: String) {
     // MARK: - Inline HTTP2 multiplexer tests
     testRun(identifier: identifier + "_inline", usePromiseBasedAPI: true) { channel in
         let http2Handler = NIOHTTP2Handler(mode: .client, eventLoop: channel.eventLoop) { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+            channel.eventLoop.makeSucceededVoidFuture()
         }
         try! channel.pipeline.addHandler(http2Handler).wait()
         return try! http2Handler.multiplexer.wait()
@@ -51,7 +50,7 @@ func run(identifier: String) {
 
     testRun(identifier: identifier + "_inline_no_promise_based_API", usePromiseBasedAPI: false) { channel in
         let http2Handler = NIOHTTP2Handler(mode: .client, eventLoop: channel.eventLoop) { channel in
-            return channel.eventLoop.makeSucceededVoidFuture()
+            channel.eventLoop.makeSucceededVoidFuture()
         }
         try! channel.pipeline.addHandler(http2Handler).wait()
         return try! http2Handler.multiplexer.wait()
@@ -75,12 +74,12 @@ private func testRun(
             if usePromiseBasedAPI {
                 let promise = channel.eventLoop.makePromise(of: Channel.self)
                 multiplexer.createStreamChannel(promise: promise) { channel in
-                    return channel.eventLoop.makeSucceededFuture(())
+                    channel.eventLoop.makeSucceededFuture(())
                 }
                 channelFuture = promise.futureResult
             } else {
                 channelFuture = multiplexer.createStreamChannel { channel in
-                    return channel.eventLoop.makeSucceededFuture(())
+                    channel.eventLoop.makeSucceededFuture(())
                 }
             }
             channel.embeddedEventLoop.run()

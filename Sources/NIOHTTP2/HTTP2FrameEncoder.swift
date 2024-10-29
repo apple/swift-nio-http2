@@ -19,7 +19,7 @@ struct HTTP2FrameEncoder {
     var headerEncoder: HPACKEncoder
 
     // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
-    var maxFrameSize: UInt32 = 1<<14
+    var maxFrameSize: UInt32 = 1 << 14
 
     init(allocator: ByteBufferAllocator) {
         self.headerEncoder = HPACKEncoder(allocator: allocator)
@@ -46,15 +46,15 @@ struct HTTP2FrameEncoder {
         // note our starting point
         let start = buf.writerIndex
 
-//      +-----------------------------------------------+
-//      |                 Length (24)                   |
-//      +---------------+---------------+---------------+
-//      |   Type (8)    |   Flags (8)   |
-//      +-+-------------+---------------+-------------------------------+
-//      |R|                 Stream Identifier (31)                      |
-//      +=+=============================================================+
-//      |                   Frame Payload (0...)                      ...
-//      +---------------------------------------------------------------+
+        //      +-----------------------------------------------+
+        //      |                 Length (24)                   |
+        //      +---------------+---------------+---------------+
+        //      |   Type (8)    |   Flags (8)   |
+        //      +-+-------------+---------------+-------------------------------+
+        //      |R|                 Stream Identifier (31)                      |
+        //      +=+=============================================================+
+        //      |                   Frame Payload (0...)                      ...
+        //      +---------------------------------------------------------------+
 
         // skip 24-bit length for now, we'll fill that in later
         buf.moveWriterIndex(forwardBy: 3)
@@ -240,11 +240,10 @@ extension ByteBuffer {
         // Yes, this performs better than running a UInt8 through the generic write(integer:) three times.
         var bytes: (UInt8, UInt8, UInt8)
         bytes.0 = UInt8((size & 0xff_00_00) >> 16)
-        bytes.1 = UInt8((size & 0x00_ff_00) >>  8)
-        bytes.2 = UInt8( size & 0x00_00_ff)
+        bytes.1 = UInt8((size & 0x00_ff_00) >> 8)
+        bytes.2 = UInt8(size & 0x00_00_ff)
         withUnsafeBytes(of: bytes) { ptr in
             _ = self.setBytes(ptr, at: location)
         }
     }
 }
-

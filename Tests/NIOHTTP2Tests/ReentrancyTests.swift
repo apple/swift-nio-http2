@@ -12,12 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOCore
 import NIOEmbedded
+import NIOHPACK
 import NIOHTTP1
 import NIOHTTP2
-import NIOHPACK
+import XCTest
 
 /// A `ChannelInboundHandler` that re-entrantly calls into a handler that just passed
 /// it `channelRead`.
@@ -51,7 +51,7 @@ final class WindowUpdatedEventHandler: ChannelInboundHandler {
 
     init() {
     }
-    
+
     func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
         guard event is NIOHTTP2WindowUpdatedEvent else { return }
 
@@ -90,7 +90,9 @@ final class ReentrancyTests: XCTestCase {
 
         // Here we're going to prepare some frames: specifically, we're going to send a SETTINGS frame and a PING frame at the same time.
         // We need to send two frames to try to catch any ordering problems we might hit.
-        let settings: [HTTP2Setting] = [HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]
+        let settings: [HTTP2Setting] = [
+            HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5),
+        ]
         let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(settings)))
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5), ack: false))
         self.clientChannel.write(settingsFrame, promise: nil)
@@ -99,7 +101,9 @@ final class ReentrancyTests: XCTestCase {
 
         // Collect the serialized frames.
         var frameBuffer = self.clientChannel.allocator.buffer(capacity: 1024)
-        while case .some(.byteBuffer(var buf)) = try assertNoThrowWithValue(self.clientChannel.readOutbound(as: IOData.self)) {
+        while case .some(.byteBuffer(var buf)) = try assertNoThrowWithValue(
+            self.clientChannel.readOutbound(as: IOData.self)
+        ) {
             frameBuffer.writeBuffer(&buf)
         }
 
@@ -128,7 +132,9 @@ final class ReentrancyTests: XCTestCase {
 
         // Here we're going to prepare some frames: specifically, we're going to send a SETTINGS frame and a PING frame at the same time.
         // We need to send two frames to try to catch any ordering problems we might hit.
-        let settings: [HTTP2Setting] = [HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]
+        let settings: [HTTP2Setting] = [
+            HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5),
+        ]
         let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(settings)))
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5), ack: false))
         self.clientChannel.write(settingsFrame, promise: nil)
@@ -157,7 +163,9 @@ final class ReentrancyTests: XCTestCase {
 
         // Here we're going to prepare some frames: specifically, we're going to send a SETTINGS frame and a PING frame at the same time.
         // We need to send two frames to try to catch any ordering problems we might hit.
-        let settings: [HTTP2Setting] = [HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5)]
+        let settings: [HTTP2Setting] = [
+            HTTP2Setting(parameter: .enablePush, value: 0), HTTP2Setting(parameter: .maxConcurrentStreams, value: 5),
+        ]
         let settingsFrame = HTTP2Frame(streamID: .rootStream, payload: .settings(.settings(settings)))
         let pingFrame = HTTP2Frame(streamID: .rootStream, payload: .ping(HTTP2PingData(withInteger: 5), ack: false))
         self.clientChannel.write(settingsFrame, promise: nil)
@@ -180,24 +188,26 @@ final class ReentrancyTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
-    
+
     func testReenterAutomaticFrames() throws {
         // Start by setting up the connection.
         try self.basicHTTP2Connection()
         let windowUpdateFrameHandler = WindowUpdatedEventHandler()
         XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(windowUpdateFrameHandler).wait())
-        
+
         // Write and flush the header from the client to open a stream
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
         let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
         self.clientChannel.writeAndFlush(HTTP2Frame(streamID: 1, payload: reqFramePayload), promise: nil)
         self.interactInMemory(clientChannel, serverChannel)
-        
+
         // Write and flush the header from the server
         let resHeaders = HPACKHeaders([(":status", "200")])
         let resFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: resHeaders))
         self.serverChannel.writeAndFlush(HTTP2Frame(streamID: 1, payload: resFramePayload), promise: nil)
-        
+
         // Write lots of small data frames and flush them all at once
         var requestBody = self.serverChannel.allocator.buffer(capacity: 1)
         requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 1))

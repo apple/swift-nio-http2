@@ -12,12 +12,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
-@testable import NIOHTTP2
+import XCTest
 
+@testable import NIOHTTP2
 
 class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
     var clientChannel: EmbeddedChannel!
@@ -38,41 +38,60 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
     }
 
     /// Establish a basic HTTP/2 connection.
-    func basicHTTP2Connection(clientSettings: HTTP2Settings = nioDefaultSettings,
-                              serverSettings: HTTP2Settings = nioDefaultSettings,
-                              maximumBufferedControlFrames: Int = 10000,
-                              withMultiplexerCallback multiplexerCallback: @escaping (@Sendable (Channel) -> EventLoopFuture<Void>) = defaultMultiplexerCallback) throws {
+    func basicHTTP2Connection(
+        clientSettings: HTTP2Settings = nioDefaultSettings,
+        serverSettings: HTTP2Settings = nioDefaultSettings,
+        maximumBufferedControlFrames: Int = 10000,
+        withMultiplexerCallback multiplexerCallback: @escaping (@Sendable (Channel) -> EventLoopFuture<Void>) =
+            defaultMultiplexerCallback
+    ) throws {
 
         var clientConnectionConfiguration = NIOHTTP2Handler.ConnectionConfiguration()
         clientConnectionConfiguration.initialSettings = clientSettings
         clientConnectionConfiguration.maximumBufferedControlFrames = maximumBufferedControlFrames
-        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client,
-                                                                                    eventLoop: self.clientChannel.eventLoop,
-                                                                                    connectionConfiguration: clientConnectionConfiguration,
-                                                                                    inboundStreamInitializer: multiplexerCallback)).wait())
+        XCTAssertNoThrow(
+            try self.clientChannel.pipeline.addHandler(
+                NIOHTTP2Handler(
+                    mode: .client,
+                    eventLoop: self.clientChannel.eventLoop,
+                    connectionConfiguration: clientConnectionConfiguration,
+                    inboundStreamInitializer: multiplexerCallback
+                )
+            ).wait()
+        )
         var serverConnectionConfiguration = NIOHTTP2Handler.ConnectionConfiguration()
         serverConnectionConfiguration.initialSettings = serverSettings
         serverConnectionConfiguration.maximumBufferedControlFrames = maximumBufferedControlFrames
-        XCTAssertNoThrow(try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server,
-                                                                                    eventLoop: self.serverChannel.eventLoop,
-                                                                                    connectionConfiguration: serverConnectionConfiguration,
-                                                                                    inboundStreamInitializer: multiplexerCallback)).wait())
+        XCTAssertNoThrow(
+            try self.serverChannel.pipeline.addHandler(
+                NIOHTTP2Handler(
+                    mode: .server,
+                    eventLoop: self.serverChannel.eventLoop,
+                    connectionConfiguration: serverConnectionConfiguration,
+                    inboundStreamInitializer: multiplexerCallback
+                )
+            ).wait()
+        )
 
-        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel,
-                                   clientSettings: clientSettings, serverSettings: serverSettings)
+        try self.assertDoHandshake(
+            client: self.clientChannel,
+            server: self.serverChannel,
+            clientSettings: clientSettings,
+            serverSettings: serverSettings
+        )
     }
 
     func testSendingDataFrameWithLargeFile() throws {
         // Begin by getting the connection up.
         // We add the stream multiplexer because it'll emit WINDOW_UPDATE frames, which we need.
         let serverHandler = InboundFramePayloadRecorder()
-        try self.basicHTTP2Connection() { channel in
-            return channel.pipeline.addHandler(serverHandler)
+        try self.basicHTTP2Connection { channel in
+            channel.pipeline.addHandler(serverHandler)
         }
 
         // We're going to create a largish temp file: 3 data frames in size.
-        var bodyData = self.clientChannel.allocator.buffer(capacity: 1<<14)
-        for val in (0..<((1<<14) / MemoryLayout<Int>.size)) {
+        var bodyData = self.clientChannel.allocator.buffer(capacity: 1 << 14)
+        for val in (0..<((1 << 14) / MemoryLayout<Int>.size)) {
             bodyData.writeInteger(val)
         }
 
@@ -85,17 +104,21 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
             let clientHandler = InboundFramePayloadRecorder()
             let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
-            let multiplexer = try (self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler as! NIOHTTP2Handler).multiplexer.wait()
+            let multiplexer = try
+                (self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler
+                as! NIOHTTP2Handler).multiplexer.wait()
             multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
-                return channel.pipeline.addHandler(clientHandler)
+                channel.pipeline.addHandler(clientHandler)
             }
             (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
             let childChannel = try childChannelPromise.futureResult.wait()
 
             // Start by sending the headers.
-            let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+            let headers = HPACKHeaders([
+                (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+            ])
             let reqFrame = HTTP2Frame.FramePayload.headers(.init(headers: headers))
-            childChannel.writeAndFlush(reqFrame) .whenComplete {
+            childChannel.writeAndFlush(reqFrame).whenComplete {
                 print("Headers: \($0)")
             }
             self.interactInMemory(self.clientChannel, self.serverChannel)
@@ -106,18 +129,22 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
             // Ok, we're gonna send the body here.
             let reqBodyFrame = HTTP2Frame.FramePayload.data(.init(data: .fileRegion(region), endStream: true))
-            childChannel.writeAndFlush(reqBodyFrame) .whenComplete {
+            childChannel.writeAndFlush(reqBodyFrame).whenComplete {
                 print("Data: \($0)")
             }
             self.interactInMemory(self.clientChannel, self.serverChannel)
 
             // We now expect 3 frames.
-            let dataFrames = (0..<3).map { idx in HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bodyData), endStream: idx == 2)) }
+            let dataFrames = (0..<3).map { idx in
+                HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(bodyData), endStream: idx == 2))
+            }
             serverHandler.receivedFrames.assertFramePayloadsMatch([reqFrame] + dataFrames)
 
             // The client will have seen a pair of window updates: one on the connection, one on the stream.
             try self.clientChannel.assertReceivedFrame().assertWindowUpdateFrame(streamID: 0, windowIncrement: 32768)
-            clientHandler.receivedFrames.assertFramePayloadsMatch([HTTP2Frame.FramePayload.windowUpdate(windowSizeIncrement: 32768)])
+            clientHandler.receivedFrames.assertFramePayloadsMatch([
+                HTTP2Frame.FramePayload.windowUpdate(windowSizeIncrement: 32768)
+            ])
 
             // No frames left.
             self.clientChannel.assertNoFramesReceived()
@@ -131,17 +158,21 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
     func testAutomaticFlowControl() throws {
         // Begin by getting the connection up.
         // We add the stream multiplexer here because it manages automatic flow control.
-        try self.basicHTTP2Connection() { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+        try self.basicHTTP2Connection { channel in
+            channel.eventLoop.makeSucceededFuture(())
         }
 
         // Now we're going to send a request, including a very large body: 65536 bytes in size. To avoid spending too much
         // time initializing buffers, we're going to send the same 1kB data frame 64 times.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
         let requestBody = ByteBuffer(repeating: 0x04, count: 1024)
 
         // We're going to open a stream and queue up the frames for that stream.
-        let handler = try self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler as! NIOHTTP2Handler
+        let handler =
+            try self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler
+            as! NIOHTTP2Handler
         let childHandler = InboundFramePayloadRecorder()
         let multiplexer = try handler.multiplexer.wait()
         multiplexer.createStreamChannel(promise: nil) { channel in
@@ -196,13 +227,17 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             channel.write(respFramePayload, promise: nil)
 
             // Now prepare the large body.
-            let respBodyFramePayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(responseBody), endStream: true))
+            let respBodyFramePayload = HTTP2Frame.FramePayload.data(
+                .init(data: .byteBuffer(responseBody), endStream: true)
+            )
             channel.writeAndFlush(respBodyFramePayload, promise: nil)
             return channel.pipeline.addHandler(childHandler)
         }
 
         // Now we're going to send a small request.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
 
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
@@ -239,11 +274,13 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         // to correctly confirm we don't receive a frame for the child stream.
         let childHandler = FrameRecorderHandler()
         try self.basicHTTP2Connection(serverSettings: serverSettings) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
 
         // Now we're going to send a large request: 65535 bytes in size
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
 
         // We're going to open a stream and queue up the frames for that stream.
         let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
@@ -285,19 +322,21 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
         let streamAPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamAPromise) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         self.clientChannel.embeddedEventLoop.run()
         let streamA = try assertNoThrowWithValue(try streamAPromise.futureResult.wait())
 
         let streamBPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamBPromise) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
         self.clientChannel.embeddedEventLoop.run()
         let streamB = try assertNoThrowWithValue(try streamBPromise.futureResult.wait())
 
-        let headers = HPACKHeaders([(":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":authority", "localhost"), (":scheme", "https"),
+        ])
         let headersFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: false))
 
         // Write on 'B' first.
@@ -316,13 +355,15 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
         let streamPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamPromise) { channel in
-            return channel.eventLoop.makeSucceededFuture(())
+            channel.eventLoop.makeSucceededFuture(())
         }
 
         self.clientChannel.embeddedEventLoop.run()
         let stream = try assertNoThrowWithValue(try streamPromise.futureResult.wait())
 
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
         let headerPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
         let promise = self.clientChannel.eventLoop.makePromise(of: Void.self)
         promise.succeed(())
@@ -331,25 +372,30 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
     func testOpenStreamBeforeReceivingAlreadySentGoAway() throws {
         let serverHandler = InboundFramePayloadRecorder()
-        try self.basicHTTP2Connection() { channel in
-            return channel.pipeline.addHandler(serverHandler)
+        try self.basicHTTP2Connection { channel in
+            channel.pipeline.addHandler(serverHandler)
         }
 
         let clientHandler = InboundFramePayloadRecorder()
         let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait().multiplexer.wait()
         multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
-            return channel.pipeline.addHandler(clientHandler)
+            channel.pipeline.addHandler(clientHandler)
         }
         self.clientChannel.embeddedEventLoop.run()
         let childChannel = try childChannelPromise.futureResult.wait()
 
         // Server sends GOAWAY frame.
-        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .maxID, errorCode: .noError, opaqueData: nil))
+        let goAwayFrame = HTTP2Frame(
+            streamID: .rootStream,
+            payload: .goAway(lastStreamID: .maxID, errorCode: .noError, opaqueData: nil)
+        )
         serverChannel.writeAndFlush(goAwayFrame, promise: nil)
 
         // Client sends headers.
-        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost")])
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
         let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
         childChannel.writeAndFlush(reqFramePayload, promise: nil)
 
@@ -362,7 +408,11 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         }
 
         // Client receives GOAWAY and RST_STREAM frames.
-        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .maxID, errorCode: 0, opaqueData: nil)
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(
+            lastStreamID: .maxID,
+            errorCode: 0,
+            opaqueData: nil
+        )
         clientHandler.receivedFrames.assertFramePayloadsMatch([HTTP2Frame.FramePayload.rstStream(.refusedStream)])
 
         // No frames left.
@@ -379,11 +429,14 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
     func testSuccessfullyReceiveAndSendPingEvenWhenConnectionIsFullyQuiesced() throws {
         let serverHandler = InboundFramePayloadRecorder()
-        try self.basicHTTP2Connection() { channel in
-            return channel.pipeline.addHandler(serverHandler)
+        try self.basicHTTP2Connection { channel in
+            channel.pipeline.addHandler(serverHandler)
         }
         // Fully quiesce the connection on the server.
-        let goAwayFrame = HTTP2Frame(streamID: .rootStream, payload: .goAway(lastStreamID: .rootStream, errorCode: .noError, opaqueData: nil))
+        let goAwayFrame = HTTP2Frame(
+            streamID: .rootStream,
+            payload: .goAway(lastStreamID: .rootStream, errorCode: .noError, opaqueData: nil)
+        )
         serverChannel.writeAndFlush(goAwayFrame, promise: nil)
 
         // Send PING frame to the server.
@@ -393,7 +446,11 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         self.interactInMemory(self.clientChannel, self.serverChannel)
 
         // The client receives the GOAWAY frame and fully quiesces the connection.
-        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(lastStreamID: .rootStream, errorCode: 0, opaqueData: nil)
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(
+            lastStreamID: .rootStream,
+            errorCode: 0,
+            opaqueData: nil
+        )
 
         // The server receives and responds to the PING.
         try self.serverChannel.assertReceivedFrame().assertPingFrame(ack: false, opaqueData: HTTP2PingData())
@@ -417,10 +474,13 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         }
 
         let connectionReceivedShouldQuiesceEvent = self.clientChannel.eventLoop.makePromise(of: Void.self)
-        try self.serverChannel.pipeline.addHandler(ShouldQuiesceEventWaiter(promise: connectionReceivedShouldQuiesceEvent)).wait()
+        try self.serverChannel.pipeline.addHandler(
+            ShouldQuiesceEventWaiter(promise: connectionReceivedShouldQuiesceEvent)
+        ).wait()
 
         // Create the stream channel.
-        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap { $0.multiplexer }.wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap { $0.multiplexer }
+            .wait()
         let streamPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamPromise) {
             $0.eventLoop.makeSucceededVoidFuture()

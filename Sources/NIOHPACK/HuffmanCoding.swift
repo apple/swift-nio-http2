@@ -22,19 +22,19 @@ extension ByteBuffer {
         var offset = 0
         var remainingBits = 8
     }
-    
+
     /// Returns the number of *bits* required to encode a given string.
-    fileprivate static func encodedBitLength<C : Collection>(of bytes: C) -> Int where C.Element == UInt8 {
+    fileprivate static func encodedBitLength<C: Collection>(of bytes: C) -> Int where C.Element == UInt8 {
         let clen = bytes.reduce(0) { $0 + StaticHuffmanTable[Int($1)].nbits }
         // round up to nearest multiple of 8 for EOS prefix
         return (clen + 7) & ~7
     }
-    
+
     /// Returns the number of bytes required to encode a given string.
-    static func huffmanEncodedLength<C : Collection>(of bytes: C) -> Int where C.Element == UInt8 {
-        return self.encodedBitLength(of: bytes) / 8
+    static func huffmanEncodedLength<C: Collection>(of bytes: C) -> Int where C.Element == UInt8 {
+        self.encodedBitLength(of: bytes) / 8
     }
-    
+
     /// Encodes the given string to the buffer, using HPACK Huffman encoding.
     ///
     /// - Parameter string: The string data to encode.
@@ -43,33 +43,37 @@ extension ByteBuffer {
     mutating func setHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
         let clen = ByteBuffer.encodedBitLength(of: stringBytes)
         self.ensureBitsAvailable(clen)
-        
+
         return self.withUnsafeMutableWritableBytes { bytes in
             var state = _EncoderState()
-            
+
             for ch in stringBytes {
                 ByteBuffer.appendSym_fast(StaticHuffmanTable[Int(ch)], &state, bytes: bytes)
             }
-            
+
             if state.remainingBits > 0 && state.remainingBits < 8 {
                 // set all remaining bits of the last byte to 1
                 bytes[state.offset] |= UInt8(1 << state.remainingBits) - 1
                 state.offset += 1
                 state.remainingBits = (state.offset == bytes.count ? 0 : 8)
             }
-            
+
             return state.offset
         }
     }
-    
+
     @discardableResult
     mutating func writeHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
         let written = self.setHuffmanEncoded(bytes: stringBytes)
         self.moveWriterIndex(forwardBy: written)
         return written
     }
-    
-    fileprivate static func appendSym_fast(_ sym: HuffmanTableEntry, _ state: inout _EncoderState, bytes: UnsafeMutableRawBufferPointer) {
+
+    fileprivate static func appendSym_fast(
+        _ sym: HuffmanTableEntry,
+        _ state: inout _EncoderState,
+        bytes: UnsafeMutableRawBufferPointer
+    ) {
         // will it fit as-is?
         if sym.nbits == state.remainingBits {
             bytes[state.offset] |= UInt8(sym.bits)
@@ -81,23 +85,23 @@ extension ByteBuffer {
             state.remainingBits -= sym.nbits
         } else {
             var (code, nbits) = sym
-            
+
             nbits -= state.remainingBits
             bytes[state.offset] |= UInt8(code >> nbits)
             state.offset += 1
-            
+
             if nbits & 0x7 != 0 {
                 // align code to MSB
                 code <<= 8 - (nbits & 0x7)
             }
-            
+
             // we can short-circuit if less than 8 bits are remaining
             if nbits < 8 {
                 bytes[state.offset] = UInt8(truncatingIfNeeded: code)
                 state.remainingBits = 8 - nbits
                 return
             }
-            
+
             // longer path for larger amounts
             switch nbits {
             case _ where nbits > 24:
@@ -117,7 +121,7 @@ extension ByteBuffer {
             default:
                 break
             }
-            
+
             if nbits == 8 {
                 bytes[state.offset] = UInt8(truncatingIfNeeded: code)
                 state.offset += 1
@@ -128,7 +132,7 @@ extension ByteBuffer {
             }
         }
     }
-    
+
     fileprivate mutating func ensureBitsAvailable(_ bits: Int) {
         let bytesNeeded = bits / 8
         if bytesNeeded <= self.writableBytes {
@@ -138,13 +142,13 @@ extension ByteBuffer {
             }
             return
         }
-        
+
         let neededToAdd = bytesNeeded - self.writableBytes
         let newLength = self.capacity + neededToAdd
-        
+
         // reallocate to ensure we have the room we need
         self.reserveCapacity(newLength)
-        
+
         // now zero all writable bytes that we expect to use
         self.withUnsafeMutableWritableBytes { ptr in
             ptr.copyBytes(from: repeatElement(0, count: bytesNeeded))
@@ -153,24 +157,23 @@ extension ByteBuffer {
 }
 
 /// Errors that may be encountered by the Huffman decoder.
-public enum HuffmanDecodeError
-{
+public enum HuffmanDecodeError {
     /// The decoder entered an invalid state. Usually this means invalid input.
-    public struct InvalidState : NIOHPACKError {
+    public struct InvalidState: NIOHPACKError {
         fileprivate init() {}
     }
-    
+
     /// The output data could not be validated as UTF-8.
-    public struct InvalidUTF8 : NIOHPACKError {
+    public struct InvalidUTF8: NIOHPACKError {
         fileprivate init() {}
     }
 }
 
 /// The decoder table. This structure doesn't actually take up any space, I think?
-fileprivate let decoderTable = HuffmanDecoderTable()
+private let decoderTable = HuffmanDecoderTable()
 
 extension ByteBuffer {
-    
+
     /// Decodes a huffman-encoded string from the `ByteBuffer`.
     ///
     /// - Parameter at: The location of the encoded bytes to read.
@@ -179,7 +182,10 @@ extension ByteBuffer {
     /// - Throws: HuffmanDecodeError if the data could not be decoded.
     @discardableResult
     func getHuffmanEncodedString(at index: Int, length: Int) throws -> String {
-        precondition(index + length <= self.capacity, "Requested range out of bounds: \(index ..< index+length) vs. \(self.capacity)")
+        precondition(
+            index + length <= self.capacity,
+            "Requested range out of bounds: \(index ..< index+length) vs. \(self.capacity)"
+        )
         if length == 0 {
             return ""
         }
@@ -226,10 +232,9 @@ extension ByteBuffer {
             return offset
         }
 
-        
         return decoded
     }
-    
+
     /// Decodes a huffman-encoded string from the provided `ByteBuffer`, starting at the buffer's
     /// current `readerIndex`. Updates the `readerIndex` when it completes.
     ///
@@ -249,24 +254,30 @@ extension String {
     /// This feature will be useful when decoding Huffman-encoded HPACK strings.
     ///
     /// As this API does not exist prior to 5.3 on Linux, or on older Apple platforms, we fake it out with a pointer and accept the extra copy.
-    init(backportUnsafeUninitializedCapacity capacity: Int,
-         initializingUTF8With initializer: (_ buffer: UnsafeMutableBufferPointer<UInt8>) throws -> Int) rethrows {
+    init(
+        backportUnsafeUninitializedCapacity capacity: Int,
+        initializingUTF8With initializer: (_ buffer: UnsafeMutableBufferPointer<UInt8>) throws -> Int
+    ) rethrows {
         let buffer = UnsafeMutableBufferPointer<UInt8>.allocate(capacity: capacity)
         defer {
             buffer.deallocate()
         }
 
-
         let initializedCount = try initializer(buffer)
         precondition(initializedCount <= capacity, "Overran buffer in initializer!")
 
-        self = String(decoding: UnsafeMutableBufferPointer(start: buffer.baseAddress!, count: initializedCount), as: UTF8.self)
+        self = String(
+            decoding: UnsafeMutableBufferPointer(start: buffer.baseAddress!, count: initializedCount),
+            as: UTF8.self
+        )
     }
 }
 
 extension String {
-    init(customUnsafeUninitializedCapacity capacity: Int,
-         initializingUTF8With initializer: (_ buffer: UnsafeMutableBufferPointer<UInt8>) throws -> Int) rethrows {
+    init(
+        customUnsafeUninitializedCapacity capacity: Int,
+        initializingUTF8With initializer: (_ buffer: UnsafeMutableBufferPointer<UInt8>) throws -> Int
+    ) rethrows {
         if #available(macOS 11.0, iOS 14.0, tvOS 14.0, watchOS 7.0, *) {
             try self.init(unsafeUninitializedCapacity: capacity, initializingUTF8With: initializer)
         } else {

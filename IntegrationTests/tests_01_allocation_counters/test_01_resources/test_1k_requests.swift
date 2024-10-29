@@ -52,9 +52,12 @@ struct ServerOnly1KRequestsBenchmark {
         headers.add(name: ":authority", value: "localhost", indexing: .nonIndexable)
         headers.add(name: ":path", value: "/", indexing: .indexable)
         headers.add(name: ":scheme", value: "https", indexing: .indexable)
-        headers.add(name: "user-agent",
-                    value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36",
-                    indexing: .nonIndexable)
+        headers.add(
+            name: "user-agent",
+            value:
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36",
+            indexing: .nonIndexable
+        )
         headers.add(name: "accept-encoding", value: "gzip, deflate", indexing: .indexable)
 
         var hpackEncoder = HPACKEncoder(allocator: .init())
@@ -108,7 +111,7 @@ struct ServerOnly1KRequestsBenchmark {
         return settingsCopy
     }
 
-    init(concurrentStreams: Int, pipelineConfigurator: (Channel) throws -> ()) throws {
+    init(concurrentStreams: Int, pipelineConfigurator: (Channel) throws -> Void) throws {
         self.concurrentStreams = concurrentStreams
 
         self.channel = EmbeddedChannel()
@@ -122,7 +125,7 @@ struct ServerOnly1KRequestsBenchmark {
         initialBytes.writeImmutableBuffer(self.settingsACK)
 
         try self.channel.writeInbound(initialBytes)
-        while try self.channel.readOutbound(as: ByteBuffer.self) != nil { }
+        while try self.channel.readOutbound(as: ByteBuffer.self) != nil {}
     }
 
     func tearDown() {
@@ -142,7 +145,7 @@ struct ServerOnly1KRequestsBenchmark {
     private mutating func sendInterleavedRequests(_ interleavedRequests: Int) throws -> Int {
         var streamID = self.streamID
 
-        for _ in 0 ..< interleavedRequests {
+        for _ in 0..<interleavedRequests {
             self.headersFrame.setInteger(UInt32(Int32(streamID)), at: self.headersFrame.readerIndex + 5)
             try self.channel.writeInbound(self.headersFrame)
             streamID = streamID.advanced(by: 2)
@@ -150,7 +153,7 @@ struct ServerOnly1KRequestsBenchmark {
 
         streamID = self.streamID
 
-        for _ in 0 ..< interleavedRequests {
+        for _ in 0..<interleavedRequests {
             self.dataFrame.setInteger(UInt32(Int32(streamID)), at: self.dataFrame.readerIndex + 5)
             try self.channel.writeInbound(self.dataFrame)
             streamID = streamID.advanced(by: 2)
@@ -169,7 +172,7 @@ struct ServerOnly1KRequestsBenchmark {
     }
 }
 
-fileprivate class TestServer: ChannelInboundHandler {
+private class TestServer: ChannelInboundHandler {
     public typealias InboundIn = HTTP2Frame.FramePayload
     public typealias OutboundOut = HTTP2Frame.FramePayload
 
@@ -198,24 +201,24 @@ fileprivate class TestServer: ChannelInboundHandler {
 func run(identifier: String) {
     var interleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100) { channel in
         _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 
     measure(identifier: identifier + "_interleaved") {
-        return try! interleaved.run()
+        try! interleaved.run()
     }
 
     interleaved.tearDown()
 
     var noninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1) { channel in
         _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 
     measure(identifier: identifier + "_noninterleaved") {
-        return try! noninterleaved.run()
+        try! noninterleaved.run()
     }
 
     noninterleaved.tearDown()
@@ -223,25 +226,33 @@ func run(identifier: String) {
     //
     // MARK: - Inline HTTP2 multiplexer tests
     var inlineInterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 100) { channel in
-        _ = try channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+        _ = try channel.configureHTTP2Pipeline(
+            mode: .server,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { streamChannel -> EventLoopFuture<Void> in
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 
     measure(identifier: identifier + "_inline_interleaved") {
-        return try! inlineInterleaved.run()
+        try! inlineInterleaved.run()
     }
 
     inlineInterleaved.tearDown()
 
     var inlineNoninterleaved = try! ServerOnly1KRequestsBenchmark(concurrentStreams: 1) { channel in
-        _ = try channel.configureHTTP2Pipeline(mode: .server, connectionConfiguration: .init(), streamConfiguration: .init()) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(TestServer())
+        _ = try channel.configureHTTP2Pipeline(
+            mode: .server,
+            connectionConfiguration: .init(),
+            streamConfiguration: .init()
+        ) { streamChannel -> EventLoopFuture<Void> in
+            streamChannel.pipeline.addHandler(TestServer())
         }.wait()
     }
 
     measure(identifier: identifier + "_inline_noninterleaved") {
-        return try! inlineNoninterleaved.run()
+        try! inlineNoninterleaved.run()
     }
 
     inlineNoninterleaved.tearDown()

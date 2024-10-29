@@ -12,16 +12,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOCore
+import XCTest
+
 @testable import NIOHPACK
 
-class IntegerCodingTests : XCTestCase {
-    
+class IntegerCodingTests: XCTestCase {
+
     var scratchBuffer = ByteBufferAllocator().buffer(capacity: 11)
-    
+
     // MARK: - Array-based helpers
-    
+
     private func encodeIntegerToArray(_ value: UInt64, prefix: Int) -> [UInt8] {
         var data = [UInt8]()
         scratchBuffer.clear()
@@ -29,40 +30,40 @@ class IntegerCodingTests : XCTestCase {
         data.append(contentsOf: scratchBuffer.viewBytes(at: 0, length: len)!)
         return data
     }
-    
+
     private func decodeInteger(from array: [UInt8], prefix: Int) throws -> Int {
         scratchBuffer.clear()
         scratchBuffer.writeBytes(array)
         let result = try NIOHPACK.decodeInteger(from: scratchBuffer.readableBytesView, prefix: prefix)
         return result.value
     }
-    
+
     // MARK: - Tests
-    
+
     func testIntegerEncoding() {
         // values from the standard: http://httpwg.org/specs/rfc7541.html#integer.representation.examples
         var data = encodeIntegerToArray(10, prefix: 5)  // 0000 1010
         XCTAssertEqual(data.count, 1)
         XCTAssertEqual(data[0], 0b00001010)
-        
-        data = encodeIntegerToArray(1337, prefix: 5)    // 0000 0101 0011 1001
+
+        data = encodeIntegerToArray(1337, prefix: 5)  // 0000 0101 0011 1001
         XCTAssertEqual(data.count, 3)
-        
+
         // prefix bits = 31 = 0001 1111, 1337 - 31 = 1306 = 0101 0001 1010 -> x0001010 x0011010
-        XCTAssertEqual(data, [31, 154, 10])             // 00011111 , 10011010 , 00001010
-        
+        XCTAssertEqual(data, [31, 154, 10])  // 00011111 , 10011010 , 00001010
+
         // prefix 8 == use the whole first octet
-        data = encodeIntegerToArray(42, prefix: 8)      // 0010 1010
+        data = encodeIntegerToArray(42, prefix: 8)  // 0010 1010
         XCTAssertEqual(data.count, 1)
         XCTAssertEqual(data[0], 42)
-        
-        data = encodeIntegerToArray(256, prefix: 8)     // 0001 0000 0000 -> 1111 1111 + 0000 0001
+
+        data = encodeIntegerToArray(256, prefix: 8)  // 0001 0000 0000 -> 1111 1111 + 0000 0001
         XCTAssertEqual(data.count, 2)
         XCTAssertEqual(data, [255, 1])
-        
+
         // very large value, few bits set, 8-bit prefix
-        data = encodeIntegerToArray(17 << 57, prefix: 8) // 00010001 << 57 or 2449958197289549824
-        
+        data = encodeIntegerToArray(17 << 57, prefix: 8)  // 00010001 << 57 or 2449958197289549824
+
         // calculations:
         //  subtract prefix:
         //      2449958197289549824 - 255 = 2449958197289549569 or 0010 0001 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 1111 0000 0001
@@ -74,10 +75,10 @@ class IntegerCodingTests : XCTestCase {
         //      10000001 11111110 11111111 11111111 11111111 11111111 11111111 11111111 00100001
         XCTAssertEqual(data.count, 10)
         XCTAssertEqual(data, [255, 129, 254, 255, 255, 255, 255, 255, 255, 33])
-        
+
         // same value, 1-bit prefix:
         data = encodeIntegerToArray(17 << 57, prefix: 1)
-        
+
         // calculations:
         //  subtract prefix:
         //      2449958197289549824 - 1 = 2449958197289549823 or 0010 0001 (1111 x14)
@@ -89,10 +90,10 @@ class IntegerCodingTests : XCTestCase {
         //      11111111 11111111 11111111 11111111 11111111 11111111 11111111 11111111 00100001
         XCTAssertEqual(data.count, 10)
         XCTAssertEqual(data, [1, 255, 255, 255, 255, 255, 255, 255, 255, 33])
-        
+
         // encoding max 64-bit unsigned integer, 1-bit prefix
         data = encodeIntegerToArray(UInt64.max, prefix: 1)
-        
+
         // calculations:
         //  subtract prefix:
         //      18446744073709551615 - 1 = 18446744073709551614 or (1111 x15) 1110
@@ -104,10 +105,10 @@ class IntegerCodingTests : XCTestCase {
         //      11111110 11111111 11111111 11111111 11111111 11111111 11111111 11111111 11111111 00000001
         XCTAssertEqual(data.count, 11)
         XCTAssertEqual(data, [1, 254, 255, 255, 255, 255, 255, 255, 255, 255, 1])
-        
+
         // something carefully crafted to produce maximum number of output bytes with minimum number of
         // nonzero bits:
-        data = encodeIntegerToArray(9223372036854775809, prefix: 1)
+        data = encodeIntegerToArray(9_223_372_036_854_775_809, prefix: 1)
 
         // calculations:
         //  subtract prefix:
@@ -120,11 +121,11 @@ class IntegerCodingTests : XCTestCase {
         //      10000000 10000000 10000000 10000000 10000000 10000000 10000000 10000000 10000000 00000001
         XCTAssertEqual(data.count, 11)
         XCTAssertEqual(data, [1, 128, 128, 128, 128, 128, 128, 128, 128, 128, 1])
-        
+
         // something similar, which uses an 8-bit prefix and still produces lots of zero bits:
         // for those interested: this is the previous value + 254; thus only the first byte should differ
-        data = encodeIntegerToArray(9223372036854776063, prefix: 8)
-        
+        data = encodeIntegerToArray(9_223_372_036_854_776_063, prefix: 8)
+
         // calculations:
         //  subtract prefix:
         //      9223372036854776063 - 255 = 9223372036854775808 or 1000 (0000 x15)
@@ -137,12 +138,12 @@ class IntegerCodingTests : XCTestCase {
         XCTAssertEqual(data.count, 11)
         XCTAssertEqual(data, [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 1])
     }
-    
+
     func testIntegerDecoding() throws {
         // any bits above the prefix amount shouldn't affect the outcome.
         XCTAssertEqual(try decodeInteger(from: [0b00001010], prefix: 5), 10)
         XCTAssertEqual(try decodeInteger(from: [0b11101010], prefix: 5), 10)
-        
+
         XCTAssertEqual(try decodeInteger(from: [0b00011111, 154, 10], prefix: 5), 1337)
         XCTAssertEqual(try decodeInteger(from: [0b11111111, 154, 10], prefix: 5), 1337)
 
@@ -150,15 +151,30 @@ class IntegerCodingTests : XCTestCase {
 
         // Now some larger numbers:
         #if !os(watchOS)
-        XCTAssertEqual(try decodeInteger(from: [255, 129, 254, 255, 255, 255, 255, 255, 255, 33], prefix: 8), 2449958197289549824)
-        XCTAssertEqual(try decodeInteger(from: [1, 255, 255, 255, 255, 255, 255, 255, 255, 33], prefix: 1), 2449958197289549824)
-        XCTAssertEqual(try decodeInteger(from: [1, 254, 255, 255, 255, 255, 255, 255, 255, 127, 1], prefix: 1), Int.max)
+        XCTAssertEqual(
+            try decodeInteger(from: [255, 129, 254, 255, 255, 255, 255, 255, 255, 33], prefix: 8),
+            2_449_958_197_289_549_824
+        )
+        XCTAssertEqual(
+            try decodeInteger(from: [1, 255, 255, 255, 255, 255, 255, 255, 255, 33], prefix: 1),
+            2_449_958_197_289_549_824
+        )
+        XCTAssertEqual(
+            try decodeInteger(from: [1, 254, 255, 255, 255, 255, 255, 255, 255, 127, 1], prefix: 1),
+            Int.max
+        )
 
         // lots of zeroes: each 128 yields zero
-        XCTAssertEqual(try decodeInteger(from: [1, 128, 128, 128, 128, 128, 128, 128, 128, 127, 1], prefix: 1), 9151314442816847873)
+        XCTAssertEqual(
+            try decodeInteger(from: [1, 128, 128, 128, 128, 128, 128, 128, 128, 127, 1], prefix: 1),
+            9_151_314_442_816_847_873
+        )
 
         // almost the same bytes, but a different prefix:
-        XCTAssertEqual(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 1], prefix: 8), 9151314442816848127)
+        XCTAssertEqual(
+            try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 127, 1], prefix: 8),
+            9_151_314_442_816_848_127
+        )
         #endif
 
         // now a silly version which should never have been encoded in so many bytes
@@ -168,7 +184,9 @@ class IntegerCodingTests : XCTestCase {
     func testIntegerDecodingMultiplicationDoesNotOverflow() throws {
         // Zeros with continuation bits (e.g. 128) to increase the shift value (to 9 * 7 = 63), and then multiply by 127.
         for `prefix` in 1...8 {
-            XCTAssertThrowsError(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 127], prefix: prefix)) { error in
+            XCTAssertThrowsError(
+                try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 127], prefix: prefix)
+            ) { error in
                 XCTAssert(error is NIOHPACKErrors.UnrepresentableInteger)
             }
         }
@@ -177,7 +195,9 @@ class IntegerCodingTests : XCTestCase {
     func testIntegerDecodingAdditionDoesNotOverflow() throws {
         // Zeros with continuation bits (e.g. 128) to increase the shift value (to 9 * 7 = 63), and then multiply by 127.
         for `prefix` in 1...8 {
-            XCTAssertThrowsError(try decodeInteger(from: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 127], prefix: prefix)) { error in
+            XCTAssertThrowsError(
+                try decodeInteger(from: [255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 127], prefix: prefix)
+            ) { error in
                 XCTAssert(error is NIOHPACKErrors.UnrepresentableInteger)
             }
         }
@@ -186,7 +206,9 @@ class IntegerCodingTests : XCTestCase {
     func testIntegerDecodingShiftDoesNotOverflow() throws {
         // With enough iterations we expect the shift to become greater >= 64.
         for `prefix` in 1...8 {
-            XCTAssertThrowsError(try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128], prefix: prefix)) { error in
+            XCTAssertThrowsError(
+                try decodeInteger(from: [255, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128], prefix: prefix)
+            ) { error in
                 XCTAssert(error is NIOHPACKErrors.UnrepresentableInteger)
             }
         }

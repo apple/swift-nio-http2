@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 import XCTest
+
 @testable import NIOHTTP2
 
 final class StreamMapTests: XCTestCase {
@@ -60,7 +61,7 @@ final class StreamMapTests: XCTestCase {
             map.insert(StreamData(number))
         }
 
-        var result = Array<Int32>()
+        var result = [Int32]()
         map.forEachValue {
             result.append($0.streamID.networkStreamID)
         }
@@ -76,7 +77,7 @@ final class StreamMapTests: XCTestCase {
             map.insert(StreamDataWithValue(number, value: number))
         }
 
-        var result = Array<Int>()
+        var result = [Int]()
         map.forEachValue {
             result.append($0.value)
         }
@@ -124,7 +125,7 @@ final class StreamMapTests: XCTestCase {
         }
 
         // Now validate what's there.
-        var result = Array<Int32>()
+        var result = [Int32]()
         map.forEachValue {
             result.append($0.streamID.networkStreamID)
         }
@@ -157,12 +158,14 @@ final class StreamMapTests: XCTestCase {
         }
 
         // Check all the values.
-        var result = Array<StreamDataWithValue<Bool>>()
+        var result = [StreamDataWithValue<Bool>]()
         map.forEachValue {
             result.append($0)
         }
-        XCTAssertEqual(result.sorted(by: { $0.streamID < $1.streamID }).map { $0.value },
-                       Array(1..<100).map { $0 % 5 == 1 ? false : true })
+        XCTAssertEqual(
+            result.sorted(by: { $0.streamID < $1.streamID }).map { $0.value },
+            Array(1..<100).map { $0 % 5 == 1 ? false : true }
+        )
 
         // Modifying something that isn't present should do nothing and not execute the block.
         // We do this once for the server-side and once for the client-side.
@@ -183,23 +186,33 @@ final class StreamMapTests: XCTestCase {
             }
 
             map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .client) { droppedStreams in
-                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(100)).filter { $0.mayBeInitiatedBy(.client) })
+                XCTAssertEqual(
+                    droppedStreams.map { $0.streamID },
+                    (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(100)).filter { $0.mayBeInitiatedBy(.client) }
+                )
             }
 
             // We dropped all the client stream IDs greater than the target.
             for id in 1..<100 {
-                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
-                               HTTP2StreamID(id) <= streamIDToDropFrom || HTTP2StreamID(id).mayBeInitiatedBy(.server))
+                XCTAssertEqual(
+                    map.contains(streamID: HTTP2StreamID(id)),
+                    HTTP2StreamID(id) <= streamIDToDropFrom || HTTP2StreamID(id).mayBeInitiatedBy(.server)
+                )
             }
 
             map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .server) { droppedStreams in
-                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(100)).filter { $0.mayBeInitiatedBy(.server) })
+                XCTAssertEqual(
+                    droppedStreams.map { $0.streamID },
+                    (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(100)).filter { $0.mayBeInitiatedBy(.server) }
+                )
             }
 
             // We dropped all the stream IDs greater than the target from anyone.
             for id in 1..<100 {
-                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
-                               HTTP2StreamID(id) <= streamIDToDropFrom)
+                XCTAssertEqual(
+                    map.contains(streamID: HTTP2StreamID(id)),
+                    HTTP2StreamID(id) <= streamIDToDropFrom
+                )
             }
         }
     }
@@ -220,23 +233,33 @@ final class StreamMapTests: XCTestCase {
             }
 
             map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .client) { droppedStreams in
-                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(500)).filter { $0.mayBeInitiatedBy(.client) })
+                XCTAssertEqual(
+                    droppedStreams.map { $0.streamID },
+                    (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(500)).filter { $0.mayBeInitiatedBy(.client) }
+                )
             }
 
             // We dropped all the client stream IDs greater than the target.
             for id in 1..<500 {
-                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
-                               HTTP2StreamID(id) <= streamIDToDropFrom || HTTP2StreamID(id).mayBeInitiatedBy(.server))
+                XCTAssertEqual(
+                    map.contains(streamID: HTTP2StreamID(id)),
+                    HTTP2StreamID(id) <= streamIDToDropFrom || HTTP2StreamID(id).mayBeInitiatedBy(.server)
+                )
             }
 
             map.dropDataWithStreamIDGreaterThan(streamIDToDropFrom, initiatedBy: .server) { droppedStreams in
-                XCTAssertEqual(droppedStreams.map { $0.streamID }, (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(500)).filter { $0.mayBeInitiatedBy(.server) })
+                XCTAssertEqual(
+                    droppedStreams.map { $0.streamID },
+                    (streamIDToDropFrom.advanced(by: 1)..<HTTP2StreamID(500)).filter { $0.mayBeInitiatedBy(.server) }
+                )
             }
 
             // We dropped all the stream IDs greater than the target from anyone.
             for id in 1..<500 {
-                XCTAssertEqual(map.contains(streamID: HTTP2StreamID(id)),
-                               HTTP2StreamID(id) <= streamIDToDropFrom)
+                XCTAssertEqual(
+                    map.contains(streamID: HTTP2StreamID(id)),
+                    HTTP2StreamID(id) <= streamIDToDropFrom
+                )
             }
         }
     }

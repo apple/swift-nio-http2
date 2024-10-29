@@ -16,25 +16,25 @@ import NIOCore
 /// Multiplexes outbound HTTP/2 frames from an HTTP/2 stream into an HTTP/2
 /// connection.
 internal protocol HTTP2OutboundStreamMultiplexer {
-  /// Write the frame into the HTTP/2 connection. Stream ID is included in the
-  /// frame.
-  func writeFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?)
+    /// Write the frame into the HTTP/2 connection. Stream ID is included in the
+    /// frame.
+    func writeFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?)
 
-  /// Flush the stream with the given ID.
-  func flushStream(_ id: HTTP2StreamID)
+    /// Flush the stream with the given ID.
+    func flushStream(_ id: HTTP2StreamID)
 
-  /// Request a stream ID for the given channel.
-  ///
-  /// Required to lazily assign a stream ID to a channel on first write.
-  func requestStreamID(forChannel: Channel) -> HTTP2StreamID
+    /// Request a stream ID for the given channel.
+    ///
+    /// Required to lazily assign a stream ID to a channel on first write.
+    func requestStreamID(forChannel: Channel) -> HTTP2StreamID
 
-  /// Notify the multiplexer that the channel with the given ID closed.
-  ///
-  /// Required as a channel may not have a stream ID when it closes.
-  func streamClosed(channelID: ObjectIdentifier)
+    /// Notify the multiplexer that the channel with the given ID closed.
+    ///
+    /// Required as a channel may not have a stream ID when it closes.
+    func streamClosed(channelID: ObjectIdentifier)
 
-  /// Notify the multiplexer that the stream with the given ID closed.
-  func streamClosed(id: HTTP2StreamID)
+    /// Notify the multiplexer that the stream with the given ID closed.
+    func streamClosed(id: HTTP2StreamID)
 }
 
 extension HTTP2StreamChannel {
@@ -122,4 +122,3 @@ extension LegacyOutboundStreamMultiplexer: HTTP2OutboundStreamMultiplexer {
         self.multiplexer.childChannelClosed(streamID: id)
     }
 }
-

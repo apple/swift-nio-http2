@@ -13,7 +13,6 @@
 //===----------------------------------------------------------------------===//
 import NIOCore
 
-
 /// An object that buffers new stream creation attempts to avoid violating
 /// the HTTP/2 setting `SETTINGS_MAX_CONCURRENT_STREAMS`.
 ///
@@ -64,7 +63,9 @@ struct ConcurrentStreamBuffer {
     ///
     /// Notes that the current number of outbound streams may have gone down, which is useful information
     /// when flushing writes.
-    mutating func streamClosed(_ streamID: HTTP2StreamID) -> MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>? {
+    mutating func streamClosed(
+        _ streamID: HTTP2StreamID
+    ) -> MarkedCircularBuffer<(HTTP2Frame, EventLoopPromise<Void>?)>? {
         // We only care about outbound streams.
         if streamID.mayBeInitiatedBy(self.mode) {
             self.currentOutboundStreams -= 1
@@ -105,7 +106,11 @@ struct ConcurrentStreamBuffer {
         self.bufferedFrames.markFlushPoint()
     }
 
-    mutating func processOutboundFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?, channelWritable: Bool) throws -> OutboundFrameAction {
+    mutating func processOutboundFrame(
+        _ frame: HTTP2Frame,
+        promise: EventLoopPromise<Void>?,
+        channelWritable: Bool
+    ) throws -> OutboundFrameAction {
         // If this frame is not for a locally initiated stream, then that's fine, just pass it on. Even if the channel isn't
         // writable, one of the other two buffers should catch this.
         guard frame.streamID != .rootStream && frame.streamID.mayBeInitiatedBy(self.mode) else {
@@ -124,7 +129,8 @@ struct ConcurrentStreamBuffer {
         // Again, we choose to ignore channel writability here because one of the other buffers should catch this frame.
         if let firstElement = self.bufferedFrames.first,
             frame.streamID >= firstElement.streamID,
-            let bufferIndex = self.bufferedFrames.binarySearch(key: { $0.streamID }, needle: frame.streamID) {
+            let bufferIndex = self.bufferedFrames.binarySearch(key: { $0.streamID }, needle: frame.streamID)
+        {
             return self.bufferFrame(frame, promise: promise, bufferIndex: bufferIndex)
         }
 
@@ -211,7 +217,11 @@ struct ConcurrentStreamBuffer {
         return self.bufferedFrames.nextWriteFor(index)
     }
 
-    private mutating func bufferFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?, bufferIndex index: SortedCircularBuffer.Index) -> OutboundFrameAction {
+    private mutating func bufferFrame(
+        _ frame: HTTP2Frame,
+        promise: EventLoopPromise<Void>?,
+        bufferIndex index: SortedCircularBuffer.Index
+    ) -> OutboundFrameAction {
         // Ok, we need to buffer this frame, and we know we have the index for it. What we do here depends on this frame type. For
         // almost all frames, we just append them to the buffer. For RST_STREAM, however, we're in a different spot. RST_STREAM is a
         // request to drop all resources for a given stream. We know we have some, but we shouldn't wait to unblock them, we should
@@ -223,9 +233,15 @@ struct ConcurrentStreamBuffer {
             // If we're currently unbuffering this stream, we need to pass the RST_STREAM frame on for correctness. If we aren't, just
             // drop it.
             if writeBuffer.currentlyUnblocking {
-                return .forwardAndDrop(writeBuffer.frames, NIOHTTP2Errors.streamClosed(streamID: frame.streamID, errorCode: reason))
+                return .forwardAndDrop(
+                    writeBuffer.frames,
+                    NIOHTTP2Errors.streamClosed(streamID: frame.streamID, errorCode: reason)
+                )
             } else {
-                return .succeedAndDrop(writeBuffer.frames, NIOHTTP2Errors.streamClosed(streamID: frame.streamID, errorCode: reason))
+                return .succeedAndDrop(
+                    writeBuffer.frames,
+                    NIOHTTP2Errors.streamClosed(streamID: frame.streamID, errorCode: reason)
+                )
             }
         }
 
@@ -310,7 +326,7 @@ private struct SortedCircularBuffer {
 
     mutating func remove(at index: Index) -> Element {
         // This one is easy: simple removal does what we need here.
-        return self._base.remove(at: index)
+        self._base.remove(at: index)
     }
 
     mutating func markFlushPoint() {
@@ -330,19 +346,19 @@ extension SortedCircularBuffer: RandomAccessCollection {
     typealias Indices = CircularBuffer<ConcurrentStreamBuffer.FrameBuffer>.Indices
 
     var startIndex: Index {
-        return self._base.startIndex
+        self._base.startIndex
     }
 
     var endIndex: Index {
-        return self._base.endIndex
+        self._base.endIndex
     }
 
     var indices: Indices {
-        return self._base.indices
+        self._base.indices
     }
 
     func distance(from start: Index, to end: Index) -> Int {
-        return self._base.distance(from: start, to: end)
+        self._base.distance(from: start, to: end)
     }
 
     func formIndex(after i: inout Index) {
@@ -354,27 +370,27 @@ extension SortedCircularBuffer: RandomAccessCollection {
     }
 
     func index(_ i: Index, offsetBy distance: Int) -> Index {
-        return self._base.index(i, offsetBy: distance)
+        self._base.index(i, offsetBy: distance)
     }
 
     func index(_ i: Index, offsetBy distance: Int, limitedBy limit: Index) -> Index? {
-        return self._base.index(i, offsetBy: distance, limitedBy: limit)
+        self._base.index(i, offsetBy: distance, limitedBy: limit)
     }
 
     func index(after i: Index) -> Index {
-        return self._base.index(after: i)
+        self._base.index(after: i)
     }
 
     func index(before i: Index) -> Index {
-        return self._base.index(before: i)
+        self._base.index(before: i)
     }
 
     subscript(_ i: Index) -> Element {
-        return self._base[i]
+        self._base[i]
     }
 
     subscript(_ range: Range<Index>) -> SubSequence {
-        return self._base[range]
+        self._base[range]
     }
 }
 
@@ -407,9 +423,8 @@ extension SortedCircularBuffer {
     }
 }
 
-
-private extension HTTP2StreamID {
-    func mayBeInitiatedBy(_ mode: NIOHTTP2Handler.ParserMode) -> Bool {
+extension HTTP2StreamID {
+    fileprivate func mayBeInitiatedBy(_ mode: NIOHTTP2Handler.ParserMode) -> Bool {
         switch mode {
         case .client:
             return self.networkStreamID % 2 == 1

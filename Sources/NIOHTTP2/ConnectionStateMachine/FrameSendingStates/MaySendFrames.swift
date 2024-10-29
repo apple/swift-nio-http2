@@ -22,4 +22,5 @@ protocol MaySendFrames:
     SendingPushPromiseState,
     SendingWindowUpdateState,
     SendingRstStreamState,
-    SendingGoawayState { }
+    SendingGoawayState
+{}

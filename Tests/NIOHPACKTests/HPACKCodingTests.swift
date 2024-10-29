@@ -12,8 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-import XCTest
 import NIOCore
+import XCTest
+
 @testable import NIOHPACK
 
 class HPACKCodingTests: XCTestCase {
@@ -29,29 +30,37 @@ class HPACKCodingTests: XCTestCase {
     // HPACK RFC7541 § C.3
     // http://httpwg.org/specs/rfc7541.html#request.examples.without.huffman.coding
     func testRequestHeadersWithoutHuffmanCoding() throws {
-        var request1 = buffer(wrapping: [0x82, 0x86, 0x84, 0x41, 0x0f, 0x77, 0x77, 0x77, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x63, 0x6f, 0x6d])
-        var request2 = buffer(wrapping: [0x82, 0x86, 0x84, 0xbe, 0x58, 0x08, 0x6e, 0x6f, 0x2d, 0x63, 0x61, 0x63, 0x68, 0x65])
-        var request3 = buffer(wrapping: [0x82, 0x87, 0x85, 0xbf, 0x40, 0x0a, 0x63, 0x75, 0x73, 0x74, 0x6f, 0x6d, 0x2d, 0x6b, 0x65, 0x79, 0x0c, 0x63, 0x75, 0x73, 0x74, 0x6f, 0x6d, 0x2d, 0x76, 0x61, 0x6c, 0x75, 0x65])
+        var request1 = buffer(wrapping: [
+            0x82, 0x86, 0x84, 0x41, 0x0f, 0x77, 0x77, 0x77, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x63,
+            0x6f, 0x6d,
+        ])
+        var request2 = buffer(wrapping: [
+            0x82, 0x86, 0x84, 0xbe, 0x58, 0x08, 0x6e, 0x6f, 0x2d, 0x63, 0x61, 0x63, 0x68, 0x65,
+        ])
+        var request3 = buffer(wrapping: [
+            0x82, 0x87, 0x85, 0xbf, 0x40, 0x0a, 0x63, 0x75, 0x73, 0x74, 0x6f, 0x6d, 0x2d, 0x6b, 0x65, 0x79, 0x0c, 0x63,
+            0x75, 0x73, 0x74, 0x6f, 0x6d, 0x2d, 0x76, 0x61, 0x6c, 0x75, 0x65,
+        ])
 
         let headers1 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "http"),
             (":path", "/"),
-            (":authority", "www.example.com")
+            (":authority", "www.example.com"),
         ])
         let headers2 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "http"),
             (":path", "/"),
             (":authority", "www.example.com"),
-            ("cache-control", "no-cache")
+            ("cache-control", "no-cache"),
         ])
         let headers3 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "https"),
             (":path", "/index.html"),
             (":authority", "www.example.com"),
-            ("custom-key", "custom-value")
+            ("custom-key", "custom-value"),
         ])
 
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
@@ -79,29 +88,34 @@ class HPACKCodingTests: XCTestCase {
     // HPACK RFC7541 § C.4
     // http://httpwg.org/specs/rfc7541.html#request.examples.with.huffman.coding
     func testRequestHeadersWithHuffmanCoding() throws {
-        var request1 = buffer(wrapping: [0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        var request1 = buffer(wrapping: [
+            0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff,
+        ])
         var request2 = buffer(wrapping: [0x82, 0x86, 0x84, 0xbe, 0x58, 0x86, 0xa8, 0xeb, 0x10, 0x64, 0x9c, 0xbf])
-        var request3 = buffer(wrapping: [0x82, 0x87, 0x85, 0xbf, 0x40, 0x88, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xa9, 0x7d, 0x7f, 0x89, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xb8, 0xe8, 0xb4, 0xbf])
+        var request3 = buffer(wrapping: [
+            0x82, 0x87, 0x85, 0xbf, 0x40, 0x88, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xa9, 0x7d, 0x7f, 0x89, 0x25, 0xa8, 0x49,
+            0xe9, 0x5b, 0xb8, 0xe8, 0xb4, 0xbf,
+        ])
 
         let headers1 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "http"),
             (":path", "/"),
-            (":authority", "www.example.com")
+            (":authority", "www.example.com"),
         ])
         let headers2 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "http"),
             (":path", "/"),
             (":authority", "www.example.com"),
-            ("cache-control", "no-cache")
+            ("cache-control", "no-cache"),
         ])
         let headers3 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "https"),
             (":path", "/index.html"),
             (":authority", "www.example.com"),
-            ("custom-key", "custom-value")
+            ("custom-key", "custom-value"),
         ])
 
         var encoder = HPACKEncoder(allocator: allocator)
@@ -158,9 +172,11 @@ class HPACKCodingTests: XCTestCase {
             // cache-control: private
             0x58, 0x07, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65,
             // date: Mon, 21 Oct 2013 20:13:21 GMT
-            0x61, 0x1d, 0x4d, 0x6f, 0x6e, 0x2c, 0x20, 0x32, 0x31, 0x20, 0x4f, 0x63, 0x74, 0x20, 0x32, 0x30, 0x31, 0x33, 0x20, 0x32, 0x30, 0x3a, 0x31, 0x33, 0x3a, 0x32, 0x31, 0x20, 0x47, 0x4d, 0x54,
+            0x61, 0x1d, 0x4d, 0x6f, 0x6e, 0x2c, 0x20, 0x32, 0x31, 0x20, 0x4f, 0x63, 0x74, 0x20, 0x32, 0x30, 0x31, 0x33,
+            0x20, 0x32, 0x30, 0x3a, 0x31, 0x33, 0x3a, 0x32, 0x31, 0x20, 0x47, 0x4d, 0x54,
             // location: https://www.example.com
-            0x6e, 0x17, 0x68, 0x74, 0x74, 0x70, 0x73, 0x3a, 0x2f, 0x2f, 0x77, 0x77, 0x77, 0x2e, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x63, 0x6f, 0x6d
+            0x6e, 0x17, 0x68, 0x74, 0x74, 0x70, 0x73, 0x3a, 0x2f, 0x2f, 0x77, 0x77, 0x77, 0x2e, 0x65, 0x78, 0x61, 0x6d,
+            0x70, 0x6c, 0x65, 0x2e, 0x63, 0x6f, 0x6d,
         ])
         var response2 = buffer(wrapping: [
             // :status: 307
@@ -170,7 +186,7 @@ class HPACKCodingTests: XCTestCase {
             // date: Mon, 21 Oct 2013 20:13:21 GMT
             0xc0,
             // location: https://www.example.com
-            0xbf
+            0xbf,
         ])
         var response3 = buffer(wrapping: [
             // :status: 200
@@ -178,26 +194,30 @@ class HPACKCodingTests: XCTestCase {
             // cache-control: private
             0xc1,
             // date: Mon, 21 Oct 2013 20:13:22 GMT
-            0x61, 0x1d, 0x4d, 0x6f, 0x6e, 0x2c, 0x20, 0x32, 0x31, 0x20, 0x4f, 0x63, 0x74, 0x20, 0x32, 0x30, 0x31, 0x33, 0x20, 0x32, 0x30, 0x3a, 0x31, 0x33, 0x3a, 0x32, 0x32, 0x20, 0x47, 0x4d, 0x54,
+            0x61, 0x1d, 0x4d, 0x6f, 0x6e, 0x2c, 0x20, 0x32, 0x31, 0x20, 0x4f, 0x63, 0x74, 0x20, 0x32, 0x30, 0x31, 0x33,
+            0x20, 0x32, 0x30, 0x3a, 0x31, 0x33, 0x3a, 0x32, 0x32, 0x20, 0x47, 0x4d, 0x54,
             // location: https://www.example.com
             0xc0,
             // content-encoding: gzip
             0x5a, 0x04, 0x67, 0x7a, 0x69, 0x70,
             // set-cookie: foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1
-            0x77, 0x38, 0x66, 0x6f, 0x6f, 0x3d, 0x41, 0x53, 0x44, 0x4a, 0x4b, 0x48, 0x51, 0x4b, 0x42, 0x5a, 0x58, 0x4f, 0x51, 0x57, 0x45, 0x4f, 0x50, 0x49, 0x55, 0x41, 0x58, 0x51, 0x57, 0x45, 0x4f, 0x49, 0x55, 0x3b, 0x20, 0x6d, 0x61, 0x78, 0x2d, 0x61, 0x67, 0x65, 0x3d, 0x33, 0x36, 0x30, 0x30, 0x3b, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x3d, 0x31
+            0x77, 0x38, 0x66, 0x6f, 0x6f, 0x3d, 0x41, 0x53, 0x44, 0x4a, 0x4b, 0x48, 0x51, 0x4b, 0x42, 0x5a, 0x58, 0x4f,
+            0x51, 0x57, 0x45, 0x4f, 0x50, 0x49, 0x55, 0x41, 0x58, 0x51, 0x57, 0x45, 0x4f, 0x49, 0x55, 0x3b, 0x20, 0x6d,
+            0x61, 0x78, 0x2d, 0x61, 0x67, 0x65, 0x3d, 0x33, 0x36, 0x30, 0x30, 0x3b, 0x20, 0x76, 0x65, 0x72, 0x73, 0x69,
+            0x6f, 0x6e, 0x3d, 0x31,
         ])
 
         let headers1 = HPACKHeaders([
             (":status", "302"),
             ("cache-control", "private"),
             ("date", "Mon, 21 Oct 2013 20:13:21 GMT"),
-            ("location", "https://www.example.com")
+            ("location", "https://www.example.com"),
         ])
         let headers2 = HPACKHeaders([
             (":status", "307"),
             ("cache-control", "private"),
             ("date", "Mon, 21 Oct 2013 20:13:21 GMT"),
-            ("location", "https://www.example.com")
+            ("location", "https://www.example.com"),
         ])
         let headers3 = HPACKHeaders([
             (":status", "200"),
@@ -205,7 +225,7 @@ class HPACKCodingTests: XCTestCase {
             ("date", "Mon, 21 Oct 2013 20:13:22 GMT"),
             ("location", "https://www.example.com"),
             ("content-encoding", "gzip"),
-            ("set-cookie", "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1")
+            ("set-cookie", "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1"),
         ])
 
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator(), maxDynamicTableSize: 256)
@@ -239,26 +259,32 @@ class HPACKCodingTests: XCTestCase {
     // http://httpwg.org/specs/rfc7541.html#response.examples.with.huffman.coding
     func testResponseHeadersWithHuffmanCoding() throws {
         var response1 = buffer(wrapping: [
-            0x48, 0x82, 0x64, 0x02, 0x58, 0x85, 0xae, 0xc3, 0x77, 0x1a, 0x4b, 0x61, 0x96, 0xd0, 0x7a, 0xbe, 0x94, 0x10, 0x54, 0xd4, 0x44, 0xa8, 0x20, 0x05, 0x95, 0x04, 0x0b, 0x81, 0x66, 0xe0, 0x82, 0xa6, 0x2d, 0x1b, 0xff, 0x6e, 0x91, 0x9d, 0x29, 0xad, 0x17, 0x18, 0x63, 0xc7, 0x8f, 0x0b, 0x97, 0xc8, 0xe9, 0xae, 0x82, 0xae, 0x43, 0xd3
+            0x48, 0x82, 0x64, 0x02, 0x58, 0x85, 0xae, 0xc3, 0x77, 0x1a, 0x4b, 0x61, 0x96, 0xd0, 0x7a, 0xbe, 0x94, 0x10,
+            0x54, 0xd4, 0x44, 0xa8, 0x20, 0x05, 0x95, 0x04, 0x0b, 0x81, 0x66, 0xe0, 0x82, 0xa6, 0x2d, 0x1b, 0xff, 0x6e,
+            0x91, 0x9d, 0x29, 0xad, 0x17, 0x18, 0x63, 0xc7, 0x8f, 0x0b, 0x97, 0xc8, 0xe9, 0xae, 0x82, 0xae, 0x43, 0xd3,
         ])
         var response2 = buffer(wrapping: [
-            0x48, 0x83, 0x64, 0x0e, 0xff, 0xc1, 0xc0, 0xbf
+            0x48, 0x83, 0x64, 0x0e, 0xff, 0xc1, 0xc0, 0xbf,
         ])
         var response3 = buffer(wrapping: [
-            0x88, 0xc1, 0x61, 0x96, 0xd0, 0x7a, 0xbe, 0x94, 0x10, 0x54, 0xd4, 0x44, 0xa8, 0x20, 0x05, 0x95, 0x04, 0x0b, 0x81, 0x66, 0xe0, 0x84, 0xa6, 0x2d, 0x1b, 0xff, 0xc0, 0x5a, 0x83, 0x9b, 0xd9, 0xab, 0x77, 0xad, 0x94, 0xe7, 0x82, 0x1d, 0xd7, 0xf2, 0xe6, 0xc7, 0xb3, 0x35, 0xdf, 0xdf, 0xcd, 0x5b, 0x39, 0x60, 0xd5, 0xaf, 0x27, 0x08, 0x7f, 0x36, 0x72, 0xc1, 0xab, 0x27, 0x0f, 0xb5, 0x29, 0x1f, 0x95, 0x87, 0x31, 0x60, 0x65, 0xc0, 0x03, 0xed, 0x4e, 0xe5, 0xb1, 0x06, 0x3d, 0x50, 0x07
+            0x88, 0xc1, 0x61, 0x96, 0xd0, 0x7a, 0xbe, 0x94, 0x10, 0x54, 0xd4, 0x44, 0xa8, 0x20, 0x05, 0x95, 0x04, 0x0b,
+            0x81, 0x66, 0xe0, 0x84, 0xa6, 0x2d, 0x1b, 0xff, 0xc0, 0x5a, 0x83, 0x9b, 0xd9, 0xab, 0x77, 0xad, 0x94, 0xe7,
+            0x82, 0x1d, 0xd7, 0xf2, 0xe6, 0xc7, 0xb3, 0x35, 0xdf, 0xdf, 0xcd, 0x5b, 0x39, 0x60, 0xd5, 0xaf, 0x27, 0x08,
+            0x7f, 0x36, 0x72, 0xc1, 0xab, 0x27, 0x0f, 0xb5, 0x29, 0x1f, 0x95, 0x87, 0x31, 0x60, 0x65, 0xc0, 0x03, 0xed,
+            0x4e, 0xe5, 0xb1, 0x06, 0x3d, 0x50, 0x07,
         ])
 
         let headers1 = HPACKHeaders([
             (":status", "302"),
             ("cache-control", "private"),
             ("date", "Mon, 21 Oct 2013 20:13:21 GMT"),
-            ("location", "https://www.example.com")
+            ("location", "https://www.example.com"),
         ])
         let headers2 = HPACKHeaders([
             (":status", "307"),
             ("cache-control", "private"),
             ("date", "Mon, 21 Oct 2013 20:13:21 GMT"),
-            ("location", "https://www.example.com")
+            ("location", "https://www.example.com"),
         ])
         let headers3 = HPACKHeaders([
             (":status", "200"),
@@ -266,7 +292,7 @@ class HPACKCodingTests: XCTestCase {
             ("date", "Mon, 21 Oct 2013 20:13:22 GMT"),
             ("location", "https://www.example.com"),
             ("content-encoding", "gzip"),
-            ("set-cookie", "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1")
+            ("set-cookie", "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1"),
         ])
 
         var encoder = HPACKEncoder(allocator: allocator)
@@ -322,14 +348,24 @@ class HPACKCodingTests: XCTestCase {
     }
 
     func testNonIndexedRequest() throws {
-        var request1 = buffer(wrapping: [0x82, 0x86, 0x84, 0x01, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
-        var request2 = buffer(wrapping: [0x82, 0x86, 0x84, 0x01, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff, 0x0f, 0x09, 0x86, 0xa8, 0xeb, 0x10, 0x64, 0x9c, 0xbf, 0x00, 0x88, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xa9, 0x7d, 0x7f, 0x89, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xb8, 0xe8, 0xb4, 0xbf])
-        var request3 = buffer(wrapping: [0x82, 0x87, 0x85, 0x11, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff, 0x10, 0x88, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xa9, 0x7d, 0x7f, 0x89, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xb8, 0xe8, 0xb4, 0xbf])
+        var request1 = buffer(wrapping: [
+            0x82, 0x86, 0x84, 0x01, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff,
+        ])
+        var request2 = buffer(wrapping: [
+            0x82, 0x86, 0x84, 0x01, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff, 0x0f,
+            0x09, 0x86, 0xa8, 0xeb, 0x10, 0x64, 0x9c, 0xbf, 0x00, 0x88, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xa9, 0x7d, 0x7f,
+            0x89, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xb8, 0xe8, 0xb4, 0xbf,
+        ])
+        var request3 = buffer(wrapping: [
+            0x82, 0x87, 0x85, 0x11, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff, 0x10,
+            0x88, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xa9, 0x7d, 0x7f, 0x89, 0x25, 0xa8, 0x49, 0xe9, 0x5b, 0xb8, 0xe8, 0xb4,
+            0xbf,
+        ])
 
         let headers1 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "http"),
-            (":path", "/")
+            (":path", "/"),
         ])
         let h1NoIndex = (name: ":authority", value: "www.example.com")
         let h2NoIndex = (name: "cache-control", value: "no-cache")
@@ -337,7 +373,7 @@ class HPACKCodingTests: XCTestCase {
         let headers3 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "https"),
-            (":path", "/index.html")
+            (":path", "/index.html"),
         ])
         let h3NeverIndex = (name: "custom-key", value: "custom-value")
 
@@ -371,7 +407,7 @@ class HPACKCodingTests: XCTestCase {
             (":method", "GET"),
             (":scheme", "http"),
             (":path", "/"),
-            (":authority", "www.example.com")
+            (":authority", "www.example.com"),
         ])
         let fullHeaders2 = HPACKHeaders([
             (":method", "GET"),
@@ -379,14 +415,14 @@ class HPACKCodingTests: XCTestCase {
             (":path", "/"),
             (":authority", "www.example.com"),
             ("cache-control", "no-cache"),
-            ("custom-key", "custom-value")
+            ("custom-key", "custom-value"),
         ])
         let fullHeaders3 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "https"),
             (":path", "/index.html"),
             (":authority", "www.example.com"),
-            ("custom-key", "custom-value")
+            ("custom-key", "custom-value"),
         ])
 
         let decoded1 = try decoder.decodeHeaders(from: &request1)
@@ -403,16 +439,28 @@ class HPACKCodingTests: XCTestCase {
     }
 
     func testInlineDynamicTableResize() throws {
-        var request1 = buffer(wrapping: [0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
-        let request2 = buffer(wrapping: [0x3f, 0x21, 0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
-        var request3 = buffer(wrapping: [0x3f, 0xe1, 0x20, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
-        var request4 = buffer(wrapping: [0x82, 0x86, 0x3f, 0x32, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4, 0xff])
+        var request1 = buffer(wrapping: [
+            0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4,
+            0xff,
+        ])
+        let request2 = buffer(wrapping: [
+            0x3f, 0x21, 0x3f, 0x32, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab,
+            0x90, 0xf4, 0xff,
+        ])
+        var request3 = buffer(wrapping: [
+            0x3f, 0xe1, 0x20, 0x82, 0x86, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90,
+            0xf4, 0xff,
+        ])
+        var request4 = buffer(wrapping: [
+            0x82, 0x86, 0x3f, 0x32, 0x84, 0x41, 0x8c, 0xf1, 0xe3, 0xc2, 0xe5, 0xf2, 0x3a, 0x6b, 0xa0, 0xab, 0x90, 0xf4,
+            0xff,
+        ])
 
         let headers1 = HPACKHeaders([
             (":method", "GET"),
             (":scheme", "http"),
             (":path", "/"),
-            (":authority", "www.example.com")
+            (":authority", "www.example.com"),
         ])
 
         let oddMaxTableSize = 81
@@ -434,12 +482,12 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqualTuple(headers1[3], try encoder.headerIndexTable.header(at: 62))
 
         var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
-        decoder.maxDynamicTableLength = oddMaxTableSize      // not enough to store the value we expect it to eventually store, but enough for the initial run
+        // not enough to store the value we expect it to eventually store, but enough for the initial run
+        decoder.maxDynamicTableLength = oddMaxTableSize
         let decoded: HPACKHeaders
         do {
             decoded = try decoder.decodeHeaders(from: &request1)
-        }
-        catch {
+        } catch {
             XCTFail("Failed to decode header set containing dynamic-table-resize command: \(error)")
             return
         }
@@ -449,7 +497,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqualTuple(headers1[3], try decoder.headerTable.header(at: 62))
 
         // Now, ensure some special cases.
-        request1.moveReaderIndex(to: 0) // make the data available again in our sample buffer
+        request1.moveReaderIndex(to: 0)  // make the data available again in our sample buffer
 
         // 1 - if we try to change the size mid-buffer, it'll throw an error.
         try encoder.setDynamicTableSize(4096)
@@ -462,7 +510,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
         XCTAssertNoThrow(try encoder.append(header: ":scheme", value: "http"))
         XCTAssertNoThrow(try encoder.append(header: ":path", value: "/"))
-        XCTAssertThrowsError(try encoder.setDynamicTableSize(oddMaxTableSize)) // should throw
+        XCTAssertThrowsError(try encoder.setDynamicTableSize(oddMaxTableSize))  // should throw
         XCTAssertNoThrow(try encoder.append(header: ":authority", value: "www.example.com"))
 
         // No resize information, but the rest of the block will be there
@@ -477,7 +525,7 @@ class HPACKCodingTests: XCTestCase {
         // 2 - We can set multiple sizes, and both the smallest and the latest will be sent.
         try encoder.setDynamicTableSize(64)
         try encoder.setDynamicTableSize(75)
-        try encoder.setDynamicTableSize(oddMaxTableSize /* 81 */)
+        try encoder.setDynamicTableSize(oddMaxTableSize)  // 81
 
         try encoder.beginEncoding(allocator: allocator)
         XCTAssertNoThrow(try encoder.append(header: ":method", value: "GET"))
@@ -491,34 +539,40 @@ class HPACKCodingTests: XCTestCase {
         // NB: current size is 81 bytes.
         encoder.headerIndexTable.dynamicTable.clear()
 
-        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request3)) {error in
+        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request3)) { error in
             XCTAssertTrue(error is NIOHPACKErrors.InvalidDynamicTableSize)
         }
 
         // 4 - Decoder will not accept a table size update unless it appears at the start of a header block.
         decoder.headerTable.dynamicTable.clear()
 
-        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request4)) {error in
+        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request4)) { error in
             XCTAssertTrue(error is NIOHPACKErrors.IllegalDynamicTableSizeChange)
         }
     }
 
     func testHPACKHeadersDescription() throws {
-        let headerList1: [(String, String)] = [(":method", "GET"),
-                                               (":scheme", "http"),
-                                               (":path", "/"),
-                                               (":authority", "www.example.com")]
-        let headerList2: [(String, String)] = [(":method", "GET"),
-                                               (":scheme", "http"),
-                                               (":path", "/"),
-                                               (":authority", "www.example.com"),
-                                               ("cache-control", "no-cache")]
-        let headerList3: [(HPACKIndexing, String, String)] = [(.indexable, ":method", "POST"),
-                                                              (.indexable, ":scheme", "https"),
-                                                              (.indexable, ":path", "/send.html"),
-                                                              (.indexable, ":authority", "www.example.com"),
-                                                              (.indexable, "custom-key", "custom-value"),
-                                                              (.nonIndexable, "content-length", "42")]
+        let headerList1: [(String, String)] = [
+            (":method", "GET"),
+            (":scheme", "http"),
+            (":path", "/"),
+            (":authority", "www.example.com"),
+        ]
+        let headerList2: [(String, String)] = [
+            (":method", "GET"),
+            (":scheme", "http"),
+            (":path", "/"),
+            (":authority", "www.example.com"),
+            ("cache-control", "no-cache"),
+        ]
+        let headerList3: [(HPACKIndexing, String, String)] = [
+            (.indexable, ":method", "POST"),
+            (.indexable, ":scheme", "https"),
+            (.indexable, ":path", "/send.html"),
+            (.indexable, ":authority", "www.example.com"),
+            (.indexable, "custom-key", "custom-value"),
+            (.nonIndexable, "content-length", "42"),
+        ]
 
         let headers1 = HPACKHeaders(headerList1)
         let headers2 = HPACKHeaders(headerList2)
@@ -533,7 +587,7 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(description2, expected2)
 
         let description3 = headers3.description
-        let expected3 = headerList3.description // already contains indexing where we'd expect
+        let expected3 = headerList3.description  // already contains indexing where we'd expect
         XCTAssertEqual(description3, expected3)
     }
 
@@ -546,7 +600,7 @@ class HPACKCodingTests: XCTestCase {
             ("cache-control", "no-cache"),
             ("custom-key", "value-1,value-2"),
             ("set-cookie", "abcdefg,hijklmn,opqrst"),
-            ("custom-key", "value-3")
+            ("custom-key", "value-3"),
         ])
 
         XCTAssertEqual(headers[":method"], ["GET"])
@@ -567,7 +621,7 @@ class HPACKCodingTests: XCTestCase {
             "no-whitespace": "foo,bar",
             "sp": " foo ,  bar  ",
             "htab": "\tfoo\t,\t\tbar\t\t",
-            "sp-and-htab": " \t foo  \t\t,\t bar\t "
+            "sp-and-htab": " \t foo  \t\t,\t bar\t ",
         ]
 
         let expected = ["foo", "bar"]
@@ -580,7 +634,7 @@ class HPACKCodingTests: XCTestCase {
     func testHPACKHeadersCanonicalFormDropsEmptyStrings() throws {
         let headers: HPACKHeaders = [
             "no-whitespace": "foo,,bar",
-            "with-whitespace": "foo, ,bar"
+            "with-whitespace": "foo, ,bar",
         ]
         let expected = ["foo", "bar"]
         XCTAssertEqual(headers[canonicalForm: "no-whitespace"], expected)
@@ -591,8 +645,8 @@ class HPACKCodingTests: XCTestCase {
         let shouldNotBeSplitOrStripped = "should, not , be , split, or, stripped"
         let headers: HPACKHeaders = ["set-cookie": shouldNotBeSplitOrStripped]
 
-        XCTAssertEqual(headers[canonicalForm: "set-cookie"],  [shouldNotBeSplitOrStripped])
-        XCTAssertEqual(headers[canonicalForm: "Set-Cookie"],  [shouldNotBeSplitOrStripped])
+        XCTAssertEqual(headers[canonicalForm: "set-cookie"], [shouldNotBeSplitOrStripped])
+        XCTAssertEqual(headers[canonicalForm: "Set-Cookie"], [shouldNotBeSplitOrStripped])
     }
 
     func testHPACKHeadersFirst() throws {
@@ -600,7 +654,7 @@ class HPACKCodingTests: XCTestCase {
             (":method", "GET"),
             ("foo", "bar"),
             ("foo", "baz"),
-            ("custom-key", "value-1,value-2")
+            ("custom-key", "value-1,value-2"),
         ])
 
         XCTAssertEqual(headers.first(name: ":method"), "GET")
@@ -618,7 +672,7 @@ class HPACKCodingTests: XCTestCase {
             "cache-control": "no-cache",
             "custom-key": "value-1,value-2",
             "set-cookie": "abcdefg,hijklmn,opqrst",
-            "custom-key": "value-3"
+            "custom-key": "value-3",
         ]
 
         let headers2 = HPACKHeaders([
@@ -629,7 +683,7 @@ class HPACKCodingTests: XCTestCase {
             ("cache-control", "no-cache"),
             ("custom-key", "value-1,value-2"),
             ("set-cookie", "abcdefg,hijklmn,opqrst"),
-            ("custom-key", "value-3")
+            ("custom-key", "value-3"),
         ])
 
         XCTAssertEqual(headers, headers2)
@@ -702,7 +756,10 @@ class HPACKCodingTests: XCTestCase {
         XCTAssertEqual(decoder.maxHeaderListSize, 16 * 1024)
 
         XCTAssertThrowsError(try decoder.decodeHeaders(from: &request)) { error in
-            XCTAssertEqual(error as? NIOHPACKErrors.MaxHeaderListSizeViolation, NIOHPACKErrors.MaxHeaderListSizeViolation())
+            XCTAssertEqual(
+                error as? NIOHPACKErrors.MaxHeaderListSizeViolation,
+                NIOHPACKErrors.MaxHeaderListSizeViolation()
+            )
         }
 
         // Decoding a header block that is smaller than the max header list size is fine.
@@ -713,8 +770,10 @@ class HPACKCodingTests: XCTestCase {
     }
 
     func testDifferentlyCasedHPACKHeadersAreNotEqual() {
-        let variants: [HPACKHeaders] = [HPACKHeaders([("foo", "foox")]), HPACKHeaders([("Foo", "foo")]),
-                                        HPACKHeaders([("foo", "Foo")]), HPACKHeaders([("Foo", "Foo")])]
+        let variants: [HPACKHeaders] = [
+            HPACKHeaders([("foo", "foox")]), HPACKHeaders([("Foo", "foo")]),
+            HPACKHeaders([("foo", "Foo")]), HPACKHeaders([("Foo", "Foo")]),
+        ]
 
         for v1 in variants.indices {
             for v2 in variants.indices {
@@ -734,8 +793,13 @@ class HPACKCodingTests: XCTestCase {
         // This will be placed into the header table, and will use an indexed name but a literal value.
         let firstHeaders = HPACKHeaders([("date", "Tue, 12 Nov 2019 09:48:43 GMT")])
         XCTAssertNoThrow(try encoder.encode(headers: firstHeaders, to: &buffer))
-        XCTAssertEqual(Array(buffer.readableBytesView),
-                       [0x61, 0x96, 0xdf, 0x69, 0x7e, 0x94, 0x08, 0x94, 0xd2, 0x7e, 0xea, 0x08, 0x01, 0x7d, 0x40, 0x3f, 0x71, 0xa7, 0xae, 0x34, 0xca, 0x98, 0xb4, 0x6f])
+        XCTAssertEqual(
+            Array(buffer.readableBytesView),
+            [
+                0x61, 0x96, 0xdf, 0x69, 0x7e, 0x94, 0x08, 0x94, 0xd2, 0x7e, 0xea, 0x08, 0x01, 0x7d, 0x40, 0x3f, 0x71,
+                0xa7, 0xae, 0x34, 0xca, 0x98, 0xb4, 0x6f,
+            ]
+        )
 
         // Now we're going to try to send that header again. This should be indexed fully, and sent trivially.
         buffer.clear()
@@ -749,7 +813,12 @@ class HPACKCodingTests: XCTestCase {
         secondHeaders.add(name: "date", value: "Tue, 12 Nov 2019 09:48:43 GMT", indexing: .nonIndexable)
         buffer.clear()
         XCTAssertNoThrow(try encoder.encode(headers: secondHeaders, to: &buffer))
-        XCTAssertEqual(Array(buffer.readableBytesView),
-                       [0x0F, 0x12, 0x96, 0xdf, 0x69, 0x7e, 0x94, 0x08, 0x94, 0xd2, 0x7e, 0xea, 0x08, 0x01, 0x7d, 0x40, 0x3f, 0x71, 0xa7, 0xae, 0x34, 0xca, 0x98, 0xb4, 0x6f])
+        XCTAssertEqual(
+            Array(buffer.readableBytesView),
+            [
+                0x0F, 0x12, 0x96, 0xdf, 0x69, 0x7e, 0x94, 0x08, 0x94, 0xd2, 0x7e, 0xea, 0x08, 0x01, 0x7d, 0x40, 0x3f,
+                0x71, 0xa7, 0xae, 0x34, 0xca, 0x98, 0xb4, 0x6f,
+            ]
+        )
     }
 }

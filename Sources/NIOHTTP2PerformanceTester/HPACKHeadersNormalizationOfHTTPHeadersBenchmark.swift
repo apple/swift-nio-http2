@@ -31,7 +31,6 @@ final class HPACKHeadersNormalizationOfHTTPHeadersBenchmark {
     }
 }
 
-
 extension HPACKHeadersNormalizationOfHTTPHeadersBenchmark: Benchmark {
     func setUp() throws {
         switch self.httpHeadersKind {
@@ -42,12 +41,12 @@ extension HPACKHeadersNormalizationOfHTTPHeadersBenchmark: Benchmark {
         }
     }
 
-    func tearDown() { }
+    func tearDown() {}
 
     func run() throws -> Int {
         var count = 0
 
-        for _ in 0 ..< self.iterations {
+        for _ in 0..<self.iterations {
             let normalize = HPACKHeaders(httpHeaders: self.httpHeaders, normalizeHTTPHeaders: true)
             count &+= normalize.count
         }
@@ -61,10 +60,10 @@ extension HTTPHeaders {
         var httpHeaders: HTTPHeaders = [:]
         httpHeaders.reserveCapacity(count + 1)
 
-        let connectionHeaderValue = (0 ..< count).map(String.init).joined(separator: ",")
+        let connectionHeaderValue = (0..<count).map(String.init).joined(separator: ",")
         httpHeaders.add(name: "connection", value: connectionHeaderValue)
 
-        for i in 0 ..< count {
+        for i in 0..<count {
             let header = String(describing: i)
             httpHeaders.add(name: header, value: header)
         }
@@ -78,10 +77,10 @@ extension HTTPHeaders {
 
         // Assuming connection header values are decomposed into an array then this is the
         // worst case: the whole array must be scanned for each of the `count` headers we add below.
-        let connectionHeaderValue = (0 ..< count).map { _ in "a" }.joined(separator: ",")
+        let connectionHeaderValue = (0..<count).map { _ in "a" }.joined(separator: ",")
         httpHeaders.add(name: "connection", value: connectionHeaderValue)
 
-        for _ in 0 ..< count {
+        for _ in 0..<count {
             httpHeaders.add(name: "b", value: "")
         }
 

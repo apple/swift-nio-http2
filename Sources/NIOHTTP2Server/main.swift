@@ -16,11 +16,10 @@
 // hit it with curl like so: curl --http2-prior-knowledge http://localhost:8888/
 
 import Foundation
-
 import NIOCore
-import NIOPosix
 import NIOHTTP1
 import NIOHTTP2
+import NIOPosix
 
 final class HTTP1TestServer: ChannelInboundHandler {
     public typealias InboundIn = HTTPServerRequestPart
@@ -54,12 +53,22 @@ final class HTTP1TestServer: ChannelInboundHandler {
                 var headers = HTTPHeaders()
                 headers.add(name: "content-length", value: "5")
                 headers.add(name: "x-stream-id", value: String(Int(streamID)))
-                channel.write(http1TestServer.wrapOutboundOut(HTTPServerResponsePart.head(HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers))), promise: nil)
+                channel.write(
+                    http1TestServer.wrapOutboundOut(
+                        HTTPServerResponsePart.head(
+                            HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers)
+                        )
+                    ),
+                    promise: nil
+                )
 
                 if requestHead.method != .HEAD {
                     var buffer = channel.allocator.buffer(capacity: 12)
                     buffer.writeStaticString("hello")
-                    channel.write(http1TestServer.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))), promise: nil)
+                    channel.write(
+                        http1TestServer.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))),
+                        promise: nil
+                    )
                 }
 
                 return channel.writeAndFlush(http1TestServer.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
@@ -70,16 +79,14 @@ final class HTTP1TestServer: ChannelInboundHandler {
     }
 }
 
-
 final class ErrorHandler: ChannelInboundHandler {
     typealias InboundIn = Never
-    
+
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         print("Server received error: \(error)")
         context.close(promise: nil)
     }
 }
-
 
 // First argument is the program path
 let arguments = ProcessInfo.processInfo.arguments
@@ -99,16 +106,16 @@ enum BindTo {
 let htdocs: String
 let bindTarget: BindTo
 switch (arg1, arg1.flatMap { Int($0) }, arg2, arg2.flatMap { Int($0) }, arg3) {
-case (.some(let h), _ , _, .some(let p), let maybeHtdocs):
-    /* second arg an integer --> host port [htdocs] */
+case (.some(let h), _, _, .some(let p), let maybeHtdocs):
+    // second arg an integer --> host port [htdocs]
     bindTarget = .ip(host: h, port: p)
     htdocs = maybeHtdocs ?? defaultHtdocs
 case (_, .some(let p), let maybeHtdocs, _, _):
-    /* first arg an integer --> port [htdocs] */
+    // first arg an integer --> port [htdocs]
     bindTarget = .ip(host: defaultHost, port: p)
     htdocs = maybeHtdocs ?? defaultHtdocs
 case (.some(let portString), .none, let maybeHtdocs, .none, .none):
-    /* couldn't parse as number --> uds-path [htdocs] */
+    // couldn't parse as number --> uds-path [htdocs]
     bindTarget = .unixDomainSocket(path: portString)
     htdocs = maybeHtdocs ?? defaultHtdocs
 default:
@@ -124,14 +131,15 @@ let bootstrap = ServerBootstrap(group: group)
 
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
-        return channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            return streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap { () -> EventLoopFuture<Void> in
+        channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+            streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
+                () -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(HTTP1TestServer())
             }.flatMap { () -> EventLoopFuture<Void> in
                 streamChannel.pipeline.addHandler(ErrorHandler())
             }
         }.flatMap { (_: HTTP2StreamMultiplexer) in
-            return channel.pipeline.addHandler(ErrorHandler())
+            channel.pipeline.addHandler(ErrorHandler())
         }
     }
 
@@ -153,7 +161,7 @@ let channel = try { () -> Channel in
     case .unixDomainSocket(let path):
         return try bootstrap.bind(unixDomainSocketPath: path).wait()
     }
-    }()
+}()
 
 print("Server started and listening on \(channel.localAddress!), htdocs path \(htdocs)")
 

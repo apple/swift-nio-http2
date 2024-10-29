@@ -27,11 +27,15 @@ struct HTTP2SettingsState {
     private var unacknowlegedSettingsFrames: [HTTP2Settings]
 
     /// A callback that is invoked whenever a setting value has changed.
-    typealias OnValueChangeCallback = (_ setting: HTTP2SettingsParameter, _ oldValue: UInt32?, _ newValue: UInt32) throws -> Void
+    typealias OnValueChangeCallback = (_ setting: HTTP2SettingsParameter, _ oldValue: UInt32?, _ newValue: UInt32)
+        throws -> Void
 
     init(localState: Bool) {
         // Create the settings dictionary, and ensure it has space for the known SETTINGS values.
-        self.currentSettingsValues = [.headerTableSize: 4096, .enablePush: 1, .initialWindowSize: HTTP2SettingsState.defaultInitialWindowSize, .maxFrameSize: 1<<14]
+        self.currentSettingsValues = [
+            .headerTableSize: 4096, .enablePush: 1, .initialWindowSize: HTTP2SettingsState.defaultInitialWindowSize,
+            .maxFrameSize: 1 << 14,
+        ]
         self.currentSettingsValues.reserveCapacity(8)
 
         // Create space for the unacknowledged SETTINGS frame data to be stored. In general this will be empty,
@@ -54,25 +58,25 @@ struct HTTP2SettingsState {
     /// Obtain the current value of a settings parameter.
     subscript(_ parameter: HTTP2SettingsParameter) -> UInt32? {
         get {
-            return self.currentSettingsValues[parameter]
+            self.currentSettingsValues[parameter]
         }
     }
 
     /// The current value of SETTINGS_INITIAL_WINDOW_SIZE.
     var initialWindowSize: UInt32 {
         // We can force-unwrap here as this setting always has a value.
-        return self[.initialWindowSize]!
+        self[.initialWindowSize]!
     }
 
     /// The current value of SETTINGS_ENABLE_PUSH.
     var enablePush: UInt32 {
         // We can force-unwrap here as this setting always has a value.
-        return self[.enablePush]!
+        self[.enablePush]!
     }
 
     /// The current value of SETTINGS_ENABLE_CONNECT_PROTOCOL
     var enableConnectProtocol: UInt32? {
-        return self[.enableConnectProtocol]
+        self[.enableConnectProtocol]
     }
 
     /// The default value of SETTINGS_INITIAL_WINDOW_SIZE.
@@ -112,7 +116,7 @@ struct HTTP2SettingsState {
     ///   - settings: The received settings.
     ///   - onValueChange: A callback that will be invoked once for each setting change.
     mutating func receiveSettings(_ settings: HTTP2Settings, onValueChange: OnValueChangeCallback) rethrows {
-        return try self.applySettings(settings, onValueChange: onValueChange)
+        try self.applySettings(settings, onValueChange: onValueChange)
     }
 
     /// Applies the given HTTP/2 settings to this state.
@@ -131,6 +135,6 @@ struct HTTP2SettingsState {
 
     /// Obtain an empty dummy value, suitable for using as a temporary to avoid CoW operations.
     static func dummyValue() -> HTTP2SettingsState {
-        return HTTP2SettingsState()
+        HTTP2SettingsState()
     }
 }
