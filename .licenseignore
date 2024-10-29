@@ -44,3 +44,4 @@ dev/update-benchmark-thresholds
 .gitmodules
 FuzzTesting/FailCases/*
 Tests/hpack-test-case/*
+.flake8
