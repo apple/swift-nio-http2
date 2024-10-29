@@ -142,7 +142,7 @@ fi
 
 
 # report
-if [[ $cnt_fail -gt 0 ]]; then
+if [[ $cnt_fail > 0 ]]; then
     # kill leftovers (the whole process group)    # ignore-unacceptable-language
     trap '' TERM
     kill 0    # ignore-unacceptable-language
@@ -152,7 +152,7 @@ else
     plugins_do summary_ok "$cnt_ok" "$cnt_fail"
 fi
 
-if [[ $cnt_fail -gt 0 ]]; then
+if [[ $cnt_fail > 0 ]]; then
     exit 1
 else
     exit 0
