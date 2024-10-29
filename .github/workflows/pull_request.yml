@@ -11,9 +11,7 @@ jobs:
     with:
       license_header_check_project_name: "SwiftNIO"
       format_check_enabled: false
-      unacceptable_language_check_enabled: true
       shell_check_enabled: false
-      python_lint_check_enabled: false
 
   unit-tests:
     name: Unit tests
