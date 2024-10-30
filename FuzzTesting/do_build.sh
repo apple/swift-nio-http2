@@ -24,7 +24,9 @@
 
 set -eu
 
-readonly FuzzTestingDir=$(dirname "$(echo $0 | sed -e "s,^\([^/]\),$(pwd)/\1,")")
+# shellcheck disable=SC2001 # Too complex
+FuzzTestingDir=$(dirname "$(echo "$0" | sed -e "s,^\([^/]\),$(pwd)/\1,")")
+readonly FuzzTestingDir
 
 printUsage() {
   NAME=$(basename "${0}")
@@ -95,13 +97,11 @@ cd "${FuzzTestingDir}"
 declare -a CMD_BASE
 if [ "$(uname)" == "Darwin" ]; then
   CMD_BASE=(
-    xcrun
-      --toolchain swift
-      swift build -Xswiftc -sanitize=fuzzer,address -Xswiftc -parse-as-library
+    xcrun --toolchain swift swift build -Xswiftc "-sanitize=fuzzer,address" -Xswiftc -parse-as-library
   )
 else
   CMD_BASE=(
-    swift build -Xswiftc -sanitize=fuzzer,address -Xswiftc -parse-as-library
+    swift build -Xswiftc "-sanitize=fuzzer,address" -Xswiftc -parse-as-library
   )
 fi
 
