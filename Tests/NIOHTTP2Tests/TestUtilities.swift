@@ -24,8 +24,8 @@ import XCTest
 import Darwin.C
 #elseif canImport(Glibc)
 import Glibc
-#elseif canImport(Bionic)
-import Bionic
+#elseif canImport(Android)
+import Android
 #endif
 
 struct NoFrameReceived: Error {}
