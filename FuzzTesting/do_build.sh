@@ -24,7 +24,9 @@
 
 set -eu
 
-readonly FuzzTestingDir=$(dirname "$(echo "$0" | sed -e "s,^\([^/]\),$(pwd)/\1,")")
+# shellcheck disable=SC2001 # Too complex
+FuzzTestingDir=$(dirname "$(echo "$0" | sed -e "s,^\([^/]\),$(pwd)/\1,")")
+readonly FuzzTestingDir
 
 printUsage() {
   NAME=$(basename "${0}")
