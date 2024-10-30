@@ -13,6 +13,7 @@
 ##
 ##===----------------------------------------------------------------------===##
 
+# shellcheck source=IntegrationTests/tests_01_allocation_counters/defines.sh
 source defines.sh
 
 set -eu

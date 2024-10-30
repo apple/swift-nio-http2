@@ -23,10 +23,11 @@ function stop_server() {
     sleep 0.5 # just to make sure all the fds could be closed
     kill -0 "$1" # assert server is still running    # ignore-unacceptable-language
     kill "$1" # tell server to shut down gracefully    # ignore-unacceptable-language
-    for f in $(seq 20); do
+    for _ in $(seq 20); do
         if ! kill -0 "$1" 2> /dev/null; then    # ignore-unacceptable-language
             break # good, dead
         fi
+	# shellcheck disable=SC2009 # pgrep much more awkward to use for this
         ps auxw | grep "$1" || true
         sleep 0.1
     done
@@ -37,14 +38,14 @@ function stop_server() {
 
 # Simple thing to do. Start the server in the background.
 # Allow extra build arguments from the command line - eg tsan.
-swift build $@
+swift build "$@"
 "$(swift build --show-bin-path)/NIOHTTP2Server" 127.0.0.1 8888 > /dev/null & disown
 SERVER_PID=$!
 echo "$SERVER_PID"
 
 # Wait for the server to bind a socket.
 worked=false
-for f in $(seq 20); do
+for _ in $(seq 20); do
     port=$(server_lsof "$SERVER_PID" | grep -Eo 'TCP .*:[0-9]+ ' | grep -Eo '[0-9]{4,5} ' | tr -d ' ' || true)
     if [[ -n "$port" ]]; then
 	worked=true
