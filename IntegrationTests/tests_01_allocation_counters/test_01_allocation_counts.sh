@@ -18,6 +18,8 @@ source defines.sh
 set -eu
 here="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+test -n "${SWIFT_VERSION:-}" || fatal "SWIFT_VERSION unset"
+
 all_tests=()
 for file in "$here/test_01_resources/"test_*.swift; do
     test_name=$(basename "$file")
@@ -36,20 +38,24 @@ for test in "${all_tests[@]}"; do
         total_allocations=$(grep "^test_$test_case.total_allocations:" "$tmp/output" | cut -d: -f2 | sed 's/ //g')
         not_freed_allocations=$(grep "^test_$test_case.remaining_allocations:" "$tmp/output" | cut -d: -f2 | sed 's/ //g')
         max_allowed_env_name="MAX_ALLOCS_ALLOWED_$test_case"
+        max_allowed=$(jq '.'\""$test_case"\" "$here/Thresholds/$SWIFT_VERSION.json")
 
         info "$test_case: allocations not freed: $not_freed_allocations"
         info "$test_case: total number of mallocs: $total_allocations"
 
         assert_less_than "$not_freed_allocations" 5     # allow some slack
         assert_greater_than "$not_freed_allocations" -5 # allow some slack
-        if [[ -z "${!max_allowed_env_name+x}" ]]; then
+        if [[ -z "${!max_allowed_env_name+x}" ]] && [ -z "${max_allowed}" ]; then
             if [[ -z "${!max_allowed_env_name+x}" ]]; then
                 warn "no reference number of allocations set (set to \$$max_allowed_env_name)"
-                warn "to set current number:"
+                warn "to set current number either:"
                 warn "    export $max_allowed_env_name=$total_allocations"
+                warn "    or set them in the Swift version specific threshold json"
             fi
         else
-            max_allowed=${!max_allowed_env_name}
+            if [ -z "${max_allowed}" ]; then
+                max_allowed=${!max_allowed_env_name}
+            fi
             assert_less_than_or_equal "$total_allocations" "$max_allowed"
             assert_greater_than "$total_allocations" "$(( max_allowed - 1000))"
         fi
