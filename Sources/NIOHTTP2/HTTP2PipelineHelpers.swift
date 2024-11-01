@@ -698,36 +698,16 @@ extension Channel {
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1ConnectionOutput>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2ConnectionOutput>,
         http2StreamInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2StreamOutput>
-    ) -> EventLoopFuture<
-        EventLoopFuture<
-            NIONegotiatedHTTPVersion<
-                HTTP1ConnectionOutput,
-                (HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)
-            >
-        >
-    > {
-        let http2ConnectionInitializer:
-            NIOChannelInitializerWithOutput<
-                (HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)
-            > = { channel in
-                channel.configureAsyncHTTP2Pipeline(
-                    mode: .server,
-                    configuration: http2Configuration,
-                    streamInitializer: http2StreamInitializer
-                ).flatMap { multiplexer in
-                    http2ConnectionInitializer(channel).map { connectionChannel in
-                        (connectionChannel, multiplexer)
-                    }
-                }
-            }
-        let http1ConnectionInitializer: NIOChannelInitializerWithOutput<HTTP1ConnectionOutput> = { channel in
-            channel.pipeline.configureHTTPServerPipeline().flatMap { _ in
-                http1ConnectionInitializer(channel)
-            }
-        }
-        return self.configureHTTP2AsyncSecureUpgrade(
+    ) -> EventLoopFuture<EventLoopFuture<NIONegotiatedHTTPVersion<
+            HTTP1ConnectionOutput,
+            (HTTP2ConnectionOutput, NIOHTTP2Handler.AsyncStreamMultiplexer<HTTP2StreamOutput>)
+        >>> {
+        self.configureAsyncHTTPServerPipeline(
+            streamDelegate: nil,
+            http2Configuration: http2Configuration,
             http1ConnectionInitializer: http1ConnectionInitializer,
-            http2ConnectionInitializer: http2ConnectionInitializer
+            http2ConnectionInitializer: http2ConnectionInitializer,
+            http2StreamInitializer: http2StreamInitializer
         )
     }
 
@@ -754,7 +734,7 @@ extension Channel {
     @inlinable
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public func configureAsyncHTTPServerPipeline<HTTP1ConnectionOutput: Sendable, HTTP2ConnectionOutput: Sendable, HTTP2StreamOutput: Sendable>(
-        streamDelegate: NIOHTTP2StreamDelegate,
+        streamDelegate: NIOHTTP2StreamDelegate?,
         http2Configuration: NIOHTTP2Handler.Configuration = .init(),
         http1ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP1ConnectionOutput>,
         http2ConnectionInitializer: @escaping NIOChannelInitializerWithOutput<HTTP2ConnectionOutput>,
