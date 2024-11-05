@@ -115,7 +115,7 @@ extension ReceivingHeadersState where Self: LocallyQuiescingState {
         }
 
         // At this stage we've quiesced, so the remote peer is not allowed to create new streams.
-        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true) {
+        let result = self.streamState.modifyStreamState(streamID: streamID, ignoreRecentlyReset: true, isQuiescing: true) {
             $0.receiveHeaders(
                 headers: headers,
                 validateHeaderBlock: validateHeaderBlock,

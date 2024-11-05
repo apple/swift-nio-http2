@@ -1266,6 +1266,60 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(temporaryClient.receiveRstStream(streamID: streamOne, reason: .refusedStream))
     }
 
+    func testClientInitiatesNewStreamBeforeReceivingAlreadySentGoawayWhenServerLocallyQuiesced() {
+        // Tests the behaviour of the server when it has open streams, sends a GOAWAY frame (so is
+        // in locally quiescing state), and then receives HEADERS for a stream whose ID is less than
+        // the last stream ID sent in the GOAWAY frame.
+        //
+        // The expected behaviour is that the server should refuse the stream (by sending RST_STREAM
+        // frame) and emit a stream error.
+        let streamOne = HTTP2StreamID(1)
+        let streamThree = HTTP2StreamID(3)
+
+        self.exchangePreamble()
+
+        // Open stream one.
+        assertSucceeds(
+            self.client.sendHeaders(
+                streamID: streamOne,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: false
+            )
+        )
+        assertSucceeds(
+            self.server.receiveHeaders(
+                streamID: streamOne,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: false
+            )
+        )
+
+        // Server begins quiescing. It enters the locally quiesced state.
+        assertSucceeds(self.server.sendGoaway(lastStreamID: .maxID))
+
+        // Client opens stream three (important: it hasn't received the GOAWAY frame).
+        assertSucceeds(
+            self.client.sendHeaders(
+                streamID: streamThree,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: false
+            )
+        )
+        // Server receives headers for stream three. It should throw a stream error and as a
+        // result, respond with a RST_STREAM frame.
+        assertStreamError(
+            type: .refusedStream,
+            self.server.receiveHeaders(
+                streamID: streamThree,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: false
+            )
+        )
+
+        assertSucceeds(self.server.sendRstStream(streamID: streamOne, reason: .refusedStream))
+        assertSucceeds(self.client.receiveRstStream(streamID: streamOne, reason: .refusedStream))
+    }
+
     func testHeadersOnClosedStreamAfterClientGoaway() {
         let streamOne = HTTP2StreamID(1)
         let streamTwo = HTTP2StreamID(2)

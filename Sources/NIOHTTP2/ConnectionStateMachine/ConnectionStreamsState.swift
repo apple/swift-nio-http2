@@ -181,6 +181,7 @@ struct ConnectionStreamState {
         streamID: HTTP2StreamID,
         ignoreRecentlyReset: Bool,
         ignoreClosed: Bool = false,
+        isQuiescing: Bool = false,
         _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect
     ) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams.autoClosingTransform(streamID: streamID, modifier) else {
@@ -188,7 +189,8 @@ struct ConnectionStreamState {
                 result: self.streamMissing(
                     streamID: streamID,
                     ignoreRecentlyReset: ignoreRecentlyReset,
-                    ignoreClosed: ignoreClosed
+                    ignoreClosed: ignoreClosed,
+                    isQuiescing: isQuiescing
                 ),
                 effect: nil
             )
@@ -218,11 +220,28 @@ struct ConnectionStreamState {
         _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect
     ) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams.autoClosingTransform(streamID: streamID, modifier) else {
-            // We never ignore recently reset streams here, as this should only ever be used when *sending* frames.
-            return StateMachineResultWithStreamEffect(
-                result: self.streamMissing(streamID: streamID, ignoreRecentlyReset: false, ignoreClosed: false),
-                effect: nil
-            )
+            // This state can be reached when a RST_STREAM frame is sent by this peer but the stream
+            // doesn't exist. This can happen for a few reasons, including:
+            //
+            // 1. The RST_STREAM frame is being sent because the stream wasn't accepted (i.e. the
+            //    client opening the stream raced with the server sending a GOAWAY frame). In this
+            //    case the state machine doesn't know about the stream but does need to send
+            //    a RST_STREAM frame.
+            // 2. An implementation or user error where the stream genuinely doesn't exist and
+            //    attempting to send a RST_STREAM frame is an error.
+            if streamID.isClientInitiated, streamID > self.lastClientStreamID {
+                return StateMachineResultWithStreamEffect(result: .succeed, effect: nil)
+            } else {
+                return StateMachineResultWithStreamEffect(
+                    result: self.streamMissing(
+                        streamID: streamID,
+                        ignoreRecentlyReset: false,
+                        ignoreClosed: false,
+                        isQuiescing: true
+                    ),
+                    effect: nil
+                )
+            }
         }
 
         guard let effect = result.effect, effect.closedStream else {
@@ -324,7 +343,8 @@ struct ConnectionStreamState {
     private func streamMissing(
         streamID: HTTP2StreamID,
         ignoreRecentlyReset: Bool,
-        ignoreClosed: Bool
+        ignoreClosed: Bool,
+        isQuiescing: Bool
     ) -> StateMachineResult {
         if ignoreRecentlyReset && self.recentlyResetStreams.contains(streamID) {
             return .ignoreFrame
@@ -333,11 +353,20 @@ struct ConnectionStreamState {
         switch streamID.mayBeInitiatedBy(.client) {
         case true where streamID > self.lastClientStreamID,
             false where streamID > self.lastServerStreamID:
-            // The stream in question is idle.
-            return .connectionError(
-                underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID),
-                type: .protocolError
-            )
+            if isQuiescing {
+                // This peer quiescing and the remote peer opening a stream raced. Reject the stream.
+                return .streamError(
+                    streamID: streamID,
+                    underlyingError: NIOHTTP2Errors.streamError(streamID: streamID, baseError: NIOHTTP2Errors.createdStreamAfterGoaway()),
+                    type: .refusedStream
+                )
+            } else {
+                // The stream in question is idle.
+                return .connectionError(
+                    underlyingError: NIOHTTP2Errors.noSuchStream(streamID: streamID),
+                    type: .protocolError
+                )
+            }
         default:
             // This stream must have already been closed.
             if ignoreClosed {
