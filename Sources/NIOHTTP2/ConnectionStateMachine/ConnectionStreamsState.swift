@@ -175,13 +175,14 @@ struct ConnectionStreamState {
     ///   - streamID: The ID of the stream to modify.
     ///   - ignoreRecentlyReset: Whether a recently reset stream should be ignored. Should be set to `true` when receiving frames.
     ///   - ignoreClosed: Whether a closed stream should be ignored. Should be set to `true` when receiving window update or reset stream frames.
+    ///   - isLocallyQuiescing: Whether the connection is quiescing and the quiescing was initiated locally.
     ///   - modifier: A block that will be invoked to modify the stream state, if present.
     /// - Returns: The result of the state modification, as well as any state change that occurred to the stream.
     mutating func modifyStreamState(
         streamID: HTTP2StreamID,
         ignoreRecentlyReset: Bool,
         ignoreClosed: Bool = false,
-        isQuiescing: Bool = false,
+        isLocallyQuiescing: Bool = false,
         _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect
     ) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams.autoClosingTransform(streamID: streamID, modifier) else {
@@ -190,7 +191,7 @@ struct ConnectionStreamState {
                     streamID: streamID,
                     ignoreRecentlyReset: ignoreRecentlyReset,
                     ignoreClosed: ignoreClosed,
-                    isQuiescing: isQuiescing
+                    isLocallyQuiescing: isLocallyQuiescing
                 ),
                 effect: nil
             )
@@ -220,28 +221,9 @@ struct ConnectionStreamState {
         _ modifier: (inout HTTP2StreamStateMachine) -> StateMachineResultWithStreamEffect
     ) -> StateMachineResultWithStreamEffect {
         guard let result = self.activeStreams.autoClosingTransform(streamID: streamID, modifier) else {
-            // This state can be reached when a RST_STREAM frame is sent by this peer but the stream
-            // doesn't exist. This can happen for a few reasons, including:
-            //
-            // 1. The RST_STREAM frame is being sent because the stream wasn't accepted (i.e. the
-            //    client opening the stream raced with the server sending a GOAWAY frame). In this
-            //    case the state machine doesn't know about the stream but does need to send
-            //    a RST_STREAM frame.
-            // 2. An implementation or user error where the stream genuinely doesn't exist and
-            //    attempting to send a RST_STREAM frame is an error.
-            if streamID.isClientInitiated, streamID > self.lastClientStreamID {
-                return StateMachineResultWithStreamEffect(result: .succeed, effect: nil)
-            } else {
-                return StateMachineResultWithStreamEffect(
-                    result: self.streamMissing(
-                        streamID: streamID,
-                        ignoreRecentlyReset: false,
-                        ignoreClosed: false,
-                        isQuiescing: true
-                    ),
-                    effect: nil
-                )
-            }
+            // Always allow RST_STREAM to be sent locally, even if the stream doesn't exist. This can happen
+            // when a stream is rejected so the state machine won't know about the stream.
+            return StateMachineResultWithStreamEffect(result: .succeed)
         }
 
         guard let effect = result.effect, effect.closedStream else {
@@ -339,12 +321,13 @@ struct ConnectionStreamState {
     ///   - streamID: The ID of the missing stream.
     ///   - ignoreRecentlyReset: Whether a recently reset stream should be ignored.
     ///   - ignoreClosed: Whether a closed stream should be ignored.
+    ///   - isLocallyQuiescing: Whether the connection is quiescing and the quiescing was initiated locally.
     /// - Returns: A `StateMachineResult` for this frame error.
     private func streamMissing(
         streamID: HTTP2StreamID,
         ignoreRecentlyReset: Bool,
         ignoreClosed: Bool,
-        isQuiescing: Bool
+        isLocallyQuiescing: Bool = false
     ) -> StateMachineResult {
         if ignoreRecentlyReset && self.recentlyResetStreams.contains(streamID) {
             return .ignoreFrame
@@ -353,11 +336,13 @@ struct ConnectionStreamState {
         switch streamID.mayBeInitiatedBy(.client) {
         case true where streamID > self.lastClientStreamID,
             false where streamID > self.lastServerStreamID:
-            if isQuiescing {
-                // This peer quiescing and the remote peer opening a stream raced. Reject the stream.
+            if isLocallyQuiescing {
                 return .streamError(
                     streamID: streamID,
-                    underlyingError: NIOHTTP2Errors.streamError(streamID: streamID, baseError: NIOHTTP2Errors.createdStreamAfterGoaway()),
+                    underlyingError: NIOHTTP2Errors.streamError(
+                        streamID: streamID,
+                        baseError: NIOHTTP2Errors.createdStreamAfterGoaway()
+                    ),
                     type: .refusedStream
                 )
             } else {
