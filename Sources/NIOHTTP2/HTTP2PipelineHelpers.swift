@@ -765,7 +765,7 @@ extension Channel {
                     configuration: http2Configuration,
                     streamInitializer: http2StreamInitializer
                 ).flatMap { multiplexer in
-                    return http2ConnectionInitializer(channel).map { connectionChannel in
+                    http2ConnectionInitializer(channel).map { connectionChannel in
                         (connectionChannel, multiplexer)
                     }
                 }

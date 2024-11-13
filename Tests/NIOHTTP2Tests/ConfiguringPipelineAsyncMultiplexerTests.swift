@@ -545,12 +545,12 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             }
 
             func streamCreated(_ id: NIOHTTP2.HTTP2StreamID, channel: any NIOCore.Channel) {
-                self.streamCount.withLockedValue{ $0 += 1 }
-                self.streamsCreated.withLockedValue{ $0 += 1 }
+                self.streamCount.withLockedValue { $0 += 1 }
+                self.streamsCreated.withLockedValue { $0 += 1 }
             }
 
             func streamClosed(_ id: NIOHTTP2.HTTP2StreamID, channel: any NIOCore.Channel) {
-                self.streamCount.withLockedValue{ $0 -= 1 }
+                self.streamCount.withLockedValue { $0 -= 1 }
             }
         }
         let requestCount = 100
@@ -558,12 +558,15 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         let streamDelegate = TestStreamDelegate()
 
         let clientMultiplexer = try await assertNoThrowWithValue(
-            try await self.clientChannel.configureAsyncHTTP2Pipeline(mode: .client) { channel -> EventLoopFuture<Channel> in
+            try await self.clientChannel.configureAsyncHTTP2Pipeline(mode: .client) {
+                channel -> EventLoopFuture<Channel> in
                 channel.eventLoop.makeSucceededFuture(channel)
             }.get()
         )
 
-        let negotiationResultFuture = try await self.serverChannel.configureAsyncHTTPServerPipeline(streamDelegate: streamDelegate) { channel in
+        let negotiationResultFuture = try await self.serverChannel.configureAsyncHTTPServerPipeline(
+            streamDelegate: streamDelegate
+        ) { channel in
             channel.eventLoop.makeSucceededVoidFuture()
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
@@ -572,9 +575,13 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         }.get()
 
         // Let's pretend the TLS handler did protocol negotiation for us
-        self.serverChannel.pipeline.fireUserInboundEventTriggered(TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2"))
+        self.serverChannel.pipeline.fireUserInboundEventTriggered(
+            TLSUserEvent.handshakeCompleted(negotiatedProtocol: "h2")
+        )
 
-        try await assertNoThrow(try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
+        try await assertNoThrow(
+            try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
+        )
 
         try await withThrowingTaskGroup(of: Int.self, returning: Void.self) { group in
             // server
@@ -596,20 +603,23 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             }
 
             // client
-            for _ in 0 ..< requestCount {
+            for _ in 0..<requestCount {
                 // Let's try sending some requests
                 let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                    return channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                        return channel
+                    channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
+                        channel
                     }
                 }
 
-                let clientRecorder = try await streamChannel.pipeline.handler(type: InboundFramePayloadRecorder.self).get()
+                let clientRecorder = try await streamChannel.pipeline.handler(type: InboundFramePayloadRecorder.self)
+                    .get()
 
                 try await Self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)
                 try await Self.deliverAllBytes(from: self.serverChannel, to: self.clientChannel)
 
-                clientRecorder.receivedFrames.assertFramePayloadsMatch([ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload])
+                clientRecorder.receivedFrames.assertFramePayloadsMatch([
+                    ConfiguringPipelineAsyncMultiplexerTests.responseFramePayload
+                ])
                 try await streamChannel.closeFuture.get()
             }
 
@@ -617,7 +627,11 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             try await assertNoThrow(try await self.serverChannel.finish())
 
             let serverInboundChannelCount = try await assertNoThrowWithValue(try await group.next()!)
-            XCTAssertEqual(serverInboundChannelCount, requestCount, "We should have created one server-side channel as a result of the each HTTP/2 stream used.")
+            XCTAssertEqual(
+                serverInboundChannelCount,
+                requestCount,
+                "We should have created one server-side channel as a result of the each HTTP/2 stream used."
+            )
         }
 
         XCTAssertEqual(streamDelegate.streamCount.withLockedValue { $0 }, 0)
