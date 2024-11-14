@@ -146,6 +146,24 @@ extension NIOHTTP2Handler.InboundStreamMultiplexer {
         }
     }
 
+    func errorCaughtReceived(_ error: any Error) {
+        switch self {
+        case .inline(let inlineStreamMultiplexer):
+            inlineStreamMultiplexer.propagateErrorCaught(error)
+        case .legacy:
+            break  // do nothing
+        }
+    }
+
+    func handlerRemovedReceived() {
+        switch self {
+        case .inline(let inlineStreamMultiplexer):
+            inlineStreamMultiplexer.propagateHandlerRemoved()
+        case .legacy:
+            break  // do nothing
+        }
+    }
+
     func processedFrame(_ frame: HTTP2Frame) {
         switch self {
         case .inline(let inlineStreamMultiplexer):
