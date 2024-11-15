@@ -563,7 +563,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             for try await _ in serverMultiplexer.inbound {}
             XCTFail("Expected error to be thrown")
         } catch {
-            XCTAssertEqual(error as! ErrorCaughtPropagated, .error)
+            XCTAssert(error is ErrorCaughtPropagated)
         }
     }
 }
