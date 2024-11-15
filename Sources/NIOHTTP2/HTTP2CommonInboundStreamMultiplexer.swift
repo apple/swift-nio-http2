@@ -213,6 +213,14 @@ extension HTTP2CommonInboundStreamMultiplexer {
         self.streamChannelContinuation?.finish()
     }
 
+    internal func propagateErrorCaught(_ error: any Error) {
+        self.streamChannelContinuation?.finish(throwing: error)
+    }
+
+    internal func propagateHandlerRemoved() {
+        self.streamChannelContinuation?.finish()
+    }
+
     internal func selectivelyPropagateUserInboundEvent(context: ChannelHandlerContext, event: Any) {
         func propagateEvent(_ event: Any) {
             for channel in self.streams.values {
