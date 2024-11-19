@@ -414,6 +414,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     public func handlerRemoved(context: ChannelHandlerContext) {
         // Any frames we're buffering need to be dropped.
         self.outboundBuffer.invalidateBuffer()
+        self.inboundStreamMultiplexer?.handlerRemovedReceived()
         self.inboundStreamMultiplexerState = .deinitialized
     }
 
@@ -549,6 +550,11 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
 
         self.inboundStreamMultiplexer?.channelWritabilityChangedReceived()
         context.fireChannelWritabilityChanged()
+    }
+
+    public func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        self.inboundStreamMultiplexer?.errorCaughtReceived(error)
+        context.fireErrorCaught(error)
     }
 }
 

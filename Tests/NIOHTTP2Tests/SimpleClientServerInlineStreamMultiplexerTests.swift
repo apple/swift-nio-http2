@@ -567,4 +567,67 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testChannelInactiveFinishesAsyncStreamMultiplexerInboundStream() async throws {
+        let asyncClientChannel = NIOAsyncTestingChannel()
+        let asyncServerChannel = NIOAsyncTestingChannel()
+
+        // Setup the connection.
+        let clientMultiplexer = try await asyncClientChannel.configureAsyncHTTP2Pipeline(mode: .client) { _ in
+            asyncClientChannel.eventLoop.makeSucceededVoidFuture()
+        }.get()
+
+        let serverMultiplexer = try await asyncServerChannel.configureAsyncHTTP2Pipeline(mode: .server) { _ in
+            asyncServerChannel.eventLoop.makeSucceededVoidFuture()
+        }.get()
+
+        // Create the stream channel
+        let stream = try await clientMultiplexer.openStream { $0.eventLoop.makeSucceededFuture($0) }
+
+        // Initiate request to open the stream on the server.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "http")])
+        let frame: HTTP2Frame.FramePayload = .headers(.init(headers: headers))
+        stream.writeAndFlush(frame, promise: nil)
+        try await self.interactInMemory(asyncClientChannel, asyncServerChannel)
+
+        // Close server to fire channel inactive down the pipeline: it should be propagated.
+        try await asyncServerChannel.close()
+        for try await _ in serverMultiplexer.inbound {}
+    }
+
+    enum ErrorCaughtPropagated: Error, Equatable {
+        case error
+    }
+
+    func testErrorCaughtFinishesAsyncStreamMultiplexerInboundStream() async throws {
+        let asyncClientChannel = NIOAsyncTestingChannel()
+        let asyncServerChannel = NIOAsyncTestingChannel()
+
+        // Setup the connection.
+        let clientMultiplexer = try await asyncClientChannel.configureAsyncHTTP2Pipeline(mode: .client) { _ in
+            asyncClientChannel.eventLoop.makeSucceededVoidFuture()
+        }.get()
+
+        let serverMultiplexer = try await asyncServerChannel.configureAsyncHTTP2Pipeline(mode: .server) { _ in
+            asyncServerChannel.eventLoop.makeSucceededVoidFuture()
+        }.get()
+
+        // Create the stream channel
+        let stream = try await clientMultiplexer.openStream { $0.eventLoop.makeSucceededFuture($0) }
+
+        // Initiate request to open the stream on the server.
+        let headers = HPACKHeaders([(":path", "/"), (":method", "POST"), (":scheme", "http")])
+        let frame: HTTP2Frame.FramePayload = .headers(.init(headers: headers))
+        stream.writeAndFlush(frame, promise: nil)
+        try await self.interactInMemory(asyncClientChannel, asyncServerChannel)
+
+        // Fire an error down the server pipeline: it should cause the inbound stream to finish with error
+        asyncServerChannel.pipeline.fireErrorCaught(ErrorCaughtPropagated.error)
+        do {
+            for try await _ in serverMultiplexer.inbound {}
+            XCTFail("Expected error to be thrown")
+        } catch {
+            XCTAssert(error is ErrorCaughtPropagated)
+        }
+    }
 }

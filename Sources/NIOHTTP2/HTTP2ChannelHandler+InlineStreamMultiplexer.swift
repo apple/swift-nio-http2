@@ -150,6 +150,14 @@ extension InlineStreamMultiplexer {
         }
     }
 
+    internal func propagateErrorCaught(_ error: any Error) {
+        self._commonStreamMultiplexer.propagateErrorCaught(error)
+    }
+
+    internal func propagateHandlerRemoved() {
+        self._commonStreamMultiplexer.propagateHandlerRemoved()
+    }
+
     internal func processedFrame(frame: HTTP2Frame) {
         self._commonStreamMultiplexer.processedFrame(streamID: frame.streamID, size: frame.payload.flowControlledSize)
     }
