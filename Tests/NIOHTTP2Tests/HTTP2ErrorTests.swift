@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOHTTP2
 import NIOHPACK
+import NIOHTTP2
 import XCTest
 
 class HTTP2ErrorTests: XCTestCase {
