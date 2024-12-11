@@ -12,6 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+import NIOHPACK
+
 /// A protocol implemented by HTTP/2 connection state machine states with local settings.
 ///
 /// This protocol provides implementations that can apply changes to the local settings.
