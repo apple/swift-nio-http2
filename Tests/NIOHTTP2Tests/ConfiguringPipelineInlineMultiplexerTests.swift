@@ -71,7 +71,10 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
             )
         )
 
-        clientMultiplexer.createStreamChannel(promise: nil) { channel in
+        let errorHandler = ErrorEncounteredHandler()
+        let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        clientMultiplexer.createStreamChannel(promise: streamChannelPromise) { channel in
+            try? channel.pipeline.addHandler(errorHandler).wait()
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -82,9 +85,10 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
 
-        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
-            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
-        }
+        let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
+        XCTAssertNoThrow(try streamChannel.closeFuture.wait())
+        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         // We should have received a HEADERS and a RST_STREAM frame.
         // The RST_STREAM frame is from closing an incomplete stream on the client side.
@@ -133,7 +137,10 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
             )
         )
 
-        clientMultiplexer.createStreamChannel(promise: nil) { channel in
+        let errorHandler = ErrorEncounteredHandler()
+        let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        clientMultiplexer.createStreamChannel(promise: streamChannelPromise) { channel in
+            try? channel.pipeline.addHandler(errorHandler).wait()
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -144,9 +151,10 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
 
-        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
-            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
-        }
+        let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
+        XCTAssertNoThrow(try streamChannel.closeFuture.wait())
+        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         // We should have received a HEADERS and a RST_STREAM frame.
         // The RST_STREAM frame is from closing an incomplete stream on the client side.
@@ -466,7 +474,10 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
             )
         )
 
-        clientMultiplexer.createStreamChannel(promise: nil) { channel in
+        let errorHandler = ErrorEncounteredHandler()
+        let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        clientMultiplexer.createStreamChannel(promise: streamChannelPromise) { channel in
+            try? channel.pipeline.addHandler(errorHandler).wait()
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -476,9 +487,11 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
-        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
-            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
-        }
+
+        let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
+        XCTAssertNoThrow(try streamChannel.closeFuture.wait())
+        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         // Assert that the user-provided handler received the
         // HTTP1 parts corresponding to the H2 message sent
@@ -556,7 +569,10 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
             )
         )
 
-        clientMultiplexer.createStreamChannel(promise: nil) { channel in
+        let errorHandler = ErrorEncounteredHandler()
+        let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        clientMultiplexer.createStreamChannel(promise: streamChannelPromise) { channel in
+            try? channel.pipeline.addHandler(errorHandler).wait()
             channel.writeAndFlush(reqFrame.payload).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
         }
@@ -566,9 +582,11 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
         self.interactInMemory(self.clientChannel, self.serverChannel)
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
-        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
-            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
-        }
+
+        let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
+        XCTAssertNoThrow(try streamChannel.closeFuture.wait())
+        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         // Assert that the user-provided handler received the
         // HTTP1 parts corresponding to the H2 message sent

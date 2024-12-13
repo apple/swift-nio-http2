@@ -676,7 +676,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
 
         self.eventLoop.execute {
             self.removeHandlers(pipeline: self.pipeline)
-            self.closePromise.succeed(())
+            self.closePromise.succeed()
             if let streamID = self.streamID {
                 self.multiplexer.streamClosed(id: streamID)
             } else {
@@ -694,14 +694,14 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         self.failPendingWrites(error: error)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
-            promise.fail(error)
+            promise.succeed()
         }
         self.pipeline.fireErrorCaught(error)
         self.pipeline.fireChannelInactive()
 
         self.eventLoop.execute {
             self.removeHandlers(pipeline: self.pipeline)
-            self.closePromise.fail(error)
+            self.closePromise.succeed()
             if let streamID = self.streamID {
                 self.multiplexer.streamClosed(id: streamID)
             } else {

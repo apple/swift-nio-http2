@@ -223,7 +223,8 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
     }
 
     func testChannelsCloseAfterResetStreamFrameFirstThenEvent() throws {
-        let closeError = NIOLockedValueBox<Error?>(nil)
+        let errorEncounteredHandler = ErrorEncounteredHandler()
+        let streamChannelClosed = NIOLockedValueBox(false)
 
         XCTAssertNoThrow(try self.channel.connect(to: SocketAddress(unixDomainSocketPath: "/whatever"), promise: nil))
 
@@ -239,13 +240,10 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             mode: .server,
             eventLoop: self.channel.eventLoop,
             inboundStreamInitializer: { channel in
-                closeError.withLockedValue { closeError in
-                    XCTAssertNil(closeError)
-                }
-                channel.closeFuture.whenFailure { failureError in
-                    closeError.withLockedValue { closeError in
-                        closeError = failureError
-                    }
+                try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
+                XCTAssertNil(errorEncounteredHandler.encounteredError)
+                channel.closeFuture.whenSuccess {
+                    streamChannelClosed.withLockedValue { $0 = true }
                 }
                 return channel.pipeline.addHandler(
                     FramePayloadExpecter(expectedPayload: [frame.payload, rstStreamFrame.payload])
@@ -257,26 +255,27 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
 
         // Let's open the stream up.
         XCTAssertNoThrow(try self.channel.writeInbound(frame.encode()))
-        closeError.withLockedValue { closeError in
-            XCTAssertNil(closeError)
-        }
+        XCTAssertNil(errorEncounteredHandler.encounteredError)
 
         // Now we can send a RST_STREAM frame.
         XCTAssertNoThrow(try self.channel.writeInbound(rstStreamFrame.encode()))
 
         (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
-        // At this stage the stream should be closed with the appropriate error code.
-        closeError.withLockedValue { error in
-            XCTAssertEqual(
-                error as? NIOHTTP2Errors.StreamClosed,
-                NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
-            )
-        }
+        // At this stage the stream should be closed, the appropriate error code should have been
+        // fired down the pipeline.
+        streamChannelClosed.withLockedValue { XCTAssertTrue($0) }
+        XCTAssertEqual(
+            errorEncounteredHandler.encounteredError as? NIOHTTP2Errors.StreamClosed,
+            NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
+        )
         XCTAssertNoThrow(try self.channel.finish())
     }
 
     func testChannelsCloseAfterGoawayFrameFirstThenEvent() throws {
+        let errorEncounteredHandler = ErrorEncounteredHandler()
+        let streamChannelClosed = NIOLockedValueBox(false)
+
         // First, set up the frames we want to send/receive.
         let streamID = HTTP2StreamID(1)
         let frame = HTTP2Frame(
@@ -302,7 +301,12 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         // Let's open the stream up.
         let multiplexer = try http2Handler.multiplexer.wait()
         let streamFuture = multiplexer.createStreamChannel { channel in
-            channel.eventLoop.makeSucceededVoidFuture()
+            try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
+            XCTAssertNil(errorEncounteredHandler.encounteredError)
+            channel.closeFuture.whenSuccess {
+                streamChannelClosed.withLockedValue { $0 = true }
+            }
+            return channel.eventLoop.makeSucceededVoidFuture()
         }
 
         (self.channel.eventLoop as! EmbeddedEventLoop).run()
@@ -310,19 +314,20 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let stream = try streamFuture.wait()
 
         stream.writeAndFlush(frame.payload, promise: nil)
+        XCTAssertNil(errorEncounteredHandler.encounteredError)
 
         // Now we can send a GOAWAY frame. This will close the stream.
         XCTAssertNoThrow(try self.channel.writeInbound(goAwayFrame.encode()))
 
         (self.channel.eventLoop as! EmbeddedEventLoop).run()
 
-        XCTAssertThrowsError(try stream.closeFuture.wait()) { closeError in
-            XCTAssertEqual(
-                closeError as? NIOHTTP2Errors.StreamClosed,
-                NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
-            )
-        }
-        // At this stage the stream should be closed with the appropriate manufactured error code.
+        // At this stage the stream should be closed, the appropriate error code should have been
+        // fired down the pipeline.
+        streamChannelClosed.withLockedValue { XCTAssertTrue($0) }
+        XCTAssertEqual(
+            errorEncounteredHandler.encounteredError as? NIOHTTP2Errors.StreamClosed,
+            NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
+        )
         XCTAssertNoThrow(try self.channel.finish())
     }
 
@@ -516,14 +521,16 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.channel.finish())
     }
 
-    func testClosePromiseFailsWithError() throws {
+    func testClosePromiseSucceedsAndErrorIsFiredDownstream() throws {
         let frameReceiver = IODataWriteRecorder()
+        let errorEncounteredHandler = ErrorEncounteredHandler()
         let channelPromise: EventLoopPromise<Channel> = self.channel.eventLoop.makePromise()
         let http2Handler = NIOHTTP2Handler(
             mode: .server,
             eventLoop: self.channel.eventLoop,
             inboundStreamInitializer: { channel in
                 channelPromise.succeed(channel)
+                try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
                 return channel.eventLoop.makeSucceededVoidFuture()
             }
         )
@@ -541,14 +548,13 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         let childChannel = try channelPromise.futureResult.wait()
         XCTAssertTrue(childChannel.isActive)
 
-        // Now we close it. This triggers a RST_STREAM frame. The channel will not be closed at this time.
-        let closeError = NIOLockedValueBox<Error?>(nil)
+        // Now we close it. This triggers a RST_STREAM frame.
+        // Also make sure the close promise is not failed: closing still succeeds.
         childChannel.close().whenFailure { error in
-            closeError.withLockedValue { closeError in
-                closeError = error
-            }
+            XCTFail("The close promise should not be failed.")
         }
         XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
+
         var frameDecoder = HTTP2FrameDecoder(
             allocator: channel.allocator,
             expectClientMagic: false,
@@ -559,12 +565,10 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         }
         let (flushedFrame, _) = try frameDecoder.nextFrame()!
         flushedFrame.assertRstStreamFrame(streamID: streamID, errorCode: .cancel)
-        closeError.withLockedValue { closeError in
-            XCTAssertEqual(
-                closeError as? NIOHTTP2Errors.StreamClosed,
-                NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
-            )
-        }
+        XCTAssertEqual(
+            errorEncounteredHandler.encounteredError as? NIOHTTP2Errors.StreamClosed,
+            NIOHTTP2Errors.streamClosed(streamID: streamID, errorCode: .cancel)
+        )
 
         XCTAssertNoThrow(try self.channel.finish())
     }

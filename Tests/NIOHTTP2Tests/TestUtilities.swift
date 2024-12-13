@@ -1503,3 +1503,14 @@ internal func assertThrowsError<T>(
         verify(error)
     }
 }
+
+final class ErrorEncounteredHandler: ChannelInboundHandler {
+    typealias InboundIn = Never
+
+    var encounteredError: Error?
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        self.encounteredError = error
+        context.fireErrorCaught(error)
+    }
+    }

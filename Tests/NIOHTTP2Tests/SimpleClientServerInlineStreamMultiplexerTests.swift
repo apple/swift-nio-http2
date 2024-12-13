@@ -377,10 +377,12 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         }
 
         let clientHandler = InboundFramePayloadRecorder()
+        let errorEncounteredHandler = ErrorEncounteredHandler()
         let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait().multiplexer.wait()
         multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
-            channel.pipeline.addHandler(clientHandler)
+            try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
+            return channel.pipeline.addHandler(clientHandler)
         }
         self.clientChannel.embeddedEventLoop.run()
         let childChannel = try childChannelPromise.futureResult.wait()
@@ -419,9 +421,10 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         self.clientChannel.assertNoFramesReceived()
         self.serverChannel.assertNoFramesReceived()
 
-        // The stream closes with an error.
+        // The stream closes successfully and an error is fired down the pipeline.
         self.clientChannel.embeddedEventLoop.run()
-        XCTAssertThrowsError(try childChannel.closeFuture.wait())
+        XCTAssertNoThrow(try childChannel.closeFuture.wait())
+        XCTAssertTrue(errorEncounteredHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
