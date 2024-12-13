@@ -1513,4 +1513,4 @@ final class ErrorEncounteredHandler: ChannelInboundHandler {
         self.encounteredError = error
         context.fireErrorCaught(error)
     }
-    }
+}
