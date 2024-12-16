@@ -64,7 +64,7 @@ class ConfiguringPipelineTests: XCTestCase {
         let errorHandler = ErrorEncounteredHandler()
         let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         clientHandler.createStreamChannel(promise: streamChannelPromise) { channel, streamID in
-            try? channel.pipeline.addHandler(errorHandler).wait()
+            try? channel.pipeline.syncOperations.addHandler(errorHandler)
             XCTAssertEqual(streamID, HTTP2StreamID(1))
             channel.writeAndFlush(reqFrame).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
@@ -78,7 +78,9 @@ class ConfiguringPipelineTests: XCTestCase {
 
         let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
         XCTAssertNoThrow(try streamChannel.closeFuture.wait())
-        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
+        }
         XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         // We should have received a HEADERS and a RST_STREAM frame.
@@ -123,7 +125,7 @@ class ConfiguringPipelineTests: XCTestCase {
         let errorHandler = ErrorEncounteredHandler()
         let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         clientHandler.createStreamChannel(promise: streamChannelPromise) { channel, streamID in
-            try? channel.pipeline.addHandler(errorHandler).wait()
+            try? channel.pipeline.syncOperations.addHandler(errorHandler)
             XCTAssertEqual(streamID, HTTP2StreamID(1))
             channel.writeAndFlush(reqFrame).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
@@ -137,7 +139,9 @@ class ConfiguringPipelineTests: XCTestCase {
 
         let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
         XCTAssertNoThrow(try streamChannel.closeFuture.wait())
-        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
+        }
         XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         // We should have received a HEADERS and a RST_STREAM frame.
@@ -414,7 +418,7 @@ class ConfiguringPipelineTests: XCTestCase {
         let errorHandler = ErrorEncounteredHandler()
         let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         clientHandler.createStreamChannel(promise: streamChannelPromise) { channel, streamID in
-            try? channel.pipeline.addHandler(errorHandler).wait()
+            try? channel.pipeline.syncOperations.addHandler(errorHandler)
             XCTAssertEqual(streamID, HTTP2StreamID(1))
             channel.writeAndFlush(reqFrame).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
@@ -428,7 +432,9 @@ class ConfiguringPipelineTests: XCTestCase {
 
         let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
         XCTAssertNoThrow(try streamChannel.closeFuture.wait())
-        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
+        }
         XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         let serverChildChannel = try serverChildChannelPromise.futureResult.wait()
@@ -508,7 +514,7 @@ class ConfiguringPipelineTests: XCTestCase {
         let errorHandler = ErrorEncounteredHandler()
         let streamChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         clientHandler.createStreamChannel(promise: streamChannelPromise) { channel, streamID in
-            try? channel.pipeline.addHandler(errorHandler).wait()
+            try? channel.pipeline.syncOperations.addHandler(errorHandler)
             XCTAssertEqual(streamID, HTTP2StreamID(1))
             channel.writeAndFlush(reqFrame).whenComplete { _ in channel.close(promise: requestPromise) }
             return channel.eventLoop.makeSucceededFuture(())
@@ -522,7 +528,9 @@ class ConfiguringPipelineTests: XCTestCase {
 
         let streamChannel = try XCTUnwrap(streamChannelPromise.futureResult.wait())
         XCTAssertNoThrow(try streamChannel.closeFuture.wait())
-        XCTAssertNoThrow(try requestPromise.futureResult.wait())
+        XCTAssertThrowsError(try requestPromise.futureResult.wait()) { error in
+            XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
+        }
         XCTAssertTrue(errorHandler.encounteredError is NIOHTTP2Errors.StreamClosed)
 
         let serverChildChannel = try serverChildChannelPromise.futureResult.wait()

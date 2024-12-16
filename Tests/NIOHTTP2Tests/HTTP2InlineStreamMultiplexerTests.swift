@@ -240,7 +240,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             mode: .server,
             eventLoop: self.channel.eventLoop,
             inboundStreamInitializer: { channel in
-                try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
+                try? channel.pipeline.syncOperations.addHandler(errorEncounteredHandler)
                 XCTAssertNil(errorEncounteredHandler.encounteredError)
                 channel.closeFuture.whenSuccess {
                     streamChannelClosed.withLockedValue { $0 = true }
@@ -301,7 +301,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         // Let's open the stream up.
         let multiplexer = try http2Handler.multiplexer.wait()
         let streamFuture = multiplexer.createStreamChannel { channel in
-            try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
+            try? channel.pipeline.syncOperations.addHandler(errorEncounteredHandler)
             XCTAssertNil(errorEncounteredHandler.encounteredError)
             channel.closeFuture.whenSuccess {
                 streamChannelClosed.withLockedValue { $0 = true }
@@ -530,7 +530,7 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
             eventLoop: self.channel.eventLoop,
             inboundStreamInitializer: { channel in
                 channelPromise.succeed(channel)
-                try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
+                try? channel.pipeline.syncOperations.addHandler(errorEncounteredHandler)
                 return channel.eventLoop.makeSucceededVoidFuture()
             }
         )
@@ -549,9 +549,18 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
         XCTAssertTrue(childChannel.isActive)
 
         // Now we close it. This triggers a RST_STREAM frame.
-        // Also make sure the close promise is not failed: closing still succeeds.
-        childChannel.close().whenFailure { error in
+        // Make sure the closeFuture is not failed (closing still succeeds).
+        // The promise from calling close() should fail to provide the caller with diagnostics.
+        childChannel.closeFuture.whenFailure { _ in
             XCTFail("The close promise should not be failed.")
+        }
+        childChannel.close().whenComplete { result in
+            switch result {
+            case .success:
+                XCTFail("The close promise should have been failed.")
+            case .failure(let error):
+                XCTAssertTrue(error is NIOHTTP2Errors.StreamClosed)
+            }
         }
         XCTAssertEqual(frameReceiver.flushedWrites.count, 1)
 

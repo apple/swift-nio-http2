@@ -381,7 +381,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait().multiplexer.wait()
         multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
-            try? channel.pipeline.addHandler(errorEncounteredHandler).wait()
+            try? channel.pipeline.syncOperations.addHandler(errorEncounteredHandler)
             return channel.pipeline.addHandler(clientHandler)
         }
         self.clientChannel.embeddedEventLoop.run()

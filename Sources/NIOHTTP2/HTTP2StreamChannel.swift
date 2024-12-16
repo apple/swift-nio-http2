@@ -694,7 +694,7 @@ final class HTTP2StreamChannel: Channel, ChannelCore, @unchecked Sendable {
         self.failPendingWrites(error: error)
         if let promise = self.pendingClosePromise {
             self.pendingClosePromise = nil
-            promise.succeed()
+            promise.fail(error)
         }
         self.pipeline.fireErrorCaught(error)
         self.pipeline.fireChannelInactive()
