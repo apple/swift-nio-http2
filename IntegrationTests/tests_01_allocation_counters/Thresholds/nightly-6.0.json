@@ -18,6 +18,6 @@
     "get_100000_headers_canonical_form_trimming_whitespace_from_long_string": 300050,
     "get_100000_headers_canonical_form_trimming_whitespace_from_short_string": 200050,
     "hpack_decoding": 5050,
-    "stream_teardown_100_concurrent": 262450,
-    "stream_teardown_100_concurrent_inline": 261750
+    "stream_teardown_100_concurrent": 252450,
+    "stream_teardown_100_concurrent_inline": 251550
 }
