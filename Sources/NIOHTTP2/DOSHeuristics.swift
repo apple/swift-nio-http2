@@ -29,11 +29,14 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
     private let maximumSequentialEmptyDataFrames: Int
 
     private var resetFrameRateControlStateMachine: RateLimitStateMachine
+    private var streamErrorRateControlStateMachine: RateLimitStateMachine
 
     internal init(
         maximumSequentialEmptyDataFrames: Int,
         maximumResetFrameCount: Int,
         resetFrameCounterWindow: TimeAmount,
+        maximumStreamErrorCount: Int,
+        streamErrorCounterWindow: TimeAmount,
         clock: DeadlineClock = RealNIODeadlineClock()
     ) {
         precondition(
@@ -45,6 +48,11 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
         self.resetFrameRateControlStateMachine = .init(
             countThreshold: maximumResetFrameCount,
             timeWindow: resetFrameCounterWindow,
+            clock: clock
+        )
+        self.streamErrorRateControlStateMachine = .init(
+            countThreshold: maximumStreamErrorCount,
+            timeWindow: streamErrorCounterWindow,
             clock: clock
         )
     }
@@ -78,6 +86,15 @@ extension DOSHeuristics {
 
         if self.receivedEmptyDataFrames > self.maximumSequentialEmptyDataFrames {
             throw NIOHTTP2Errors.excessiveEmptyDataFrames()
+        }
+    }
+
+    mutating func processStreamError() throws {
+        switch self.streamErrorRateControlStateMachine.recordEvent() {
+        case .rateTooHigh:
+            throw NIOHTTP2Errors.excessiveStreamErrors()
+        case .noneReceived, .ratePermitted:
+            ()
         }
     }
 }

@@ -41,14 +41,15 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
     func basicHTTP2Connection(
         clientSettings: HTTP2Settings = nioDefaultSettings,
         serverSettings: HTTP2Settings = nioDefaultSettings,
+        clientHeaderBlockValidation: NIOHTTP2Handler.ValidationState = .enabled,
         maximumBufferedControlFrames: Int = 10000,
         withMultiplexerCallback multiplexerCallback: @escaping (@Sendable (Channel) -> EventLoopFuture<Void>) =
             defaultMultiplexerCallback
     ) throws {
-
         var clientConnectionConfiguration = NIOHTTP2Handler.ConnectionConfiguration()
         clientConnectionConfiguration.initialSettings = clientSettings
         clientConnectionConfiguration.maximumBufferedControlFrames = maximumBufferedControlFrames
+        clientConnectionConfiguration.headerBlockValidation = clientHeaderBlockValidation
         XCTAssertNoThrow(
             try self.clientChannel.pipeline.addHandler(
                 NIOHTTP2Handler(
@@ -633,4 +634,74 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             XCTAssert(error is ErrorCaughtPropagated)
         }
     }
+
+    func testStreamErrorRateLimiting() throws {
+        // Client will purposefully send invalid headers ("te: chunked") to cause a stream error on
+        // the server. Disable client side validation so that the client doesn't fail to send the
+        // headers.
+        try self.basicHTTP2Connection(clientHeaderBlockValidation: .disabled)
+
+        final class CloseOnExcessiveStreamErrors: ChannelInboundHandler {
+            typealias InboundIn = Any
+            func errorCaught(context: ChannelHandlerContext, error: any Error) {
+                if error is NIOHTTP2Errors.ExcessiveStreamErrors {
+                    context.close(mode: .all, promise: nil)
+                } else if error is NIOHTTP2Errors.ForbiddenHeaderField {
+                    // Ignore. Expected in this test; the server will still reset the stream.
+                    ()
+                } else {
+                    context.fireErrorCaught(error)
+                }
+            }
+        }
+        try self.serverChannel.pipeline.addHandler(CloseOnExcessiveStreamErrors()).wait()
+
+        let clientFrameRecorder = InboundFrameRecorder()
+        try self.clientChannel.pipeline.addHandler(clientFrameRecorder).wait()
+
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap { $0.multiplexer }.wait()
+
+        // Default number of stream errors allowed within the time window (30s by default).
+        let permittedStreamErrors = 200
+        for streamNumber in 1...(permittedStreamErrors + 1) {
+            let recorder = InboundFramePayloadRecorder()
+            let streamFuture = multiplexer.createStreamChannel { channel in
+                channel.pipeline.addHandler(recorder)
+            }
+
+            self.clientChannel.embeddedEventLoop.run()
+            let stream = try assertNoThrowWithValue(try streamFuture.wait())
+            let headers: HPACKHeaders = [
+                ":path": "/",
+                ":method": "POST",
+                ":scheme": "https",
+                ":authority": "localhost",
+                "te": "chunked" // not allowed and will result in a stream error on the server.
+            ]
+
+            let headerPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
+            stream.writeAndFlush(headerPayload, promise: nil)
+            self.interactInMemory(self.clientChannel, self.serverChannel)
+
+            if streamNumber <= permittedStreamErrors {
+                // The first N streams are reset.
+                XCTAssert(clientFrameRecorder.receivedFrames.isEmpty)
+                XCTAssertEqual(recorder.receivedFrames.count, 1)
+                recorder.receivedFrames.first?.assertRstStreamFramePayload(errorCode: .protocolError)
+            } else {
+                // The N+1th stream hits the DoS rate limit and results in a GOAWAY and the
+                // connection being closed.
+                XCTAssertFalse(clientFrameRecorder.receivedFrames.isEmpty)
+                XCTAssertEqual(recorder.receivedFrames.count, 0)
+                recorder.receivedFrames.first?.assertGoAwayFramePayloadMatches(
+                    this: .goAway(
+                        lastStreamID: .maxID,
+                        errorCode: .enhanceYourCalm,
+                        opaqueData: nil
+                    )
+                )
+            }
+        }
+    }
 }
+
