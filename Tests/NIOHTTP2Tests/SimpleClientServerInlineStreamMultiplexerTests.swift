@@ -659,7 +659,8 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         let clientFrameRecorder = InboundFrameRecorder()
         try self.clientChannel.pipeline.addHandler(clientFrameRecorder).wait()
 
-        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap { $0.multiplexer }.wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap { $0.multiplexer }
+            .wait()
 
         // Default number of stream errors allowed within the time window (30s by default).
         let permittedStreamErrors = 200
@@ -676,7 +677,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
                 ":method": "POST",
                 ":scheme": "https",
                 ":authority": "localhost",
-                "te": "chunked" // not allowed and will result in a stream error on the server.
+                "te": "chunked",  // not allowed and will result in a stream error on the server.
             ]
 
             let headerPayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
@@ -704,4 +705,3 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         }
     }
 }
-
