@@ -538,6 +538,18 @@ public enum NIOHTTP2Errors {
         ExcessiveContinuationFrames(file: file, line: line)
     }
 
+    /// Creates an ``ExcessiveStreamErrors`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
+    public static func excessiveStreamErrors(
+        file: String = #fileID,
+        line: UInt = #line
+    ) -> ExcessiveStreamErrors {
+        ExcessiveStreamErrors(file: file, line: line)
+    }
+
     /// Creates a ``StreamError`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -1996,6 +2008,26 @@ public enum NIOHTTP2Errors {
 
     /// A remote peer has sent a sequence of `CONTINUATION` frames longer than the configured limit.
     public struct ExcessiveContinuationFrames: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            _location(file: self.file, line: self.line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func == (lhs: Self, rhs: Self) -> Bool {
+            true
+        }
+    }
+
+    /// A remote peer has sent too many frames which result in a stream error.
+    public struct ExcessiveStreamErrors: NIOHTTP2Error {
         private let file: String
         private let line: UInt
 

@@ -28,12 +28,15 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
     /// The maximum number of "empty" data frames we're willing to tolerate.
     private let maximumSequentialEmptyDataFrames: Int
 
-    private var resetFrameRateControlStateMachine: HTTP2ResetFrameRateControlStateMachine
+    private var resetFrameRateControlStateMachine: RateLimitStateMachine
+    private var streamErrorRateControlStateMachine: RateLimitStateMachine
 
     internal init(
         maximumSequentialEmptyDataFrames: Int,
         maximumResetFrameCount: Int,
         resetFrameCounterWindow: TimeAmount,
+        maximumStreamErrorCount: Int,
+        streamErrorCounterWindow: TimeAmount,
         clock: DeadlineClock = RealNIODeadlineClock()
     ) {
         precondition(
@@ -45,6 +48,11 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
         self.resetFrameRateControlStateMachine = .init(
             countThreshold: maximumResetFrameCount,
             timeWindow: resetFrameCounterWindow,
+            clock: clock
+        )
+        self.streamErrorRateControlStateMachine = .init(
+            countThreshold: maximumStreamErrorCount,
+            timeWindow: streamErrorCounterWindow,
             clock: clock
         )
     }
@@ -64,7 +72,7 @@ extension DOSHeuristics {
         case .headers:
             self.receivedEmptyDataFrames = 0
         case .rstStream:
-            switch self.resetFrameRateControlStateMachine.resetReceived() {
+            switch self.resetFrameRateControlStateMachine.recordEvent() {
             case .rateTooHigh:
                 throw NIOHTTP2Errors.excessiveRSTFrames()
             case .noneReceived, .ratePermitted:
@@ -80,13 +88,21 @@ extension DOSHeuristics {
             throw NIOHTTP2Errors.excessiveEmptyDataFrames()
         }
     }
+
+    mutating func processStreamError() throws {
+        switch self.streamErrorRateControlStateMachine.recordEvent() {
+        case .rateTooHigh:
+            throw NIOHTTP2Errors.excessiveStreamErrors()
+        case .noneReceived, .ratePermitted:
+            ()
+        }
+    }
 }
 
 extension DOSHeuristics {
     // protect against excessive numbers of stream RST frames being issued
-    struct HTTP2ResetFrameRateControlStateMachine {
-
-        enum ResetFrameRateControlState: Hashable {
+    struct RateLimitStateMachine {
+        enum RateState: Hashable {
             case noneReceived
             case ratePermitted
             case rateTooHigh
@@ -96,28 +112,28 @@ extension DOSHeuristics {
         private let timeWindow: TimeAmount
         private let clock: DeadlineClock
 
-        private var resetTimestamps: Deque<NIODeadline>
-        private var _state: ResetFrameRateControlState = .noneReceived
+        private var timestamps: Deque<NIODeadline>
+        private var _state: RateState = .noneReceived
 
         init(countThreshold: Int, timeWindow: TimeAmount, clock: DeadlineClock = RealNIODeadlineClock()) {
             self.countThreshold = countThreshold
             self.timeWindow = timeWindow
             self.clock = clock
 
-            self.resetTimestamps = .init(minimumCapacity: self.countThreshold)
+            self.timestamps = .init(minimumCapacity: self.countThreshold)
         }
 
-        mutating func resetReceived() -> ResetFrameRateControlState {
+        mutating func recordEvent() -> RateState {
             self.garbageCollect()
-            self.resetTimestamps.append(self.clock.now())
+            self.timestamps.append(self.clock.now())
             self.evaluateState()
             return self._state
         }
 
         private mutating func garbageCollect() {
             let now = self.clock.now()
-            while let first = self.resetTimestamps.first, now - first > self.timeWindow {
-                _ = self.resetTimestamps.popFirst()
+            while let first = self.timestamps.first, now - first > self.timeWindow {
+                _ = self.timestamps.popFirst()
             }
         }
 
@@ -126,7 +142,7 @@ extension DOSHeuristics {
             case .noneReceived:
                 self._state = .ratePermitted
             case .ratePermitted:
-                if self.resetTimestamps.count > self.countThreshold {
+                if self.timestamps.count > self.countThreshold {
                     self._state = .rateTooHigh
                 }
             case .rateTooHigh:

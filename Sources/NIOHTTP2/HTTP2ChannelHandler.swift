@@ -234,7 +234,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: 10000,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(30)
+            resetFrameCounterWindow: .seconds(30),
+            maximumStreamErrorCount: 200,
+            streamErrorCounterWindow: .seconds(30)
         )
     }
 
@@ -268,7 +270,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(30)
+            resetFrameCounterWindow: .seconds(30),
+            maximumStreamErrorCount: 200,
+            streamErrorCounterWindow: .seconds(30)
         )
 
     }
@@ -294,7 +298,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
-            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
+            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
+            maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
+            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength
         )
     }
 
@@ -308,7 +314,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumBufferedControlFrames: Int,
         maximumSequentialContinuationFrames: Int,
         maximumResetFrameCount: Int,
-        resetFrameCounterWindow: TimeAmount
+        resetFrameCounterWindow: TimeAmount,
+        maximumStreamErrorCount: Int,
+        streamErrorCounterWindow: TimeAmount
     ) {
         self._eventLoop = eventLoop
         self.stateMachine = HTTP2ConnectionStateMachine(
@@ -326,7 +334,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.denialOfServiceValidator = DOSHeuristics(
             maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
             maximumResetFrameCount: maximumResetFrameCount,
-            resetFrameCounterWindow: resetFrameCounterWindow
+            resetFrameCounterWindow: resetFrameCounterWindow,
+            maximumStreamErrorCount: maximumStreamErrorCount,
+            streamErrorCounterWindow: streamErrorCounterWindow
         )
         self.tolerateImpossibleStateTransitionsInDebugMode = false
         self.inboundStreamMultiplexerState = .uninitializedLegacy
@@ -362,7 +372,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
         tolerateImpossibleStateTransitionsInDebugMode: Bool = false,
         maximumResetFrameCount: Int = 200,
-        resetFrameCounterWindow: TimeAmount = .seconds(30)
+        resetFrameCounterWindow: TimeAmount = .seconds(30),
+        maximumStreamErrorCount: Int = 200,
+        streamErrorCounterWindow: TimeAmount = .seconds(30)
     ) {
         self.stateMachine = HTTP2ConnectionStateMachine(
             role: .init(mode),
@@ -380,7 +392,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.denialOfServiceValidator = DOSHeuristics(
             maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
             maximumResetFrameCount: maximumResetFrameCount,
-            resetFrameCounterWindow: resetFrameCounterWindow
+            resetFrameCounterWindow: resetFrameCounterWindow,
+            maximumStreamErrorCount: maximumStreamErrorCount,
+            streamErrorCounterWindow: streamErrorCounterWindow
         )
         self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
         self.inboundStreamMultiplexerState = .uninitializedLegacy
@@ -788,6 +802,12 @@ extension NIOHTTP2Handler {
     private func processDoSRisk(_ frame: HTTP2Frame, result: inout StateMachineResultWithEffect) {
         do {
             try self.denialOfServiceValidator.process(frame)
+            switch result.result {
+            case .streamError:
+                try self.denialOfServiceValidator.processStreamError()
+            case .succeed, .ignoreFrame, .connectionError:
+                ()
+            }
         } catch {
             result.result = StateMachineResult.connectionError(underlyingError: error, type: .enhanceYourCalm)
             result.effect = nil
@@ -1301,7 +1321,9 @@ extension NIOHTTP2Handler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
-            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
+            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
+            maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
+            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength
         )
 
         self.inboundStreamMultiplexerState = .uninitializedInline(
@@ -1330,7 +1352,9 @@ extension NIOHTTP2Handler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
-            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength
+            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
+            maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
+            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength
         )
         self.inboundStreamMultiplexerState = .uninitializedAsync(
             streamConfiguration,
@@ -1361,6 +1385,7 @@ extension NIOHTTP2Handler {
         public var outboundBufferSizeHighWatermark: Int = 8196
         public var outboundBufferSizeLowWatermark: Int = 4092
         public var streamResetFrameRateLimit: StreamResetFrameRateLimitConfiguration = .init()
+        public var streamErrorRateLimit: StreamErrorRateLimitConfiguration = .init()
         public init() {}
     }
 
@@ -1369,6 +1394,15 @@ extension NIOHTTP2Handler {
     /// The settings that control the maximum permitted reset frames within a given time window. Too many may exhaust CPU resources.
     /// To protect against this DoS vector we put an upper limit on this rate.
     public struct StreamResetFrameRateLimitConfiguration: Hashable, Sendable {
+        public var maximumCount: Int = 200
+        public var windowLength: TimeAmount = .seconds(30)
+        public init() {}
+    }
+
+    /// Stream error rate limit configuration.
+    ///
+    /// The settings that control the maximum permitted stream errors within a given time window.
+    public struct StreamErrorRateLimitConfiguration: Hashable, Sendable {
         public var maximumCount: Int = 200
         public var windowLength: TimeAmount = .seconds(30)
         public init() {}

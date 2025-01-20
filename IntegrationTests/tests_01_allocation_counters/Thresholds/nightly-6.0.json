@@ -3,12 +3,12 @@
     "1k_requests_inline_noninterleaved": 29100,
     "1k_requests_interleaved": 36150,
     "1k_requests_noninterleaved": 35100,
-    "client_server_h1_request_response": 276050,
-    "client_server_h1_request_response_inline": 261050,
-    "client_server_request_response": 245050,
-    "client_server_request_response_inline": 236050,
-    "client_server_request_response_many": 1190050,
-    "client_server_request_response_many_inline": 881050,
+    "client_server_h1_request_response": 278050,
+    "client_server_h1_request_response_inline": 263050,
+    "client_server_request_response": 247050,
+    "client_server_request_response_inline": 238050,
+    "client_server_request_response_many": 1192050,
+    "client_server_request_response_many_inline": 883050,
     "create_client_stream_channel": 35050,
     "create_client_stream_channel_inline": 35050,
     "create_client_stream_channel_inline_no_promise_based_API": 35050,
@@ -18,6 +18,6 @@
     "get_100000_headers_canonical_form_trimming_whitespace_from_long_string": 300050,
     "get_100000_headers_canonical_form_trimming_whitespace_from_short_string": 200050,
     "hpack_decoding": 5050,
-    "stream_teardown_100_concurrent": 252450,
-    "stream_teardown_100_concurrent_inline": 251550
+    "stream_teardown_100_concurrent": 252550,
+    "stream_teardown_100_concurrent_inline": 251650
 }
