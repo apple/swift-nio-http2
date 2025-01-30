@@ -4,7 +4,7 @@
     "1k_requests_interleaved": 36150,
     "1k_requests_noninterleaved": 35100,
     "client_server_h1_request_response": 280050,
-    "client_server_h1_request_response_inline": 263050,
+    "client_server_h1_request_response_inline": 265050,
     "client_server_request_response": 247050,
     "client_server_request_response_inline": 238050,
     "client_server_request_response_many": 1192050,
