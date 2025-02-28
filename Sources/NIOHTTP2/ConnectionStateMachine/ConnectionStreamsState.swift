@@ -31,11 +31,6 @@ struct ConnectionStreamState {
     /// this case.
     private var recentlyResetStreams: CircularBuffer<HTTP2StreamID>
 
-    /// The maximum number of reset streams we'll persist.
-    ///
-    /// TODO (cory): Make this configurable!
-    private let maxResetStreams: Int = 32
-
     /// The current number of streams that are active and that were initiated by the client.
     private var clientStreamCount: UInt32 = 0
 
@@ -63,9 +58,12 @@ struct ConnectionStreamState {
         Int(self.clientStreamCount) + Int(self.serverStreamCount)
     }
 
-    init() {
+    /// Creates a new `ConnectionStreamState`.
+    ///
+    /// - Parameter maxResetStreams: The maximum number of reset streams we'll persist.
+    init(maxResetStreams: Int) {
         self.activeStreams = StreamMap()
-        self.recentlyResetStreams = CircularBuffer(initialCapacity: self.maxResetStreams)
+        self.recentlyResetStreams = CircularBuffer(initialCapacity: maxResetStreams)
     }
 
     /// Create stream state for a remotely pushed stream.

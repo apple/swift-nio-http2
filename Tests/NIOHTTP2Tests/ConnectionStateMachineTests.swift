@@ -7676,6 +7676,60 @@ class ConnectionStateMachineTests: XCTestCase {
             self.client.receiveHeaders(streamID: streamOne, headers: responseHeaders, isEndStreamSet: false)
         )
     }
+
+    func testMaxRecentlyResetStreamFrames() {
+        // Internally a circular buffer is used to track recently reset streams which has its capacity
+        // reserved on init. This is rounded up to the next power of 2. However, in order to
+        // not grow beyond that size its effective capacity is less than the allocated capacity.
+        //
+        // Setting maxResetStreams to 64 means the effective capacity is 63.
+        let effectiveMaxResetStreams = 63
+        // Create one more stream than that to check that going beyond the limit causes an error.
+        let streamsToCreate = 64
+
+        self.client = HTTP2ConnectionStateMachine(role: .client, maxResetStreams: effectiveMaxResetStreams)
+        self.exchangePreamble()
+
+        let streamIDs = (0..<streamsToCreate).map { HTTP2StreamID($0 * 2 + 1) }
+        print(streamIDs.count)
+
+        // Open the streams; both peers know about them.
+        for streamID in streamIDs {
+            assertSucceeds(
+                self.client.sendHeaders(streamID: streamID, headers: Self.requestHeaders, isEndStreamSet: false)
+            )
+            assertSucceeds(
+                self.server.receiveHeaders(streamID: streamID, headers: Self.requestHeaders, isEndStreamSet: false)
+            )
+        }
+
+        // Have the client reset all streams.
+        for streamID in streamIDs {
+            assertSucceeds(self.client.sendRstStream(streamID: streamID, reason: .cancel))
+        }
+
+        // Have the server send response headers. The server allows it (it hasn't yet received RST_STREAM). The client ignores all
+        // but the last (which is one more than the limit).
+        for streamID in streamIDs {
+            assertSucceeds(
+                self.server.sendHeaders(streamID: streamID, headers: Self.responseHeaders, isEndStreamSet: false)
+            )
+            let result = self.client.receiveHeaders(
+                streamID: streamID,
+                headers: Self.responseHeaders,
+                isEndStreamSet: false
+            )
+
+            // The first stream results in a connection error, it was the first to be reset so the
+            // first to be forgotten about when the client sent the RST_STREAM frames.
+            if streamID == streamIDs.first {
+                assertConnectionError(type: .streamClosed, result)
+            } else {
+                assertIgnored(result)
+            }
+        }
+
+    }
 }
 
 extension HPACKHeaders {

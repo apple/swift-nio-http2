@@ -40,6 +40,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
 
     /// The default value for the maximum number of sequential CONTINUATION frames.
     private static let defaultMaximumSequentialContinuationFrames: Int = 5
+    /// The default number of recently reset streams to track.
+    private static let defaultMaximumRecentlyResetFrames: Int = 32
 
     /// The event loop on which this handler will do work.
     @usableFromInline internal let _eventLoop: EventLoop?
@@ -233,6 +235,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumSequentialEmptyDataFrames: 1,
             maximumBufferedControlFrames: 10000,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
+            maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
@@ -269,6 +272,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
             maximumBufferedControlFrames: maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
+            maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
@@ -297,6 +301,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
+            maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -313,6 +318,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumSequentialEmptyDataFrames: Int,
         maximumBufferedControlFrames: Int,
         maximumSequentialContinuationFrames: Int,
+        maximumRecentlyResetStreams: Int,
         maximumResetFrameCount: Int,
         resetFrameCounterWindow: TimeAmount,
         maximumStreamErrorCount: Int,
@@ -322,7 +328,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.stateMachine = HTTP2ConnectionStateMachine(
             role: .init(mode),
             headerBlockValidation: .init(headerBlockValidation),
-            contentLengthValidation: .init(contentLengthValidation)
+            contentLengthValidation: .init(contentLengthValidation),
+            maxResetStreams: maximumRecentlyResetStreams
         )
         self.mode = mode
         self.initialSettings = initialSettings
@@ -371,6 +378,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumBufferedControlFrames: Int = 10000,
         maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
         tolerateImpossibleStateTransitionsInDebugMode: Bool = false,
+        maximumRecentlyResetStreams: Int = NIOHTTP2Handler.defaultMaximumRecentlyResetFrames,
         maximumResetFrameCount: Int = 200,
         resetFrameCounterWindow: TimeAmount = .seconds(30),
         maximumStreamErrorCount: Int = 200,
@@ -379,7 +387,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.stateMachine = HTTP2ConnectionStateMachine(
             role: .init(mode),
             headerBlockValidation: .init(headerBlockValidation),
-            contentLengthValidation: .init(contentLengthValidation)
+            contentLengthValidation: .init(contentLengthValidation),
+            maxResetStreams: maximumRecentlyResetStreams
         )
         self.mode = mode
         self._eventLoop = nil
@@ -1320,6 +1329,7 @@ extension NIOHTTP2Handler {
             maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
+            maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -1351,6 +1361,7 @@ extension NIOHTTP2Handler {
             maximumSequentialEmptyDataFrames: connectionConfiguration.maximumSequentialEmptyDataFrames,
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
+            maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -1374,6 +1385,7 @@ extension NIOHTTP2Handler {
         public var maximumSequentialEmptyDataFrames: Int = 1
         public var maximumBufferedControlFrames: Int = 10000
         public var maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames
+        public var maximumRecentlyResetStreams: Int = NIOHTTP2Handler.defaultMaximumRecentlyResetFrames
         public init() {}
     }
 
