@@ -67,6 +67,7 @@ struct HTTP2ConnectionStateMachine {
         let role: ConnectionRole
         var headerBlockValidation: ValidationState
         var contentLengthValidation: ValidationState
+        var maxResetStreams: Int
     }
 
     /// The state required for a connection that has sent a connection preface.
@@ -98,7 +99,7 @@ struct HTTP2ConnectionStateMachine {
             self.headerBlockValidation = idleState.headerBlockValidation
             self.contentLengthValidation = idleState.contentLengthValidation
             self.localSettings = settings
-            self.streamState = ConnectionStreamState()
+            self.streamState = ConnectionStreamState(maxResetStreams: idleState.maxResetStreams)
 
             self.inboundFlowControlWindow = HTTP2FlowControlWindow(initialValue: settings.initialWindowSize)
             self.outboundFlowControlWindow = HTTP2FlowControlWindow(
@@ -136,7 +137,7 @@ struct HTTP2ConnectionStateMachine {
             self.headerBlockValidation = idleState.headerBlockValidation
             self.contentLengthValidation = idleState.contentLengthValidation
             self.remoteSettings = settings
-            self.streamState = ConnectionStreamState()
+            self.streamState = ConnectionStreamState(maxResetStreams: idleState.maxResetStreams)
 
             self.inboundFlowControlWindow = HTTP2FlowControlWindow(
                 initialValue: HTTP2SettingsState.defaultInitialWindowSize
@@ -571,13 +572,15 @@ struct HTTP2ConnectionStateMachine {
     init(
         role: ConnectionRole,
         headerBlockValidation: ValidationState = .enabled,
-        contentLengthValidation: ValidationState = .enabled
+        contentLengthValidation: ValidationState = .enabled,
+        maxResetStreams: Int = 32
     ) {
         self.state = .idle(
             .init(
                 role: role,
                 headerBlockValidation: headerBlockValidation,
-                contentLengthValidation: contentLengthValidation
+                contentLengthValidation: contentLengthValidation,
+                maxResetStreams: maxResetStreams
             )
         )
     }
