@@ -35,3 +35,8 @@ jobs:
     with:
       name: "Integration tests"
       matrix_linux_command: "apt-get update -y -q && apt-get install -y -q  jq && ./scripts/integration_tests.sh"
+
+  static-sdk:
+    name: Static SDK
+    # Workaround https://github.com/nektos/act/issues/1875
+    uses: apple/swift-nio/.github/workflows/static_sdk.yml@main
