@@ -28,7 +28,7 @@ jobs:
       name: "HTTP/2 spec tests"
       matrix_linux_command: "apt-get update -y -q && apt-get install -y -q wget lsof && mkdir $HOME/.tools && wget -q https://github.com/summerwind/h2spec/releases/download/v2.2.1/h2spec_linux_amd64.tar.gz -O $HOME/.tools/h2spec.tar.gz && tar xzf $HOME/.tools/h2spec.tar.gz --directory $HOME/.tools && PATH=${PATH}:$HOME/.tools && ./scripts/test_h2spec.sh"
 
-    construct-integration-tests-matrix:
+  construct-integration-tests-matrix:
     name: Construct Examples matrix
     runs-on: ubuntu-latest
     outputs:
