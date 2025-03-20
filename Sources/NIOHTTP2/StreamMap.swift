@@ -160,6 +160,8 @@ struct StreamMap<Element: PerStreamData> {
     }
 }
 
+extension StreamMap: Sendable where Element: Sendable {}
+
 extension StreamMap where Element == HTTP2StreamStateMachine {
     // This function exists as a performance optimisation: we can keep track of the index and where we are, and
     // thereby avoid searching the array twice.

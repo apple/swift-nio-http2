@@ -1555,9 +1555,6 @@ struct FrameFlags: OptionSet, CustomStringConvertible {
     /// on a new stream.
     internal static let priority = FrameFlags(rawValue: 0x20)
 
-    // useful for test cases
-    internal static var allFlags: FrameFlags = [.endStream, .endHeaders, .padded, .priority]
-
     internal var description: String {
         var strings: [String] = []
         for i in 0..<8 {

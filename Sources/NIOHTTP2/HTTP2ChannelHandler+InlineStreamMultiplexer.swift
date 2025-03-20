@@ -197,6 +197,9 @@ extension InlineStreamMultiplexer {
     }
 }
 
+@available(*, unavailable)
+extension InlineStreamMultiplexer: Sendable {}
+
 extension NIOHTTP2Handler {
     /// A multiplexer that creates a child channel for each HTTP/2 stream.
     ///

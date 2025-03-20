@@ -65,6 +65,9 @@ internal class HTTP2CommonInboundStreamMultiplexer {
     }
 }
 
+@available(*, unavailable)
+extension HTTP2CommonInboundStreamMultiplexer: Sendable {}
+
 // MARK:- inbound multiplexer functions
 // note this is intentionally not bound to `HTTP2InboundStreamMultiplexer` to allow for freedom in modifying the shared driver function signatures
 extension HTTP2CommonInboundStreamMultiplexer {
@@ -222,7 +225,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
     }
 
     internal func selectivelyPropagateUserInboundEvent(context: ChannelHandlerContext, event: Any) {
-        func propagateEvent(_ event: Any) {
+        func propagateEvent(_ event: ChannelShouldQuiesceEvent) {
             for channel in self.streams.values {
                 channel.baseChannel.pipeline.fireUserInboundEventTriggered(event)
             }
@@ -232,8 +235,8 @@ extension HTTP2CommonInboundStreamMultiplexer {
         }
 
         switch event {
-        case is ChannelShouldQuiesceEvent:
-            propagateEvent(event)
+        case let shouldQuiesceEvent as ChannelShouldQuiesceEvent:
+            propagateEvent(shouldQuiesceEvent)
         default:
             ()
         }

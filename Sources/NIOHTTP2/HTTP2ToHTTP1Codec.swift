@@ -212,6 +212,9 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
     }
 }
 
+@available(*, unavailable)
+extension HTTP2ToHTTP1ClientCodec: Sendable {}
+
 /// A simple channel handler that translates HTTP/2 concepts into HTTP/1 data types,
 /// and vice versa, for use on the client side.
 ///
@@ -230,7 +233,7 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
     private var baseCodec: BaseClientCodec
 
     /// The HTTP protocol scheme being used on this connection.
-    public enum HTTPProtocol {
+    public enum HTTPProtocol: Sendable, Hashable {
         case https
         case http
     }
@@ -278,6 +281,9 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
         }
     }
 }
+
+@available(*, unavailable)
+extension HTTP2FramePayloadToHTTP1ClientCodec: Sendable {}
 
 // MARK: - Server
 
@@ -423,6 +429,9 @@ public final class HTTP2ToHTTP1ServerCodec: ChannelInboundHandler, ChannelOutbou
     }
 }
 
+@available(*, unavailable)
+extension HTTP2ToHTTP1ServerCodec: Sendable {}
+
 /// A simple channel handler that translates HTTP/2 concepts into HTTP/1 data types,
 /// and vice versa, for use on the server side.
 ///
@@ -474,6 +483,9 @@ public final class HTTP2FramePayloadToHTTP1ServerCodec: ChannelInboundHandler, C
         context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
     }
 }
+
+@available(*, unavailable)
+extension HTTP2FramePayloadToHTTP1ServerCodec: Sendable {}
 
 extension HTTPMethod {
     /// Create a `HTTPMethod` from the string representation of that method.
