@@ -17,7 +17,7 @@ import NIOCore
 public protocol NIOHPACKError: Error, Equatable {}
 
 /// Errors raised by NIOHPACK while encoding/decoding data.
-public enum NIOHPACKErrors {
+public enum NIOHPACKErrors: Sendable {
     /// An indexed header referenced an index that doesn't exist in our
     /// header tables.
     public struct InvalidHeaderIndex: NIOHPACKError {
