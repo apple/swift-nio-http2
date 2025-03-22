@@ -22,7 +22,7 @@ import NIOCore
 /// on ``HTTP2Frame`` or ``HTTP2Frame/FramePayload`` objects as their base communication
 /// atom, as opposed to the regular NIO `SelectableChannel` objects which use `ByteBuffer`
 /// and `IOData`.
-public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboundHandler {
+public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboundHandler, Sendable {
     public typealias InboundIn = HTTP2Frame
     public typealias InboundOut = HTTP2Frame
     public typealias OutboundIn = HTTP2Frame
