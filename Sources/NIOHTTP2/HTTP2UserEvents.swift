@@ -40,7 +40,7 @@ extension StreamClosedEvent: Hashable {}
 /// A ``NIOHTTP2WindowUpdatedEvent`` is fired whenever a flow control window is changed.
 /// This includes changes on the connection flow control window, which is signalled by
 /// this event having ``streamID`` set to ``HTTP2StreamID/rootStream``.
-public struct NIOHTTP2WindowUpdatedEvent {
+public struct NIOHTTP2WindowUpdatedEvent: Sendable {
     /// The stream ID of the window that has been changed. May be ``HTTP2StreamID/rootStream``, in which
     /// case the connection window has changed.
     public let streamID: HTTP2StreamID
@@ -85,7 +85,7 @@ public struct NIOHTTP2WindowUpdatedEvent {
 extension NIOHTTP2WindowUpdatedEvent: Hashable {}
 
 /// A ``NIOHTTP2StreamCreatedEvent`` is fired whenever a HTTP/2 stream is created.
-public struct NIOHTTP2StreamCreatedEvent {
+public struct NIOHTTP2StreamCreatedEvent: Sendable {
     /// The ``HTTP2StreamID`` of the created stream.
     public let streamID: HTTP2StreamID
 
@@ -114,7 +114,7 @@ extension NIOHTTP2StreamCreatedEvent: Hashable {}
 ///
 /// This occurs when an `ACK` to a `SETTINGS` frame is received that changes the value of `SETTINGS_INITIAL_WINDOW_SIZE`. This is only fired
 /// when the local peer has changed its settings.
-public struct NIOHTTP2BulkStreamWindowChangeEvent {
+public struct NIOHTTP2BulkStreamWindowChangeEvent: Sendable {
     /// The change in the remote stream window sizes.
     public let delta: Int
 

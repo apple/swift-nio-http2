@@ -26,7 +26,7 @@ public struct HTTP2StreamChannelOptions: Sendable {
 
 extension HTTP2StreamChannelOptions {
     /// A namespace for the types used to represent HTTP/2 stream channel options.
-    public enum Types {}
+    public enum Types: Sendable {}
 }
 
 @available(*, deprecated, renamed: "HTTP2StreamChannelOptions.Types.StreamIDOption")
@@ -761,15 +761,7 @@ extension HTTP2StreamChannel {
         while self.pendingReads.count > 0 {
             let frame = self.pendingReads.removeFirst()
 
-            let anyStreamData: NIOAny
             let dataLength: Int?
-
-            switch self.streamDataType {
-            case .frame:
-                anyStreamData = NIOAny(frame)
-            case .framePayload:
-                anyStreamData = NIOAny(frame.payload)
-            }
 
             switch frame.payload {
             case .data(let data):
@@ -778,7 +770,12 @@ extension HTTP2StreamChannel {
                 dataLength = nil
             }
 
-            self.pipeline.fireChannelRead(anyStreamData)
+            switch self.streamDataType {
+            case .frame:
+                self.pipeline.fireChannelRead(frame)
+            case .framePayload:
+                self.pipeline.fireChannelRead(frame.payload)
+            }
 
             if let size = dataLength, let increment = self.windowManager.bufferedFrameEmitted(size: size) {
                 // To have a pending read, we must have a stream ID.

@@ -97,8 +97,8 @@ import NIOHPACK
 ///
 /// Operations on the state machine are performed by calling specific functions corresponding to
 /// the operation that is about to occur.
-struct HTTP2StreamStateMachine {
-    fileprivate enum State {
+struct HTTP2StreamStateMachine: Sendable {
+    fileprivate enum State: Sendable {
         // TODO(cory): Can we remove the idle state? Streams shouldn't sit in idle for long periods
         // of time, they should immediately transition out, so can we avoid it entirely?
         /// In the idle state, the stream has not been opened by either peer.
