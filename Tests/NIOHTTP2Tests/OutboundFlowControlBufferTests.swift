@@ -507,7 +507,7 @@ extension OutboundFlowControlBufferTests {
 
     func createDataFrame(_ streamID: HTTP2StreamID, fileRegionSize: Int, endStream: Bool = false) -> HTTP2Frame {
         // We create a deliberately-invalid closed file handle, as we'll never actually use it.
-        let handle = NIOFileHandle(descriptor: -1)
+        let handle = NIOFileHandle(_deprecatedTakingOwnershipOfDescriptor: -1)
         XCTAssertNoThrow(try handle.takeDescriptorOwnership())
         let region = FileRegion(fileHandle: handle, readerIndex: 0, endIndex: fileRegionSize)
         return HTTP2Frame(streamID: streamID, payload: .data(.init(data: .fileRegion(region), endStream: endStream)))

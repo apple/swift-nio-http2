@@ -97,7 +97,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testBasicRequestServerSide() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -132,7 +134,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testRequestWithOnlyHeadServerSide() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -157,7 +161,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testRequestWithTrailers() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -187,7 +193,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic response.
         let responseHeaders = HPACKHeaders([("server", "swift-nio"), ("other", "header")])
@@ -227,7 +235,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic response.
         let responseHeaders = HPACKHeaders([("server", "swift-nio"), ("other", "header")])
@@ -260,7 +270,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // First, we're going to send a few 103 blocks.
         let informationalResponseHeaders = HPACKHeaders([("link", "no link really")])
@@ -313,8 +325,10 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let promiseRecorder = PromiseRecorder()
 
         let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.makePromise() }
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(promiseRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.syncOperations.addHandler(promiseRecorder))
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic response.
         let responseHeaders = HTTPHeaders([("server", "swift-nio"), ("other", "header")])
@@ -342,8 +356,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testBasicResponseClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -383,8 +398,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testResponseWithOnlyHeadClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -412,8 +428,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testResponseWithTrailers() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -452,8 +469,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -495,8 +513,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .http))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .http)
+            )
         )
 
         // A basic request.
@@ -529,8 +548,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testResponseWith100BlocksClientSide() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -582,10 +602,11 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let promiseRecorder = PromiseRecorder()
 
         let promises: [EventLoopPromise<Void>] = (0..<3).map { _ in self.channel.eventLoop.makePromise() }
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(promiseRecorder).wait())
+        XCTAssertNoThrow(try self.channel.pipeline.syncOperations.addHandler(promiseRecorder))
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic response.
@@ -614,7 +635,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutMethod() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -635,7 +658,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicateMethod() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -660,7 +685,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutPath() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -681,7 +708,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicatePath() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -706,7 +735,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutAuthority() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -730,7 +761,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicateAuthority() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -755,7 +788,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutScheme() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -776,7 +811,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithDuplicateScheme() throws {
         let streamID = HTTP2StreamID(1)
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         // A basic request.
         let requestHeaders = HPACKHeaders([
@@ -802,8 +839,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testReceiveResponseWithoutStatus() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic response.
@@ -824,8 +862,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testReceiveResponseWithDuplicateStatus() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -849,8 +888,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testReceiveResponseWithNonNumericalStatus() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -878,8 +918,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testSendRequestWithoutHost() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request without Host.
@@ -898,8 +939,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testSendRequestWithDuplicateHost() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request with too many host headers.
@@ -921,12 +963,12 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     func testFramesWithoutHTTP1EquivalentAreIgnored() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(
+            try self.channel.pipeline.syncOperations.addHandler(
                 HTTP2ToHTTP1ClientCodec(
                     streamID: streamID,
                     httpProtocol: .https
                 )
-            ).wait()
+            )
         )
 
         let headers = HPACKHeaders([(":method", "GET"), (":scheme", "https"), (":path", "/x")])
@@ -954,8 +996,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -981,7 +1024,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         var responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         responseHead.headers = HTTPHeaders([("UpperCased", "Header")])
@@ -1003,13 +1048,13 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(
+            try self.channel.pipeline.syncOperations.addHandler(
                 HTTP2ToHTTP1ClientCodec(
                     streamID: streamID,
                     httpProtocol: .https,
                     normalizeHTTPHeaders: false
                 )
-            ).wait()
+            )
         )
 
         // A basic request.
@@ -1036,12 +1081,12 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(
+            try self.channel.pipeline.syncOperations.addHandler(
                 HTTP2ToHTTP1ServerCodec(
                     streamID: streamID,
                     normalizeHTTPHeaders: false
                 )
-            ).wait()
+            )
         )
 
         var responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
@@ -1064,8 +1109,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
         XCTAssertNoThrow(
-            try self.channel.pipeline.addHandler(HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https))
-                .wait()
+            try self.channel.pipeline.syncOperations.addHandler(
+                HTTP2ToHTTP1ClientCodec(streamID: streamID, httpProtocol: .https)
+            )
         )
 
         // A basic request.
@@ -1095,7 +1141,9 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
         let streamID = HTTP2StreamID(1)
         let writeRecorder = FrameWriteRecorder()
         XCTAssertNoThrow(try self.channel.pipeline.addHandler(writeRecorder).wait())
-        XCTAssertNoThrow(try self.channel.pipeline.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID)).wait())
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
 
         var responseHead = HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok)
         responseHead.headers = HTTPHeaders([

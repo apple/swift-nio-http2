@@ -44,32 +44,34 @@ class SimpleClientServerTests: XCTestCase {
         withMultiplexerCallback multiplexerCallback: NIOChannelInitializerWithStreamID? = nil
     ) throws {
         XCTAssertNoThrow(
-            try self.clientChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .client, initialSettings: clientSettings))
-                .wait()
+            try self.clientChannel.pipeline.syncOperations.addHandler(
+                NIOHTTP2Handler(mode: .client, initialSettings: clientSettings)
+            )
         )
         XCTAssertNoThrow(
-            try self.serverChannel.pipeline.addHandler(NIOHTTP2Handler(mode: .server, initialSettings: serverSettings))
-                .wait()
+            try self.serverChannel.pipeline.syncOperations.addHandler(
+                NIOHTTP2Handler(mode: .server, initialSettings: serverSettings)
+            )
         )
 
         if let multiplexerCallback = multiplexerCallback {
             XCTAssertNoThrow(
-                try self.clientChannel.pipeline.addHandler(
+                try self.clientChannel.pipeline.syncOperations.addHandler(
                     HTTP2StreamMultiplexer(
                         mode: .client,
                         channel: self.clientChannel,
                         inboundStreamStateInitializer: multiplexerCallback
                     )
-                ).wait()
+                )
             )
             XCTAssertNoThrow(
-                try self.serverChannel.pipeline.addHandler(
+                try self.serverChannel.pipeline.syncOperations.addHandler(
                     HTTP2StreamMultiplexer(
                         mode: .server,
                         channel: self.serverChannel,
                         inboundStreamStateInitializer: multiplexerCallback
                     )
-                ).wait()
+                )
             )
         }
 
@@ -105,11 +107,16 @@ class SimpleClientServerTests: XCTestCase {
 
             let clientHandler = FrameRecorderHandler()
             let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
-            try
-                (self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler
-                as! HTTP2StreamMultiplexer).createStreamChannel(promise: childChannelPromise) { channel, streamID in
-                    channel.pipeline.addHandler(clientHandler)
+            self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenComplete {
+                switch $0 {
+                case .success(let multiplexer):
+                    multiplexer.createStreamChannel(promise: childChannelPromise) { channel, streamID in
+                        channel.pipeline.addHandler(clientHandler)
+                    }
+                case .failure(let error):
+                    childChannelPromise.fail(error)
                 }
+            }
             (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
             let childChannel = try childChannelPromise.futureResult.wait()
 
@@ -175,25 +182,25 @@ class SimpleClientServerTests: XCTestCase {
         _requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 1024))
         let requestBody = _requestBody
 
-        // We're going to open a stream and queue up the frames for that stream.
-        let handler =
-            try self.clientChannel.pipeline.context(handlerType: HTTP2StreamMultiplexer.self).wait().handler
-            as! HTTP2StreamMultiplexer
         let childHandler = FrameRecorderHandler()
-        handler.createStreamChannel(promise: nil) { channel, streamID in
-            let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
-            channel.write(reqFrame, promise: nil)
+        // We're going to open a stream and queue up the frames for that stream.
+        self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multiplexer in
+            multiplexer.createStreamChannel(promise: nil) { channel, streamID in
+                let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
+                channel.write(reqFrame, promise: nil)
 
-            // Now prepare the large body.
-            var reqBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(requestBody))))
-            for _ in 0..<63 {
-                channel.write(reqBodyFrame, promise: nil)
+                // Now prepare the large body.
+                var reqBodyFrame = HTTP2Frame(streamID: streamID, payload: .data(.init(data: .byteBuffer(requestBody))))
+                for _ in 0..<63 {
+                    channel.write(reqBodyFrame, promise: nil)
+                }
+                reqBodyFrame.payload = .data(.init(data: .byteBuffer(requestBody), endStream: true))
+                channel.writeAndFlush(reqBodyFrame, promise: nil)
+
+                return channel.pipeline.addHandler(childHandler)
             }
-            reqBodyFrame.payload = .data(.init(data: .byteBuffer(requestBody), endStream: true))
-            channel.writeAndFlush(reqBodyFrame, promise: nil)
-
-            return channel.pipeline.addHandler(childHandler)
         }
+
         (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
 
         // Ok, we now want to send this data to the server.
@@ -221,9 +228,9 @@ class SimpleClientServerTests: XCTestCase {
         // Begin by getting the connection up and add a stream multiplexer.
         try self.basicHTTP2Connection()
         XCTAssertNoThrow(
-            try self.serverChannel.pipeline.addHandler(
+            try self.serverChannel.pipeline.syncOperations.addHandler(
                 HTTP2StreamMultiplexer(mode: .server, channel: self.serverChannel)
-            ).wait()
+            )
         )
 
         var largeBuffer = self.clientChannel.allocator.buffer(capacity: 32767)
@@ -314,17 +321,22 @@ class SimpleClientServerTests: XCTestCase {
         ])
 
         // We're going to open a stream and queue up the frames for that stream.
-        let handler = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
         let reqFrame = NIOLockedValueBox<HTTP2Frame?>(nil)
 
-        handler.createStreamChannel(promise: nil) { channel, streamID in
-            // We need END_STREAM set here, because that will force the stream to be closed on the response.
-            reqFrame.withLockedValue { reqFrame in
-                reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers, endStream: true)))
-                channel.writeAndFlush(reqFrame, promise: nil)
+        self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multiplexer in
+            multiplexer.createStreamChannel(promise: nil) { channel, streamID in
+                // We need END_STREAM set here, because that will force the stream to be closed on the response.
+                reqFrame.withLockedValue { reqFrame in
+                    reqFrame = HTTP2Frame(
+                        streamID: streamID,
+                        payload: .headers(.init(headers: headers, endStream: true))
+                    )
+                    channel.writeAndFlush(reqFrame, promise: nil)
+                }
+                return channel.eventLoop.makeSucceededFuture(())
             }
-            return channel.eventLoop.makeSucceededFuture(())
         }
+
         self.clientChannel.embeddedEventLoop.run()
 
         // Ok, we now want to send this data to the server.
@@ -363,23 +375,23 @@ class SimpleClientServerTests: XCTestCase {
         ])
 
         // We're going to open a stream and queue up the frames for that stream.
-        let handler = try self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).wait()
+        self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multiplexer in
+            multiplexer.createStreamChannel(promise: nil) { channel, streamID in
+                let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
+                channel.write(reqFrame, promise: nil)
 
-        handler.createStreamChannel(promise: nil) { channel, streamID in
-            let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
-            channel.write(reqFrame, promise: nil)
+                var requestBody = channel.allocator.buffer(capacity: 65535)
+                requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
 
-            var requestBody = channel.allocator.buffer(capacity: 65535)
-            requestBody.writeBytes(Array(repeating: UInt8(0x04), count: 65535))
+                // Now prepare the large body. We need END_STREAM set.
+                let reqBodyFrame = HTTP2Frame(
+                    streamID: streamID,
+                    payload: .data(.init(data: .byteBuffer(requestBody), endStream: true))
+                )
+                channel.writeAndFlush(reqBodyFrame, promise: nil)
 
-            // Now prepare the large body. We need END_STREAM set.
-            let reqBodyFrame = HTTP2Frame(
-                streamID: streamID,
-                payload: .data(.init(data: .byteBuffer(requestBody), endStream: true))
-            )
-            channel.writeAndFlush(reqBodyFrame, promise: nil)
-
-            return channel.pipeline.addHandler(childHandler)
+                return channel.pipeline.addHandler(childHandler)
+            }
         }
         self.clientChannel.embeddedEventLoop.run()
 
@@ -402,7 +414,7 @@ class SimpleClientServerTests: XCTestCase {
     func testStreamCreationOrder() throws {
         try self.basicHTTP2Connection()
         let multiplexer = HTTP2StreamMultiplexer(mode: .client, channel: self.clientChannel)
-        XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(multiplexer).wait())
+        XCTAssertNoThrow(try self.clientChannel.pipeline.syncOperations.addHandler(multiplexer))
 
         let streamAPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamAPromise) { channel, _ in

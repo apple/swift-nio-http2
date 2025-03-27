@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOEmbedded
 import NIOHPACK
@@ -1341,7 +1342,7 @@ extension Array where Element == HTTP2Frame.FramePayload {
 /// Runs the body with a temporary file, optionally containing some file content.
 func withTemporaryFile<T>(content: String? = nil, _ body: (NIOFileHandle, String) throws -> T) rethrows -> T {
     let (fd, path) = openTemporaryFile()
-    let fileHandle = NIOFileHandle(descriptor: fd)
+    let fileHandle = NIOFileHandle(_deprecatedTakingOwnershipOfDescriptor: fd)
     defer {
         XCTAssertNoThrow(try fileHandle.close())
         XCTAssertEqual(0, unlink(path))
@@ -1504,10 +1505,19 @@ internal func assertThrowsError<T>(
     }
 }
 
-final class ErrorEncounteredHandler: ChannelInboundHandler {
+final class ErrorEncounteredHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Never
 
-    var encounteredError: Error?
+    private let error = NIOLockedValueBox<Error?>(nil)
+
+    var encounteredError: Error? {
+        get {
+            self.error.withLockedValue { $0 }
+        }
+        set {
+            self.error.withLockedValue { $0 = newValue }
+        }
+    }
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         self.encounteredError = error

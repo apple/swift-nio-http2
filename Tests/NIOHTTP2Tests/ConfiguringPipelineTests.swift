@@ -38,11 +38,13 @@ class ConfiguringPipelineTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testBasicPipelineCommunicates() throws {
         let serverRecorder = FrameRecorderHandler()
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client).wait())
+        let clientHandler = try assertNoThrowWithValue(
+            self.clientChannel.configureHTTP2Pipeline(mode: .client).map { $0.sendableView }.wait()
+        )
         XCTAssertNoThrow(
             try self.serverChannel.configureHTTP2Pipeline(mode: .server) { channel, streamID in
                 channel.pipeline.addHandler(serverRecorder)
-            }.wait()
+            }.map { _ in }.wait()
         )
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
@@ -98,12 +100,13 @@ class ConfiguringPipelineTests: XCTestCase {
     func testBasicPipelineCommunicatesWithTargetWindowSize() throws {
         let serverRecorder = FrameRecorderHandler()
         let clientHandler = try assertNoThrowWithValue(
-            self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).wait()
+            self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).map { $0.sendableView }
+                .wait()
         )
         XCTAssertNoThrow(
             try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535) { channel, streamID in
                 channel.pipeline.addHandler(serverRecorder)
-            }.wait()
+            }.map { _ in }.wait()
         )
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
@@ -158,8 +161,10 @@ class ConfiguringPipelineTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testPipelineRespectsPositionRequest() throws {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(FailOnWriteHandler()).wait())
-        XCTAssertNoThrow(try self.clientChannel.configureHTTP2Pipeline(mode: .client, position: .first).wait())
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server).wait())
+        XCTAssertNoThrow(
+            try self.clientChannel.configureHTTP2Pipeline(mode: .client, position: .first).map { _ in }.wait()
+        )
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server).map { _ in }.wait())
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -178,9 +183,12 @@ class ConfiguringPipelineTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHandler(FailOnWriteHandler()).wait())
         XCTAssertNoThrow(
             try self.clientChannel.configureHTTP2Pipeline(mode: .client, position: .first, targetWindowSize: 65535)
+                .map { _ in }
                 .wait()
         )
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535).wait())
+        XCTAssertNoThrow(
+            try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535).map { _ in }.wait()
+        )
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -206,7 +214,7 @@ class ConfiguringPipelineTests: XCTestCase {
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            serverChannel.configureHTTP2Pipeline(mode: .server)
+            serverChannel.configureHTTP2Pipeline(mode: .server).map { _ in }
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -242,7 +250,7 @@ class ConfiguringPipelineTests: XCTestCase {
         // Register the callback on the promise so we run it as it succeeds (i.e. before fireChannelActive is called).
         let handlerAdded = connectionPromise.futureResult.flatMap {
             // Use .server to avoid sending client magic.
-            serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535)
+            serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535).map { _ in }
         }
 
         self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake"), promise: connectionPromise)
@@ -269,7 +277,7 @@ class ConfiguringPipelineTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testClosingParentChannelClosesStreamChannel() throws {
         /// A channel handler that succeeds a promise when the channel becomes inactive.
-        final class InactiveHandler: ChannelInboundHandler {
+        final class InactiveHandler: ChannelInboundHandler, Sendable {
             typealias InboundIn = Any
 
             let inactivePromise: EventLoopPromise<Void>
@@ -284,9 +292,9 @@ class ConfiguringPipelineTests: XCTestCase {
         }
 
         let clientMultiplexer = try assertNoThrowWithValue(
-            self.clientChannel.configureHTTP2Pipeline(mode: .client).wait()
+            self.clientChannel.configureHTTP2Pipeline(mode: .client).map { $0.sendableView }.wait()
         )
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server).wait())
+        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server).map { _ in }.wait())
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -315,7 +323,7 @@ class ConfiguringPipelineTests: XCTestCase {
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testClosingParentChannelClosesStreamChannelWithTargetWindowSize() throws {
         /// A channel handler that succeeds a promise when the channel becomes inactive.
-        final class InactiveHandler: ChannelInboundHandler {
+        final class InactiveHandler: ChannelInboundHandler, Sendable {
             typealias InboundIn = Any
 
             let inactivePromise: EventLoopPromise<Void>
@@ -330,9 +338,12 @@ class ConfiguringPipelineTests: XCTestCase {
         }
 
         let clientMultiplexer = try assertNoThrowWithValue(
-            self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).wait()
+            self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).map { $0.sendableView }
+                .wait()
         )
-        XCTAssertNoThrow(try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535).wait())
+        XCTAssertNoThrow(
+            try self.serverChannel.configureHTTP2Pipeline(mode: .server, targetWindowSize: 65535).map { _ in }.wait()
+        )
 
         XCTAssertNoThrow(try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel))
 
@@ -373,20 +384,14 @@ class ConfiguringPipelineTests: XCTestCase {
 
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testNegotiatedHTTP2BasicPipelineCommunicates() throws {
-        final class ErrorHandler: ChannelInboundHandler {
-            typealias InboundIn = Never
-
-            func errorCaught(context: ChannelHandlerContext, error: Error) {
-                context.close(promise: nil)
-            }
-        }
-
-        let clientHandler = try assertNoThrowWithValue(self.clientChannel.configureHTTP2Pipeline(mode: .client).wait())
+        let clientHandler = try assertNoThrowWithValue(
+            self.clientChannel.configureHTTP2Pipeline(mode: .client).map { $0.sendableView }.wait()
+        )
 
         let serverChildChannelPromise = self.serverChannel.eventLoop.makePromise(of: Channel.self)
         XCTAssertNoThrow(
             try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: {
-                $0.pipeline.addHandler(ErrorHandler())
+                $0.pipeline.addHandler(NIOCloseOnErrorHandler())
             }) { channel in
                 serverChildChannelPromise.succeed(channel)
                 return channel.pipeline.addHandler(HTTP1ServerRequestRecorderHandler())
@@ -467,22 +472,15 @@ class ConfiguringPipelineTests: XCTestCase {
 
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testNegotiatedHTTP2BasicPipelineCommunicatesWithTargetWindowSize() throws {
-        final class ErrorHandler: ChannelInboundHandler {
-            typealias InboundIn = Never
-
-            func errorCaught(context: ChannelHandlerContext, error: Error) {
-                context.close(promise: nil)
-            }
-        }
-
         let clientHandler = try assertNoThrowWithValue(
-            self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).wait()
+            self.clientChannel.configureHTTP2Pipeline(mode: .client, targetWindowSize: 65535).map { $0.sendableView }
+                .wait()
         )
 
         let serverChildChannelPromise = self.serverChannel.eventLoop.makePromise(of: Channel.self)
         XCTAssertNoThrow(
             try self.serverChannel.configureCommonHTTPServerPipeline(h2ConnectionChannelConfigurator: {
-                $0.pipeline.addHandler(ErrorHandler())
+                $0.pipeline.addHandler(NIOCloseOnErrorHandler())
             }) { channel in
                 serverChildChannelPromise.succeed(channel)
                 return channel.pipeline.addHandler(HTTP1ServerRequestRecorderHandler())

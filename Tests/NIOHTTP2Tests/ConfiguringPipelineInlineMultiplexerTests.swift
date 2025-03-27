@@ -306,7 +306,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
 
     func testClosingParentChannelClosesStreamChannel() throws {
         /// A channel handler that succeeds a promise when the channel becomes inactive.
-        final class InactiveHandler: ChannelInboundHandler {
+        final class InactiveHandler: ChannelInboundHandler, Sendable {
             typealias InboundIn = Any
 
             let inactivePromise: EventLoopPromise<Void>
@@ -361,7 +361,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
 
     func testClosingParentChannelClosesStreamChannelWithTargetWindowSize() throws {
         /// A channel handler that succeeds a promise when the channel becomes inactive.
-        final class InactiveHandler: ChannelInboundHandler {
+        final class InactiveHandler: ChannelInboundHandler, Sendable {
             typealias InboundIn = Any
 
             let inactivePromise: EventLoopPromise<Void>
@@ -428,13 +428,6 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
     }
 
     func testNegotiatedHTTP2BasicPipelineCommunicates() throws {
-        final class ErrorHandler: ChannelInboundHandler {
-            typealias InboundIn = Never
-
-            func errorCaught(context: ChannelHandlerContext, error: Error) {
-                context.close(promise: nil)
-            }
-        }
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         let clientMultiplexer = try self.clientChannel.configureHTTP2Pipeline(
             mode: .client,
@@ -450,7 +443,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
                 connectionConfiguration: .init(),
                 streamConfiguration: .init()
             ) { channel in
-                channel.pipeline.addHandler(ErrorHandler())
+                channel.pipeline.addHandler(NIOCloseOnErrorHandler())
             } configurator: { channel in
                 channel.pipeline.addHandler(serverRecorder)
             }.wait()
@@ -524,14 +517,6 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
     }
 
     func testNegotiatedHTTP2BasicPipelineCommunicatesWithTargetWindowSize() throws {
-        final class ErrorHandler: ChannelInboundHandler {
-            typealias InboundIn = Never
-
-            func errorCaught(context: ChannelHandlerContext, error: Error) {
-                context.close(promise: nil)
-            }
-        }
-
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         let clientMultiplexer = try self.clientChannel.configureHTTP2Pipeline(
             mode: .client,
@@ -547,7 +532,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
                 connectionConfiguration: .init(),
                 streamConfiguration: .init()
             ) { channel in
-                channel.pipeline.addHandler(ErrorHandler())
+                channel.pipeline.addHandler(NIOCloseOnErrorHandler())
             } configurator: { channel in
                 channel.pipeline.addHandler(serverRecorder)
             }.wait()
@@ -621,13 +606,6 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
     }
 
     func testNegotiatedHTTP1BasicPipelineCommunicates() throws {
-        final class ErrorHandler: ChannelInboundHandler {
-            typealias InboundIn = Never
-
-            func errorCaught(context: ChannelHandlerContext, error: Error) {
-                context.close(promise: nil)
-            }
-        }
         let serverRecorder = HTTP1ServerRequestRecorderHandler()
         XCTAssertNoThrow(try self.clientChannel.pipeline.addHTTPClientHandlers().wait())
 
@@ -636,7 +614,7 @@ class ConfiguringPipelineInlineMultiplexerTests: XCTestCase {
                 connectionConfiguration: .init(),
                 streamConfiguration: .init()
             ) { channel in
-                channel.pipeline.addHandler(ErrorHandler())
+                channel.pipeline.addHandler(NIOCloseOnErrorHandler())
             } configurator: { channel in
                 channel.pipeline.addHandler(serverRecorder)
             }.wait()
