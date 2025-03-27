@@ -21,14 +21,11 @@ final class Bench1Conn10kRequests: Benchmark {
     var group: MultiThreadedEventLoopGroup!
     var server: Channel!
     var client: Channel!
-    var clientMultiplexer: HTTP2StreamMultiplexer!
 
     func setUp() throws {
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.server = try setupServer(group: self.group)
-        let (client, multiplexer) = try setupClient(group: self.group, address: self.server.localAddress!)
-        self.client = client
-        self.clientMultiplexer = multiplexer
+        self.client = try setupClient(group: self.group, address: self.server.localAddress!)
     }
 
     func tearDown() {
@@ -41,7 +38,7 @@ final class Bench1Conn10kRequests: Benchmark {
     func run() throws -> Int {
         var bodyByteCount = 0
         for _ in 0..<10_000 {
-            bodyByteCount += try sendOneRequest(channel: self.client, multiplexer: self.clientMultiplexer)
+            bodyByteCount += try sendOneRequest(channel: self.client)
         }
         return bodyByteCount
     }
@@ -55,15 +52,22 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
 
         // Set the handlers that are applied to the accepted Channels
         .childChannelInitializer { channel in
-            channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-                streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
-                    () -> EventLoopFuture<Void> in
-                    streamChannel.pipeline.addHandler(HTTP1TestServer())
-                }.flatMap { () -> EventLoopFuture<Void> in
-                    streamChannel.pipeline.addHandler(ErrorHandler())
+            channel.eventLoop.makeCompletedFuture {
+                let sync = channel.pipeline.syncOperations
+                let _ = try sync.configureHTTP2Pipeline(
+                    mode: .server,
+                    connectionConfiguration: .init(),
+                    streamConfiguration: .init()
+                ) { streamChannel -> EventLoopFuture<Void> in
+                    streamChannel.eventLoop.makeCompletedFuture {
+                        let sync = streamChannel.pipeline.syncOperations
+                        try sync.addHandler(HTTP2FramePayloadToHTTP1ServerCodec())
+                        try sync.addHandler(HTTP1TestServer())
+                        try sync.addHandler(ErrorHandler())
+                    }
                 }
-            }.flatMap { (_: HTTP2StreamMultiplexer) in
-                channel.pipeline.addHandler(ErrorHandler())
+
+                try sync.addHandler(ErrorHandler())
             }
         }
 
@@ -75,13 +79,16 @@ func setupServer(group: EventLoopGroup) throws -> Channel {
     return try bootstrap.bind(host: "127.0.0.1", port: 12345).wait()
 }
 
-func sendOneRequest(channel: Channel, multiplexer: HTTP2StreamMultiplexer) throws -> Int {
+func sendOneRequest(channel: Channel) throws -> Int {
     let responseReceivedPromise = channel.eventLoop.makePromise(of: Int.self)
-    let requestStreamInitializer: NIOChannelInitializer = { channel in
-        channel.pipeline.addHandlers(
-            [
-                HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https),
-                SendRequestHandler(
+
+    channel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multiplexer in
+        multiplexer.createStreamChannel(promise: nil) { streamChannel in
+            streamChannel.eventLoop.makeCompletedFuture {
+                let sync = streamChannel.pipeline.syncOperations
+                try sync.addHandler(HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https))
+
+                let requestHandler = SendRequestHandler(
                     host: "127.0.0.1",
                     request: .init(
                         version: .init(major: 2, minor: 0),
@@ -90,28 +97,31 @@ func sendOneRequest(channel: Channel, multiplexer: HTTP2StreamMultiplexer) throw
                         headers: ["host": "localhost"]
                     ),
                     responseReceivedPromise: responseReceivedPromise
-                ),
-                ErrorHandler(),
-            ],
-            position: .last
-        )
+                )
+                try sync.addHandler(requestHandler)
+                try sync.addHandler(ErrorHandler())
+            }
+        }
     }
-    channel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multiplexer in
-        multiplexer.createStreamChannel(promise: nil, requestStreamInitializer)
-    }
+
     return try responseReceivedPromise.futureResult.wait()
 }
 
-func setupClient(group: EventLoopGroup, address: SocketAddress) throws -> (Channel, HTTP2StreamMultiplexer) {
+func setupClient(
+    group: EventLoopGroup,
+    address: SocketAddress
+) throws -> Channel {
     try ClientBootstrap(group: group)
         .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
         .channelInitializer { channel in
-            channel.pipeline.addHandler(ErrorHandler())
+            channel.eventLoop.makeCompletedFuture {
+                try channel.pipeline.syncOperations.addHandler(ErrorHandler())
+            }
         }
         .connect(to: address).flatMap { channel in
-            channel.configureHTTP2Pipeline(mode: .client, position: .first) { channel -> EventLoopFuture<Void> in
+            channel.configureHTTP2Pipeline(mode: .client, position: .first) { channel in
                 channel.eventLoop.makeSucceededFuture(())
-            }.map { (channel, $0) }
+            }.map { _ in channel }
         }.wait()
 }
 
@@ -124,7 +134,6 @@ final class HTTP1TestServer: ChannelInboundHandler {
             return
         }
 
-        let loopBoundSelf = NIOLoopBound(self, eventLoop: context.eventLoop)
         let loopBoundContext = NIOLoopBound(context, eventLoop: context.eventLoop)
 
         // Insert an event loop tick here. This more accurately represents real workloads in SwiftNIO, which will not
@@ -136,10 +145,8 @@ final class HTTP1TestServer: ChannelInboundHandler {
                 headers.add(name: "content-length", value: "5")
                 headers.add(name: "x-stream-id", value: String(Int(streamID)))
                 channel.write(
-                    loopBoundSelf.value.wrapOutboundOut(
-                        HTTPServerResponsePart.head(
-                            HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers)
-                        )
+                    HTTPServerResponsePart.head(
+                        HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers)
                     ),
                     promise: nil
                 )
@@ -147,10 +154,10 @@ final class HTTP1TestServer: ChannelInboundHandler {
                 var buffer = channel.allocator.buffer(capacity: 12)
                 buffer.writeStaticString("hello")
                 channel.write(
-                    loopBoundSelf.value.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))),
+                    HTTPServerResponsePart.body(.byteBuffer(buffer)),
                     promise: nil
                 )
-                return channel.writeAndFlush(loopBoundSelf.value.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
+                return channel.writeAndFlush(HTTPServerResponsePart.end(nil))
             }.whenComplete { _ in
                 loopBoundContext.value.close(promise: nil)
             }

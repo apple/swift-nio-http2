@@ -96,10 +96,13 @@ final class StreamTeardownBenchmark: Benchmark {
 
     func createChannel() throws -> EmbeddedChannel {
         let channel = EmbeddedChannel()
-        _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            streamChannel.pipeline.addHandler(DoNothingServer())
-        }.wait()
-        try channel.pipeline.addHandler(SendGoawayHandler(expectedStreams: self.concurrentStreams)).wait()
+
+        try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+            streamChannel.eventLoop.makeCompletedFuture {
+                try streamChannel.pipeline.syncOperations.addHandler(DoNothingServer())
+            }
+        }.map { _ in }.wait()
+        try channel.pipeline.syncOperations.addHandler(SendGoawayHandler(expectedStreams: self.concurrentStreams))
 
         try channel.connect(to: .init(unixDomainSocketPath: "/fake"), promise: nil)
 

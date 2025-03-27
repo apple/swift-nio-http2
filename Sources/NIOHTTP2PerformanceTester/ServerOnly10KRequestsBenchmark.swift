@@ -117,9 +117,12 @@ final class ServerOnly10KRequestsBenchmark: Benchmark {
 
     func setUp() throws {
         let channel = EmbeddedChannel()
-        _ = try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            streamChannel.pipeline.addHandler(TestServer())
-        }.wait()
+
+        try channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
+            streamChannel.eventLoop.makeCompletedFuture {
+                try streamChannel.pipeline.syncOperations.addHandler(TestServer())
+            }
+        }.map { _ in }.wait()
 
         try channel.connect(to: .init(unixDomainSocketPath: "/fake"), promise: nil)
 
