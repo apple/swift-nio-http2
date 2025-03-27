@@ -184,8 +184,8 @@ class SimpleClientServerTests: XCTestCase {
 
         let childHandler = FrameRecorderHandler()
         // We're going to open a stream and queue up the frames for that stream.
-        self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multipelxer in
-            multipelxer.createStreamChannel(promise: nil) { channel, streamID in
+        self.clientChannel.pipeline.handler(type: HTTP2StreamMultiplexer.self).whenSuccess { multiplexer in
+            multiplexer.createStreamChannel(promise: nil) { channel, streamID in
                 let reqFrame = HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: headers)))
                 channel.write(reqFrame, promise: nil)
 
