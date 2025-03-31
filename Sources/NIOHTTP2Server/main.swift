@@ -46,18 +46,14 @@ final class HTTP1TestServer: ChannelInboundHandler {
         // re-entrantly write their response frames.
         let channel = context.channel
         let loopBoundContext = NIOLoopBound(context, eventLoop: context.eventLoop)
-        let loopBoundSelf = NIOLoopBound(self, eventLoop: context.eventLoop)
         context.eventLoop.execute {
             channel.getOption(HTTP2StreamChannelOptions.streamID).flatMap { (streamID) -> EventLoopFuture<Void> in
-                let http1TestServer = loopBoundSelf.value
                 var headers = HTTPHeaders()
                 headers.add(name: "content-length", value: "5")
                 headers.add(name: "x-stream-id", value: String(Int(streamID)))
                 channel.write(
-                    http1TestServer.wrapOutboundOut(
-                        HTTPServerResponsePart.head(
-                            HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers)
-                        )
+                    HTTPServerResponsePart.head(
+                        HTTPResponseHead(version: .init(major: 2, minor: 0), status: .ok, headers: headers)
                     ),
                     promise: nil
                 )
@@ -66,12 +62,12 @@ final class HTTP1TestServer: ChannelInboundHandler {
                     var buffer = channel.allocator.buffer(capacity: 12)
                     buffer.writeStaticString("hello")
                     channel.write(
-                        http1TestServer.wrapOutboundOut(HTTPServerResponsePart.body(.byteBuffer(buffer))),
+                        HTTPServerResponsePart.body(.byteBuffer(buffer)),
                         promise: nil
                     )
                 }
 
-                return channel.writeAndFlush(http1TestServer.wrapOutboundOut(HTTPServerResponsePart.end(nil)))
+                return channel.writeAndFlush(HTTPServerResponsePart.end(nil))
             }.whenComplete { _ in
                 loopBoundContext.value.close(promise: nil)
             }
@@ -79,7 +75,7 @@ final class HTTP1TestServer: ChannelInboundHandler {
     }
 }
 
-final class ErrorHandler: ChannelInboundHandler {
+final class ErrorHandler: ChannelInboundHandler, Sendable {
     typealias InboundIn = Never
 
     func errorCaught(context: ChannelHandlerContext, error: Error) {
@@ -131,14 +127,14 @@ let bootstrap = ServerBootstrap(group: group)
 
     // Set the handlers that are applied to the accepted Channels
     .childChannelInitializer { channel in
-        channel.configureHTTP2Pipeline(mode: .server) { streamChannel -> EventLoopFuture<Void> in
-            streamChannel.pipeline.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()).flatMap {
-                () -> EventLoopFuture<Void> in
-                streamChannel.pipeline.addHandler(HTTP1TestServer())
-            }.flatMap { () -> EventLoopFuture<Void> in
-                streamChannel.pipeline.addHandler(ErrorHandler())
+        channel.configureHTTP2Pipeline(mode: .server) { streamChannel in
+            streamChannel.eventLoop.makeCompletedFuture {
+                let sync = streamChannel.pipeline.syncOperations
+                try sync.addHandler(HTTP2FramePayloadToHTTP1ServerCodec())
+                try sync.addHandler(HTTP1TestServer())
+                try sync.addHandler(ErrorHandler())
             }
-        }.flatMap { (_: HTTP2StreamMultiplexer) in
+        }.flatMap { _ in
             channel.pipeline.addHandler(ErrorHandler())
         }
     }
