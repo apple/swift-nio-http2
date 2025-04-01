@@ -55,3 +55,10 @@ jobs:
     with:
       name: "Examples"
       matrix_string: '${{ needs.construct-integration-tests-matrix.outputs.integration-tests-matrix }}'
+
+  macos-tests:
+    name: macOS tests
+    uses: apple/swift-nio/.github/workflows/macos_tests.yml@main
+    with:
+      runner_pool: general
+      build_scheme: swift-nio-http2-Package
