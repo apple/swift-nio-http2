@@ -25,12 +25,29 @@ jobs:
     name: Cxx interop
     uses: apple/swift-nio/.github/workflows/cxx_interop.yml@main
 
+  construct-h2spec-matrix:
+    name: Construct h2spec matrix
+    runs-on: ubuntu-latest
+    outputs:
+      h2spec-matrix: '${{ steps.generate-matrix.outputs.h2spec-matrix }}'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: generate-matrix
+        run: echo "h2spec-matrix=$(curl -s https://raw.githubusercontent.com/apple/swift-nio/main/scripts/generate_matrix.sh | bash)" >> "$GITHUB_OUTPUT"
+        env:
+          MATRIX_LINUX_SETUP_COMMAND: apt-get update -y && apt-get install -yq wget lsof && mkdir $HOME/.tools && wget -q https://github.com/summerwind/h2spec/releases/download/v2.2.1/h2spec_linux_amd64.tar.gz -O $HOME/.tools/h2spec.tar.gz && tar xzf $HOME/.tools/h2spec.tar.gz --directory $HOME/.tools && PATH=${PATH}:$HOME/.tools
+          MATRIX_LINUX_COMMAND: ./scripts/test_h2spec.sh
+
   h2spec:
     name: HTTP/2 spec tests
-    uses: apple/swift-nio/.github/workflows/swift_matrix.yml@main
+    needs: construct-h2spec-matrix
+    uses: apple/swift-nio/.github/workflows/swift_test_matrix.yml@main
     with:
       name: "HTTP/2 spec tests"
-      matrix_linux_command: "apt-get update -y -q && apt-get install -y -q wget lsof && mkdir $HOME/.tools && wget -q https://github.com/summerwind/h2spec/releases/download/v2.2.1/h2spec_linux_amd64.tar.gz -O $HOME/.tools/h2spec.tar.gz && tar xzf $HOME/.tools/h2spec.tar.gz --directory $HOME/.tools && PATH=${PATH}:$HOME/.tools && ./scripts/test_h2spec.sh"
+      matrix_string: '${{ needs.construct-h2spec-matrix.outputs.h2spec-matrix }}'
 
   construct-integration-tests-matrix:
     name: Construct Examples matrix
