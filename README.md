@@ -34,8 +34,8 @@ SwiftNIO HTTP/2     | Minimum Swift Version
 `1.24.0 ..< 1.27.0` | 5.5.2
 `1.27.0 ..< 1.29.0` | 5.6
 `1.29.0 ..< 1.31.0` | 5.7
-`1.31.0 ...`        | 5.8  **TODO:** Update supported versions table
-
+`1.31.0 ..< 1.37.0` | 5.8
+`1.37.0 ...`        | 5.9
 
 ### `swift-nio-http2` 0.x
 
