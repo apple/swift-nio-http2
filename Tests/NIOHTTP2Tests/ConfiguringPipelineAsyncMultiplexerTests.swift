@@ -117,9 +117,13 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         )
 
         let serverMultiplexer = try await assertNoThrowWithValue(
-            try await self.serverChannel.configureAsyncHTTP2Pipeline(mode: .server) {
-                channel -> EventLoopFuture<Channel> in
-                channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
+            try await self.serverChannel.configureAsyncHTTP2Pipeline(mode: .server) { channel in
+                channel.eventLoop.makeCompletedFuture {
+                    let sync = channel.pipeline.syncOperations
+                    try sync.addHandler(OKResponder())
+                    try sync.addHandler(serverRecorder)
+                    return channel
+                }
             }.get()
         )
 
@@ -142,9 +146,12 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         // client
         for i in 0..<requestCount {
             // Let's try sending some requests.
-            let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                    channel
+            let streamChannel = try await clientMultiplexer.openStream { channel in
+                channel.eventLoop.makeCompletedFuture {
+                    let sync = channel.pipeline.syncOperations
+                    try sync.addHandler(SimpleRequest())
+                    try sync.addHandler(InboundFramePayloadRecorder())
+                    return channel
                 }
             }
 
@@ -189,9 +196,13 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         )
 
         let serverMultiplexer = try await assertNoThrowWithValue(
-            try await self.serverChannel.configureAsyncHTTP2Pipeline(mode: .server) {
-                channel -> EventLoopFuture<Channel> in
-                channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
+            try await self.serverChannel.configureAsyncHTTP2Pipeline(mode: .server) { channel in
+                channel.eventLoop.makeCompletedFuture {
+                    let sync = channel.pipeline.syncOperations
+                    try sync.addHandler(OKResponder())
+                    try sync.addHandler(serverRecorder)
+                    return channel
+                }
             }.get()
         )
 
@@ -213,8 +224,11 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             for _ in 0..<requestCount {
                 // Let's try sending some requests
                 let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                    channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                        channel
+                    channel.eventLoop.makeCompletedFuture {
+                        let sync = channel.pipeline.syncOperations
+                        try sync.addHandler(SimpleRequest())
+                        try sync.addHandler(InboundFramePayloadRecorder())
+                        return channel
                     }
                 }
 
@@ -368,7 +382,12 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
         } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
-            channel.pipeline.addHandlers([OKResponder(), serverRecorder]).map { _ in channel }
+            channel.eventLoop.makeCompletedFuture {
+                let sync = channel.pipeline.syncOperations
+                try sync.addHandler(OKResponder())
+                try sync.addHandler(serverRecorder)
+                return channel
+            }
         }.get()
 
         // Let's pretend the TLS handler did protocol negotiation for us
@@ -403,8 +422,11 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             for _ in 0..<requestCount {
                 // Let's try sending some requests
                 let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                    channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                        channel
+                    channel.eventLoop.makeCompletedFuture {
+                        let sync = channel.pipeline.syncOperations
+                        try sync.addHandler(SimpleRequest())
+                        try sync.addHandler(InboundFramePayloadRecorder())
+                        return channel
                     }
                 }
 
@@ -443,13 +465,25 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
 
         let _ = try await self.clientChannel.pipeline.addHTTPClientHandlers().map {
             [clientChannel = self.clientChannel!] _ in
-            clientChannel.pipeline.addHandlers([
-                InboundRecorderHandler<HTTPClientResponsePart>(), HTTP1ClientSendability(),
-            ])
+            clientChannel.eventLoop.makeCompletedFuture {
+                try clientChannel.pipeline.syncOperations.addHandlers(
+                    [
+                        InboundRecorderHandler<HTTPClientResponsePart>(),
+                        HTTP1ClientSendability(),
+                    ]
+                )
+            }
         }.get()
 
         let negotiationResultFuture = try await self.serverChannel.configureAsyncHTTPServerPipeline { channel in
-            channel.pipeline.addHandlers([HTTP1OKResponder(), InboundRecorderHandler<HTTPServerRequestPart>()])
+            channel.eventLoop.makeCompletedFuture {
+                try channel.pipeline.syncOperations.addHandlers(
+                    [
+                        HTTP1OKResponder(),
+                        InboundRecorderHandler<HTTPServerRequestPart>(),
+                    ]
+                )
+            }
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
         } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
@@ -571,7 +605,10 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
         } http2ConnectionInitializer: { channel in
             channel.eventLoop.makeSucceededVoidFuture()
         } http2StreamInitializer: { channel -> EventLoopFuture<Channel> in
-            channel.pipeline.addHandlers([OKResponder()]).map { _ in channel }
+            channel.pipeline.eventLoop.makeCompletedFuture {
+                try channel.pipeline.syncOperations.addHandler(OKResponder())
+                return channel
+            }
         }.get()
 
         // Let's pretend the TLS handler did protocol negotiation for us
@@ -606,8 +643,11 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             for _ in 0..<requestCount {
                 // Let's try sending some requests
                 let streamChannel = try await clientMultiplexer.openStream { channel -> EventLoopFuture<Channel> in
-                    channel.pipeline.addHandlers([SimpleRequest(), InboundFramePayloadRecorder()]).map {
-                        channel
+                    channel.eventLoop.makeCompletedFuture {
+                        let sync = channel.pipeline.syncOperations
+                        try sync.addHandler(SimpleRequest())
+                        try sync.addHandler(InboundFramePayloadRecorder())
+                        return channel
                     }
                 }
 
@@ -676,14 +716,18 @@ final class ConfiguringPipelineAsyncMultiplexerTests: XCTestCase {
             mode: .server,
             streamDelegate: serverRecorder
         ) { channel in
-            channel.pipeline.addHandler(OKResponder())
+            channel.eventLoop.makeCompletedFuture {
+                try channel.pipeline.syncOperations.addHandler(OKResponder())
+            }
         }.get()
 
         try await self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
 
         for _ in 0..<3 {
             try await clientMultiplexer.openStream { stream in
-                stream.pipeline.addHandlers(SimpleRequest())
+                stream.eventLoop.makeCompletedFuture {
+                    try stream.pipeline.syncOperations.addHandler(SimpleRequest())
+                }
             }
 
             try await Self.deliverAllBytes(from: self.clientChannel, to: self.serverChannel)

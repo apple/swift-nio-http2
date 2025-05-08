@@ -51,27 +51,27 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         clientConnectionConfiguration.maximumBufferedControlFrames = maximumBufferedControlFrames
         clientConnectionConfiguration.headerBlockValidation = clientHeaderBlockValidation
         XCTAssertNoThrow(
-            try self.clientChannel.pipeline.addHandler(
+            try self.clientChannel.pipeline.syncOperations.addHandler(
                 NIOHTTP2Handler(
                     mode: .client,
                     eventLoop: self.clientChannel.eventLoop,
                     connectionConfiguration: clientConnectionConfiguration,
                     inboundStreamInitializer: multiplexerCallback
                 )
-            ).wait()
+            )
         )
         var serverConnectionConfiguration = NIOHTTP2Handler.ConnectionConfiguration()
         serverConnectionConfiguration.initialSettings = serverSettings
         serverConnectionConfiguration.maximumBufferedControlFrames = maximumBufferedControlFrames
         XCTAssertNoThrow(
-            try self.serverChannel.pipeline.addHandler(
+            try self.serverChannel.pipeline.syncOperations.addHandler(
                 NIOHTTP2Handler(
                     mode: .server,
                     eventLoop: self.serverChannel.eventLoop,
                     connectionConfiguration: serverConnectionConfiguration,
                     inboundStreamInitializer: multiplexerCallback
                 )
-            ).wait()
+            )
         )
 
         try self.assertDoHandshake(
@@ -105,9 +105,9 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
             let clientHandler = InboundFramePayloadRecorder()
             let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
-            let multiplexer = try
-                (self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler
-                as! NIOHTTP2Handler).multiplexer.wait()
+            let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+                $0.multiplexer
+            }.wait()
             multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
                 channel.pipeline.addHandler(clientHandler)
             }
@@ -171,11 +171,10 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         let requestBody = ByteBuffer(repeating: 0x04, count: 1024)
 
         // We're going to open a stream and queue up the frames for that stream.
-        let handler =
-            try self.clientChannel.pipeline.context(handlerType: NIOHTTP2Handler.self).wait().handler
-            as! NIOHTTP2Handler
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
         let childHandler = InboundFramePayloadRecorder()
-        let multiplexer = try handler.multiplexer.wait()
         multiplexer.createStreamChannel(promise: nil) { channel in
             let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
             channel.write(reqFramePayload, promise: nil)
@@ -241,10 +240,12 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         ])
 
         // We're going to open a stream and queue up the frames for that stream.
-        let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
+
         // We need END_STREAM set here, because that will force the stream to be closed on the response.
         let reqFrame = HTTP2Frame.FramePayload.headers(.init(headers: headers, endStream: true))
-        let multiplexer = try handler.multiplexer.wait()
         multiplexer.createStreamChannel(promise: nil) { channel in
             channel.writeAndFlush(reqFrame, promise: nil)
             return channel.eventLoop.makeSucceededFuture(())
@@ -284,8 +285,9 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         ])
 
         // We're going to open a stream and queue up the frames for that stream.
-        let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
-        let multiplexer = try handler.multiplexer.wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
         multiplexer.createStreamChannel(promise: nil) { channel in
             let reqFrame = HTTP2Frame.FramePayload.headers(.init(headers: headers))
             channel.write(reqFrame, promise: nil)
@@ -318,8 +320,9 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
     func testStreamCreationOrder() throws {
         try self.basicHTTP2Connection()
-        let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
-        let multiplexer = try handler.multiplexer.wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
 
         let streamAPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamAPromise) { channel in
@@ -351,8 +354,9 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
 
     func testWriteWithAlreadyCompletedPromise() throws {
         try self.basicHTTP2Connection()
-        let handler = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait()
-        let multiplexer = try handler.multiplexer.wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
 
         let streamPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
         multiplexer.createStreamChannel(promise: streamPromise) { channel in
@@ -377,13 +381,24 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             channel.pipeline.addHandler(serverHandler)
         }
 
-        let clientHandler = InboundFramePayloadRecorder()
         let errorEncounteredHandler = ErrorEncounteredHandler()
+        let loopBoundErrorHandler = NIOLoopBound(
+            errorEncounteredHandler,
+            eventLoop: self.clientChannel.embeddedEventLoop
+        )
+        let clientHandler = InboundFramePayloadRecorder()
+
         let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
-        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).wait().multiplexer.wait()
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
+
         multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
-            try? channel.pipeline.syncOperations.addHandler(errorEncounteredHandler)
-            return channel.pipeline.addHandler(clientHandler)
+            channel.eventLoop.makeCompletedFuture {
+                let errorHandler = loopBoundErrorHandler.value
+                try channel.pipeline.syncOperations.addHandler(errorHandler)
+                try channel.pipeline.syncOperations.addHandler(clientHandler)
+            }
         }
         self.clientChannel.embeddedEventLoop.run()
         let childChannel = try childChannelPromise.futureResult.wait()
@@ -538,13 +553,17 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         // Setup the connection.
         let receivedShouldQuiesceEvent = self.clientChannel.eventLoop.makePromise(of: Void.self)
         try self.basicHTTP2Connection { stream in
-            stream.pipeline.addHandler(ShouldQuiesceEventWaiter(promise: receivedShouldQuiesceEvent))
+            stream.eventLoop.makeCompletedFuture {
+                try stream.pipeline.syncOperations.addHandler(
+                    ShouldQuiesceEventWaiter(promise: receivedShouldQuiesceEvent)
+                )
+            }
         }
 
         let connectionReceivedShouldQuiesceEvent = self.clientChannel.eventLoop.makePromise(of: Void.self)
-        try self.serverChannel.pipeline.addHandler(
+        try self.serverChannel.pipeline.syncOperations.addHandler(
             ShouldQuiesceEventWaiter(promise: connectionReceivedShouldQuiesceEvent)
-        ).wait()
+        )
 
         // Create the stream channel.
         let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap { $0.multiplexer }
@@ -641,7 +660,7 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         // headers.
         try self.basicHTTP2Connection(clientHeaderBlockValidation: .disabled)
 
-        final class CloseOnExcessiveStreamErrors: ChannelInboundHandler {
+        final class CloseOnExcessiveStreamErrors: ChannelInboundHandler, Sendable {
             typealias InboundIn = Any
             func errorCaught(context: ChannelHandlerContext, error: any Error) {
                 if error is NIOHTTP2Errors.ExcessiveStreamErrors {

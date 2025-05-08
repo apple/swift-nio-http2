@@ -339,18 +339,25 @@ extension HTTP2StreamMultiplexer {
         )
         sendableView.createStreamChannel(promise: promise, streamStateInitializer)
     }
+
+    /// Returns a `Sendable` view over the ``HTTP2StreamMultiplexer`` providing only thread-safe
+    /// APIs.
+    ///
+    /// This is useful when you need to be able to create streams from off of the event loop.
+    public var sendableView: SendableView {
+        SendableView(http2StreamMultiplexer: self, eventLoop: self.channel.eventLoop)
+    }
 }
 
 extension HTTP2StreamMultiplexer {
-    /// HTTP2StreamMultiplexer.SendableView exposes only the thread-safe API of HTTP2StreamMultiplexer
-    ///
-    /// We use unckecked Sendable here because we always make sure we are on the right event loop
-    /// from this code on.
-    struct SendableView: @unchecked Sendable {
+    /// ``SendableView`` exposes only the thread-safe API of ``HTTP2StreamMultiplexer``.
+    public struct SendableView: @unchecked Sendable {
+        // @unckecked Sendable is fine here: each of the create functions always executes
+        // onto the appropriate event-loop.
         let http2StreamMultiplexer: HTTP2StreamMultiplexer
         let eventLoop: EventLoop
 
-        func createStreamChannel(
+        public func createStreamChannel(
             promise: EventLoopPromise<Channel>?,
             _ streamStateInitializer: @escaping NIOChannelInitializer
         ) {
@@ -371,7 +378,7 @@ extension HTTP2StreamMultiplexer {
             deprecated,
             message: "The signature of 'streamStateInitializer' has changed to '(Channel) -> EventLoopFuture<Void>'"
         )
-        func createStreamChannel(
+        public func createStreamChannel(
             promise: EventLoopPromise<Channel>?,
             _ streamStateInitializer: @escaping NIOChannelInitializerWithStreamID
         ) {
@@ -414,3 +421,6 @@ extension HTTP2StreamMultiplexer {
         self.commonStreamMultiplexer.requestStreamID(forChannel: channel)
     }
 }
+
+@available(*, unavailable)
+extension HTTP2StreamMultiplexer: Sendable {}

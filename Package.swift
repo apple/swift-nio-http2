@@ -1,4 +1,4 @@
-// swift-tools-version:5.9
+// swift-tools-version:5.10
 //===----------------------------------------------------------------------===//
 //
 // This source file is part of the SwiftNIO open source project
@@ -15,13 +15,31 @@
 
 import PackageDescription
 
+let strictConcurrencyDevelopment = false
+
+let strictConcurrencySettings: [SwiftSetting] = {
+    var initialSettings: [SwiftSetting] = []
+    initialSettings.append(contentsOf: [
+        .enableUpcomingFeature("StrictConcurrency"),
+        .enableUpcomingFeature("InferSendableFromCaptures"),
+    ])
+
+    if strictConcurrencyDevelopment {
+        // -warnings-as-errors here is a workaround so that IDE-based development can
+        // get tripped up on -require-explicit-sendable.
+        initialSettings.append(.unsafeFlags(["-require-explicit-sendable", "-warnings-as-errors"]))
+    }
+
+    return initialSettings
+}()
+
 let package = Package(
     name: "swift-nio-http2",
     products: [
         .library(name: "NIOHTTP2", targets: ["NIOHTTP2"])
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.82.0"),
         .package(url: "https://github.com/apple/swift-atomics.git", from: "1.0.2"),
     ],
     targets: [
@@ -32,7 +50,8 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
-            ]
+            ],
+            swiftSettings: strictConcurrencySettings
         ),
         .executableTarget(
             name: "NIOHTTP2PerformanceTester",
@@ -41,7 +60,8 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOEmbedded", package: "swift-nio"),
-            ]
+            ],
+            swiftSettings: strictConcurrencySettings
         ),
         .target(
             name: "NIOHTTP2",
@@ -53,7 +73,8 @@ let package = Package(
                 .product(name: "NIOTLS", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "Atomics", package: "swift-atomics"),
-            ]
+            ],
+            swiftSettings: strictConcurrencySettings
         ),
         .target(
             name: "NIOHPACK",
@@ -62,7 +83,8 @@ let package = Package(
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOConcurrencyHelpers", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
-            ]
+            ],
+            swiftSettings: strictConcurrencySettings
         ),
         .testTarget(
             name: "NIOHTTP2Tests",
@@ -74,7 +96,8 @@ let package = Package(
                 .product(name: "NIOHTTP1", package: "swift-nio"),
                 .product(name: "NIOFoundationCompat", package: "swift-nio"),
                 .product(name: "Atomics", package: "swift-atomics"),
-            ]
+            ],
+            swiftSettings: strictConcurrencySettings
         ),
         .testTarget(
             name: "NIOHPACKTests",
@@ -86,7 +109,8 @@ let package = Package(
             resources: [
                 .copy("Fixtures/large_complex_huffman_b64.txt"),
                 .copy("Fixtures/large_huffman_b64.txt"),
-            ]
+            ],
+            swiftSettings: strictConcurrencySettings
         ),
     ]
 )
