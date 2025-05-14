@@ -526,7 +526,7 @@ extension HTTP2StreamStateMachine {
                     effect: nil
                 )
             }
-        } catch let error where error is InvalidContentLengthError {
+        } catch let error where error is (any InvalidContentLengthError) {
             return .init(
                 result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError),
                 effect: nil
@@ -755,7 +755,7 @@ extension HTTP2StreamStateMachine {
                     effect: nil
                 )
             }
-        } catch let error where error is InvalidContentLengthError {
+        } catch let error where error is (any InvalidContentLengthError) {
             return .init(
                 result: .streamError(streamID: self.streamID, underlyingError: error, type: .protocolError),
                 effect: nil
