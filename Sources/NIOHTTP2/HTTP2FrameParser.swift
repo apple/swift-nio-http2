@@ -1155,7 +1155,7 @@ struct HTTP2FrameDecoder {
             }
         } catch is IgnoredFrame {
             return nil
-        } catch _ as NIOHPACKError {
+        } catch is any NIOHPACKError {
             // convert into a connection error of type COMPRESSION_ERROR
             throw InternalError.codecError(code: .compressionError)
         }
