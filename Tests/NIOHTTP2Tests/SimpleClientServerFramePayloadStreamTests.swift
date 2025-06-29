@@ -210,7 +210,8 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         serverSettings: HTTP2Settings = nioDefaultSettings,
         maximumBufferedControlFrames: Int = 10000,
         maximumSequentialContinuationFrames: Int = 5,
-        withMultiplexerCallback multiplexerCallback: NIOChannelInitializer? = nil
+        withMultiplexerCallback multiplexerCallback: NIOChannelInitializer? = nil,
+        maxStreamGlitches: UInt = 10
     ) throws {
         XCTAssertNoThrow(
             try self.clientChannel.pipeline.syncOperations.addHandler(
@@ -228,7 +229,8 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
                     mode: .server,
                     initialSettings: serverSettings,
                     maximumBufferedControlFrames: maximumBufferedControlFrames,
-                    maximumSequentialContinuationFrames: maximumSequentialContinuationFrames
+                    maximumSequentialContinuationFrames: maximumSequentialContinuationFrames,
+                    maxStreamGlitches: maxStreamGlitches
                 )
             )
         )
@@ -1977,8 +1979,11 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             XCTFail("Did not receive server GOAWAY frame")
             return
         }
+
+        // The last stream ID should be 0 because we have detected this peer is misbehaving and
+        // all streams should be closed.
         goaway.assertGoAwayFrame(
-            lastStreamID: .maxID,
+            lastStreamID: 0,
             errorCode: UInt32(HTTP2ErrorCode.enhanceYourCalm.networkCode),
             opaqueData: nil
         )
@@ -2055,8 +2060,11 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
             XCTFail("Did not receive server GOAWAY frame")
             return
         }
+
+        // The last stream ID should be 0 because we have detected this peer is misbehaving and
+        // all streams should be closed.
         goaway.assertGoAwayFrame(
-            lastStreamID: .maxID,
+            lastStreamID: 0,
             errorCode: UInt32(HTTP2ErrorCode.enhanceYourCalm.networkCode),
             opaqueData: nil
         )
