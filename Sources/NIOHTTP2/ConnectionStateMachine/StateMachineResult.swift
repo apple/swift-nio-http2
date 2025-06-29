@@ -35,7 +35,11 @@ enum StateMachineResult {
 
     /// An error that transitions the entire connection into a fatal error state. This should cause
     /// emission of GOAWAY frames.
-    case connectionError(underlyingError: Error, type: HTTP2ErrorCode)
+    case connectionError(
+        underlyingError: Error,
+        type: HTTP2ErrorCode,
+        isMisbehavingPeer: Bool = false
+    )
 
     /// The frame itself was not valid, but it is also not an error. Drop the frame.
     case ignoreFrame
