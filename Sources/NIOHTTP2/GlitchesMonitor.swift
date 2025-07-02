@@ -12,15 +12,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-struct GlitchesMonitor {
-    static let defaultMaxGlitches: UInt = 200
+package struct GlitchesMonitor {
+    package static var defaultMaxGlitches: UInt { 200 }
     private var stateMachine: GlitchesMonitorStateMachine
 
-    init(maxGlitches: UInt = GlitchesMonitor.defaultMaxGlitches) {
+    package init(maxGlitches: UInt = GlitchesMonitor.defaultMaxGlitches) {
         self.stateMachine = GlitchesMonitorStateMachine(maxGlitches: maxGlitches)
     }
 
-    mutating func processStreamError() throws {
+    package mutating func processStreamError() throws {
         switch self.stateMachine.recordEvent() {
         case .belowLimit:
             ()
@@ -54,8 +54,8 @@ extension GlitchesMonitor {
         mutating func recordEvent() -> RecordEventAction {
             switch self.state {
             case .monitoring(let numberOfGlitches):
-                if numberOfGlitches <= self.maxGlitches {
-                    self.state = .monitoring(numberOfGlitches: numberOfGlitches + 1)
+                if numberOfGlitches < self.maxGlitches {
+                    self.state = .monitoring(numberOfGlitches: numberOfGlitches &+ 1)
                     return .belowLimit
                 } else {
                     self.state = .glitchesExceeded
