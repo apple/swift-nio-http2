@@ -752,7 +752,7 @@ extension NIOHTTP2Handler {
         }
 
         self.processDoSRisk(frame, result: &result)
-        self.processGlitches(frame, result: &result)
+        self.processGlitches(result: &result)
         self.processStateChange(result.effect)
 
         let returnValue: FrameProcessResult
@@ -848,9 +848,7 @@ extension NIOHTTP2Handler {
                 ()
             }
         } catch {
-            result.result =
-                StateMachineResult
-                .connectionError(
+            result.result = StateMachineResult.connectionError(
                     underlyingError: error,
                     type: .enhanceYourCalm,
                     isMisbehavingPeer: true
@@ -859,7 +857,7 @@ extension NIOHTTP2Handler {
         }
     }
 
-    private func processGlitches(_ frame: HTTP2Frame, result: inout StateMachineResultWithEffect) {
+    private func processGlitches(result: inout StateMachineResultWithEffect) {
         do {
             switch result.result {
             case .streamError:
@@ -868,8 +866,7 @@ extension NIOHTTP2Handler {
                 ()
             }
         } catch {
-            result.result =
-                .connectionError(
+            result.result = .connectionError(
                     underlyingError: error,
                     type: .enhanceYourCalm,
                     isMisbehavingPeer: true
