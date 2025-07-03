@@ -849,10 +849,10 @@ extension NIOHTTP2Handler {
             }
         } catch {
             result.result = StateMachineResult.connectionError(
-                    underlyingError: error,
-                    type: .enhanceYourCalm,
-                    isMisbehavingPeer: true
-                )
+                underlyingError: error,
+                type: .enhanceYourCalm,
+                isMisbehavingPeer: true
+            )
             result.effect = nil
         }
     }
@@ -867,10 +867,10 @@ extension NIOHTTP2Handler {
             }
         } catch {
             result.result = .connectionError(
-                    underlyingError: error,
-                    type: .enhanceYourCalm,
-                    isMisbehavingPeer: true
-                )
+                underlyingError: error,
+                type: .enhanceYourCalm,
+                isMisbehavingPeer: true
+            )
             result.effect = nil
         }
     }
