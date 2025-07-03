@@ -238,7 +238,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: 10000,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
-            maxStreamGlitches: GlitchesMonitor.defaultMaxGlitches,
+            maxConnectionGlitches: GlitchesMonitor.defaultMaxGlitches,
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
@@ -276,7 +276,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
-            maxStreamGlitches: GlitchesMonitor.defaultMaxGlitches,
+            maxConnectionGlitches: GlitchesMonitor.defaultMaxGlitches,
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
@@ -306,7 +306,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
-            maxStreamGlitches: connectionConfiguration.maxStreamGlitches,
+            maxConnectionGlitches: connectionConfiguration.maxConnectionGlitches,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -324,7 +324,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumBufferedControlFrames: Int,
         maximumSequentialContinuationFrames: Int,
         maximumRecentlyResetStreams: Int,
-        maxStreamGlitches: UInt,
+        maxConnectionGlitches: Int,
         maximumResetFrameCount: Int,
         resetFrameCounterWindow: TimeAmount,
         maximumStreamErrorCount: Int,
@@ -354,7 +354,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.tolerateImpossibleStateTransitionsInDebugMode = false
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
-        self.glitchesMonitor = GlitchesMonitor(maxGlitches: maxStreamGlitches)
+        self.glitchesMonitor = GlitchesMonitor(maxGlitches: maxConnectionGlitches)
     }
 
     /// Constructs a ``NIOHTTP2Handler``.
@@ -376,7 +376,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///         against this DoS vector we put an upper limit on this rate. Defaults to 200.
     ///   - resetFrameCounterWindow:  Controls the sliding window used to enforce the maximum permitted reset frames rate. Too many may exhaust CPU resources. To protect
     ///         against this DoS vector we put an upper limit on this rate. 30 seconds.
-    ///   - maxStreamGlitches: Controls the maximum number of stream errors that can happen on a connection before the connection is reset. Defaults to 200.
+    ///   - maxConnectionGlitches: Controls the maximum number of stream errors that can happen on a connection before the connection is reset. Defaults to 200.
     internal init(
         mode: ParserMode,
         initialSettings: HTTP2Settings = nioDefaultSettings,
@@ -391,7 +391,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         resetFrameCounterWindow: TimeAmount = .seconds(30),
         maximumStreamErrorCount: Int = 200,
         streamErrorCounterWindow: TimeAmount = .seconds(30),
-        maxStreamGlitches: UInt = GlitchesMonitor.defaultMaxGlitches
+        maxConnectionGlitches: Int = GlitchesMonitor.defaultMaxGlitches
     ) {
         self.stateMachine = HTTP2ConnectionStateMachine(
             role: .init(mode),
@@ -417,7 +417,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
-        self.glitchesMonitor = GlitchesMonitor(maxGlitches: maxStreamGlitches)
+        self.glitchesMonitor = GlitchesMonitor(maxGlitches: maxConnectionGlitches)
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
@@ -1387,7 +1387,7 @@ extension NIOHTTP2Handler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
-            maxStreamGlitches: connectionConfiguration.maxStreamGlitches,
+            maxConnectionGlitches: connectionConfiguration.maxConnectionGlitches,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -1420,7 +1420,7 @@ extension NIOHTTP2Handler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
-            maxStreamGlitches: connectionConfiguration.maxStreamGlitches,
+            maxConnectionGlitches: connectionConfiguration.maxConnectionGlitches,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -1445,7 +1445,7 @@ extension NIOHTTP2Handler {
         public var maximumBufferedControlFrames: Int = 10000
         public var maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames
         public var maximumRecentlyResetStreams: Int = NIOHTTP2Handler.defaultMaximumRecentlyResetFrames
-        public var maxStreamGlitches: UInt = GlitchesMonitor.defaultMaxGlitches
+        public var maxConnectionGlitches: Int = GlitchesMonitor.defaultMaxGlitches
         public init() {}
     }
 

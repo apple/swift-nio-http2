@@ -13,10 +13,10 @@
 //===----------------------------------------------------------------------===//
 
 package struct GlitchesMonitor {
-    package static var defaultMaxGlitches: UInt { 200 }
+    package static var defaultMaxGlitches: Int { 200 }
     private var stateMachine: GlitchesMonitorStateMachine
 
-    package init(maxGlitches: UInt = GlitchesMonitor.defaultMaxGlitches) {
+    package init(maxGlitches: Int = GlitchesMonitor.defaultMaxGlitches) {
         self.stateMachine = GlitchesMonitorStateMachine(maxGlitches: maxGlitches)
     }
 
@@ -34,14 +34,15 @@ package struct GlitchesMonitor {
 extension GlitchesMonitor {
     private struct GlitchesMonitorStateMachine {
         enum State {
-            case monitoring(numberOfGlitches: UInt)
+            case monitoring(numberOfGlitches: Int)
             case glitchesExceeded
         }
 
         private var state: State
-        private let maxGlitches: UInt
+        private let maxGlitches: Int
 
-        init(maxGlitches: UInt) {
+        init(maxGlitches: Int) {
+            precondition(maxGlitches >= 0)
             self.state = .monitoring(numberOfGlitches: 0)
             self.maxGlitches = maxGlitches
         }
