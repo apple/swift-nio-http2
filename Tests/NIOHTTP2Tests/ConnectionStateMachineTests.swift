@@ -30,15 +30,24 @@ func assertSucceeds(_ body: @autoclosure () -> StateMachineResult, file: StaticS
 @discardableResult
 func assertConnectionError(
     type: HTTP2ErrorCode,
+    isMisbehavingPeer: Bool = false,
     _ body: @autoclosure () -> StateMachineResult,
     file: StaticString = #filePath,
     line: UInt = #line
 ) -> Error? {
     switch body() {
-    case .connectionError(underlyingError: let error, type: type):
+    case .connectionError(
+        underlyingError: let error,
+        type: type,
+        isMisbehavingPeer: isMisbehavingPeer
+    ):
         return error
     case let result:
-        XCTFail("Expected connection error type \(type), got \(result)", file: (file), line: line)
+        XCTFail(
+            "Expected connection error of type \(type) and an isMisbehavingPeer value of \(isMisbehavingPeer), got \(result)",
+            file: (file),
+            line: line
+        )
         return nil
     }
 }
@@ -71,7 +80,7 @@ func assertBadStreamStateTransition(
     switch body().result {
     case .streamError(_, let underlyingError as NIOHTTP2Errors.BadStreamStateTransition, _):
         error = underlyingError
-    case .connectionError(let underlyingError as NIOHTTP2Errors.BadStreamStateTransition, _):
+    case .connectionError(let underlyingError as NIOHTTP2Errors.BadStreamStateTransition, _, _):
         error = underlyingError
     default:
         XCTFail("Unexpected result \(body().result)", file: (file), line: line)
@@ -102,11 +111,18 @@ func assertSucceeds(
 
 func assertConnectionError(
     type: HTTP2ErrorCode,
+    isMisBehavingPeer: Bool = false,
     _ body: @autoclosure () -> (StateMachineResultWithEffect, PostFrameOperation),
     file: StaticString = #filePath,
     line: UInt = #line
 ) {
-    assertConnectionError(type: type, body().0, file: (file), line: line)
+    assertConnectionError(
+        type: type,
+        isMisbehavingPeer: isMisBehavingPeer,
+        body().0,
+        file: (file),
+        line: line
+    )
 }
 
 func assertSucceeds(
@@ -120,13 +136,20 @@ func assertSucceeds(
 @discardableResult
 func assertConnectionError(
     type: HTTP2ErrorCode,
+    isMisbehavingPeer: Bool = false,
     _ body: @autoclosure () -> StateMachineResultWithEffect,
     file: StaticString = #filePath,
     line: UInt = #line
 ) -> Error? {
     // Errors must always lead to noChange.
     let result = body()
-    return assertConnectionError(type: type, result.result, file: (file), line: line)
+    return assertConnectionError(
+        type: type,
+        isMisbehavingPeer: isMisbehavingPeer,
+        result.result,
+        file: (file),
+        line: line
+    )
 }
 
 @discardableResult
