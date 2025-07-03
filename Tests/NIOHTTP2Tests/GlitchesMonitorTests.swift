@@ -18,7 +18,7 @@ import XCTest
 class GlitchesMonitorTests: XCTestCase {
     func testProcessStreamError() throws {
         let maxGlitches: Int = 10
-        var monitor = GlitchesMonitor(maxGlitches: maxGlitches)
+        var monitor = GlitchesMonitor(maximumGlitches: maxGlitches)
 
         // We accept up to `maxGlitches` glitches without erroring...
         for _ in 1...maxGlitches {

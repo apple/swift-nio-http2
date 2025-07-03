@@ -13,11 +13,11 @@
 //===----------------------------------------------------------------------===//
 
 package struct GlitchesMonitor {
-    package static var defaultMaxGlitches: Int { 200 }
+    package static var defaultMaximumGlitches: Int { 200 }
     private var stateMachine: GlitchesMonitorStateMachine
 
-    package init(maxGlitches: Int = GlitchesMonitor.defaultMaxGlitches) {
-        self.stateMachine = GlitchesMonitorStateMachine(maxGlitches: maxGlitches)
+    package init(maximumGlitches: Int = GlitchesMonitor.defaultMaximumGlitches) {
+        self.stateMachine = GlitchesMonitorStateMachine(maxGlitches: maximumGlitches)
     }
 
     package mutating func processStreamError() throws {
