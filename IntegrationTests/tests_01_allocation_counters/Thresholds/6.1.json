@@ -19,5 +19,5 @@
     "get_100000_headers_canonical_form_trimming_whitespace_from_short_string": 200050,
     "hpack_decoding": 5050,
     "stream_teardown_100_concurrent": 253550,
-    "stream_teardown_100_concurrent_inline": 251750
+    "stream_teardown_100_concurrent_inline": 252150
 }
