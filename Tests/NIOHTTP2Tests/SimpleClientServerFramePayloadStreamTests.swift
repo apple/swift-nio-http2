@@ -211,7 +211,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         maximumBufferedControlFrames: Int = 10000,
         maximumSequentialContinuationFrames: Int = 5,
         withMultiplexerCallback multiplexerCallback: NIOChannelInitializer? = nil,
-        maxStreamGlitches: UInt = 10
+        maxConnectionGlitches: Int = 10
     ) throws {
         XCTAssertNoThrow(
             try self.clientChannel.pipeline.syncOperations.addHandler(
@@ -230,7 +230,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
                     initialSettings: serverSettings,
                     maximumBufferedControlFrames: maximumBufferedControlFrames,
                     maximumSequentialContinuationFrames: maximumSequentialContinuationFrames,
-                    maxStreamGlitches: maxStreamGlitches
+                    maxConnectionGlitches: maxConnectionGlitches
                 )
             )
         )
