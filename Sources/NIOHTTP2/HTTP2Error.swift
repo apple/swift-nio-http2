@@ -1844,7 +1844,7 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// The remote peer has triggered too many stream errors on this connection.
+    /// The remote peer has triggered too many glitches on this connection.
     public struct ExcessiveNumberOfGlitches: NIOHTTP2Error {
         private let file: String
         private let line: UInt

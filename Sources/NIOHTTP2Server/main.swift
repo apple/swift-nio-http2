@@ -134,9 +134,7 @@ let bootstrap = ServerBootstrap(group: group)
                 try sync.addHandler(HTTP1TestServer())
                 try sync.addHandler(ErrorHandler())
             }
-        }.flatMap { _ in
-            channel.pipeline.addHandler(ErrorHandler())
-        }
+        }.map { _ in }
     }
 
     // Enable TCP_NODELAY and SO_REUSEADDR for the accepted Channels

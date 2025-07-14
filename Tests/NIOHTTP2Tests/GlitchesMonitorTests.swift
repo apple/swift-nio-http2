@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-import NIOHTTP2
+@testable import NIOHTTP2
 import XCTest
 
 class GlitchesMonitorTests: XCTestCase {

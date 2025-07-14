@@ -1445,7 +1445,17 @@ extension NIOHTTP2Handler {
         public var maximumBufferedControlFrames: Int = 10000
         public var maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames
         public var maximumRecentlyResetStreams: Int = NIOHTTP2Handler.defaultMaximumRecentlyResetFrames
+
+        /// The maximum number of glitches that are allowed on a connection before it's forcefully closed.
+        ///
+        /// A glitch is defined as some suspicious event on a connection, i.e., similar to a DoS attack.
+        /// A running count of the number of glitches occurring on each connection will be kept.
+        /// When the number of glitches reaches this threshold, the connection will be closed.
+        ///
+        /// For more information, see the relevant presentation of the 2024 HTTP Workshop:
+        /// https://github.com/HTTPWorkshop/workshop2024/blob/main/talks/1.%20Security/glitches.pdf
         public var maximumConnectionGlitches: Int = GlitchesMonitor.defaultMaximumGlitches
+
         public init() {}
     }
 
