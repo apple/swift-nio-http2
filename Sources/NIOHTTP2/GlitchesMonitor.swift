@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 struct GlitchesMonitor {
-    static var defaultMaximumGlitches: Int { 100 }
+    static var defaultMaximumGlitches: Int { 200 }
     private var stateMachine: GlitchesMonitorStateMachine
 
     init(maximumGlitches: Int = GlitchesMonitor.defaultMaximumGlitches) {
