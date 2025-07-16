@@ -79,6 +79,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// This object deploys heuristics to attempt to detect denial of service attacks.
     private var denialOfServiceValidator: DOSHeuristics<RealNIODeadlineClock>
 
+    private var glitchesMonitor: GlitchesMonitor
+
     /// The mode this handler is operating in.
     private let mode: ParserMode
 
@@ -236,6 +238,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: 10000,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
+            maximumConnectionGlitches: GlitchesMonitor.defaultMaximumGlitches,
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
@@ -273,6 +276,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
+            maximumConnectionGlitches: GlitchesMonitor.defaultMaximumGlitches,
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
@@ -302,6 +306,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
+            maximumConnectionGlitches: connectionConfiguration.maximumConnectionGlitches,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -319,6 +324,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumBufferedControlFrames: Int,
         maximumSequentialContinuationFrames: Int,
         maximumRecentlyResetStreams: Int,
+        maximumConnectionGlitches: Int,
         maximumResetFrameCount: Int,
         resetFrameCounterWindow: TimeAmount,
         maximumStreamErrorCount: Int,
@@ -348,6 +354,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.tolerateImpossibleStateTransitionsInDebugMode = false
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
+        self.glitchesMonitor = GlitchesMonitor(maximumGlitches: maximumConnectionGlitches)
     }
 
     /// Constructs a ``NIOHTTP2Handler``.
@@ -369,6 +376,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///         against this DoS vector we put an upper limit on this rate. Defaults to 200.
     ///   - resetFrameCounterWindow:  Controls the sliding window used to enforce the maximum permitted reset frames rate. Too many may exhaust CPU resources. To protect
     ///         against this DoS vector we put an upper limit on this rate. 30 seconds.
+    ///   - maximumConnectionGlitches: Controls the maximum number of stream errors that can happen on a connection before the connection is reset. Defaults to 200.
     internal init(
         mode: ParserMode,
         initialSettings: HTTP2Settings = nioDefaultSettings,
@@ -382,7 +390,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumResetFrameCount: Int = 200,
         resetFrameCounterWindow: TimeAmount = .seconds(30),
         maximumStreamErrorCount: Int = 200,
-        streamErrorCounterWindow: TimeAmount = .seconds(30)
+        streamErrorCounterWindow: TimeAmount = .seconds(30),
+        maximumConnectionGlitches: Int = GlitchesMonitor.defaultMaximumGlitches
     ) {
         self.stateMachine = HTTP2ConnectionStateMachine(
             role: .init(mode),
@@ -408,6 +417,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
+        self.glitchesMonitor = GlitchesMonitor(maximumGlitches: maximumConnectionGlitches)
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
@@ -600,32 +610,41 @@ extension NIOHTTP2Handler {
             self.inboundConnectionErrorTriggered(
                 context: context,
                 underlyingError: NIOHTTP2Errors.unableToParseFrame(),
-                reason: code
+                reason: code,
+                isMisbehavingPeer: false
             )
             return nil
         } catch is NIOHTTP2Errors.BadClientMagic {
             self.inboundConnectionErrorTriggered(
                 context: context,
                 underlyingError: NIOHTTP2Errors.badClientMagic(),
-                reason: .protocolError
+                reason: .protocolError,
+                isMisbehavingPeer: false
             )
             return nil
         } catch is NIOHTTP2Errors.ExcessivelyLargeHeaderBlock {
             self.inboundConnectionErrorTriggered(
                 context: context,
                 underlyingError: NIOHTTP2Errors.excessivelyLargeHeaderBlock(),
-                reason: .protocolError
+                reason: .protocolError,
+                isMisbehavingPeer: false
             )
             return nil
         } catch is NIOHTTP2Errors.ExcessiveContinuationFrames {
             self.inboundConnectionErrorTriggered(
                 context: context,
                 underlyingError: NIOHTTP2Errors.excessiveContinuationFrames(),
-                reason: .enhanceYourCalm
+                reason: .enhanceYourCalm,
+                isMisbehavingPeer: false
             )
             return nil
         } catch {
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .internalError)
+            self.inboundConnectionErrorTriggered(
+                context: context,
+                underlyingError: error,
+                reason: .internalError,
+                isMisbehavingPeer: false
+            )
             return nil
         }
     }
@@ -733,6 +752,7 @@ extension NIOHTTP2Handler {
         }
 
         self.processDoSRisk(frame, result: &result)
+        self.processGlitches(result: &result)
         self.processStateChange(result.effect)
 
         let returnValue: FrameProcessResult
@@ -744,9 +764,14 @@ extension NIOHTTP2Handler {
         case .ignoreFrame:
             // Frame is good but no action needs to be taken.
             returnValue = .continue
-        case .connectionError(let underlyingError, let errorCode):
+        case .connectionError(let underlyingError, let errorCode, let isMisbehavingPeer):
             // We should stop parsing on received connection errors, the connection is going away anyway.
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: underlyingError, reason: errorCode)
+            self.inboundConnectionErrorTriggered(
+                context: context,
+                underlyingError: underlyingError,
+                reason: errorCode,
+                isMisbehavingPeer: isMisbehavingPeer
+            )
             returnValue = .stop
         case .streamError(let streamID, let underlyingError, let errorCode):
             // We can continue parsing on stream errors in most cases, the frame is just ignored.
@@ -770,15 +795,20 @@ extension NIOHTTP2Handler {
     private func inboundConnectionErrorTriggered(
         context: ChannelHandlerContext,
         underlyingError: Error,
-        reason: HTTP2ErrorCode
+        reason: HTTP2ErrorCode,
+        isMisbehavingPeer: Bool
     ) {
         // A connection error brings the entire connection down. We attempt to write a GOAWAY frame, and then report this
         // error. It's possible that we'll be unable to write the GOAWAY frame, but that also just logs the error.
         // Because we don't know what data the user handled before we got this, we propose that they may have seen all of it.
         // The user may choose to fire a more specific error if they wish.
+
+        // If the peer is misbehaving, set the stream ID to the minimum allowed value (0).
+        // This will cause all open streams for this connection to be immediately terminated.
+        let streamID = isMisbehavingPeer ? HTTP2StreamID(0) : .maxID
         let goAwayFrame = HTTP2Frame(
             streamID: .rootStream,
-            payload: .goAway(lastStreamID: .maxID, errorCode: reason, opaqueData: nil)
+            payload: .goAway(lastStreamID: streamID, errorCode: reason, opaqueData: nil)
         )
         self.writeUnbufferedFrame(context: context, frame: goAwayFrame)
         self.flushIfNecessary(context: context)
@@ -818,7 +848,29 @@ extension NIOHTTP2Handler {
                 ()
             }
         } catch {
-            result.result = StateMachineResult.connectionError(underlyingError: error, type: .enhanceYourCalm)
+            result.result = StateMachineResult.connectionError(
+                underlyingError: error,
+                type: .enhanceYourCalm,
+                isMisbehavingPeer: true
+            )
+            result.effect = nil
+        }
+    }
+
+    private func processGlitches(result: inout StateMachineResultWithEffect) {
+        do {
+            switch result.result {
+            case .streamError:
+                try self.glitchesMonitor.processStreamError()
+            case .succeed, .ignoreFrame, .connectionError:
+                ()
+            }
+        } catch {
+            result.result = .connectionError(
+                underlyingError: error,
+                type: .enhanceYourCalm,
+                isMisbehavingPeer: true
+            )
             result.effect = nil
         }
     }
@@ -894,7 +946,12 @@ extension NIOHTTP2Handler {
             }
         } catch let error where error is NIOHTTP2Errors.ExcessiveOutboundFrameBuffering {
             self.inboundStreamMultiplexer?.processedFrame(frame)
-            self.inboundConnectionErrorTriggered(context: context, underlyingError: error, reason: .enhanceYourCalm)
+            self.inboundConnectionErrorTriggered(
+                context: context,
+                underlyingError: error,
+                reason: .enhanceYourCalm,
+                isMisbehavingPeer: false
+            )
         } catch {
             self.inboundStreamMultiplexer?.processedFrame(frame)
             promise?.fail(error)
@@ -968,7 +1025,7 @@ extension NIOHTTP2Handler {
         switch result.result {
         case .ignoreFrame:
             preconditionFailure("Cannot be asked to ignore outbound frames.")
-        case .connectionError(let underlyingError, _):
+        case .connectionError(let underlyingError, _, _):
             self.outboundConnectionErrorTriggered(context: context, promise: promise, underlyingError: underlyingError)
             return
         case .streamError(let streamID, let underlyingError, _):
@@ -1330,6 +1387,7 @@ extension NIOHTTP2Handler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
+            maximumConnectionGlitches: connectionConfiguration.maximumConnectionGlitches,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -1362,6 +1420,7 @@ extension NIOHTTP2Handler {
             maximumBufferedControlFrames: connectionConfiguration.maximumBufferedControlFrames,
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
+            maximumConnectionGlitches: connectionConfiguration.maximumConnectionGlitches,
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
@@ -1386,6 +1445,17 @@ extension NIOHTTP2Handler {
         public var maximumBufferedControlFrames: Int = 10000
         public var maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames
         public var maximumRecentlyResetStreams: Int = NIOHTTP2Handler.defaultMaximumRecentlyResetFrames
+
+        /// The maximum number of glitches that are allowed on a connection before it's forcefully closed.
+        ///
+        /// A glitch is defined as some suspicious event on a connection, i.e., similar to a DoS attack.
+        /// A running count of the number of glitches occurring on each connection will be kept.
+        /// When the number of glitches reaches this threshold, the connection will be closed.
+        ///
+        /// For more information, see the relevant presentation of the 2024 HTTP Workshop:
+        /// https://github.com/HTTPWorkshop/workshop2024/blob/main/talks/1.%20Security/glitches.pdf
+        public var maximumConnectionGlitches: Int = GlitchesMonitor.defaultMaximumGlitches
+
         public init() {}
     }
 

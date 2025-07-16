@@ -487,6 +487,18 @@ public enum NIOHTTP2Errors {
         ExcessiveEmptyDataFrames(file: file, line: line)
     }
 
+    /// Creates a ``ExcessiveNumberOfGlitches`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
+    public static func excessiveNumberOfGlitches(
+        file: String = #fileID,
+        line: UInt = #line
+    ) -> ExcessiveNumberOfGlitches {
+        ExcessiveNumberOfGlitches(file: file, line: line)
+    }
+
     /// Creates a ``ExcessivelyLargeHeaderBlock`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -1828,6 +1840,31 @@ public enum NIOHTTP2Errors {
         }
 
         public static func == (lhs: ExcessiveEmptyDataFrames, rhs: ExcessiveEmptyDataFrames) -> Bool {
+            true
+        }
+    }
+
+    /// The remote peer has triggered too many glitches on this connection.
+    public struct ExcessiveNumberOfGlitches: NIOHTTP2Error {
+        private let file: String
+        private let line: UInt
+
+        /// The location where the error was thrown.
+        public var location: String {
+            _location(file: self.file, line: self.line)
+        }
+
+        @available(*, deprecated, renamed: "excessiveNumberOfGlitches")
+        public init() {
+            self.init(file: #fileID, line: #line)
+        }
+
+        fileprivate init(file: String, line: UInt) {
+            self.file = file
+            self.line = line
+        }
+
+        public static func == (lhs: ExcessiveNumberOfGlitches, rhs: ExcessiveNumberOfGlitches) -> Bool {
             true
         }
     }
