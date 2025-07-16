@@ -113,6 +113,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// The maximum number of sequential CONTINUATION frames.
     private let maximumSequentialContinuationFrames: Int
 
+    /// A delegate which is told about frames which have eebn written.
+    private let frameDelegate: NIOHTTP2FrameDelegate?
+
     @usableFromInline
     internal var inboundStreamMultiplexer: InboundStreamMultiplexer? {
         self.inboundStreamMultiplexerState.multiplexer
@@ -242,7 +245,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
-            streamErrorCounterWindow: .seconds(30)
+            streamErrorCounterWindow: .seconds(30),
+            frameDelegate: nil
         )
     }
 
@@ -280,7 +284,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumResetFrameCount: 200,
             resetFrameCounterWindow: .seconds(30),
             maximumStreamErrorCount: 200,
-            streamErrorCounterWindow: .seconds(30)
+            streamErrorCounterWindow: .seconds(30),
+            frameDelegate: nil
         )
 
     }
@@ -298,6 +303,27 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ) {
         self.init(
             mode: mode,
+            frameDelegate: nil,
+            connectionConfiguration: connectionConfiguration,
+            streamConfiguration: streamConfiguration
+        )
+    }
+
+    /// Constructs a ``NIOHTTP2Handler``.
+    ///
+    /// - Parameters:
+    ///   - mode: The mode for this handler, client or server.
+    ///   - frameDelegate: A delegate which is notified about frames being written.
+    ///   - connectionConfiguration: The settings that will be used when establishing the connection.
+    ///   - streamConfiguration: The settings that will be used when establishing new streams.
+    public convenience init(
+        mode: ParserMode,
+        frameDelegate: NIOHTTP2FrameDelegate?,
+        connectionConfiguration: ConnectionConfiguration = ConnectionConfiguration(),
+        streamConfiguration: StreamConfiguration = StreamConfiguration()
+    ) {
+        self.init(
+            mode: mode,
             eventLoop: nil,
             initialSettings: connectionConfiguration.initialSettings,
             headerBlockValidation: connectionConfiguration.headerBlockValidation,
@@ -310,7 +336,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
-            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength
+            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength,
+            frameDelegate: frameDelegate
         )
     }
 
@@ -328,7 +355,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumResetFrameCount: Int,
         resetFrameCounterWindow: TimeAmount,
         maximumStreamErrorCount: Int,
-        streamErrorCounterWindow: TimeAmount
+        streamErrorCounterWindow: TimeAmount,
+        frameDelegate: NIOHTTP2FrameDelegate?
     ) {
         self._eventLoop = eventLoop
         self.stateMachine = HTTP2ConnectionStateMachine(
@@ -355,6 +383,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         self.glitchesMonitor = GlitchesMonitor(maximumGlitches: maximumConnectionGlitches)
+        self.frameDelegate = frameDelegate
     }
 
     /// Constructs a ``NIOHTTP2Handler``.
@@ -391,7 +420,8 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         resetFrameCounterWindow: TimeAmount = .seconds(30),
         maximumStreamErrorCount: Int = 200,
         streamErrorCounterWindow: TimeAmount = .seconds(30),
-        maximumConnectionGlitches: Int = GlitchesMonitor.defaultMaximumGlitches
+        maximumConnectionGlitches: Int = GlitchesMonitor.defaultMaximumGlitches,
+        frameDelegate: NIOHTTP2FrameDelegate? = nil
     ) {
         self.stateMachine = HTTP2ConnectionStateMachine(
             role: .init(mode),
@@ -418,6 +448,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         self.inboundStreamMultiplexerState = .uninitializedLegacy
         self.maximumSequentialContinuationFrames = maximumSequentialContinuationFrames
         self.glitchesMonitor = GlitchesMonitor(maximumGlitches: maximumConnectionGlitches)
+        self.frameDelegate = frameDelegate
     }
 
     public func handlerAdded(context: ChannelHandlerContext) {
@@ -1067,6 +1098,24 @@ extension NIOHTTP2Handler {
             return
         }
 
+        // Tell the delegate, if there is one.
+        if let delegate = self.frameDelegate {
+            switch frame.payload {
+            case .headers(let headers):
+                delegate.wroteHeaders(headers.headers, endStream: headers.endStream, streamID: frame.streamID)
+
+            case .data(let data):
+                switch data.data {
+                case .byteBuffer(let buffer):
+                    delegate.wroteData(buffer, endStream: data.endStream, streamID: frame.streamID)
+                case .fileRegion:
+                    ()
+                }
+            default:
+                ()
+            }
+        }
+
         // Ok, if we got here we're good to send data. We want to attach the promise to the latest write, not
         // always the frame header.
         self.wroteFrame = true
@@ -1391,7 +1440,8 @@ extension NIOHTTP2Handler {
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
-            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength
+            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength,
+            frameDelegate: nil
         )
 
         self.inboundStreamMultiplexerState = .uninitializedInline(
@@ -1408,6 +1458,7 @@ extension NIOHTTP2Handler {
         connectionConfiguration: ConnectionConfiguration = .init(),
         streamConfiguration: StreamConfiguration = .init(),
         streamDelegate: NIOHTTP2StreamDelegate? = nil,
+        frameDelegate: NIOHTTP2FrameDelegate?,
         inboundStreamInitializerWithAnyOutput: @escaping StreamInitializerWithAnyOutput
     ) {
         self.init(
@@ -1424,7 +1475,8 @@ extension NIOHTTP2Handler {
             maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
             resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
             maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
-            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength
+            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength,
+            frameDelegate: frameDelegate
         )
         self.inboundStreamMultiplexerState = .uninitializedAsync(
             streamConfiguration,
