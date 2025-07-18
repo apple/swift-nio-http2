@@ -113,7 +113,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// The maximum number of sequential CONTINUATION frames.
     private let maximumSequentialContinuationFrames: Int
 
-    /// A delegate which is told about frames which have eebn written.
+    /// A delegate which is told about frames which have been written.
     private let frameDelegate: NIOHTTP2FrameDelegate?
 
     @usableFromInline
