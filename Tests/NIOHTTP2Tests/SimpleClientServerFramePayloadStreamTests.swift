@@ -2850,7 +2850,6 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
     }
 
     func testFrameDelegateIsCalledForDATAFrames() throws {
-
         // Cap the frame size to 2^14 = 16_384
         let settings = [HTTP2Setting(parameter: .maxFrameSize, value: 1 << 14)]
 
@@ -2976,8 +2975,6 @@ final class OkHandler: ChannelInboundHandler {
 }
 
 final class RecordingFrameDelegate: NIOHTTP2FrameDelegate {
-    private let _events: NIOLockedValueBox<[(Frame, HTTP2StreamID)]>
-
     enum Frame {
         case data(Int)
         case headers
@@ -3002,25 +2999,20 @@ final class RecordingFrameDelegate: NIOHTTP2FrameDelegate {
 
     }
 
-    var events: [(Frame, HTTP2StreamID)] {
-        self._events.withLockedValue { $0 }
-    }
-
-    private func appendFrame(_ frame: Frame, streamID: HTTP2StreamID) {
-        self._events.withLockedValue {
-            $0.append((frame, streamID))
-        }
-    }
+    private(set) var events: [(Frame, HTTP2StreamID)]
 
     init() {
-        self._events = NIOLockedValueBox([])
+        self.events = []
     }
 
-    func wroteData(_ data: ByteBuffer, endStream: Bool, streamID: HTTP2StreamID) {
-        self.appendFrame(.data(data.readableBytes), streamID: streamID)
-    }
-
-    func wroteHeaders(_ headers: HPACKHeaders, endStream: Bool, streamID: HTTP2StreamID) {
-        self.appendFrame(.headers, streamID: streamID)
+    func wroteFrame(_ frame: HTTP2Frame) {
+        switch frame.payload {
+        case .data(let data):
+            self.events.append((.data(data.data.readableBytes), streamID: frame.streamID))
+        case .headers(let headers):
+            self.events.append((.headers, streamID: frame.streamID))
+        default:
+            ()
+        }
     }
 }

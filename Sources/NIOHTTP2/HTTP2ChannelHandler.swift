@@ -1100,20 +1100,7 @@ extension NIOHTTP2Handler {
 
         // Tell the delegate, if there is one.
         if let delegate = self.frameDelegate {
-            switch frame.payload {
-            case .headers(let headers):
-                delegate.wroteHeaders(headers.headers, endStream: headers.endStream, streamID: frame.streamID)
-
-            case .data(let data):
-                switch data.data {
-                case .byteBuffer(let buffer):
-                    delegate.wroteData(buffer, endStream: data.endStream, streamID: frame.streamID)
-                case .fileRegion:
-                    ()
-                }
-            default:
-                ()
-            }
+            delegate.wroteFrame(frame)
         }
 
         // Ok, if we got here we're good to send data. We want to attach the promise to the latest write, not
