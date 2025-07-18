@@ -2849,7 +2849,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
 
-    func testFrameDelegateIsCalledForDATAFrames() throws {
+    func testFrameDelegateIsCalled() throws {
         // Cap the frame size to 2^14 = 16_384
         let settings = [HTTP2Setting(parameter: .maxFrameSize, value: 1 << 14)]
 
@@ -2898,20 +2898,47 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         self.clientChannel.embeddedEventLoop.run()
         try stream.closeFuture.wait()
 
-        XCTAssertEqual(delegate.events.count, 6)
-        XCTAssertTrue(delegate.events[0].0.isHeaders)
-        XCTAssertTrue(delegate.events.allSatisfy { $0.1 == HTTP2StreamID(1) })
+        var events = delegate.events
+        XCTAssertEqual(events.count, 8)
 
+        // First the server writes its own SETTINGS.
+        events.popFirst()?.assertSettingsFrame(expectedSettings: settings, ack: false)
+        // Then it acks the client SETTINGS.
+        events.popFirst()?.assertSettingsFrame(expectedSettings: [], ack: true)
+
+        // Then writes HEADERS on stream 1
+        events.popFirst()?.assertHeadersFrame(
+            endStream: false,
+            streamID: 1,
+            headers: headers.headers
+        )
+
+        // Now 5 DATA frames on stream 1.
+        //
         // The max frame size is set to 2^14 and the initial connection window
         // size is (2^16)-1, so the write of size 2^16 is split up over five frames.
         // The first three are the max frame size of 2^14, the fourth is (2^14) - 1
         // as that's all that remains of the connection window. The final byte of the
         // message is sent later, after the server sends a WINDOW_UPDATE frame.
-        XCTAssertEqual(delegate.events[1].0.dataByteCount, 1 << 14)
-        XCTAssertEqual(delegate.events[2].0.dataByteCount, 1 << 14)
-        XCTAssertEqual(delegate.events[3].0.dataByteCount, 1 << 14)
-        XCTAssertEqual(delegate.events[4].0.dataByteCount, (1 << 14) - 1)
-        XCTAssertEqual(delegate.events[5].0.dataByteCount, 1)
+        for _ in 1 ... 3 {
+            events.popFirst()?.assertDataFrame(
+                endStream: false,
+                streamID: 1,
+                payload: ByteBuffer(repeating: 42, count: 1 << 14)
+            )
+        }
+        events.popFirst()?.assertDataFrame(
+            endStream: false,
+            streamID: 1,
+            payload: ByteBuffer(repeating: 42, count: (1 << 14) - 1)
+        )
+        events.popFirst()?.assertDataFrame(
+            endStream: true,
+            streamID: 1,
+            payload: ByteBuffer(repeating: 42, count: 1)
+        )
+
+        XCTAssertNil(events.popFirst())
     }
 }
 
@@ -2975,44 +3002,13 @@ final class OkHandler: ChannelInboundHandler {
 }
 
 final class RecordingFrameDelegate: NIOHTTP2FrameDelegate {
-    enum Frame {
-        case data(Int)
-        case headers
-
-        var isHeaders: Bool {
-            switch self {
-            case .headers:
-                return true
-            default:
-                return false
-            }
-        }
-
-        var dataByteCount: Int? {
-            switch self {
-            case .data(let byteCount):
-                return byteCount
-            default:
-                return nil
-            }
-        }
-
-    }
-
-    private(set) var events: [(Frame, HTTP2StreamID)]
+    private(set) var events: CircularBuffer<HTTP2Frame>
 
     init() {
         self.events = []
     }
 
     func wroteFrame(_ frame: HTTP2Frame) {
-        switch frame.payload {
-        case .data(let data):
-            self.events.append((.data(data.data.readableBytes), streamID: frame.streamID))
-        case .headers(let headers):
-            self.events.append((.headers, streamID: frame.streamID))
-        default:
-            ()
-        }
+        self.events.append(frame)
     }
 }
