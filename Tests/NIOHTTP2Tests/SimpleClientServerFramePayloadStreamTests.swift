@@ -210,8 +210,10 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         serverSettings: HTTP2Settings = nioDefaultSettings,
         maximumBufferedControlFrames: Int = 10000,
         maximumSequentialContinuationFrames: Int = 5,
-        withMultiplexerCallback multiplexerCallback: NIOChannelInitializer? = nil,
-        maximumConnectionGlitches: Int = 10
+        maximumConnectionGlitches: Int = 10,
+        clientFrameDelegate: NIOHTTP2FrameDelegate? = nil,
+        serverFrameDelegate: NIOHTTP2FrameDelegate? = nil,
+        withMultiplexerCallback multiplexerCallback: NIOChannelInitializer? = nil
     ) throws {
         XCTAssertNoThrow(
             try self.clientChannel.pipeline.syncOperations.addHandler(
@@ -219,7 +221,8 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
                     mode: .client,
                     initialSettings: clientSettings,
                     maximumBufferedControlFrames: maximumBufferedControlFrames,
-                    maximumSequentialContinuationFrames: maximumSequentialContinuationFrames
+                    maximumSequentialContinuationFrames: maximumSequentialContinuationFrames,
+                    frameDelegate: clientFrameDelegate
                 )
             )
         )
@@ -230,7 +233,8 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
                     initialSettings: serverSettings,
                     maximumBufferedControlFrames: maximumBufferedControlFrames,
                     maximumSequentialContinuationFrames: maximumSequentialContinuationFrames,
-                    maximumConnectionGlitches: maximumConnectionGlitches
+                    maximumConnectionGlitches: maximumConnectionGlitches,
+                    frameDelegate: serverFrameDelegate
                 )
             )
         )
@@ -2844,6 +2848,98 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.clientChannel.finish())
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
+
+    func testFrameDelegateIsCalled() throws {
+        // Cap the frame size to 2^14 = 16_384
+        let settings = [HTTP2Setting(parameter: .maxFrameSize, value: 1 << 14)]
+
+        // Configure the client channel.
+        let delegate = RecordingFrameDelegate()
+
+        try self.basicHTTP2Connection(
+            clientSettings: settings,
+            serverSettings: settings,
+            clientFrameDelegate: delegate
+        ) { stream in
+            stream.eventLoop.makeCompletedFuture {
+                try stream.pipeline.syncOperations.addHandler(OkHandler())
+            }
+        }
+
+        let multiplexer = try self.clientChannel.pipeline.handler(
+            type: HTTP2StreamMultiplexer.self
+        ).map {
+            $0.sendableView
+        }.wait()
+
+        let streamPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: streamPromise) {
+            $0.eventLoop.makeSucceededVoidFuture()
+        }
+        self.clientChannel.embeddedEventLoop.run()
+        let stream = try streamPromise.futureResult.wait()
+
+        // Write a request.
+        let headers = HTTP2Frame.FramePayload.Headers(
+            headers: [":scheme": "http", ":path": "/", ":method": "GET"]
+        )
+        stream.write(HTTP2Frame.FramePayload.headers(headers), promise: nil)
+
+        // Write a frame which is four times the max frame size. This demonstrates that
+        // the delegate is called with the frame as written to the network rather than that
+        // as written to the stream channel.
+        let bytes = ByteBuffer(repeating: 42, count: 1 << 16)
+        let data = HTTP2Frame.FramePayload.Data(data: .byteBuffer(bytes), endStream: true)
+        stream.write(HTTP2Frame.FramePayload.data(data), promise: nil)
+        stream.flush()
+
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        self.clientChannel.embeddedEventLoop.run()
+        try stream.closeFuture.wait()
+
+        var events = delegate.events
+        XCTAssertEqual(events.count, 8)
+
+        // First the server writes its own SETTINGS.
+        events.popFirst()?.assertSettingsFrame(expectedSettings: settings, ack: false)
+        // Then it acks the client SETTINGS.
+        events.popFirst()?.assertSettingsFrame(expectedSettings: [], ack: true)
+
+        // Then writes HEADERS on stream 1
+        events.popFirst()?.assertHeadersFrame(
+            endStream: false,
+            streamID: 1,
+            headers: headers.headers
+        )
+
+        // Now 5 DATA frames on stream 1.
+        //
+        // The max frame size is set to 2^14 and the initial connection window
+        // size is (2^16)-1, so the write of size 2^16 is split up over five frames.
+        // The first three are the max frame size of 2^14, the fourth is (2^14) - 1
+        // as that's all that remains of the connection window. The final byte of the
+        // message is sent later, after the server sends a WINDOW_UPDATE frame.
+        for _ in 1...3 {
+            events.popFirst()?.assertDataFrame(
+                endStream: false,
+                streamID: 1,
+                payload: ByteBuffer(repeating: 42, count: 1 << 14)
+            )
+        }
+        events.popFirst()?.assertDataFrame(
+            endStream: false,
+            streamID: 1,
+            payload: ByteBuffer(repeating: 42, count: (1 << 14) - 1)
+        )
+        events.popFirst()?.assertDataFrame(
+            endStream: true,
+            streamID: 1,
+            payload: ByteBuffer(repeating: 42, count: 1)
+        )
+
+        XCTAssertNil(events.popFirst())
+    }
 }
 
 final class ShouldQuiesceEventWaiter: ChannelInboundHandler, Sendable {
@@ -2865,5 +2961,54 @@ final class ShouldQuiesceEventWaiter: ChannelInboundHandler, Sendable {
             self.promise.succeed(())
         }
         context.fireUserInboundEventTriggered(event)
+    }
+}
+
+final class OkHandler: ChannelInboundHandler {
+    typealias InboundIn = HTTP2Frame.FramePayload
+    typealias OutboundOut = HTTP2Frame.FramePayload
+
+    func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        context.close(mode: .all, promise: nil)
+    }
+
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        switch Self.unwrapInboundIn(data) {
+        case .headers(let headers):
+            let responseHeaders = HTTP2Frame.FramePayload.Headers(
+                headers: [":status": "200"],
+                endStream: headers.endStream
+            )
+            context.write(Self.wrapOutboundOut(.headers(responseHeaders)), promise: nil)
+
+        case .data(let data):
+            if data.endStream {
+                let data = HTTP2Frame.FramePayload.Data(
+                    data: .byteBuffer(ByteBuffer()),
+                    endStream: true
+                )
+                context.write(Self.wrapOutboundOut(.data(data)), promise: nil)
+            }
+
+        default:
+            ()  // Ignore
+        }
+    }
+
+    func channelReadComplete(context: ChannelHandlerContext) {
+        context.flush()
+        context.fireChannelReadComplete()
+    }
+}
+
+final class RecordingFrameDelegate: NIOHTTP2FrameDelegate {
+    private(set) var events: CircularBuffer<HTTP2Frame>
+
+    init() {
+        self.events = []
+    }
+
+    func wroteFrame(_ frame: HTTP2Frame) {
+        self.events.append(frame)
     }
 }
