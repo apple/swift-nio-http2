@@ -2920,7 +2920,7 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         // The first three are the max frame size of 2^14, the fourth is (2^14) - 1
         // as that's all that remains of the connection window. The final byte of the
         // message is sent later, after the server sends a WINDOW_UPDATE frame.
-        for _ in 1 ... 3 {
+        for _ in 1...3 {
             events.popFirst()?.assertDataFrame(
                 endStream: false,
                 streamID: 1,
