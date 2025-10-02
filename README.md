@@ -1,5 +1,7 @@
 # SwiftNIO HTTP/2
 
+TESTING CI - DO NOT MERGE
+
 This project contains HTTP/2 support for Swift projects using [SwiftNIO](https://github.com/apple/swift-nio). To get started, check the [API docs](https://swiftpackageindex.com/apple/swift-nio-http2/main/documentation/niohttp2).
 
 ## Building
