@@ -1,0 +1,23 @@
+{
+    "1k_requests_inline_interleaved": 30150,
+    "1k_requests_inline_noninterleaved": 29100,
+    "1k_requests_interleaved": 36150,
+    "1k_requests_noninterleaved": 35100,
+    "client_server_h1_request_response": 280050,
+    "client_server_h1_request_response_inline": 265050,
+    "client_server_request_response": 249050,
+    "client_server_request_response_inline": 240050,
+    "client_server_request_response_many": 1194050,
+    "client_server_request_response_many_inline": 885050,
+    "create_client_stream_channel": 35050,
+    "create_client_stream_channel_inline": 35050,
+    "create_client_stream_channel_inline_no_promise_based_API": 35050,
+    "create_client_stream_channel_no_promise_based_API": 35050,
+    "get_100000_headers_canonical_form": 200050,
+    "get_100000_headers_canonical_form_trimming_whitespace": 200050,
+    "get_100000_headers_canonical_form_trimming_whitespace_from_long_string": 300050,
+    "get_100000_headers_canonical_form_trimming_whitespace_from_short_string": 200050,
+    "hpack_decoding": 5050,
+    "stream_teardown_100_concurrent": 253550,
+    "stream_teardown_100_concurrent_inline": 252150
+}
