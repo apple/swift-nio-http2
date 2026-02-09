@@ -35,9 +35,9 @@ private struct BaseClientCodec {
         }
     }
 
-    /// We store the outbound last frame in the client codec and only forward it on a flush or when we receive
-    /// an `HTTPClientRequestPart.end(trailers)`.
-    /// This allows us to reduce writing empty data frames, that are only used to signal the stream end.
+    /// Caches the most recent outbound frame until flush or .end is received.
+    /// This allows us to set endStream=true on the final data/headers frame
+    /// instead of sending a separate empty data frame just to signal stream closure.
     private var pendingFrameWrite: PendingFrameWrite?
 
     /// Initializes a `BaseClientCodec`.
