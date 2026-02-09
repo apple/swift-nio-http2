@@ -35,7 +35,7 @@ jobs:
       h2spec-matrix: '${{ steps.generate-matrix.outputs.h2spec-matrix }}'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
       - id: generate-matrix
@@ -59,7 +59,7 @@ jobs:
       integration-tests-matrix: '${{ steps.generate-matrix.outputs.integration-tests-matrix }}'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           persist-credentials: false
       - id: generate-matrix
