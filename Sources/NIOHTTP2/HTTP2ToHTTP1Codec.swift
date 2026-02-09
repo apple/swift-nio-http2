@@ -23,8 +23,22 @@ private struct BaseClientCodec {
     private let normalizeHTTPHeaders: Bool
 
     private var headerStateMachine: HTTP2HeadersStateMachine = HTTP2HeadersStateMachine(mode: .client)
-
     private var outgoingHTTP1RequestHead: HTTPRequestHead?
+
+    struct PendingFrameWrite {
+        var frame: HTTP2Frame.FramePayload
+        var promise: EventLoopPromise<Void>?
+
+        init(_ frame: HTTP2Frame.FramePayload, _ promise: EventLoopPromise<Void>?) {
+            self.frame = frame
+            self.promise = promise
+        }
+    }
+
+    /// We store the outbound last frame in the client codec and only forward it on a flush or when we receive
+    /// an `HTTPClientRequestPart.end(trailers)`.
+    /// This allows us to reduce writing empty data frames, that are only used to signal the stream end.
+    private var pendingFrameWrite: PendingFrameWrite?
 
     /// Initializes a `BaseClientCodec`.
     ///
@@ -102,8 +116,8 @@ private struct BaseClientCodec {
 
     mutating func processOutboundData(
         _ data: HTTPClientRequestPart,
-        allocator: ByteBufferAllocator
-    ) throws -> HTTP2Frame.FramePayload {
+        promise: EventLoopPromise<Void>?
+    ) throws -> (first: PendingFrameWrite?, second: PendingFrameWrite?) {
         switch data {
         case .head(let head):
             precondition(self.outgoingHTTP1RequestHead == nil, "Only a single HTTP request allowed per HTTP2 stream")
@@ -115,23 +129,84 @@ private struct BaseClientCodec {
                     normalizeHTTPHeaders: self.normalizeHTTPHeaders
                 )
             )
-            return .headers(headerContent)
+            self.pendingFrameWrite = .init(.headers(headerContent), promise)
+            return (nil, nil)
+
         case .body(let body):
-            return .data(HTTP2Frame.FramePayload.Data(data: body))
+            let cached = self.pendingFrameWrite
+            self.pendingFrameWrite = .init(.data(HTTP2Frame.FramePayload.Data(data: body)), promise)
+            return (cached, nil)
+
         case .end(let trailers):
-            if let trailers = trailers {
-                return .headers(
-                    .init(
-                        headers: HPACKHeaders(
-                            httpHeaders: trailers,
-                            normalizeHTTPHeaders: self.normalizeHTTPHeaders
-                        ),
-                        endStream: true
-                    )
+            defer { self.pendingFrameWrite = nil }
+
+            switch (self.pendingFrameWrite?.frame, trailers) {
+            case (.none, .none):
+                return (.init(.data(.init(data: .byteBuffer(ByteBuffer()), endStream: true)), promise), nil)
+
+            case (.none, .some(let trailers)):
+                return (.init(self.makeH2TrailerFramePayload(trailers), promise), nil)
+
+            case (.data(var data), .none):
+                data.endStream = true
+                let flushPromise = self.mergeEndPromiseAndPendingPromise(promise)
+                return (.init(.data(data), flushPromise), nil)
+
+            case (.data(let data), .some(let trailers)):
+                let trailers = self.makeH2TrailerFramePayload(trailers)
+                return (
+                    .init(.data(data), self.pendingFrameWrite!.promise),
+                    .init(trailers, promise)
                 )
-            } else {
-                return .data(.init(data: .byteBuffer(allocator.buffer(capacity: 0)), endStream: true))
+
+            case (.headers(var headers), .none):
+                headers.endStream = true
+                let flushPromise = self.mergeEndPromiseAndPendingPromise(promise)
+                return (.init(.headers(headers), flushPromise), nil)
+
+            case (.headers(let headers), .some(let trailers)):
+                let trailers = self.makeH2TrailerFramePayload(trailers)
+                return (
+                    .init(.headers(headers), self.pendingFrameWrite!.promise),
+                    .init(trailers, promise)
+                )
+
+            case (.priority, _), (.rstStream, _), (.settings, _), (.pushPromise, _), (.ping, _), (.goAway, _), (.windowUpdate, _), (.alternativeService, _), (.origin, _):
+                fatalError("Only header and data frames are cached here")
             }
+        }
+    }
+
+    mutating func clearCache() -> PendingFrameWrite? {
+        defer { self.pendingFrameWrite = nil }
+        return self.pendingFrameWrite
+    }
+
+    private func makeH2TrailerFramePayload(_ trailers: HTTPHeaders) -> HTTP2Frame.FramePayload {
+        HTTP2Frame.FramePayload.headers(
+            .init(
+                headers: HPACKHeaders(
+                    httpHeaders: trailers,
+                    normalizeHTTPHeaders: self.normalizeHTTPHeaders
+                ),
+                endStream: true
+            )
+        )
+    }
+
+    private func mergeEndPromiseAndPendingPromise(_ endPromise: EventLoopPromise<Void>?) -> EventLoopPromise<Void>? {
+        // We only need to merge, if there is an outstanding frame write. Therefore we can bang
+        // the frame write here.
+        switch (self.pendingFrameWrite!.promise, endPromise) {
+        case (.none, .none):
+            return nil
+        case (.some(let pending), .none):
+            return pending
+        case (.none, .some(let end)):
+            return end
+        case (.some(let pending), .some(let end)):
+            pending.futureResult.cascade(to: end)
+            return pending
         }
     }
 }
@@ -199,16 +274,34 @@ public final class HTTP2ToHTTP1ClientCodec: ChannelInboundHandler, ChannelOutbou
         let responsePart = self.unwrapOutboundIn(data)
 
         do {
-            let transformedPayload = try self.baseCodec.processOutboundData(
-                responsePart,
-                allocator: context.channel.allocator
-            )
-            let part = HTTP2Frame(streamID: self.streamID, payload: transformedPayload)
-            context.write(self.wrapOutboundOut(part), promise: promise)
+            let (first, second) = try self.baseCodec.processOutboundData(responsePart, promise: promise)
+            if let first = first {
+                let part = HTTP2Frame(streamID: self.streamID, payload: first.frame)
+                context.write(self.wrapOutboundOut(part), promise: first.promise)
+                if let second = second {
+                    let part = HTTP2Frame(streamID: self.streamID, payload: second.frame)
+                    context.write(self.wrapOutboundOut(part), promise: second.promise)
+                }
+            }
         } catch {
             promise?.fail(error)
             context.fireErrorCaught(error)
         }
+    }
+
+    public func flush(context: ChannelHandlerContext) {
+        if let pending = self.baseCodec.clearCache() {
+            let part = HTTP2Frame(streamID: self.streamID, payload: pending.frame)
+            context.write(self.wrapOutboundOut(part), promise: pending.promise)
+        }
+        context.flush()
+    }
+
+    public func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        if let pending = self.baseCodec.clearCache() {
+            pending.promise?.fail(error)
+        }
+        context.fireErrorCaught(error)
     }
 }
 
@@ -270,15 +363,34 @@ public final class HTTP2FramePayloadToHTTP1ClientCodec: ChannelInboundHandler, C
         let requestPart = self.unwrapOutboundIn(data)
 
         do {
-            let transformedPayload = try self.baseCodec.processOutboundData(
+            let (first, second) = try self.baseCodec.processOutboundData(
                 requestPart,
-                allocator: context.channel.allocator
+                promise: promise
             )
-            context.write(self.wrapOutboundOut(transformedPayload), promise: promise)
+            if let first {
+                context.write(self.wrapOutboundOut(first.frame), promise: first.promise)
+                if let second {
+                    context.write(self.wrapOutboundOut(second.frame), promise: second.promise)
+                }
+            }
         } catch {
             promise?.fail(error)
             context.fireErrorCaught(error)
         }
+    }
+
+    public func flush(context: ChannelHandlerContext) {
+        if let pending = self.baseCodec.clearCache() {
+            context.write(self.wrapOutboundOut(pending.frame), promise: pending.promise)
+        }
+        context.flush()
+    }
+
+    public func errorCaught(context: ChannelHandlerContext, error: any Error) {
+        if let pending = self.baseCodec.clearCache() {
+            pending.promise?.fail(error)
+        }
+        context.fireErrorCaught(error)
     }
 }
 
