@@ -171,7 +171,8 @@ private struct BaseClientCodec {
                     .init(trailers, promise)
                 )
 
-            case (.priority, _), (.rstStream, _), (.settings, _), (.pushPromise, _), (.ping, _), (.goAway, _), (.windowUpdate, _), (.alternativeService, _), (.origin, _):
+            case (.priority, _), (.rstStream, _), (.settings, _), (.pushPromise, _), (.ping, _), (.goAway, _),
+                (.windowUpdate, _), (.alternativeService, _), (.origin, _):
                 fatalError("Only header and data frames are cached here")
             }
         }
