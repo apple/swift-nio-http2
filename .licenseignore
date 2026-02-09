@@ -45,3 +45,4 @@ dev/update-benchmark-thresholds
 FuzzTesting/FailCases/*
 Tests/hpack-test-case/*
 .flake8
+dev/alloc-limits-from-test-output
