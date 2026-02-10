@@ -149,20 +149,22 @@ private struct BaseClientCodec {
 
             case (.data(var data), .none):
                 data.endStream = true
-                let flushPromise = self.mergeEndPromiseAndPendingPromise(promise)
-                return (.init(.data(data), flushPromise), nil)
+                var pendingPromise = self.pendingFrameWrite!.promise
+                pendingPromise.setOrCascade(to: promise)
+                return (.init(.data(data), pendingPromise), nil)
 
             case (.data(let data), .some(let trailers)):
-                let trailers = self.makeH2TrailerFramePayload(trailers)
+                let trailerFrame = self.makeH2TrailerFramePayload(trailers)
                 return (
                     .init(.data(data), self.pendingFrameWrite!.promise),
-                    .init(trailers, promise)
+                    .init(trailerFrame, promise)
                 )
 
             case (.headers(var headers), .none):
                 headers.endStream = true
-                let flushPromise = self.mergeEndPromiseAndPendingPromise(promise)
-                return (.init(.headers(headers), flushPromise), nil)
+                var pendingPromise = self.pendingFrameWrite!.promise
+                pendingPromise.setOrCascade(to: promise)
+                return (.init(.headers(headers), pendingPromise), nil)
 
             case (.headers(let headers), .some(let trailers)):
                 let trailers = self.makeH2TrailerFramePayload(trailers)
@@ -193,22 +195,6 @@ private struct BaseClientCodec {
                 endStream: true
             )
         )
-    }
-
-    private func mergeEndPromiseAndPendingPromise(_ endPromise: EventLoopPromise<Void>?) -> EventLoopPromise<Void>? {
-        // We only need to merge, if there is an outstanding frame write. Therefore we can bang
-        // the frame write here.
-        switch (self.pendingFrameWrite!.promise, endPromise) {
-        case (.none, .none):
-            return nil
-        case (.some(let pending), .none):
-            return pending
-        case (.none, .some(let end)):
-            return end
-        case (.some(let pending), .some(let end)):
-            pending.futureResult.cascade(to: end)
-            return pending
-        }
     }
 }
 
