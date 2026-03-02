@@ -2,7 +2,7 @@
 //
 // This source file is part of the SwiftNIO open source project
 //
-// Copyright (c) 2020-2021 Apple Inc. and the SwiftNIO project authors
+// Copyright (c) 2020-2026 Apple Inc. and the SwiftNIO project authors
 // Licensed under Apache License v2.0
 //
 // See LICENSE.txt for license information
@@ -1364,4 +1364,138 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         }
     }
 
+    func testHeadersEndStreamIfFollowedByEndImmediately() throws {
+        let handler = HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)
+        let writeRecorder = FramePayloadWriteRecorder()
+        let channel = EmbeddedChannel(handlers: [writeRecorder, handler])
+
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        let headPromise = channel.eventLoop.makePromise(of: Void.self)
+        let expectedRequestHeaders = HPACKHeaders([
+            (":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https"),
+        ])
+
+        channel.write(HTTPClientRequestPart.head(http1Head), promise: headPromise)
+        channel.write(HTTPClientRequestPart.end(nil), promise: nil)
+        channel.flush()
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: true, headers: expectedRequestHeaders)
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 1)
+        XCTAssertNoThrow(try headPromise.futureResult.wait())
+    }
+
+    func testHeadersDontEndStreamIfFlushedEvenWhenFollowedByEnd() throws {
+        let handler = HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)
+        let writeRecorder = FramePayloadWriteRecorder()
+        let channel = EmbeddedChannel(handlers: [writeRecorder, handler])
+
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        let headPromise = channel.eventLoop.makePromise(of: Void.self)
+        let expectedRequestHeaders = HPACKHeaders([
+            (":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https"),
+        ])
+
+        channel.write(HTTPClientRequestPart.head(http1Head), promise: headPromise)
+        channel.flush()
+        XCTAssertNoThrow(try headPromise.futureResult.wait())
+        channel.write(HTTPClientRequestPart.end(nil), promise: nil)
+        channel.flush()
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: true, payload: ByteBuffer())
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
+    }
+
+    func testHeadersDontEndStreamIfFollowedByEndWithTrailersImmediately() throws {
+        let handler = HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)
+        let writeRecorder = FramePayloadWriteRecorder()
+        let channel = EmbeddedChannel(handlers: [writeRecorder, handler])
+
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        let headPromise = channel.eventLoop.makePromise(of: Void.self)
+        let expectedRequestHeaders = HPACKHeaders([
+            (":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https"),
+        ])
+
+        channel.write(HTTPClientRequestPart.head(http1Head), promise: headPromise)
+        channel.write(HTTPClientRequestPart.end(["foo": "bar"]), promise: nil)
+        channel.flush()
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
+        writeRecorder.flushedWrites[1].assertHeadersFramePayload(endStream: true, headers: ["foo": "bar"])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
+        XCTAssertNoThrow(try headPromise.futureResult.wait())
+    }
+
+    func testDataFrameEndsStreamIfFollowedByEndImmediately() throws {
+        let handler = HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)
+        let writeRecorder = FramePayloadWriteRecorder()
+        let channel = EmbeddedChannel(handlers: [writeRecorder, handler])
+
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        let body = ByteBuffer(string: "Hello World!")
+        let bodyPromise = channel.eventLoop.makePromise(of: Void.self)
+        let endPromise = channel.eventLoop.makePromise(of: Void.self)
+        let expectedRequestHeaders = HPACKHeaders([
+            (":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https"),
+        ])
+
+        channel.write(HTTPClientRequestPart.head(http1Head), promise: nil)
+        channel.write(HTTPClientRequestPart.body(.byteBuffer(body)), promise: bodyPromise)
+        channel.write(HTTPClientRequestPart.end(nil), promise: endPromise)
+        channel.flush()
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: true, payload: body)
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 2)
+        XCTAssertNoThrow(try bodyPromise.futureResult.wait())
+        XCTAssertNoThrow(try endPromise.futureResult.wait())
+    }
+
+    func testDataFrameDoesntEndStreamIfFlushedEvenWhenFollowedByEnd() throws {
+        let handler = HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)
+        let writeRecorder = FramePayloadWriteRecorder()
+        let channel = EmbeddedChannel(handlers: [writeRecorder, handler])
+
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        let body = ByteBuffer(string: "Hello World!")
+        let bodyPromise = channel.eventLoop.makePromise(of: Void.self)
+        let endPromise = channel.eventLoop.makePromise(of: Void.self)
+        let expectedRequestHeaders = HPACKHeaders([
+            (":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https"),
+        ])
+
+        channel.write(HTTPClientRequestPart.head(http1Head), promise: nil)
+        channel.write(HTTPClientRequestPart.body(.byteBuffer(body)), promise: bodyPromise)
+        channel.flush()
+        channel.write(HTTPClientRequestPart.end(nil), promise: endPromise)
+        channel.flush()
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: false, payload: body)
+        writeRecorder.flushedWrites[2].assertDataFramePayload(endStream: true, payload: ByteBuffer())
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
+        XCTAssertNoThrow(try bodyPromise.futureResult.wait())
+        XCTAssertNoThrow(try endPromise.futureResult.wait())
+    }
+
+    func testDataFrameDoesntEndStreamIfFollowedByEndWithTrailersImmediately() throws {
+        let handler = HTTP2FramePayloadToHTTP1ClientCodec(httpProtocol: .https)
+        let writeRecorder = FramePayloadWriteRecorder()
+        let channel = EmbeddedChannel(handlers: [writeRecorder, handler])
+
+        let http1Head = HTTPRequestHead(version: .http1_1, method: .GET, uri: "/", headers: ["host": "example.org"])
+        let body = ByteBuffer(string: "Hello World!")
+        let bodyPromise = channel.eventLoop.makePromise(of: Void.self)
+        let endPromise = channel.eventLoop.makePromise(of: Void.self)
+        let expectedRequestHeaders = HPACKHeaders([
+            (":method", "GET"), (":path", "/"), (":authority", "example.org"), (":scheme", "https"),
+        ])
+
+        channel.write(HTTPClientRequestPart.head(http1Head), promise: nil)
+        channel.write(HTTPClientRequestPart.body(.byteBuffer(body)), promise: bodyPromise)
+        channel.write(HTTPClientRequestPart.end(["foo": "bar"]), promise: endPromise)
+        channel.flush()
+        writeRecorder.flushedWrites[0].assertHeadersFramePayload(endStream: false, headers: expectedRequestHeaders)
+        writeRecorder.flushedWrites[1].assertDataFramePayload(endStream: false, payload: body)
+        writeRecorder.flushedWrites[2].assertHeadersFramePayload(endStream: true, headers: ["foo": "bar"])
+        XCTAssertEqual(writeRecorder.flushedWrites.count, 3)
+        XCTAssertNoThrow(try bodyPromise.futureResult.wait())
+        XCTAssertNoThrow(try endPromise.futureResult.wait())
+    }
 }

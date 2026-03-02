@@ -59,3 +59,12 @@ This product contains a fuzz testing harness derived from Swift Protobuf.
     * https://github.com/apple/swift-protobuf/blob/main/LICENSE.txt
   * HOMEPAGE:
     * https://github.com/apple/swift-protobuf
+
+---
+
+This product contains a graceful shutdown connection manager derived from gRPC Swift NIO Transport.
+
+  * LICENSE (Apache License 2.0):
+    * https://github.com/grpc/grpc-swift-nio-transport/blob/main/LICENSE
+  * HOMEPAGE:
+    * https://github.com/gRPC/gRPC-swift-nio-transport

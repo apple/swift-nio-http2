@@ -927,6 +927,65 @@ extension ChannelPipeline.SynchronousOperations {
         )
     }
 
+    /// Configures a `ChannelPipeline` to speak HTTP/2 and sets up mapping functions so that it may be interacted with
+    /// from concurrent code. This variant includes a ``NIOHTTP2ServerConnectionManagementHandler`` argument, and links
+    /// its stream and frame delegates with ``NIOHTTP2Handler``.
+    ///
+    /// This operation **must** be called on the event loop.
+    ///
+    /// In general this is not entirely useful by itself, as HTTP/2 is a negotiated protocol. This helper does not
+    /// handle negotiation. Instead, this simply adds the handler required to speak HTTP/2 after negotiation has
+    /// completed, or when agreed by prior knowledge. Use this function to setup a HTTP/2 pipeline if you wish to use
+    /// async sequence abstractions over inbound and outbound streams, as it allows that pipeline to evolve without
+    /// breaking your code.
+    ///
+    /// - Parameters:
+    ///   - mode: The mode this pipeline will operate in, server or client.
+    ///   - connectionManagerConfiguration: The configuration for a ``NIOHTTP2ServerConnectionManagementHandler``
+    ///     instance that will be initialized and used alongside the ``NIOHTTP2Handler``.
+    ///   - http2HandlerConfiguration: The settings that will be used when establishing the connection and new streams.
+    ///   - streamInitializer: A closure that will be called whenever the remote peer initiates a new stream.
+    ///     The output of this closure is the element type of the returned multiplexer
+    /// - Returns: An `EventLoopFuture` containing the `AsyncStreamMultiplexer` inserted into this pipeline, which can
+    ///   be used to initiate new streams and iterate over inbound HTTP/2 stream channels.
+    @inlinable
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    public func configureAsyncHTTP2Pipeline<Output: Sendable>(
+        mode: NIOHTTP2Handler.ParserMode,
+        connectionManagerConfiguration: NIOHTTP2ServerConnectionManagementHandler.Configuration,
+        http2HandlerConfiguration: NIOHTTP2Handler.Configuration = NIOHTTP2Handler.Configuration(),
+        streamInitializer: @escaping NIOChannelInitializerWithOutput<Output>
+    ) throws -> NIOHTTP2Handler.AsyncStreamMultiplexer<Output> {
+        let connectionManager = NIOHTTP2ServerConnectionManagementHandler(
+            eventLoop: self.eventLoop,
+            configuration: connectionManagerConfiguration
+        )
+
+        let handler = NIOHTTP2Handler(
+            mode: mode,
+            eventLoop: self.eventLoop,
+            connectionConfiguration: http2HandlerConfiguration.connection,
+            streamConfiguration: http2HandlerConfiguration.stream,
+            streamDelegate: connectionManager.http2StreamDelegate,
+            frameDelegate: nil,
+            inboundStreamInitializerWithAnyOutput: { channel in
+                streamInitializer(channel).map { $0 }
+            }
+        )
+
+        try self.addHandler(handler)
+        try self.addHandler(connectionManager)
+
+        let (inboundStreamChannels, continuation) = NIOHTTP2AsyncSequence.initialize(
+            inboundStreamInitializerOutput: Output.self
+        )
+
+        return try handler.syncAsyncStreamMultiplexer(
+            continuation: continuation,
+            inboundStreamChannels: inboundStreamChannels
+        )
+    }
+
     @inlinable
     func configureHTTP2AsyncSecureUpgrade<HTTP1Output: Sendable, HTTP2Output: Sendable>(
         on channel: any Channel,
