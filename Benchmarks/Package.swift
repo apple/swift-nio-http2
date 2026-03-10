@@ -35,8 +35,8 @@ let package = Package(
             ],
             path: "Benchmarks/NIOHPACKBenchmarks",
             plugins: [
-                .plugin(name: "BenchmarkPlugin", package: "package-benchmark"),
+                .plugin(name: "BenchmarkPlugin", package: "package-benchmark")
             ]
-        ),
+        )
     ]
 )
