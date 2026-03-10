@@ -773,6 +773,9 @@ extension String.UTF8View {
 extension String {
     @inlinable
     internal func isEqualCaseInsensitiveASCIIBytes(to: String) -> Bool {
-        self.utf8.compareCaseInsensitiveASCIIBytes(to: to.utf8)
+        guard self.utf8.count == to.utf8.count else {
+            return false
+        }
+        return self.utf8.compareCaseInsensitiveASCIIBytes(to: to.utf8)
     }
 }
