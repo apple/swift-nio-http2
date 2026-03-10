@@ -76,6 +76,12 @@ jobs:
       name: "Examples"
       matrix_string: '${{ needs.construct-integration-tests-matrix.outputs.integration-tests-matrix }}'
 
+  benchmarks:
+    name: Benchmarks
+    uses: apple/swift-nio/.github/workflows/benchmarks.yml@main
+    with:
+      benchmark_package_path: "Benchmarks"
+
   macos-tests:
     name: macOS tests
     uses: apple/swift-nio/.github/workflows/macos_tests.yml@main
