@@ -92,7 +92,9 @@ public struct IndexedHeaderTable {
         var firstHeaderIndex: Int? = nil
 
         if let value = value {
-            // Use the pre-computed hash index for O(1) static table name lookup.
+            // We've been asked to find a full match if we can. Begin by searching the static table. If we
+            // find a full match there, great, otherwise we only have a partial result and need to search
+            // the dynamic table too.
             if let entries = StaticHeaderTable[name] {
                 for entry in entries {
                     if firstHeaderIndex == nil {
@@ -104,7 +106,8 @@ public struct IndexedHeaderTable {
                 }
             }
         } else {
-            // We have not been asked for a full match. Search only the names.
+            // We have not been asked for a full match. Search only the names of the static table. If we
+            // find one, we're done.
             if let entries = StaticHeaderTable[name], let first = entries.first {
                 return (first.offset, false)
             }
