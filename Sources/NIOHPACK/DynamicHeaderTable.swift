@@ -71,7 +71,7 @@ struct DynamicHeaderTable: Sendable {
 
     // internal for testing
     func dumpHeaders() -> String {
-        self.storage.dumpHeaders(offsetBy: StaticHeaderTable.count)
+        self.storage.dumpHeaders(offsetBy: StaticHeaderTable.values.count)
     }
 
     // internal for testing -- clears the dynamic table
