@@ -13,6 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 enum StaticHeaderTable {
+    static let count = StaticHeaderTable.values.count
+
     static let values: [(String, String)] = [
         ("", ""),  // real indexing begins at 1
         (":authority", ""),

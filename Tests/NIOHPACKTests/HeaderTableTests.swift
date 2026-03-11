@@ -136,7 +136,7 @@ class HeaderTableTests: XCTestCase {
         let description = table.dumpHeaders()
 
         // construct what we expect
-        var expected = StaticHeaderTable.enumerated().reduce("") {
+        var expected = StaticHeaderTable.values.enumerated().reduce("") {
             $0 + "\($1.0) - \($1.1.0) : \($1.1.1)\n"
         }
 
@@ -156,7 +156,7 @@ class HeaderTableTests: XCTestCase {
     func testHeaderDescription() throws {
         let table = IndexedHeaderTable(allocator: ByteBufferAllocator())
         let staticDescription = table.staticTable.description
-        let staticExpected = StaticHeaderTable.description
+        let staticExpected = StaticHeaderTable.values.description
         XCTAssertEqual(staticDescription, staticExpected)
     }
 
