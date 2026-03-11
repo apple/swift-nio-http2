@@ -22,6 +22,10 @@ public struct IndexedHeaderTable {
     @usableFromInline
     var dynamicTable: DynamicHeaderTable
 
+    /// Pre-computed hash index for O(1) static table name lookups.
+    /// Maps case-insensitive header name → array of (offset, value) pairs in the static table.
+    private let staticNameIndex: [CaseInsensitiveASCIIString: [(offset: Int, value: String)]]
+
     // TODO(cory): This property should be removed, we only keep it for use in headerViews(at:).
     private var allocator: ByteBufferAllocator
 
@@ -33,6 +37,15 @@ public struct IndexedHeaderTable {
         self.staticTable = HeaderTableStorage(staticHeaderList: StaticHeaderTable)
         self.dynamicTable = DynamicHeaderTable(maximumLength: maxDynamicTableSize)
         self.allocator = allocator
+
+        // Build hash index for static table lookups.
+        var index = [CaseInsensitiveASCIIString: [(offset: Int, value: String)]]()
+        index.reserveCapacity(StaticHeaderTable.count)
+        for (offset, entry) in StaticHeaderTable.enumerated() {
+            let key = CaseInsensitiveASCIIString(entry.0)
+            index[key, default: []].append((offset: offset, value: entry.1))
+        }
+        self.staticNameIndex = index
     }
 
     /// Obtains the header key/value pair at the given index within the table.
@@ -92,22 +105,23 @@ public struct IndexedHeaderTable {
         var firstHeaderIndex: Int? = nil
 
         if let value = value {
-            // We've been asked to find a full match if we can. Begin by searching the static table. If we
-            // find a full match there, great, otherwise we only have a partial result and need to search
-            // the dynamic table too.
-            switch self.staticTable.closestMatch(name: name, value: value) {
-            case .full(let index):
-                return (index, true)
-            case .partial(let index):
-                firstHeaderIndex = index
-            case .none:
-                break
+            // Use the pre-computed hash index for O(1) static table name lookup.
+            let key = CaseInsensitiveASCIIString(name)
+            if let entries = self.staticNameIndex[key] {
+                for entry in entries {
+                    if firstHeaderIndex == nil {
+                        firstHeaderIndex = entry.offset
+                    }
+                    if value == entry.value {
+                        return (entry.offset, true)
+                    }
+                }
             }
         } else {
-            // We have not been asked for a full match. Search only the names of the static table. If we
-            // find one, we're done.
-            if let index = self.staticTable.firstIndex(matching: name) {
-                return (index, false)
+            // We have not been asked for a full match. Search only the names.
+            let key = CaseInsensitiveASCIIString(name)
+            if let entries = self.staticNameIndex[key], let first = entries.first {
+                return (first.offset, false)
             }
         }
 
@@ -195,3 +209,39 @@ public struct IndexedHeaderTable {
 }
 
 extension IndexedHeaderTable: Sendable {}
+
+/// A wrapper around `String` that provides case-insensitive ASCII hashing and equality.
+/// Used as a dictionary key for O(1) static table lookups.
+private struct CaseInsensitiveASCIIString: Hashable, Sendable {
+    @usableFromInline
+    let _string: String
+
+    @inlinable
+    init(_ string: String) {
+        self._string = string
+    }
+
+    @inlinable
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(self._string)
+        // fast path
+        if self._string.isContiguousUTF8 {
+            // Accumulate a single hash value from all bytes to minimize hasher.combine calls.
+            self._string.utf8.withContiguousStorageIfAvailable { buffer in
+                for idx in 0..<buffer.count {
+                    hasher.combine(buffer[idx] & 0xdf)
+                }
+            }!
+        } else {
+            // slow path
+            for byte in self._string.utf8 {
+                hasher.combine(byte & 0xdf)
+            }
+        }
+    }
+
+    @inlinable
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs._string.isEqualCaseInsensitiveASCIIBytes(to: rhs._string)
+    }
+}
