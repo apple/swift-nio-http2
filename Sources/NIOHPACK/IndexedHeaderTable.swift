@@ -30,7 +30,7 @@ public struct IndexedHeaderTable {
     ///
     /// - Parameter maxDynamicTableSize: Maximum size of the dynamic table. Default = 4096.
     init(allocator: ByteBufferAllocator, maxDynamicTableSize: Int = DynamicHeaderTable.defaultSize) {
-        self.staticTable = HeaderTableStorage(staticHeaderList: StaticHeaderTable)
+        self.staticTable = HeaderTableStorage(staticHeaderList: StaticHeaderTable.values)
         self.dynamicTable = DynamicHeaderTable(maximumLength: maxDynamicTableSize)
         self.allocator = allocator
     }
@@ -95,19 +95,21 @@ public struct IndexedHeaderTable {
             // We've been asked to find a full match if we can. Begin by searching the static table. If we
             // find a full match there, great, otherwise we only have a partial result and need to search
             // the dynamic table too.
-            switch self.staticTable.closestMatch(name: name, value: value) {
-            case .full(let index):
-                return (index, true)
-            case .partial(let index):
-                firstHeaderIndex = index
-            case .none:
-                break
+            if let entries = StaticHeaderTable[name] {
+                for entry in entries {
+                    if firstHeaderIndex == nil {
+                        firstHeaderIndex = entry.offset
+                    }
+                    if value == entry.value {
+                        return (entry.offset, true)
+                    }
+                }
             }
         } else {
             // We have not been asked for a full match. Search only the names of the static table. If we
             // find one, we're done.
-            if let index = self.staticTable.firstIndex(matching: name) {
-                return (index, false)
+            if let entries = StaticHeaderTable[name], let first = entries.first {
+                return (first.offset, false)
             }
         }
 
@@ -120,7 +122,7 @@ public struct IndexedHeaderTable {
             } else {
                 // Either no match in the static table, or the dynamic table has a header with
                 // a matching value. Return that, but update the index appropriately.
-                return (result.index + StaticHeaderTable.count, result.containsValue)
+                return (result.index + StaticHeaderTable.values.count, result.containsValue)
             }
         } else if let staticIndex = firstHeaderIndex {
             // nothing in the dynamic table, but the static table had a name match
