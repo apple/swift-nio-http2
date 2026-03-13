@@ -32,7 +32,7 @@ internal class HTTP2CommonInboundStreamMultiplexer {
     private var connectionFlowControlManager: InboundWindowManager
 
     private let mode: NIOHTTP2Handler.ParserMode
-    @usableFromInline internal let _targetWindowSize: Int
+    @usableFromInline internal let _targetStreamWindowSize: Int
     @usableFromInline internal let _streamChannelOutboundBytesHighWatermark: Int
     @usableFromInline internal let _streamChannelOutboundBytesLowWatermark: Int
 
@@ -45,14 +45,15 @@ internal class HTTP2CommonInboundStreamMultiplexer {
         mode: NIOHTTP2Handler.ParserMode,
         channel: Channel,
         inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer,
-        targetWindowSize: Int,
+        targetConnectionWindowSize: Int,
+        targetStreamWindowSize: Int,
         streamChannelOutboundBytesHighWatermark: Int,
         streamChannelOutboundBytesLowWatermark: Int
     ) {
         self._channel = channel
         self.inboundStreamStateInitializer = inboundStreamStateInitializer
-        self._targetWindowSize = targetWindowSize
-        self.connectionFlowControlManager = InboundWindowManager(targetSize: Int32(targetWindowSize))
+        self._targetStreamWindowSize = targetStreamWindowSize
+        self.connectionFlowControlManager = InboundWindowManager(targetSize: Int32(targetConnectionWindowSize))
         self._streamChannelOutboundBytesHighWatermark = streamChannelOutboundBytesHighWatermark
         self._streamChannelOutboundBytesLowWatermark = streamChannelOutboundBytesLowWatermark
         self.mode = mode
@@ -103,7 +104,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
                 parent: self._channel,
                 multiplexer: multiplexer,
                 streamID: streamID,
-                targetWindowSize: Int32(self._targetWindowSize),
+                targetWindowSize: Int32(self._targetStreamWindowSize),
                 outboundBytesHighWatermark: self._streamChannelOutboundBytesHighWatermark,
                 outboundBytesLowWatermark: self._streamChannelOutboundBytesLowWatermark,
                 inboundStreamStateInitializer: self.inboundStreamStateInitializer
@@ -340,7 +341,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
             parent: self._channel,
             multiplexer: multiplexer,
             streamID: nil,
-            targetWindowSize: Int32(self._targetWindowSize),
+            targetWindowSize: Int32(self._targetStreamWindowSize),
             outboundBytesHighWatermark: self._streamChannelOutboundBytesHighWatermark,
             outboundBytesLowWatermark: self._streamChannelOutboundBytesLowWatermark,
             inboundStreamStateInitializer: .excludesStreamID(nil)
@@ -393,7 +394,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
             parent: self._channel,
             multiplexer: multiplexer,
             streamID: nil,
-            targetWindowSize: Int32(self._targetWindowSize),
+            targetWindowSize: Int32(self._targetStreamWindowSize),
             outboundBytesHighWatermark: self._streamChannelOutboundBytesHighWatermark,
             outboundBytesLowWatermark: self._streamChannelOutboundBytesLowWatermark,
             inboundStreamStateInitializer: .excludesStreamID(nil)
@@ -430,7 +431,7 @@ extension HTTP2CommonInboundStreamMultiplexer {
             parent: self._channel,
             multiplexer: multiplexer,
             streamID: streamID,
-            targetWindowSize: Int32(self._targetWindowSize),
+            targetWindowSize: Int32(self._targetStreamWindowSize),
             outboundBytesHighWatermark: self._streamChannelOutboundBytesHighWatermark,
             outboundBytesLowWatermark: self._streamChannelOutboundBytesLowWatermark,
             inboundStreamStateInitializer: .includesStreamID(nil)

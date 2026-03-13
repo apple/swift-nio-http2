@@ -723,4 +723,102 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
             }
         }
     }
+
+    func testIndependentConnectionAndStreamWindowSizes() throws {
+        // Configure the server with a large connection window (128 KiB) but the default
+        // stream window (65535). When the client sends data, the server's inline multiplexer
+        // should emit WINDOW_UPDATE frames with different increments for connection vs stream
+        // because the targets differ.
+        let connectionTargetWindowSize = 1 << 17  // 131072 = 128 KiB
+        let streamTargetWindowSize = 65535  // default
+
+        var serverConnectionConfig = NIOHTTP2Handler.ConnectionConfiguration()
+        serverConnectionConfig.targetWindowSize = connectionTargetWindowSize
+        var serverStreamConfig = NIOHTTP2Handler.StreamConfiguration()
+        serverStreamConfig.targetWindowSize = streamTargetWindowSize
+
+        XCTAssertNoThrow(
+            try self.clientChannel.pipeline.syncOperations.addHandler(
+                NIOHTTP2Handler(
+                    mode: .client,
+                    eventLoop: self.clientChannel.eventLoop,
+                    inboundStreamInitializer: Self.defaultMultiplexerCallback
+                )
+            )
+        )
+        XCTAssertNoThrow(
+            try self.serverChannel.pipeline.syncOperations.addHandler(
+                NIOHTTP2Handler(
+                    mode: .server,
+                    eventLoop: self.serverChannel.eventLoop,
+                    connectionConfiguration: serverConnectionConfig,
+                    streamConfiguration: serverStreamConfig,
+                    inboundStreamInitializer: { channel in
+                        channel.eventLoop.makeSucceededVoidFuture()
+                    }
+                )
+            )
+        )
+
+        try self.assertDoHandshake(client: self.clientChannel, server: self.serverChannel)
+
+        // Open a stream and send 64 KiB of data (64 * 1024 = 65536 bytes).
+        let headers: HPACKHeaders = [
+            ":path": "/", ":method": "POST", ":scheme": "https", ":authority": "localhost",
+        ]
+        let requestBody = ByteBuffer(repeating: 0x04, count: 1024)
+
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
+        let childHandler = InboundFramePayloadRecorder()
+        multiplexer.createStreamChannel(promise: nil) { channel in
+            let reqFramePayload = HTTP2Frame.FramePayload.headers(.init(headers: headers))
+            channel.write(reqFramePayload, promise: nil)
+
+            var bodyPayload = HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(requestBody)))
+            for _ in 0..<63 {
+                channel.write(bodyPayload, promise: nil)
+            }
+            bodyPayload = .data(.init(data: .byteBuffer(requestBody), endStream: true))
+            channel.writeAndFlush(bodyPayload, promise: nil)
+
+            return channel.pipeline.addHandler(childHandler)
+        }
+        self.clientChannel.embeddedEventLoop.run()
+
+        // Let the data flow between client and server.
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // Collect connection-level (stream 0) WINDOW_UPDATE frames received by the client.
+        var connectionWindowIncrements: [Int] = []
+        var streamWindowIncrements: [Int] = []
+
+        while let frame = try self.clientChannel.readInbound(as: HTTP2Frame.self) {
+            if case .windowUpdate(let increment) = frame.payload {
+                if frame.streamID == .rootStream {
+                    connectionWindowIncrements.append(increment)
+                }
+            }
+        }
+
+        // Stream-level window updates are delivered to the child channel.
+        for framePayload in childHandler.receivedFrames {
+            if case .windowUpdate(let increment) = framePayload {
+                streamWindowIncrements.append(increment)
+            }
+        }
+
+        // The initial HTTP/2 connection window is 65535, the target is 131072. The
+        // InboundWindowManager fires a WINDOW_UPDATE as soon as the first data is
+        // consumed so the increment = 131072 - (65535 - 1024) = 66561.
+        XCTAssertEqual(connectionWindowIncrements, [66561])
+
+        // The stream target is 65535 so the stream WINDOW_UPDATE fires at the half-point:
+        // increment = 65535 - 32767 = 32768.
+        XCTAssertEqual(streamWindowIncrements, [32768])
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
 }

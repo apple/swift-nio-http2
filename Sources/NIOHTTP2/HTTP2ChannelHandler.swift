@@ -132,9 +132,29 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     /// - `NIOHTTP2StreamDelegate`: The delegate to be notified upon stream creation and close.
     /// - `InboundStreamMultiplexer`: The component responsible for (de)multiplexing inbound streams.
     private enum InboundStreamMultiplexerState {
+        struct PendingMultiplexerConfig {
+            var targetConnectionWindowSize: Int
+            var targetStreamWindowSize: Int
+            var streamConfiguration: StreamConfiguration
+            var streamDelegate: NIOHTTP2StreamDelegate?
+
+            init(
+                connectionConfiguration: ConnectionConfiguration,
+                streamConfiguration: StreamConfiguration,
+                streamDelegate: NIOHTTP2StreamDelegate?
+            ) {
+                self.targetConnectionWindowSize =
+                    connectionConfiguration.targetWindowSize.clampedToValidWindowSize
+                self.targetStreamWindowSize =
+                    streamConfiguration.targetWindowSize.clampedToValidWindowSize
+                self.streamConfiguration = streamConfiguration
+                self.streamDelegate = streamDelegate
+            }
+        }
+
         case uninitializedLegacy
-        case uninitializedInline(StreamConfiguration, StreamInitializer, NIOHTTP2StreamDelegate?)
-        case uninitializedAsync(StreamConfiguration, StreamInitializerWithAnyOutput, NIOHTTP2StreamDelegate?)
+        case uninitializedInline(PendingMultiplexerConfig, StreamInitializer)
+        case uninitializedAsync(PendingMultiplexerConfig, StreamInitializerWithAnyOutput)
         case initialized(InboundStreamMultiplexer)
         case deinitialized
 
@@ -160,7 +180,7 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             case .uninitializedLegacy:
                 self = .initialized(.legacy(LegacyInboundStreamMultiplexer(context: context)))
 
-            case .uninitializedInline(let streamConfiguration, let inboundStreamInitializer, let streamDelegate):
+            case .uninitializedInline(let config, let inboundStreamInitializer):
                 self = .initialized(
                     .inline(
                         InlineStreamMultiplexer(
@@ -168,16 +188,18 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                             outboundView: .init(http2Handler: http2Handler),
                             mode: mode,
                             inboundStreamStateInitializer: .excludesStreamID(inboundStreamInitializer),
-                            targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
-                            streamChannelOutboundBytesHighWatermark: streamConfiguration
+                            targetConnectionWindowSize: config.targetConnectionWindowSize,
+                            targetStreamWindowSize: config.targetStreamWindowSize,
+                            streamChannelOutboundBytesHighWatermark: config.streamConfiguration
                                 .outboundBufferSizeHighWatermark,
-                            streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
-                            streamDelegate: streamDelegate
+                            streamChannelOutboundBytesLowWatermark: config.streamConfiguration
+                                .outboundBufferSizeLowWatermark,
+                            streamDelegate: config.streamDelegate
                         )
                     )
                 )
 
-            case .uninitializedAsync(let streamConfiguration, let inboundStreamInitializer, let streamDelegate):
+            case .uninitializedAsync(let config, let inboundStreamInitializer):
                 self = .initialized(
                     .inline(
                         InlineStreamMultiplexer(
@@ -185,11 +207,13 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
                             outboundView: .init(http2Handler: http2Handler),
                             mode: mode,
                             inboundStreamStateInitializer: .returnsAny(inboundStreamInitializer),
-                            targetWindowSize: max(0, min(streamConfiguration.targetWindowSize, Int(Int32.max))),
-                            streamChannelOutboundBytesHighWatermark: streamConfiguration
+                            targetConnectionWindowSize: config.targetConnectionWindowSize,
+                            targetStreamWindowSize: config.targetStreamWindowSize,
+                            streamChannelOutboundBytesHighWatermark: config.streamConfiguration
                                 .outboundBufferSizeHighWatermark,
-                            streamChannelOutboundBytesLowWatermark: streamConfiguration.outboundBufferSizeLowWatermark,
-                            streamDelegate: streamDelegate
+                            streamChannelOutboundBytesLowWatermark: config.streamConfiguration
+                                .outboundBufferSizeLowWatermark,
+                            streamDelegate: config.streamDelegate
                         )
                     )
                 )
@@ -1431,10 +1455,14 @@ extension NIOHTTP2Handler {
             frameDelegate: nil
         )
 
+        let pendingConfig = InboundStreamMultiplexerState.PendingMultiplexerConfig(
+            connectionConfiguration: connectionConfiguration,
+            streamConfiguration: streamConfiguration,
+            streamDelegate: streamDelegate
+        )
         self.inboundStreamMultiplexerState = .uninitializedInline(
-            streamConfiguration,
-            inboundStreamInitializer,
-            streamDelegate
+            pendingConfig,
+            inboundStreamInitializer
         )
     }
 
@@ -1465,10 +1493,14 @@ extension NIOHTTP2Handler {
             streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength,
             frameDelegate: frameDelegate
         )
+        let pendingConfig = InboundStreamMultiplexerState.PendingMultiplexerConfig(
+            connectionConfiguration: connectionConfiguration,
+            streamConfiguration: streamConfiguration,
+            streamDelegate: streamDelegate
+        )
         self.inboundStreamMultiplexerState = .uninitializedAsync(
-            streamConfiguration,
-            inboundStreamInitializerWithAnyOutput,
-            streamDelegate
+            pendingConfig,
+            inboundStreamInitializerWithAnyOutput
         )
     }
 
@@ -1494,6 +1526,16 @@ extension NIOHTTP2Handler {
         /// For more information, see the relevant presentation of the 2024 HTTP Workshop:
         /// https://github.com/HTTPWorkshop/workshop2024/blob/main/talks/1.%20Security/glitches.pdf
         public var maximumConnectionGlitches: Int = GlitchesMonitor.defaultMaximumGlitches
+
+        /// The target size of the HTTP/2 connection-level flow control window.
+        ///
+        /// This is the connection-level inbound flow control window size. It can be set independently
+        /// of the per-stream window size (``StreamConfiguration/targetWindowSize``) to allow tuning
+        /// for different workloads (e.g. a large connection window with smaller per-stream windows
+        /// when many concurrent streams are expected).
+        ///
+        /// Defaults to 65535 bytes, the HTTP/2 default.
+        public var targetWindowSize: Int = 65535
 
         public init() {}
     }
@@ -1607,5 +1649,12 @@ extension NIOHTTP2Handler {
         case .legacy:
             throw NIOHTTP2Errors.missingMultiplexer()
         }
+    }
+}
+
+extension Int {
+    /// Clamps a target window size to the range `0 ... (1 << 31 - 1)` valid for HTTP/2 flow control.
+    internal var clampedToValidWindowSize: Int {
+        Swift.max(0, Swift.min(self, (1 << 31) - 1))
     }
 }
