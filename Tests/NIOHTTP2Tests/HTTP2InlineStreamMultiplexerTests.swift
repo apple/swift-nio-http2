@@ -2473,6 +2473,34 @@ final class HTTP2InlineStreamMultiplexerTests: XCTestCase {
 
         XCTAssertNoThrow(try self.channel.finish())
     }
+
+    // MARK: - Connection vs Stream Target Window Size Tests
+
+    func testConnectionWindowUpdateUsesConnectionTargetWindowSize() throws {
+        // Use a large connection window and a smaller stream window.
+        let connectionTargetWindowSize = 1 << 20  // 1 MiB
+        let streamTargetWindowSize = 1 << 16  // 64 KiB
+
+        let multiplexer = HTTP2CommonInboundStreamMultiplexer(
+            mode: .server,
+            channel: self.channel,
+            inboundStreamStateInitializer: .excludesStreamID(nil),
+            targetConnectionWindowSize: connectionTargetWindowSize,
+            targetStreamWindowSize: streamTargetWindowSize,
+            streamChannelOutboundBytesHighWatermark: 8196,
+            streamChannelOutboundBytesLowWatermark: 4092
+        )
+
+        // The connection window is at connectionTargetWindowSize initially.
+        // Simulate the window dropping to just above half — no update expected.
+        let noUpdate = multiplexer.newConnectionWindowSize((connectionTargetWindowSize / 2) + 1)
+        XCTAssertNil(noUpdate, "No window update expected when window is above half of target")
+
+        // Now the window drops to exactly half — should trigger a window update.
+        let update = multiplexer.newConnectionWindowSize(connectionTargetWindowSize / 2)
+        XCTAssertNotNil(update, "Window update expected when window reaches half of target")
+        XCTAssertEqual(update, connectionTargetWindowSize / 2)
+    }
 }
 
 private final class ReadAndFrameConsumer: ChannelInboundHandler, ChannelOutboundHandler {

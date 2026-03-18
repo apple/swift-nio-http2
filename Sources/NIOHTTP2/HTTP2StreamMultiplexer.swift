@@ -254,11 +254,13 @@ public final class HTTP2StreamMultiplexer: ChannelInboundHandler, ChannelOutboun
     ) {
         self.channel = channel
 
+        let clampedWindowSize = targetWindowSize.clampedToValidWindowSize
         self.commonStreamMultiplexer = HTTP2CommonInboundStreamMultiplexer(
             mode: mode,
             channel: channel,
             inboundStreamStateInitializer: inboundStreamStateInitializer,
-            targetWindowSize: targetWindowSize,
+            targetConnectionWindowSize: clampedWindowSize,
+            targetStreamWindowSize: clampedWindowSize,
             streamChannelOutboundBytesHighWatermark: outboundBufferSizeHighWatermark,
             streamChannelOutboundBytesLowWatermark: outboundBufferSizeLowWatermark
         )

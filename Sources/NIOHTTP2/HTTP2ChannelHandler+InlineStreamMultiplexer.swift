@@ -31,7 +31,8 @@ internal struct InlineStreamMultiplexer {
         outboundView: NIOHTTP2Handler.OutboundView,
         mode: NIOHTTP2Handler.ParserMode,
         inboundStreamStateInitializer: MultiplexerAbstractChannel.InboundStreamStateInitializer,
-        targetWindowSize: Int,
+        targetConnectionWindowSize: Int,
+        targetStreamWindowSize: Int,
         streamChannelOutboundBytesHighWatermark: Int,
         streamChannelOutboundBytesLowWatermark: Int,
         streamDelegate: NIOHTTP2StreamDelegate?
@@ -41,7 +42,8 @@ internal struct InlineStreamMultiplexer {
             mode: mode,
             channel: context.channel,
             inboundStreamStateInitializer: inboundStreamStateInitializer,
-            targetWindowSize: targetWindowSize,
+            targetConnectionWindowSize: targetConnectionWindowSize,
+            targetStreamWindowSize: targetStreamWindowSize,
             streamChannelOutboundBytesHighWatermark: streamChannelOutboundBytesHighWatermark,
             streamChannelOutboundBytesLowWatermark: streamChannelOutboundBytesLowWatermark
         )
