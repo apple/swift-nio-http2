@@ -670,17 +670,24 @@ extension HTTPRequestHead {
         // A request head should have only up to four psuedo-headers.
         let method = HTTPMethod(methodString: try headers.peekPseudoHeader(name: ":method"))
         let version = HTTPVersion(major: 2, minor: 0)
-        let uri = try headers.peekPseudoHeader(name: ":path")
-
-        // Here we peek :scheme just to confirm it's there: we want the throw effect, but we don't care about the value.
-        _ = try headers.peekPseudoHeader(name: ":scheme")
-
         let authority = try headers.peekPseudoHeader(name: ":authority")
+        let uri: String
+
+        // For non-extended CONNECT, RFC 9113 requires only :method and :authority.
+        // For all other requests (including extended CONNECT using :protocol),
+        // :path and :scheme are required.
+        if method == .CONNECT && !headers.contains(name: ":protocol") {
+            uri = authority
+        } else {
+            uri = try headers.peekPseudoHeader(name: ":path")
+
+            // Here we peek :scheme just to confirm it's there: we want the throw effect, but we don't care about the value.
+            _ = try headers.peekPseudoHeader(name: ":scheme")
+        }
 
         // We do a manual implementation of HTTPHeaders(regularHeadersFrom:) here because we may
         // need to add an extra Host: and Transfer-Encoding: header here, and that can cause copies
-        // if we're unlucky. We need headers.count - 2 spaces: we remove :method, :path, :scheme,
-        // and :authority, but we may add in Host and Transfer-Encoding
+        // if we're unlucky. We remove pseudo-headers and may add in Host and Transfer-Encoding.
         var rawHeaders: [(String, String)] = []
         rawHeaders.reserveCapacity(headers.count - 2)
         if !headers.contains(name: "host") {
@@ -792,6 +799,32 @@ extension HPACKHeaders {
 
 extension HTTPHeaders {
     fileprivate init(requestHead: HTTPRequestHead, protocolString: String) throws {
+        if requestHead.method == .CONNECT {
+            // RFC 9113 Section 8.5: non-extended CONNECT requests use only :method and :authority.
+            var newHeaders: [(String, String)] = []
+            newHeaders.reserveCapacity(requestHead.headers.count + 2)
+            newHeaders.append((":method", requestHead.method.rawValue))
+
+            var authorityHeader: String? = nil
+            for header in requestHead.headers {
+                if header.name.lowercased() == "host" {
+                    if authorityHeader != nil {
+                        throw NIOHTTP2Errors.duplicateHostHeader()
+                    }
+                    authorityHeader = header.value
+                } else {
+                    newHeaders.append((header.name, header.value))
+                }
+            }
+
+            guard let actualAuthorityHeader = authorityHeader else {
+                throw NIOHTTP2Errors.missingHostHeader()
+            }
+            newHeaders.insert((":authority", actualAuthorityHeader), at: 1)
+            self.init(newHeaders)
+            return
+        }
+
         // To avoid too much allocation we create an array first, and then initialize the HTTPHeaders from it.
         // We want to ensure this array is large enough so we only have to allocate once. We will need an
         // array that is the same as the number of headers in requestHead.headers + 3: we're adding :path,
