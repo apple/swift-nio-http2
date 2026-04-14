@@ -1653,8 +1653,8 @@ extension NIOHTTP2Handler {
 }
 
 extension Int {
-    /// Clamps a target window size to the range `0 ... (1 << 31 - 1)` valid for HTTP/2 flow control.
+    /// Clamps a target window size to the range `0 ... Int32.max` valid for HTTP/2 flow control.
     internal var clampedToValidWindowSize: Int {
-        Swift.max(0, Swift.min(self, (1 << 31) - 1))
+        Swift.max(0, Swift.min(self, Int(Int32.max)))
     }
 }
