@@ -280,8 +280,10 @@ extension HeaderFieldName {
         // There is one more wrinkle, which is that the client is allowed to send TE: trailers, and forbidden from sending TE
         // with anything else. We police that separately, as TE is only defined on requests, so we can avoid checking for it
         // on responses and trailers.
-        guard self.fieldType == .regularHeaderField else {
-            // Pseudo-headers are never connection-specific.
+        if self.fieldType == .pseudoHeaderField {
+            if !HPACKHeaders.isValidPseudoHeaderValue(value) {
+                throw NIOHTTP2Errors.invalidPseudoHeaderValue(name: ":\(self.baseName)", value: value)
+            }
             return
         }
 

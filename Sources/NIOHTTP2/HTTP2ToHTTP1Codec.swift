@@ -783,10 +783,20 @@ extension HPACKHeaders {
         }
 
         if let headerValue = headerValue {
+            if !Self.isValidPseudoHeaderValue(headerValue) {
+                throw NIOHTTP2Errors.invalidPseudoHeaderValue(name: name, value: headerValue)
+            }
             return headerValue
         } else {
             throw NIOHTTP2Errors.missingPseudoHeader(name)
         }
+    }
+
+    static func isValidPseudoHeaderValue(_ value: String) -> Bool {
+        // Pseudo-header values must not contain CR, LF, or NUL bytes. These characters could
+        // enable HTTP/2-to-HTTP/1.1 request smuggling when the value is placed into an HTTP/1.1
+        // message (e.g. :path becomes the request-target).
+        !value.utf8.contains(where: { $0 == 0x0A || $0 == 0x0D || $0 == 0x00 })
     }
 }
 

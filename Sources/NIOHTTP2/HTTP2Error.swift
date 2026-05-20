@@ -432,6 +432,22 @@ public enum NIOHTTP2Errors {
         ForbiddenHeaderField(name: name, value: value, file: file, line: line)
     }
 
+    /// Creates a ``InvalidPseudoHeaderValue`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - name: The pseudo-header field name (e.g. `:path`)
+    ///   - value: The invalid pseudo-header field value
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
+    public static func invalidPseudoHeaderValue(
+        name: String,
+        value: String,
+        file: String = #fileID,
+        line: UInt = #line
+    ) -> InvalidPseudoHeaderValue {
+        InvalidPseudoHeaderValue(name: name, value: value, file: file, line: line)
+    }
+
     /// Creates a ``ContentLengthViolated`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -1732,7 +1748,79 @@ public enum NIOHTTP2Errors {
         }
     }
 
-    /// A request or response has violated the expected content length, either exceeding or falling beneath it.
+    /// A pseudo-header field value contains control characters (CR, LF, or NUL) that could enable
+    /// request smuggling when translated to HTTP/1.1.
+    public struct InvalidPseudoHeaderValue: NIOHTTP2Error, @unchecked Sendable {
+        // @unchecked Sendable because access is controlled by getters and copy-on-write setters giving this value semantics
+
+        private var storage: Storage
+
+        private mutating func copyStorageIfNotUniquelyReferenced() {
+            if !isKnownUniquelyReferenced(&self.storage) {
+                self.storage = self.storage.copy()
+            }
+        }
+
+        private final class Storage: Equatable {
+            var name: String
+            var value: String
+            var file: String
+            var line: UInt
+
+            var location: String {
+                _location(file: self.file, line: self.line)
+            }
+
+            init(name: String, value: String, file: String, line: UInt) {
+                self.name = name
+                self.value = value
+                self.file = file
+                self.line = line
+            }
+
+            func copy() -> Storage {
+                Storage(name: self.name, value: self.value, file: self.file, line: self.line)
+            }
+
+            static func == (lhs: Storage, rhs: Storage) -> Bool {
+                lhs.name == rhs.name && lhs.value == rhs.value
+            }
+        }
+
+        /// The name of the pseudo-header field.
+        public var name: String {
+            get {
+                self.storage.name
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.name = newValue
+            }
+        }
+
+        /// The invalid value of the pseudo-header field.
+        public var value: String {
+            get {
+                self.storage.value
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.value = newValue
+            }
+        }
+
+        /// The file and line where the error was created.
+        public var location: String {
+            get {
+                self.storage.location
+            }
+        }
+
+        fileprivate init(name: String, value: String, file: String, line: UInt) {
+            self.storage = Storage(name: name, value: value, file: file, line: line)
+        }
+    }
+
     public struct ContentLengthViolated: NIOHTTP2Error, InvalidContentLengthError {
         private let file: String
         private let line: UInt
