@@ -552,6 +552,60 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
         _ = try? self.channel.finish()
     }
 
+    func testReceiveConnectRequestWithoutPathOrScheme() throws {
+        XCTAssertNoThrow(try self.channel.pipeline.syncOperations.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()))
+
+        let requestHeaders = HPACKHeaders([
+            (":method", "CONNECT"), (":authority", "example.org"), ("other", "header"),
+        ])
+        let headersPayload = HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders, endStream: true))
+        XCTAssertNoThrow(try self.channel.writeInbound(headersPayload))
+
+        var expectedRequestHead = HTTPRequestHead(
+            version: HTTPVersion(major: 2, minor: 0),
+            method: .CONNECT,
+            uri: "example.org"
+        )
+        expectedRequestHead.headers.add(name: "host", value: "example.org")
+        expectedRequestHead.headers.add(name: "other", value: "header")
+        self.channel.assertReceivedServerRequestPart(.head(expectedRequestHead))
+        self.channel.assertReceivedServerRequestPart(.end(nil))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    func testReceiveConnectRequestWithoutAuthority() throws {
+        XCTAssertNoThrow(try self.channel.pipeline.syncOperations.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()))
+
+        let requestHeaders = HPACKHeaders([(":method", "CONNECT")])
+        XCTAssertThrowsError(
+            try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))
+        ) { error in
+            XCTAssertEqual(
+                error as? NIOHTTP2Errors.MissingPseudoHeader,
+                NIOHTTP2Errors.missingPseudoHeader(":authority")
+            )
+        }
+
+        _ = try? self.channel.finish()
+    }
+
+    func testReceiveExtendedConnectRequestWithoutPath() throws {
+        XCTAssertNoThrow(try self.channel.pipeline.syncOperations.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()))
+
+        let requestHeaders = HPACKHeaders([
+            (":method", "CONNECT"), (":protocol", "websocket"), (":scheme", "https"),
+            (":authority", "example.org"), ("other", "header"),
+        ])
+        XCTAssertThrowsError(
+            try self.channel.writeInbound(HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders)))
+        ) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.missingPseudoHeader(":path"))
+        }
+
+        _ = try? self.channel.finish()
+    }
+
     func testReceiveRequestWithoutPath() throws {
         XCTAssertNoThrow(try self.channel.pipeline.syncOperations.addHandler(HTTP2FramePayloadToHTTP1ServerCodec()))
 
@@ -1079,7 +1133,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
             var expectedRequestHead = HTTPRequestHead(
                 version: HTTPVersion(major: 2, minor: 0),
                 method: method,
-                uri: "/"
+                uri: method == .CONNECT ? "example.org" : "/"
             )
             expectedRequestHead.headers.add(name: "host", value: "example.org")
             expectedRequestHead.headers.add(name: "other", value: "header")
@@ -1120,7 +1174,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
             var expectedRequestHead = HTTPRequestHead(
                 version: HTTPVersion(major: 2, minor: 0),
                 method: method,
-                uri: "/"
+                uri: method == .CONNECT ? "example.org" : "/"
             )
             expectedRequestHead.headers.add(name: "host", value: "example.org")
             expectedRequestHead.headers.add(name: "content-length", value: "13")
@@ -1158,7 +1212,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
             var expectedRequestHead = HTTPRequestHead(
                 version: HTTPVersion(major: 2, minor: 0),
                 method: method,
-                uri: "/"
+                uri: method == .CONNECT ? "example.org" : "/"
             )
             expectedRequestHead.headers.add(name: "host", value: "example.org")
             expectedRequestHead.headers.add(name: "content-length", value: "0")
@@ -1200,7 +1254,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
             var expectedRequestHead = HTTPRequestHead(
                 version: HTTPVersion(major: 2, minor: 0),
                 method: method,
-                uri: "/"
+                uri: method == .CONNECT ? "example.org" : "/"
             )
             expectedRequestHead.headers.add(name: "host", value: "example.org")
             expectedRequestHead.headers.add(name: "transfer-encoding", value: "chunked")
@@ -1251,7 +1305,7 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
             var expectedRequestHead = HTTPRequestHead(
                 version: HTTPVersion(major: 2, minor: 0),
                 method: method,
-                uri: "/"
+                uri: method == .CONNECT ? "example.org" : "/"
             )
             expectedRequestHead.headers.add(name: "host", value: "example.org")
             expectedRequestHead.headers.add(name: "content-length", value: "13")
@@ -1289,9 +1343,16 @@ final class HTTP2FramePayloadToHTTP1CodecTests: XCTestCase {
             XCTAssertNoThrow(try embedded.writeOutbound(HTTPClientRequestPart.head(requestHead)))
             XCTAssertNoThrow(try embedded.writeOutbound(HTTPClientRequestPart.end(nil)))
 
-            let expectedRequestHeaders = HPACKHeaders([
-                (":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org"),
-            ])
+            let expectedRequestHeaders: HPACKHeaders
+            if method == .CONNECT {
+                expectedRequestHeaders = HPACKHeaders([
+                    (":method", "\(method)"), (":authority", "example.org")
+                ])
+            } else {
+                expectedRequestHeaders = HPACKHeaders([
+                    (":path", "/"), (":method", "\(method)"), (":scheme", "https"), (":authority", "example.org"),
+                ])
+            }
             writeRecorder.flushedWrites[0].assertHeadersFramePayload(
                 endStream: false,
                 headers: expectedRequestHeaders,
