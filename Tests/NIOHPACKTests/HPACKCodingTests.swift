@@ -551,6 +551,28 @@ class HPACKCodingTests: XCTestCase {
         }
     }
 
+    func testAcceptsTwoConsecutiveTableSizeUpdates() throws {
+        // Two dynamic-table-size updates (0x20 == update to 0) at the start of a header block, followed
+        // by an indexed header field (0x82 == static index 2, ":method: GET"). RFC 7541 § 4.2 permits up
+        // to two table size updates per header block, so this must decode successfully.
+        var request = buffer(wrapping: [0x20, 0x20, 0x82])
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
+
+        let decoded = try decoder.decodeHeaders(from: &request)
+        XCTAssertEqual(decoded, HPACKHeaders([(":method", "GET")]))
+    }
+
+    func testRejectsMoreThanTwoConsecutiveTableSizeUpdates() throws {
+        // Three dynamic-table-size updates (0x20) before the first header. RFC 7541 § 4.2 caps a header
+        // block at two table size updates, so the decoder must reject the block as malformed.
+        var request = buffer(wrapping: [0x20, 0x20, 0x20, 0x82])
+        var decoder = HPACKDecoder(allocator: ByteBufferAllocator())
+
+        XCTAssertThrowsError(try decoder.decodeHeaders(from: &request)) { error in
+            XCTAssertTrue(error is NIOHPACKErrors.IllegalDynamicTableSizeChange)
+        }
+    }
+
     func testHPACKHeadersDescription() throws {
         let headerList1: [(String, String)] = [
             (":method", "GET"),
