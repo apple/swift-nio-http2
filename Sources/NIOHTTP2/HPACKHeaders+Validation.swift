@@ -273,9 +273,10 @@ extension HeaderFieldName {
     }
 
     func legalHeaderField(value: String) throws {
-        // RFC 7540 § 8.1.2.2 forbids all connection-specific header fields. A connection-specific header field technically
-        // is one that is listed in the Connection header, but could also be proxy-connection & transfer-encoding, even though
-        // those are not usually listed in the Connection header. For defensiveness sake, we forbid those too.
+        // RFC 9113 § 8.2.2 (which obsoletes RFC 7540 § 8.1.2.2) forbids all connection-specific header fields, and
+        // enumerates them explicitly: "Connection, Proxy-Connection, Keep-Alive, Transfer-Encoding, and Upgrade". A
+        // connection-specific header field technically is one that is listed in the Connection header, but the fields
+        // named above could also appear independently, so we forbid them all by name.
         //
         // There is one more wrinkle, which is that the client is allowed to send TE: trailers, and forbidden from sending TE
         // with anything else. We police that separately, as TE is only defined on requests, so we can avoid checking for it
@@ -288,7 +289,7 @@ extension HeaderFieldName {
         }
 
         switch self.baseName {
-        case "connection", "transfer-encoding", "proxy-connection":
+        case "connection", "transfer-encoding", "proxy-connection", "keep-alive", "upgrade":
             throw NIOHTTP2Errors.forbiddenHeaderField(name: String(self.baseName), value: value)
         default:
             return

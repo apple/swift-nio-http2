@@ -107,6 +107,47 @@ struct HTTP2FramePayloadToHTTP1CodecCRLFTests {
         }
     }
 
+    // MARK: - Validation tests: connection-specific headers are rejected (RFC 9113 § 8.2.2)
+
+    // The five connection-specific header fields that a conformant HTTP/2 endpoint must treat as malformed.
+    // `te` is policed separately (it is permitted with the single value "trailers"), so it is not in this list.
+    static let connectionSpecificHeaders = [
+        "connection", "proxy-connection", "keep-alive", "transfer-encoding", "upgrade",
+    ]
+
+    @Test(
+        "Request validation rejects connection-specific headers",
+        arguments: connectionSpecificHeaders
+    )
+    func requestValidationRejectsConnectionSpecificHeaders(name: String) {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            (":path", "/"),
+            (":scheme", "https"),
+            (":authority", "example.com"),
+            (name, "some-value"),
+        ])
+        let error = #expect(throws: NIOHTTP2Errors.ForbiddenHeaderField.self) {
+            try headers.validateRequestBlock(supportsExtendedConnect: false)
+        }
+        #expect(error?.name == name && error?.value == "some-value")
+    }
+
+    @Test(
+        "Response validation rejects connection-specific headers",
+        arguments: connectionSpecificHeaders
+    )
+    func responseValidationRejectsConnectionSpecificHeaders(name: String) {
+        let headers = HPACKHeaders([
+            (":status", "200"),
+            (name, "some-value"),
+        ])
+        let error = #expect(throws: NIOHTTP2Errors.ForbiddenHeaderField.self) {
+            try headers.validateResponseBlock()
+        }
+        #expect(error?.name == name && error?.value == "some-value")
+    }
+
     // MARK: - Server codec tests: rejects control characters in pseudo-headers
 
     @Test(
