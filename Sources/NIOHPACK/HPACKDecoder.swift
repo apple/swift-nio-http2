@@ -122,17 +122,30 @@ public struct HPACKDecoder: Sendable {
             headers.reserveCapacity(16)
 
             var listSize = 0
+            var tableSizeUpdates = 0
 
             while buffer.readableBytes > 0 {
                 switch try self.decodeHeader(from: &buffer) {
                 case .tableSizeChange:
                     // RFC 7541 § 4.2 <https://httpwg.org/specs/rfc7541.html#maximum.table.size>:
                     //
+                    // 1. "In the case that this size is changed more than once in [the interval between two
+                    //    header blocks], the smallest maximum table size that occurs in that interval MUST be
+                    //    signaled in a dynamic table size update. The final maximum size is always signaled,
+                    //    resulting in at most two dynamic table size updates."
+                    //
                     // 2. "This dynamic table size update MUST occur at the beginning of the first header block
                     //    following the change to the dynamic table size."
                     guard headers.count == 0 else {
                         // If our decode buffer has any data in it, then this is out of place.
                         // Treat it as an invalid input
+                        throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
+                    }
+
+                    // A conformant encoder emits at most two consecutive table size updates (see point 1
+                    // above). More than two is never valid, so reject the block as malformed.
+                    tableSizeUpdates += 1
+                    guard tableSizeUpdates <= 2 else {
                         throw NIOHPACKErrors.IllegalDynamicTableSizeChange()
                     }
                 case .header(let header):
