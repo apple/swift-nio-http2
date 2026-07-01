@@ -80,7 +80,7 @@ struct HTTP2FramePayloadToHTTP1CodecCRLFTests {
     func responseValidationRejectsCRLFInStatus() {
         let maliciousStatus = "200\r\nInjected: evil"
         let headers = HPACKHeaders([
-            (":status", maliciousStatus),
+            (":status", maliciousStatus)
         ])
         #expect {
             try headers.validateResponseBlock()
@@ -161,7 +161,7 @@ struct HTTP2FramePayloadToHTTP1CodecCRLFTests {
         channel.flush()
 
         let maliciousResponseHeaders = HPACKHeaders([
-            (":status", maliciousStatus.value),
+            (":status", maliciousStatus.value)
         ])
         let error = #expect(throws: NIOHTTP2Errors.InvalidPseudoHeaderValue.self) {
             try channel.writeInbound(
