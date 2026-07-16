@@ -211,4 +211,108 @@ struct HTTP2FramePayloadToHTTP1CodecCRLFTests {
         }
         #expect(error?.name == ":status" && error?.value == maliciousStatus.value)
     }
+
+    // MARK: - Validation tests: regular header field values (RFC 9113 § 8.2.1)
+
+    // RFC 9113 § 8.2.1 forbids NUL, LF, and CR at any position in *any* field value, not only
+    // in pseudo-header values. A regular field value carrying CRLF is a smuggling primitive for
+    // an HTTP/2-to-HTTP/1.1 translator: `name: value CRLF` terminates early and injects
+    // attacker-controlled header lines into the downstream HTTP/1.1 message.
+    static let maliciousFieldValues: [(value: String, label: String)] = [
+        ("evil\r\nInjected: evil", "CRLF"),
+        ("evil\rInjected", "lone CR"),
+        ("evil\nInjected", "lone LF"),
+        ("evil\0injected", "NUL"),
+        ("evil\r\n\r\nGET /admin HTTP/1.1\r\nHost: internal-backend", "full request smuggling payload"),
+        ("evil\r\nTransfer-Encoding: chunked", "TE desync payload"),
+    ]
+
+    @Test("invalid regular field values are rejected", arguments: maliciousFieldValues.map(\.value))
+    func invalidFieldValue(value: String) {
+        #expect(!HPACKHeaders.isValidFieldValue(value))
+    }
+
+    // SP, HTAB and obs-text (>= 0x80) are all legal inside a field value per RFC 9110 § 5.5 and
+    // must keep passing: this guards against over-tightening the check.
+    static let validFieldValues = [
+        "simple",
+        "with spaces inside",
+        "with\ttab",
+        "text/html; charset=utf-8",
+        "Bearer abc.def.ghi",
+        "\u{00E9}\u{4F60}\u{597D}",
+    ]
+
+    @Test("valid regular field values are accepted", arguments: validFieldValues)
+    func validFieldValue(value: String) {
+        #expect(HPACKHeaders.isValidFieldValue(value))
+    }
+
+    @Test(
+        "Request validation rejects control characters in regular field values",
+        arguments: maliciousFieldValues
+    )
+    func requestValidationRejectsCRLFInFieldValue(malicious: (value: String, label: String)) {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            (":path", "/"),
+            (":scheme", "https"),
+            (":authority", "example.com"),
+            ("x-custom", malicious.value),
+        ])
+        let error = #expect(throws: NIOHTTP2Errors.InvalidHTTP2HeaderFieldValue.self) {
+            try headers.validateRequestBlock(supportsExtendedConnect: false)
+        }
+        #expect(error?.name == "x-custom" && error?.value == malicious.value)
+    }
+
+    @Test(
+        "Response validation rejects control characters in regular field values",
+        arguments: maliciousFieldValues
+    )
+    func responseValidationRejectsCRLFInFieldValue(malicious: (value: String, label: String)) {
+        let headers = HPACKHeaders([
+            (":status", "200"),
+            ("x-custom", malicious.value),
+        ])
+        let error = #expect(throws: NIOHTTP2Errors.InvalidHTTP2HeaderFieldValue.self) {
+            try headers.validateResponseBlock()
+        }
+        #expect(error?.name == "x-custom" && error?.value == malicious.value)
+    }
+
+    @Test(
+        "Trailers validation rejects control characters in regular field values",
+        arguments: maliciousFieldValues
+    )
+    func trailersValidationRejectsCRLFInFieldValue(malicious: (value: String, label: String)) {
+        let headers = HPACKHeaders([
+            ("x-custom", malicious.value)
+        ])
+        let error = #expect(throws: NIOHTTP2Errors.InvalidHTTP2HeaderFieldValue.self) {
+            try headers.validateTrailersBlock()
+        }
+        #expect(error?.name == "x-custom" && error?.value == malicious.value)
+    }
+
+    @Test("Requests with legal regular field values still validate", arguments: validFieldValues)
+    func requestValidationAcceptsLegalFieldValues(value: String) {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            (":path", "/"),
+            (":scheme", "https"),
+            (":authority", "example.com"),
+            ("x-custom", value),
+        ])
+        #expect(throws: Never.self) {
+            try headers.validateRequestBlock(supportsExtendedConnect: false)
+        }
+    }
+
+    // NOTE: there is deliberately no codec-level test for regular field values here, unlike the
+    // `:status` / pseudo-header cases above. `HTTPRequestHead(http2HeaderBlock:isEndStream:)`
+    // validates pseudo-headers itself, via `peekPseudoHeader`, but copies regular fields through
+    // `appendRegularHeaders(from:)` without inspecting them. Regular field values are policed by
+    // the connection state machine, which calls `validateRequestBlock` before the codec ever sees
+    // the block, so a codec-only `EmbeddedChannel` has no validation in it to exercise.
 }

@@ -292,6 +292,14 @@ extension HeaderFieldName {
         case "connection", "transfer-encoding", "proxy-connection", "keep-alive", "upgrade":
             throw NIOHTTP2Errors.forbiddenHeaderField(name: String(self.baseName), value: value)
         default:
+            // RFC 9113 § 8.2.1 forbids CR, LF, and NUL at any position in *any* field value,
+            // not just in pseudo-header values, and requires that a message carrying one be
+            // treated as malformed. HPACK field values are length-prefixed octet strings, so
+            // nothing in the decoder rejects these bytes for us: this is the only place on the
+            // inbound path where a regular field value is checked.
+            guard HPACKHeaders.isValidFieldValue(value) else {
+                throw NIOHTTP2Errors.invalidHTTP2HeaderFieldValue(name: String(self.baseName), value: value)
+            }
             return
         }
     }

@@ -432,6 +432,22 @@ public enum NIOHTTP2Errors {
         ForbiddenHeaderField(name: name, value: value, file: file, line: line)
     }
 
+    /// Creates a ``InvalidHTTP2HeaderFieldValue`` error with appropriate source context.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the header field whose value is invalid
+    ///   - value: The invalid header field value
+    ///   - file: Source file of the caller.
+    ///   - line: Source line number of the caller.
+    public static func invalidHTTP2HeaderFieldValue(
+        name: String,
+        value: String,
+        file: String = #fileID,
+        line: UInt = #line
+    ) -> InvalidHTTP2HeaderFieldValue {
+        InvalidHTTP2HeaderFieldValue(name: name, value: value, file: file, line: line)
+    }
+
     /// Creates a ``InvalidPseudoHeaderValue`` error with appropriate source context.
     ///
     /// - Parameters:
@@ -1668,6 +1684,83 @@ public enum NIOHTTP2Errors {
 
     /// Connection-specific header fields are forbidden in HTTP/2: this error is raised when one is
     /// sent or received.
+    /// A header field was received whose value contains octets that are forbidden by
+    /// RFC 9113 § 8.2.1 (ASCII NUL, LF, or CR at any position).
+    public struct InvalidHTTP2HeaderFieldValue: NIOHTTP2Error, CustomStringConvertible, @unchecked Sendable {
+        // @unchecked Sendable because access is controlled by getters and copy-on-write setters giving this value semantics
+
+        private var storage: Storage
+
+        private mutating func copyStorageIfNotUniquelyReferenced() {
+            if !isKnownUniquelyReferenced(&self.storage) {
+                self.storage = self.storage.copy()
+            }
+        }
+
+        private final class Storage: Equatable {
+            var name: String
+            var value: String
+            var file: String
+            var line: UInt
+
+            var location: String {
+                _location(file: self.file, line: self.line)
+            }
+
+            init(name: String, value: String, file: String, line: UInt) {
+                self.name = name
+                self.value = value
+                self.file = file
+                self.line = line
+            }
+
+            func copy() -> Storage {
+                Storage(name: self.name, value: self.value, file: self.file, line: self.line)
+            }
+
+            static func == (lhs: Storage, rhs: Storage) -> Bool {
+                lhs.name == rhs.name && lhs.value == rhs.value
+            }
+        }
+
+        /// The name of the header field whose value is invalid.
+        public var name: String {
+            get {
+                self.storage.name
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.name = newValue
+            }
+        }
+
+        /// The invalid header field value.
+        public var value: String {
+            get {
+                self.storage.value
+            }
+            set {
+                self.copyStorageIfNotUniquelyReferenced()
+                self.storage.value = newValue
+            }
+        }
+
+        /// The file and line where the error was created.
+        public var location: String {
+            get {
+                self.storage.location
+            }
+        }
+
+        public var description: String {
+            "InvalidHTTP2HeaderFieldValue(name: \(self.name), value: \(self.value), location: \(self.location))"
+        }
+
+        fileprivate init(name: String, value: String, file: String, line: UInt) {
+            self.storage = Storage(name: name, value: value, file: file, line: line)
+        }
+    }
+
     public struct ForbiddenHeaderField: NIOHTTP2Error, CustomStringConvertible, @unchecked Sendable {
         // @unchecked Sendable because access is controlled by getters and copy-on-write setters giving this value semantics
 

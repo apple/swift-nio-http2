@@ -798,6 +798,30 @@ extension HPACKHeaders {
         // message (e.g. :path becomes the request-target).
         !value.utf8.contains(where: { $0 == 0x0A || $0 == 0x0D || $0 == 0x00 })
     }
+
+    /// Whether this is a valid value for a regular (non-pseudo) HTTP/2 header field.
+    static func isValidFieldValue(_ value: String) -> Bool {
+        // RFC 9113 § 8.2.1 states:
+        //
+        // > A field value MUST NOT contain the zero value (ASCII NUL, 0x00), line feed
+        // > (ASCII LF, 0x0a), or carriage return (ASCII CR, 0x0d) at any position.
+        //
+        // and requires that a request or response containing such a value be treated as
+        // malformed. These bytes are smuggling-relevant for the same reason they are in a
+        // pseudo-header: when an HTTP/2-to-HTTP/1.1 translator serializes a field as
+        // `name: value CRLF`, an embedded CR or LF terminates the field early and injects
+        // attacker-controlled header lines — or an entire second request — into the
+        // downstream HTTP/1.1 message.
+        //
+        // Unlike pseudo-header values, SP, HTAB, and obs-text (0x80-0xFF) are permitted here,
+        // because RFC 9110 § 5.5 admits all of them inside a field value.
+        //
+        // Note: RFC 9113 § 8.2.1 additionally forbids a field value from *starting or ending*
+        // with SP or HTAB. That constraint is not enforced here, as it does not enable
+        // smuggling and rejecting it risks breaking peers that emit sloppy-but-harmless
+        // padding.
+        !value.utf8.contains(where: { $0 == 0x00 || $0 == 0x0A || $0 == 0x0D })
+    }
 }
 
 extension HTTPHeaders {
