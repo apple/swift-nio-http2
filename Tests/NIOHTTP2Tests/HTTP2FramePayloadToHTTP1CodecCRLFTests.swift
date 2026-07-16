@@ -315,4 +315,68 @@ struct HTTP2FramePayloadToHTTP1CodecCRLFTests {
     // `appendRegularHeaders(from:)` without inspecting them. Regular field values are policed by
     // the connection state machine, which calls `validateRequestBlock` before the codec ever sees
     // the block, so a codec-only `EmbeddedChannel` has no validation in it to exercise.
+
+    // MARK: - Validation tests: SP and other CTLs in pseudo-header values
+
+    // `:path` becomes the HTTP/1.1 request-target in the request line
+    // `METHOD SP request-target SP HTTP-version CRLF`. A bare SP inside `:path` makes that line
+    // ambiguous (`GET /a HTTP/1.1 HTTP/1.1`), so RFC 9112 § 3.2 requires it to be
+    // percent-encoded. No HTTP/2 pseudo-header has a grammar admitting SP or a CTL.
+    static let pseudoHeaderDelimiterInjections: [PseudoHeaderInjection] = [
+        .init(pseudoHeaderName: ":path", maliciousValue: "/a HTTP/1.1", label: "SP request-line split"),
+        .init(pseudoHeaderName: ":path", maliciousValue: "/a\tb", label: "HTAB"),
+        .init(pseudoHeaderName: ":path", maliciousValue: "/a\u{0B}b", label: "vertical tab"),
+        .init(pseudoHeaderName: ":path", maliciousValue: "/a\u{0C}b", label: "form feed"),
+        .init(pseudoHeaderName: ":path", maliciousValue: "/a\u{7F}b", label: "DEL"),
+        .init(pseudoHeaderName: ":path", maliciousValue: "/a\u{01}b", label: "SOH"),
+        .init(pseudoHeaderName: ":authority", maliciousValue: "example.com evil.com", label: "SP"),
+        .init(pseudoHeaderName: ":method", maliciousValue: "GET /admin HTTP/1.1", label: "SP"),
+        .init(pseudoHeaderName: ":scheme", maliciousValue: "https evil", label: "SP"),
+    ]
+
+    @Test(
+        "pseudo-header values containing SP or CTLs are rejected",
+        arguments: pseudoHeaderDelimiterInjections.map(\.maliciousValue)
+    )
+    func invalidPseudoHeaderDelimiterValue(value: String) {
+        #expect(!HPACKHeaders.isValidPseudoHeaderValue(value))
+    }
+
+    @Test(
+        "Request validation rejects SP and CTLs in pseudo-headers",
+        arguments: pseudoHeaderDelimiterInjections
+    )
+    func requestValidationRejectsDelimiters(injection: PseudoHeaderInjection) {
+        let headers = HPACKHeaders([
+            (":method", injection.pseudoHeaderName == ":method" ? injection.maliciousValue : "GET"),
+            (":path", injection.pseudoHeaderName == ":path" ? injection.maliciousValue : "/"),
+            (":scheme", injection.pseudoHeaderName == ":scheme" ? injection.maliciousValue : "https"),
+            (":authority", injection.pseudoHeaderName == ":authority" ? injection.maliciousValue : "example.com"),
+        ])
+        let error = #expect(throws: NIOHTTP2Errors.InvalidPseudoHeaderValue.self) {
+            try headers.validateRequestBlock(supportsExtendedConnect: false)
+        }
+        #expect(error?.name == injection.pseudoHeaderName && error?.value == injection.maliciousValue)
+    }
+
+    @Test(
+        "Server codec rejects SP and CTLs in pseudo-headers",
+        arguments: pseudoHeaderDelimiterInjections
+    )
+    func serverCodecRejectsDelimiters(injection: PseudoHeaderInjection) throws {
+        let channel = EmbeddedChannel()
+        try channel.pipeline.syncOperations.addHandler(HTTP2FramePayloadToHTTP1ServerCodec())
+
+        let requestHeaders = HPACKHeaders([
+            (":method", injection.pseudoHeaderName == ":method" ? injection.maliciousValue : "GET"),
+            (":path", injection.pseudoHeaderName == ":path" ? injection.maliciousValue : "/"),
+            (":scheme", injection.pseudoHeaderName == ":scheme" ? injection.maliciousValue : "https"),
+            (":authority", injection.pseudoHeaderName == ":authority" ? injection.maliciousValue : "example.com"),
+        ])
+        #expect(throws: NIOHTTP2Errors.InvalidPseudoHeaderValue.self) {
+            try channel.writeInbound(
+                HTTP2Frame.FramePayload.headers(.init(headers: requestHeaders, endStream: true))
+            )
+        }
+    }
 }

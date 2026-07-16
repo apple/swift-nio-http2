@@ -796,7 +796,28 @@ extension HPACKHeaders {
         // Pseudo-header values must not contain CR, LF, or NUL bytes. These characters could
         // enable HTTP/2-to-HTTP/1.1 request smuggling when the value is placed into an HTTP/1.1
         // message (e.g. :path becomes the request-target).
-        !value.utf8.contains(where: { $0 == 0x0A || $0 == 0x0D || $0 == 0x00 })
+        //
+        // We reject the entire CTL range (0x00-0x1F), SP (0x20), and DEL (0x7F), rather than
+        // only CR/LF/NUL, for two reasons:
+        //
+        // 1. `:path` becomes the HTTP/1.1 request-target, which is serialized into the request
+        //    line `METHOD SP request-target SP HTTP-version CRLF`. A bare SP inside `:path`
+        //    therefore produces an ambiguous request line (e.g. `GET /a HTTP/1.1 HTTP/1.1`),
+        //    which HTTP/1.1 parsers may split differently depending on whether they take the
+        //    first or last SP-delimited token as the version. RFC 9112 § 3.2 requires any SP
+        //    in a request-target to be percent-encoded. Bare HTAB and the other CTLs are
+        //    likewise not permitted in a request-target.
+        //
+        // 2. No pseudo-header defined for HTTP/2 has a grammar admitting SP or a CTL:
+        //    `:method` and `:protocol` are tokens (RFC 9110 § 5.6.2), `:scheme` is a URI scheme
+        //    (RFC 3986 § 3.1), `:authority` is host[:port], `:path` is a request-target, and
+        //    `:status` is 3DIGIT. Rejecting these bytes is therefore conformant and does not
+        //    reject any well-formed value.
+        //
+        // Bytes >= 0x80 are deliberately still permitted: they are not delimiters in an
+        // HTTP/1.1 request line or header block, and rejecting them would break peers that
+        // send unencoded UTF-8 in `:path`.
+        !value.utf8.contains(where: { $0 <= 0x20 || $0 == 0x7F })
     }
 
     /// Whether this is a valid value for a regular (non-pseudo) HTTP/2 header field.
