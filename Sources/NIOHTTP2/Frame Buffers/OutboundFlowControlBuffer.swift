@@ -139,7 +139,7 @@ internal struct OutboundFlowControlBuffer {
     }
 
     private func nextStreamToSend() -> HTTP2StreamID? {
-        self.flushableStreams.first
+        self.flushableStreams.randomElement()
     }
 
     internal mutating func updateWindowOfStream(_ streamID: HTTP2StreamID, newSize: Int32) {
