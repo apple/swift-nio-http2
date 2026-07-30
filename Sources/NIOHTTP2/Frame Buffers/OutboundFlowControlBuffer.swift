@@ -55,6 +55,12 @@ internal struct OutboundFlowControlBuffer {
     /// The streams with pending data to output.
     private var flushableStreams: Set<HTTP2StreamID> = Set()
 
+    /// Round-robin order over flushableStreams. We rotate through this to give every stream a fair turn without starvation.
+    /// Streams that stop being flushable are left as stale entries and skipped when they surface, giving O(1) lazy deletion.
+    private var sendQueue: CircularBuffer<HTTP2StreamID> = CircularBuffer()
+    /// Stops us enqueuing a duplicate.
+    private var queuedStreams: Set<HTTP2StreamID> = Set()
+
     /// The current size of the connection flow control window. May be negative.
     internal var connectionWindowSize: Int
 
@@ -70,6 +76,8 @@ internal struct OutboundFlowControlBuffer {
         // Avoid some resizes.
         self.writableStreams.reserveCapacity(16)
         self.flushableStreams.reserveCapacity(16)
+        self.sendQueue.reserveCapacity(16)
+        self.queuedStreams.reserveCapacity(16)
     }
 
     internal mutating func processOutboundFrame(
@@ -132,14 +140,25 @@ internal struct OutboundFlowControlBuffer {
             }
             if let actuallyWritable = actuallyWritable, actuallyWritable {
                 self.flushableStreams.insert(streamID)
+                if self.queuedStreams.insert(streamID).inserted {
+                    self.sendQueue.append(streamID)
+                }
             }
         }
 
         self.writableStreams.removeAll(keepingCapacity: true)
     }
 
-    private func nextStreamToSend() -> HTTP2StreamID? {
-        self.flushableStreams.first
+    private mutating func nextStreamToSend() -> HTTP2StreamID? {
+        // Round-robin via the FIFO queue. Pop from the front, skipping streams that are no longer flushable.
+        // Each stale entry is discarded at most once, so this is O(1) amortised.
+        while let streamID = self.sendQueue.popFirst() {
+            self.queuedStreams.remove(streamID)
+            if self.flushableStreams.contains(streamID) {
+                return streamID
+            }
+        }
+        return nil
     }
 
     internal mutating func updateWindowOfStream(_ streamID: HTTP2StreamID, newSize: Int32) {
@@ -153,6 +172,9 @@ internal struct OutboundFlowControlBuffer {
             case .changed(newValue: true):
                 // Became writable, and specifically became _flushable_.
                 self.flushableStreams.insert(streamID)
+                if self.queuedStreams.insert(streamID).inserted {
+                    self.sendQueue.append(streamID)
+                }
             case .changed(newValue: false):
                 // Became unwritable.
                 self.flushableStreams.remove(streamID)
@@ -196,12 +218,12 @@ internal struct OutboundFlowControlBuffer {
 
     internal mutating func nextFlushedWritableFrame() -> (HTTP2Frame, EventLoopPromise<Void>?)? {
         // If the channel isn't writable, we don't want to send anything.
-        guard let nextStreamID = self.nextStreamToSend(), self.connectionWindowSize > 0 else {
+        guard self.connectionWindowSize > 0, let nextStreamID = self.nextStreamToSend() else {
             return nil
         }
 
         let nextWrite = self.streamDataBuffers.modify(streamID: nextStreamID) {
-            (state: inout StreamFlowControlState) -> DataBuffer.BufferElement in
+            (state: inout StreamFlowControlState) -> (DataBuffer.BufferElement, isFlushable: Bool) in
             let (nextWrite, writabilityState) = state.nextWrite(
                 maxSize: min(self.connectionWindowSize, self.maxFrameSize)
             )
@@ -209,16 +231,22 @@ internal struct OutboundFlowControlBuffer {
             switch writabilityState {
             case .changed(newValue: false):
                 self.flushableStreams.remove(nextStreamID)
+                return (nextWrite, isFlushable: false)
             case .changed(newValue: true), .unchanged:
-                ()
+                return (nextWrite, isFlushable: true)
             }
-
-            return nextWrite
         }
-        guard let (payload, promise) = nextWrite else {
+        guard let ((payload, promise), isFlushable) = nextWrite else {
             // The stream was not present. This is weird, it shouldn't ever happen, but we tolerate it, and recurse.
             self.flushableStreams.remove(nextStreamID)
             return self.nextFlushedWritableFrame()
+        }
+
+        // If the stream is still flushable, put it back at the end of the rotation.
+        if isFlushable {
+            let inserted = self.queuedStreams.insert(nextStreamID).inserted
+            assert(inserted, "\(nextStreamID) unexpectedly still present in queuedStreams")
+            self.sendQueue.append(nextStreamID)
         }
 
         let frame = HTTP2Frame(streamID: nextStreamID, payload: payload)
@@ -234,6 +262,9 @@ internal struct OutboundFlowControlBuffer {
             case .changed(newValue: true):
                 // Became flushable
                 self.flushableStreams.insert($0.streamID)
+                if self.queuedStreams.insert($0.streamID).inserted {
+                    self.sendQueue.append($0.streamID)
+                }
             case .changed(newValue: false):
                 // Became unflushable.
                 self.flushableStreams.remove($0.streamID)
