@@ -402,15 +402,11 @@ class OutboundFlowControlBufferTests: XCTestCase {
             self.buffer.streamCreated(streamID, initialWindowSize: 15)
             let frame = self.createDataFrame(streamID, byteBufferSize: 15)
             XCTAssertNoThrow(try self.buffer.processOutboundFrame(frame, promise: nil).assertNothing())
+            self.buffer.flushReceived()
         }
-        self.buffer.flushReceived()
-
-        let served = self.receivedFrames().map { $0.streamID }
 
         // Every stream must be served once per round so that none can be starved.
-        let firstRound = Array(served.prefix(streamIDs.count))
-        XCTAssertEqual(Set(firstRound), Set(streamIDs))
-        XCTAssertEqual(served, firstRound + firstRound + firstRound)
+        XCTAssertEqual(self.receivedFrames().map { $0.streamID }, [1, 3, 5, 1, 3, 5, 1, 3, 5])
     }
 
     func testRejectsPrioritySelfDependency() {
