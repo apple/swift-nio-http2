@@ -28,15 +28,20 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
     /// The maximum number of "empty" data frames we're willing to tolerate.
     private let maximumSequentialEmptyDataFrames: Int
 
-    private var resetFrameRateControlStateMachine: RateLimitStateMachine
-    private var streamErrorRateControlStateMachine: RateLimitStateMachine
+    /// The rate limiter for inbound RST_STREAM frames.
+    private var resetFrameRateLimitStateMachine: RateLimitStateMachine
+
+    /// The rate limiter for stream errors.
+    private var streamErrorRateLimitStateMachine: RateLimitStateMachine
+
+    /// The rate limiter for inbound PING, SETTINGS, PRIORITY, ALTSVC and ORIGIN frames.
+    private var controlFrameRateLimitStateMachine: RateLimitStateMachine
 
     internal init(
         maximumSequentialEmptyDataFrames: Int,
-        maximumResetFrameCount: Int,
-        resetFrameCounterWindow: TimeAmount,
-        maximumStreamErrorCount: Int,
-        streamErrorCounterWindow: TimeAmount,
+        resetFrameRateLimit: RateLimitConfiguration,
+        streamErrorRateLimit: RateLimitConfiguration,
+        controlFrameRateLimit: RateLimitConfiguration,
         clock: DeadlineClock = RealNIODeadlineClock()
     ) {
         precondition(
@@ -45,16 +50,9 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
         )
         self.maximumSequentialEmptyDataFrames = maximumSequentialEmptyDataFrames
         self.receivedEmptyDataFrames = 0
-        self.resetFrameRateControlStateMachine = .init(
-            countThreshold: maximumResetFrameCount,
-            timeWindow: resetFrameCounterWindow,
-            clock: clock
-        )
-        self.streamErrorRateControlStateMachine = .init(
-            countThreshold: maximumStreamErrorCount,
-            timeWindow: streamErrorCounterWindow,
-            clock: clock
-        )
+        self.resetFrameRateLimitStateMachine = .init(configuration: resetFrameRateLimit, clock: clock)
+        self.streamErrorRateLimitStateMachine = .init(configuration: streamErrorRateLimit, clock: clock)
+        self.controlFrameRateLimitStateMachine = .init(configuration: controlFrameRateLimit, clock: clock)
     }
 }
 
@@ -72,14 +70,22 @@ extension DOSHeuristics {
         case .headers:
             self.receivedEmptyDataFrames = 0
         case .rstStream:
-            switch self.resetFrameRateControlStateMachine.recordEvent() {
+            switch self.resetFrameRateLimitStateMachine.recordEvent() {
             case .rateTooHigh:
                 throw NIOHTTP2Errors.excessiveRSTFrames()
             case .noneReceived, .ratePermitted:
                 // no risk
                 ()
             }
-        case .alternativeService, .goAway, .origin, .ping, .priority, .pushPromise, .settings, .windowUpdate:
+        case .ping, .settings, .priority, .alternativeService, .origin:
+            switch self.controlFrameRateLimitStateMachine.recordEvent() {
+            case .rateTooHigh:
+                throw NIOHTTP2Errors.excessiveControlFrames()
+            case .noneReceived, .ratePermitted:
+                // no risk
+                ()
+            }
+        case .goAway, .pushPromise, .windowUpdate:
             // Currently we don't assess these for DoS risk.
             ()
         }
@@ -90,7 +96,7 @@ extension DOSHeuristics {
     }
 
     mutating func processStreamError() throws {
-        switch self.streamErrorRateControlStateMachine.recordEvent() {
+        switch self.streamErrorRateLimitStateMachine.recordEvent() {
         case .rateTooHigh:
             throw NIOHTTP2Errors.excessiveStreamErrors()
         case .noneReceived, .ratePermitted:
@@ -100,7 +106,7 @@ extension DOSHeuristics {
 }
 
 extension DOSHeuristics {
-    // protect against excessive numbers of stream RST frames being issued
+    /// Tracks whether events occur more often than a configured number of times within a time window.
     struct RateLimitStateMachine {
         enum RateState: Hashable {
             case noneReceived
@@ -108,19 +114,17 @@ extension DOSHeuristics {
             case rateTooHigh
         }
 
-        private let countThreshold: Int
-        private let timeWindow: TimeAmount
+        private let configuration: RateLimitConfiguration
         private let clock: DeadlineClock
 
         private var timestamps: Deque<NIODeadline>
         private var _state: RateState = .noneReceived
 
-        init(countThreshold: Int, timeWindow: TimeAmount, clock: DeadlineClock = RealNIODeadlineClock()) {
-            self.countThreshold = countThreshold
-            self.timeWindow = timeWindow
+        init(configuration: RateLimitConfiguration, clock: DeadlineClock = RealNIODeadlineClock()) {
+            self.configuration = configuration
             self.clock = clock
 
-            self.timestamps = .init(minimumCapacity: self.countThreshold)
+            self.timestamps = .init(minimumCapacity: self.configuration.maximumCount)
         }
 
         mutating func recordEvent() -> RateState {
@@ -132,7 +136,7 @@ extension DOSHeuristics {
 
         private mutating func garbageCollect() {
             let now = self.clock.now()
-            while let first = self.timestamps.first, now - first > self.timeWindow {
+            while let first = self.timestamps.first, now - first > self.configuration.counterWindow {
                 _ = self.timestamps.popFirst()
             }
         }
@@ -142,7 +146,7 @@ extension DOSHeuristics {
             case .noneReceived:
                 self._state = .ratePermitted
             case .ratePermitted:
-                if self.timestamps.count > self.countThreshold {
+                if self.timestamps.count > self.configuration.maximumCount {
                     self._state = .rateTooHigh
                 }
             case .rateTooHigh:
@@ -160,5 +164,27 @@ protocol NIODeadlineClock {
 struct RealNIODeadlineClock: NIODeadlineClock {
     func now() -> NIODeadline {
         NIODeadline.now()
+    }
+}
+
+struct RateLimitConfiguration {
+    /// The number of events permitted within ``counterWindow``.
+    var maximumCount: Int
+
+    /// The length of the sliding window over which events are recorded.
+    var counterWindow: TimeAmount
+}
+
+extension RateLimitConfiguration {
+    init(_ configuration: NIOHTTP2Handler.StreamResetFrameRateLimitConfiguration) {
+        self.init(maximumCount: configuration.maximumCount, counterWindow: configuration.windowLength)
+    }
+
+    init(_ configuration: NIOHTTP2Handler.StreamErrorRateLimitConfiguration) {
+        self.init(maximumCount: configuration.maximumCount, counterWindow: configuration.windowLength)
+    }
+
+    init(_ configuration: NIOHTTP2Handler.ControlFrameRateLimitConfiguration) {
+        self.init(maximumCount: configuration.maximumCount, counterWindow: configuration.windowLength)
     }
 }

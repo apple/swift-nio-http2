@@ -266,10 +266,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
             maximumConnectionGlitches: GlitchesMonitor.defaultMaximumGlitches,
-            maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(30),
-            maximumStreamErrorCount: 200,
-            streamErrorCounterWindow: .seconds(30),
+            resetFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
+            streamErrorRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
+            controlFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
             frameDelegate: nil
         )
     }
@@ -305,10 +304,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumSequentialContinuationFrames: NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: Self.defaultMaximumRecentlyResetFrames,
             maximumConnectionGlitches: GlitchesMonitor.defaultMaximumGlitches,
-            maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(30),
-            maximumStreamErrorCount: 200,
-            streamErrorCounterWindow: .seconds(30),
+            resetFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
+            streamErrorRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
+            controlFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
             frameDelegate: nil
         )
 
@@ -357,10 +355,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
             maximumConnectionGlitches: connectionConfiguration.maximumConnectionGlitches,
-            maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
-            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
-            maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
-            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength,
+            resetFrameRateLimit: .init(streamConfiguration.streamResetFrameRateLimit),
+            streamErrorRateLimit: .init(streamConfiguration.streamErrorRateLimit),
+            controlFrameRateLimit: .init(connectionConfiguration.controlFrameRateLimit),
             frameDelegate: frameDelegate
         )
     }
@@ -376,10 +373,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumSequentialContinuationFrames: Int,
         maximumRecentlyResetStreams: Int,
         maximumConnectionGlitches: Int,
-        maximumResetFrameCount: Int,
-        resetFrameCounterWindow: TimeAmount,
-        maximumStreamErrorCount: Int,
-        streamErrorCounterWindow: TimeAmount,
+        resetFrameRateLimit: RateLimitConfiguration,
+        streamErrorRateLimit: RateLimitConfiguration,
+        controlFrameRateLimit: RateLimitConfiguration,
         frameDelegate: NIOHTTP2FrameDelegate?
     ) {
         self._eventLoop = eventLoop
@@ -398,10 +394,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         )
         self.denialOfServiceValidator = DOSHeuristics(
             maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
-            maximumResetFrameCount: maximumResetFrameCount,
-            resetFrameCounterWindow: resetFrameCounterWindow,
-            maximumStreamErrorCount: maximumStreamErrorCount,
-            streamErrorCounterWindow: streamErrorCounterWindow
+            resetFrameRateLimit: resetFrameRateLimit,
+            streamErrorRateLimit: streamErrorRateLimit,
+            controlFrameRateLimit: controlFrameRateLimit
         )
         self.tolerateImpossibleStateTransitionsInDebugMode = false
         self.inboundStreamMultiplexerState = .uninitializedLegacy
@@ -425,10 +420,12 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
     ///   - maximumSequentialContinuationFrames: The maximum number of sequential CONTINUATION frames.
     ///   - tolerateImpossibleStateTransitionsInDebugMode: Whether impossible state transitions should be tolerated
     ///         in debug mode.
-    ///   - maximumResetFrameCount: Controls the maximum permitted reset frames within a given time window. Too many may exhaust CPU resources. To protect
-    ///         against this DoS vector we put an upper limit on this rate. Defaults to 200.
-    ///   - resetFrameCounterWindow:  Controls the sliding window used to enforce the maximum permitted reset frames rate. Too many may exhaust CPU resources. To protect
-    ///         against this DoS vector we put an upper limit on this rate. 30 seconds.
+    ///   - resetFrameRateLimit: Controls the maximum permitted reset frames within a given time window. Too many may exhaust CPU resources. To protect
+    ///         against this DoS vector we put an upper limit on this rate. Defaults to 200 frames per 30 seconds.
+    ///   - streamErrorRateLimit: Controls the maximum permitted stream errors within a given time window. Defaults to
+    ///         200 errors per 30 seconds.
+    ///   - controlFrameRateLimit: Controls the maximum permitted PING, SETTINGS, PRIORITY, ALTSVC, or ORIGIN frames
+    ///         within a given time window. Defaults to 200 frames per 30 seconds.
     ///   - maximumConnectionGlitches: Controls the maximum number of stream errors that can happen on a connection before the connection is reset. Defaults to 200.
     internal init(
         mode: ParserMode,
@@ -440,10 +437,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         maximumSequentialContinuationFrames: Int = NIOHTTP2Handler.defaultMaximumSequentialContinuationFrames,
         tolerateImpossibleStateTransitionsInDebugMode: Bool = false,
         maximumRecentlyResetStreams: Int = NIOHTTP2Handler.defaultMaximumRecentlyResetFrames,
-        maximumResetFrameCount: Int = 200,
-        resetFrameCounterWindow: TimeAmount = .seconds(30),
-        maximumStreamErrorCount: Int = 200,
-        streamErrorCounterWindow: TimeAmount = .seconds(30),
+        resetFrameRateLimit: RateLimitConfiguration = .init(maximumCount: 200, counterWindow: .seconds(30)),
+        streamErrorRateLimit: RateLimitConfiguration = .init(maximumCount: 200, counterWindow: .seconds(30)),
+        controlFrameRateLimit: RateLimitConfiguration = .init(maximumCount: 200, counterWindow: .seconds(30)),
         maximumConnectionGlitches: Int = GlitchesMonitor.defaultMaximumGlitches,
         frameDelegate: NIOHTTP2FrameDelegate? = nil
     ) {
@@ -463,10 +459,9 @@ public final class NIOHTTP2Handler: ChannelDuplexHandler {
         )
         self.denialOfServiceValidator = DOSHeuristics(
             maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
-            maximumResetFrameCount: maximumResetFrameCount,
-            resetFrameCounterWindow: resetFrameCounterWindow,
-            maximumStreamErrorCount: maximumStreamErrorCount,
-            streamErrorCounterWindow: streamErrorCounterWindow
+            resetFrameRateLimit: resetFrameRateLimit,
+            streamErrorRateLimit: streamErrorRateLimit,
+            controlFrameRateLimit: controlFrameRateLimit
         )
         self.tolerateImpossibleStateTransitionsInDebugMode = tolerateImpossibleStateTransitionsInDebugMode
         self.inboundStreamMultiplexerState = .uninitializedLegacy
@@ -1448,10 +1443,9 @@ extension NIOHTTP2Handler {
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
             maximumConnectionGlitches: connectionConfiguration.maximumConnectionGlitches,
-            maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
-            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
-            maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
-            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength,
+            resetFrameRateLimit: .init(streamConfiguration.streamResetFrameRateLimit),
+            streamErrorRateLimit: .init(streamConfiguration.streamErrorRateLimit),
+            controlFrameRateLimit: .init(connectionConfiguration.controlFrameRateLimit),
             frameDelegate: nil
         )
 
@@ -1487,10 +1481,9 @@ extension NIOHTTP2Handler {
             maximumSequentialContinuationFrames: connectionConfiguration.maximumSequentialContinuationFrames,
             maximumRecentlyResetStreams: connectionConfiguration.maximumRecentlyResetStreams,
             maximumConnectionGlitches: connectionConfiguration.maximumConnectionGlitches,
-            maximumResetFrameCount: streamConfiguration.streamResetFrameRateLimit.maximumCount,
-            resetFrameCounterWindow: streamConfiguration.streamResetFrameRateLimit.windowLength,
-            maximumStreamErrorCount: streamConfiguration.streamErrorRateLimit.maximumCount,
-            streamErrorCounterWindow: streamConfiguration.streamErrorRateLimit.windowLength,
+            resetFrameRateLimit: .init(streamConfiguration.streamResetFrameRateLimit),
+            streamErrorRateLimit: .init(streamConfiguration.streamErrorRateLimit),
+            controlFrameRateLimit: .init(connectionConfiguration.controlFrameRateLimit),
             frameDelegate: frameDelegate
         )
         let pendingConfig = InboundStreamMultiplexerState.PendingMultiplexerConfig(
@@ -1537,6 +1530,12 @@ extension NIOHTTP2Handler {
         /// Defaults to 65535 bytes, the HTTP/2 default.
         public var targetWindowSize: Int = 65535
 
+        /// The maximum permitted rate of inbound PING, SETTINGS, PRIORITY, ALTSVC, or ORIGIN frames.
+        ///
+        /// A peer that floods the endpoint with these frames can exhaust CPU resources. To protect against this DoS
+        /// vector we put an upper limit on the rate at which peers can send these frames.
+        public var controlFrameRateLimit: ControlFrameRateLimitConfiguration = .init()
+
         public init() {}
     }
 
@@ -1566,6 +1565,16 @@ extension NIOHTTP2Handler {
     ///
     /// The settings that control the maximum permitted stream errors within a given time window.
     public struct StreamErrorRateLimitConfiguration: Hashable, Sendable {
+        public var maximumCount: Int = 200
+        public var windowLength: TimeAmount = .seconds(30)
+        public init() {}
+    }
+
+    /// Control frame rate limit configuration.
+    ///
+    /// The settings that control the maximum permitted PING, SETTINGS, PRIORITY, ALTSVC, or ORIGIN frames within a
+    /// given time window.
+    public struct ControlFrameRateLimitConfiguration: Hashable, Sendable {
         public var maximumCount: Int = 200
         public var windowLength: TimeAmount = .seconds(30)
         public init() {}

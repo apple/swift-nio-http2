@@ -13,34 +13,40 @@
 //===----------------------------------------------------------------------===//
 
 import NIOCore
-import XCTest
+import Testing
 
 @testable import NIOHTTP2
 
-final class DOSHeuristicsTests: XCTestCase {
+struct DOSHeuristicsTests {
     private func makeDOSHeuristics(
         maximumSequentialEmptyDataFrames: Int = 100,
-        maximumResetFrameCount: Int = 200,
-        resetFrameCounterWindow: TimeAmount = .seconds(30),
-        maximumStreamErrorCount: Int = 200,
-        streamErrorCounterWindow: TimeAmount = .seconds(30)
+        resetFrameRateLimit: RateLimitConfiguration = .init(maximumCount: 200, counterWindow: .seconds(30)),
+        streamErrorRateLimit: RateLimitConfiguration = .init(maximumCount: 200, counterWindow: .seconds(30)),
+        controlFrameRateLimit: RateLimitConfiguration = .init(maximumCount: 200, counterWindow: .seconds(30)),
     ) -> (DOSHeuristics<TestClock>, TestClock) {
         let testClock = TestClock()
         let dosHeuristics = DOSHeuristics(
             maximumSequentialEmptyDataFrames: maximumSequentialEmptyDataFrames,
-            maximumResetFrameCount: maximumResetFrameCount,
-            resetFrameCounterWindow: resetFrameCounterWindow,
-            maximumStreamErrorCount: maximumStreamErrorCount,
-            streamErrorCounterWindow: streamErrorCounterWindow,
+            resetFrameRateLimit: resetFrameRateLimit,
+            streamErrorRateLimit: streamErrorRateLimit,
+            controlFrameRateLimit: controlFrameRateLimit,
             clock: testClock
         )
         return (dosHeuristics, testClock)
     }
 
+    private let controlFrames: [HTTP2Frame] = [
+        HTTP2Frame(streamID: 0, payload: .alternativeService(origin: nil, field: nil)),
+        HTTP2Frame(streamID: 0, payload: .origin([])),
+        HTTP2Frame(streamID: 0, payload: .settings(.settings([]))),
+        HTTP2Frame(streamID: 0, payload: .ping(.init(), ack: false)),
+        HTTP2Frame(streamID: 1, payload: .priority(.init(exclusive: true, dependency: 500, weight: 0))),
+    ]
+
+    @Test
     func testRSTFramePermittedRate() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(30)
+            resetFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30))
         )
 
         // more resets than allowed, but slow enough to be okay
@@ -50,10 +56,10 @@ final class DOSHeuristicsTests: XCTestCase {
         }
     }
 
+    @Test
     func testRSTFrameExcessiveRate() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(30)
+            resetFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30))
         )
 
         // up to the limit
@@ -63,20 +69,28 @@ final class DOSHeuristicsTests: XCTestCase {
         }
 
         // over the limit
-        XCTAssertThrowsError(
+        #expect(throws: NIOHTTP2Errors.ExcessiveRSTFrames.self) {
             try dosHeuristics.process(.init(streamID: HTTP2StreamID(201), payload: .rstStream(.cancel)))
-        )
+        }
     }
 
-    func testRSTFrameGarbageCollects() throws {
+    @Test
+    func testRateLimitGarbageCollects() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(30)
+            resetFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
+            streamErrorRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30)),
+            controlFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30))
         )
+
+        let resetStreamFrame = HTTP2Frame.FramePayload.rstStream(.cancel)
+        let controlFrame = HTTP2Frame.FramePayload.settings(.settings([]))
 
         // up to the limit
         for i in 0..<200 {
-            try dosHeuristics.process(.init(streamID: HTTP2StreamID(i), payload: .rstStream(.cancel)))
+            try dosHeuristics.process(.init(streamID: HTTP2StreamID(i), payload: resetStreamFrame))
+            try dosHeuristics.processStreamError()
+            try dosHeuristics.process(.init(streamID: 0, payload: controlFrame))
+
             testClock.advance(by: .milliseconds(1))
         }
 
@@ -85,20 +99,29 @@ final class DOSHeuristicsTests: XCTestCase {
 
         // up to the limit
         for i in 0..<200 {
-            try dosHeuristics.process(.init(streamID: HTTP2StreamID(i), payload: .rstStream(.cancel)))
+            try dosHeuristics.process(.init(streamID: HTTP2StreamID(i), payload: resetStreamFrame))
+            try dosHeuristics.processStreamError()
+            try dosHeuristics.process(.init(streamID: 0, payload: controlFrame))
+
             testClock.advance(by: .milliseconds(1))
         }
 
         // over the limit
-        XCTAssertThrowsError(
-            try dosHeuristics.process(.init(streamID: HTTP2StreamID(401), payload: .rstStream(.cancel)))
-        )
+        #expect(throws: NIOHTTP2Errors.ExcessiveRSTFrames.self) {
+            try dosHeuristics.process(.init(streamID: HTTP2StreamID(401), payload: resetStreamFrame))
+        }
+        #expect(throws: NIOHTTP2Errors.ExcessiveStreamErrors.self) {
+            try dosHeuristics.processStreamError()
+        }
+        #expect(throws: NIOHTTP2Errors.ExcessiveControlFrames.self) {
+            try dosHeuristics.process(.init(streamID: 0, payload: controlFrame))
+        }
     }
 
+    @Test
     func testRSTFrameExcessiveRateConfigurableCount() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumResetFrameCount: 400,
-            resetFrameCounterWindow: .seconds(30)
+            resetFrameRateLimit: .init(maximumCount: 400, counterWindow: .seconds(30))
         )
 
         // up to the limit
@@ -108,15 +131,15 @@ final class DOSHeuristicsTests: XCTestCase {
         }
 
         // over the limit
-        XCTAssertThrowsError(
+        #expect(throws: NIOHTTP2Errors.ExcessiveRSTFrames.self) {
             try dosHeuristics.process(.init(streamID: HTTP2StreamID(401), payload: .rstStream(.cancel)))
-        )
+        }
     }
 
+    @Test
     func testRSTFrameExcessiveRateConfigurableWindow() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumResetFrameCount: 200,
-            resetFrameCounterWindow: .seconds(3600)
+            resetFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(3600))
         )
 
         // up to the limit, previously slow enough to be okay but not with this window
@@ -126,15 +149,15 @@ final class DOSHeuristicsTests: XCTestCase {
         }
 
         // over the limit
-        XCTAssertThrowsError(
+        #expect(throws: NIOHTTP2Errors.ExcessiveRSTFrames.self) {
             try dosHeuristics.process(.init(streamID: HTTP2StreamID(201), payload: .rstStream(.cancel)))
-        )
+        }
     }
 
+    @Test
     func testStreamErrorPermittedRate() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumStreamErrorCount: 200,
-            streamErrorCounterWindow: .seconds(30)
+            streamErrorRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30))
         )
 
         // More stream errors than allowed, but slow enough to be okay
@@ -144,10 +167,10 @@ final class DOSHeuristicsTests: XCTestCase {
         }
     }
 
+    @Test
     func testStreamErrorExcessiveRate() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumStreamErrorCount: 200,
-            streamErrorCounterWindow: .seconds(30)
+            streamErrorRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30))
         )
 
         // Up to the limit
@@ -157,34 +180,44 @@ final class DOSHeuristicsTests: XCTestCase {
         }
 
         // Over the limit
-        XCTAssertThrowsError(
+        #expect(throws: NIOHTTP2Errors.ExcessiveStreamErrors.self) {
             try dosHeuristics.processStreamError()
-        )
+        }
     }
 
-    func testStreamErrorGarbageCollects() throws {
+    @Test
+    func testControlFramePermittedRate() throws {
         var (dosHeuristics, testClock) = self.makeDOSHeuristics(
-            maximumStreamErrorCount: 200,
-            streamErrorCounterWindow: .seconds(30)
+            controlFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30))
+        )
+
+        // More control frames than allowed, but slow enough to be okay
+        for _ in 0..<60 {
+            for controlFrame in self.controlFrames {
+                try dosHeuristics.process(controlFrame)
+            }
+            testClock.advance(by: .seconds(1))
+        }
+    }
+
+    @Test
+    func testControlFrameExcessiveRate() throws {
+        var (dosHeuristics, testClock) = self.makeDOSHeuristics(
+            controlFrameRateLimit: .init(maximumCount: 200, counterWindow: .seconds(30))
         )
 
         // Up to the limit
-        for _ in 0..<200 {
-            try dosHeuristics.processStreamError()
-            testClock.advance(by: .milliseconds(1))
-        }
-
-        // Clear out counter
-        testClock.advance(by: .seconds(30))
-
-        // Up to the limit
-        for _ in 0..<200 {
-            try dosHeuristics.processStreamError()
+        for _ in 0..<40 {
+            for controlFrame in self.controlFrames {
+                try dosHeuristics.process(controlFrame)
+            }
             testClock.advance(by: .milliseconds(1))
         }
 
         // Over the limit
-        XCTAssertThrowsError(try dosHeuristics.processStreamError())
+        #expect(throws: NIOHTTP2Errors.ExcessiveControlFrames.self) {
+            try dosHeuristics.process(self.controlFrames[0])
+        }
     }
 }
 
