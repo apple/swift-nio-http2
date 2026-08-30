@@ -56,7 +56,7 @@ private func base64DecodeByte(_ byte: UInt8) -> Base64DecodedByte {
 /// this will return nil.
 ///
 /// - parameter bytes:      The Base64 bytes
-/// - parameter options:    Options for handling invalid input
+/// - parameter ignoreUnknownCharacters: Options for handling invalid input
 /// - returns:              The decoded bytes.
 private func base64DecodeBytes<C: Collection>(_ bytes: C, ignoreUnknownCharacters: Bool = false) -> [UInt8]?
 where C.Element == UInt8 {

@@ -37,7 +37,7 @@ extension ByteBuffer {
 
     /// Encodes the given string to the buffer, using HPACK Huffman encoding.
     ///
-    /// - Parameter string: The string data to encode.
+    /// - Parameter stringBytes: The string data to encode.
     /// - Returns: The number of bytes used while encoding the string.
     @discardableResult
     mutating func setHuffmanEncoded<C: Collection>(bytes stringBytes: C) -> Int where C.Element == UInt8 {
