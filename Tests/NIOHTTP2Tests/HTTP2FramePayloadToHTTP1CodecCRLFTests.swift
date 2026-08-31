@@ -107,6 +107,71 @@ struct HTTP2FramePayloadToHTTP1CodecCRLFTests {
         }
     }
 
+    // MARK: - Validation tests: field names must be non-empty (RFC 9110 § 5.1)
+
+    // `field-name = token` and `token = 1*tchar`, so a field name must have at least one character.
+    // An empty name has to be rejected in every block type, not just requests.
+
+    @Test("Request validation rejects an empty field name")
+    func requestValidationRejectsEmptyFieldName() {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            (":path", "/"),
+            (":scheme", "https"),
+            ("", "value"),
+        ])
+        #expect(throws: NIOHTTP2Errors.InvalidHTTP2HeaderFieldName.self) {
+            try headers.validateRequestBlock(supportsExtendedConnect: false)
+        }
+    }
+
+    @Test("Response validation rejects an empty field name")
+    func responseValidationRejectsEmptyFieldName() {
+        let headers = HPACKHeaders([
+            (":status", "200"),
+            ("", "value"),
+        ])
+        #expect(throws: NIOHTTP2Errors.InvalidHTTP2HeaderFieldName.self) {
+            try headers.validateResponseBlock()
+        }
+    }
+
+    @Test("Trailers validation rejects an empty field name")
+    func trailersValidationRejectsEmptyFieldName() {
+        let headers = HPACKHeaders([
+            ("", "value")
+        ])
+        #expect(throws: NIOHTTP2Errors.InvalidHTTP2HeaderFieldName.self) {
+            try headers.validateTrailersBlock()
+        }
+    }
+
+    @Test("Request validation still rejects a field name with a space")
+    func requestValidationRejectsSpaceInFieldName() {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            (":path", "/"),
+            (":scheme", "https"),
+            ("a b", "value"),
+        ])
+        #expect(throws: NIOHTTP2Errors.InvalidHTTP2HeaderFieldName.self) {
+            try headers.validateRequestBlock(supportsExtendedConnect: false)
+        }
+    }
+
+    @Test("Request validation still accepts an ordinary field name")
+    func requestValidationAcceptsOrdinaryFieldName() {
+        let headers = HPACKHeaders([
+            (":method", "GET"),
+            (":path", "/"),
+            (":scheme", "https"),
+            ("x-custom-header", "value"),
+        ])
+        #expect(throws: Never.self) {
+            try headers.validateRequestBlock(supportsExtendedConnect: false)
+        }
+    }
+
     // MARK: - Validation tests: connection-specific headers are rejected (RFC 9113 § 8.2.2)
 
     // The five connection-specific header fields that a conformant HTTP/2 endpoint must treat as malformed.

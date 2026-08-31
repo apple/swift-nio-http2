@@ -342,7 +342,14 @@ extension Substring.UTF8View {
         ///
         /// We can then translate this into a straightforward switch statement to check whether the code
         /// units are valid.
-        self.allSatisfy { codeUnit in
+        ///
+        /// Note the quantifier in `token = 1*tchar`: a field name must contain at least one `tchar`,
+        /// so the empty name is not a valid token.
+        if self.isEmpty {
+            return false
+        }
+
+        return self.allSatisfy { codeUnit in
             switch codeUnit {
             case 0x21, 0x23...0x27, 0x2a, 0x2b, 0x2d, 0x2e, 0x30...0x39,
                 0x5e...0x7a, 0x7c, 0x7e:
