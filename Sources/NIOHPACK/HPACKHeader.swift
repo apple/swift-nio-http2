@@ -15,6 +15,22 @@
 import NIOCore
 import NIOHTTP1
 
+#if os(Windows)
+import ucrt
+#elseif canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+@preconcurrency import Glibc
+#elseif canImport(Musl)
+@preconcurrency import Musl
+#elseif canImport(Bionic)
+@preconcurrency import Bionic
+#elseif canImport(WASILibc)
+@preconcurrency import WASILibc
+#else
+#error("The HPACK Header module was unable to identify your C library.")
+#endif
+
 /// Very similar to `NIOHTTP1.HTTPHeaders`, but with extra data for storing indexing
 /// information.
 public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
@@ -140,7 +156,7 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
     ///         regard to this header.
     @inlinable
     public mutating func add(name: String, value: String, indexing: HPACKIndexing = .indexable) {
-        precondition(!name.utf8.contains(where: { !$0.isASCII }), "name must be ASCII")
+        precondition(!name.utf8.isASCII, "name must be ASCII")
         self.headers.append(HPACKHeader(name: name, value: value, indexing: indexing))
     }
 
@@ -638,10 +654,15 @@ extension HPACKHeader {
     }
 }
 
-extension UInt8 {
+extension String.UTF8View {
+    /// Determines if this `UTF8View` corresponds to an `String` which contains only ASCII characters.
     @inlinable
     var isASCII: Bool {
-        self <= 127
+        var result: UInt8 = 0
+        for byte in self {
+            result |= byte
+        }
+        return result <= 127
     }
 }
 
@@ -732,6 +753,71 @@ extension String.UTF8View {
     }
 }
 
+@usableFromInline
+enum ASCIIAndLowercasedCheckResult {
+    case lowercasedASCII
+    case ascii
+    case notASCII
+}
+
+extension Sequence<UInt8> {
+    /// Determines if this `Sequence` corresponds to a sequence of bytes that can represent an ASCII-only `String`.
+    @inlinable
+    func checkASCIIAndLowercased() -> ASCIIAndLowercasedCheckResult {
+        // Use simple bitwise operations so the compiler can vectorize the loop.
+        var orResult: UInt8 = 0
+        var andResult: UInt8 = 0
+        for byte in self {
+            orResult |= byte
+            andResult &= byte
+        }
+        let isASCII = orResult <= 127
+
+        // If the sixth bit is set then this for sure doesn't contain an uppercased letter because
+        // those all have the sixth bit turned off.
+        // a-z and 0-9 have the sixth bit turned on, so if a string only consists of a-b and 0-9
+        // then this check can be a very fast way to know the bytes are all lowercased.
+        let isDefinitelyLowercasedOnly = andResult & 0b100000 == 0b100000
+
+        switch (isASCII, isDefinitelyLowercasedOnly) {
+        case (true, true):
+            return .lowercasedASCII
+        case (true, false):
+            return .ascii
+        default:
+            return .notASCII
+        }
+    }
+
+    @inlinable
+    func quickCompareASCIIBytes(to other: Self) -> ASCIIAndLowercasedCheckResult {
+        let lhsCheck = self.checkASCIIAndLowercased()
+        let rhsCheck = other.checkASCIIAndLowercased()
+
+        switch (lhsCheck, rhsCheck) {
+        case (.lowercasedASCII, .lowercasedASCII):
+            return .lowercasedASCII
+        case (.notASCII, _), (_, .notASCII):
+            return .notASCII
+        default:
+            return .ascii
+        }
+    }
+}
+
+extension UInt8 {
+    /// Checks if this byte is equal to another byte, ignoring case.
+    @inlinable
+    func isCaseInsensitivelyEqualAssumingASCII(to other: Self) -> Bool {
+        if self == other { return true }
+        // Check if the bytes are equal if we ignore casing via masking-off the sixth bit.
+        return self & 0xdf == other & 0xdf
+            // Check to see if the first byte is a latin letter at all, otherwise
+            // case-insensitive comparison is meaningless and can be incorrect.
+            && (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains(self & 0xdf)
+    }
+}
+
 extension String.UTF8View {
     /// Compares two UTF8 strings as case insensitive ASCII bytes.
     ///
@@ -746,13 +832,27 @@ extension String.UTF8View {
                     return false
                 }
 
-                for idx in 0..<lhsBuffer.count {
-                    // let's hope this gets vectorised ;)
-                    if lhsBuffer[idx] & 0xdf != rhsBuffer[idx] & 0xdf && lhsBuffer[idx].isASCII {
-                        return false
+                switch lhsBuffer.quickCompareASCIIBytes(to: rhsBuffer) {
+                case .lowercasedASCII:
+                    // Make sure the base-address force-unwrap below is safe.
+                    if lhsBuffer.count == 0 {
+                        return true
                     }
+                    return memcmp(
+                        lhsBuffer.baseAddress!,
+                        rhsBuffer.baseAddress!,
+                        lhsBuffer.count
+                    ) == 0
+                case .ascii:
+                    for idx in 0..<lhsBuffer.count {
+                        if !lhsBuffer[idx].isCaseInsensitivelyEqualAssumingASCII(to: rhsBuffer[idx]) {
+                            return false
+                        }
+                    }
+                    return true
+                case .notASCII:
+                    return false
                 }
-                return true
             }
         }
 
@@ -766,7 +866,20 @@ extension String.UTF8View {
     @inlinable
     @inline(never)
     func _compareCaseInsensitiveASCIIBytesSlowPath(to other: String.UTF8View) -> Bool {
-        self.elementsEqual(other, by: { (($0 & 0xdf) == ($1 & 0xdf) && $0.isASCII) })
+        if self.count != other.count {
+            return false
+        }
+
+        switch self.quickCompareASCIIBytes(to: other) {
+        case .lowercasedASCII:
+            return self.elementsEqual(other, by: { $0 == $1 })
+        case .ascii:
+            return self.elementsEqual(other) {
+                $0.isCaseInsensitivelyEqualAssumingASCII(to: $1)
+            }
+        case .notASCII:
+            return false
+        }
     }
 }
 
