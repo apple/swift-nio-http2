@@ -2135,6 +2135,139 @@ class HTTP2FrameParserTests: XCTestCase {
         self.assertEqualFrames(frame, expectedFrame)
     }
 
+    /// The type, flags and payload length of each frame in `bytes`, which must hold whole frames for stream `streamID`.
+    private func frameLayout(
+        _ bytes: ByteBuffer,
+        streamID: HTTP2StreamID,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> [(type: UInt8, flags: UInt8, length: Int)] {
+        var bytes = bytes
+        var layout: [(type: UInt8, flags: UInt8, length: Int)] = []
+        while let (lengthHigh, lengthLow, type, flags, rawStreamID) = bytes.readMultipleIntegers(
+            as: (UInt16, UInt8, UInt8, UInt8, UInt32).self
+        ) {
+            let length = Int(lengthHigh) << 8 | Int(lengthLow)
+            XCTAssertEqual(HTTP2StreamID(networkID: rawStreamID), streamID, file: file, line: line)
+            layout.append((type: type, flags: flags, length: length))
+            guard bytes.readSlice(length: length) != nil else {
+                XCTFail("Frame length \(length) exceeds the \(bytes.readableBytes) bytes left", file: file, line: line)
+                return layout
+            }
+        }
+        XCTAssertEqual(bytes.readableBytes, 0, file: file, line: line)
+        return layout
+    }
+
+    func testHeadersFrameEncodingSplitsBlockLargerThanMaxFrameSize() throws {
+        // 60kB of header value Huffman-encodes to 37.5kB: a HEADERS frame and two CONTINUATION frames at the default
+        // SETTINGS_MAX_FRAME_SIZE. The priority fields count towards the first frame's size.
+        var headers = self.simpleHeaders
+        headers.add(name: "x-large", value: String(repeating: "a", count: 60_000), indexing: .nonIndexable)
+        let priorityData = HTTP2Frame.StreamPriorityData(exclusive: false, dependency: HTTP2StreamID(1), weight: 139)
+        let frame = HTTP2Frame(
+            streamID: HTTP2StreamID(3),
+            payload: .headers(.init(headers: headers, priorityData: priorityData, endStream: true))
+        )
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+
+        var buf = self.allocator.buffer(capacity: 1024)
+        guard case .some(.byteBuffer(let continuationFrames)) = try encoder.encode(frame: frame, to: &buf) else {
+            XCTFail("Should return the CONTINUATION frames as an extra buf")
+            return
+        }
+        buf.writeImmutableBuffer(continuationFrames)
+
+        let layout = self.frameLayout(buf, streamID: HTTP2StreamID(3))
+        XCTAssertEqual(layout.map { $0.type }, [0x01, 0x09, 0x09])  // HEADERS, CONTINUATION, CONTINUATION
+        XCTAssertEqual(layout.map { $0.flags }, [0x21, 0x00, 0x04])  // END_STREAM and PRIORITY, none, END_HEADERS
+        XCTAssertEqual(layout.dropLast().map { $0.length }, [1 << 14, 1 << 14])
+
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+        decoder.headerDecoder.maxHeaderListSize = 64 * 1024
+        decoder.append(bytes: buf)
+        let decodedFrame: HTTP2Frame! = try decoder.nextFrame()?.0
+        XCTAssertNotNil(decodedFrame)
+        self.assertEqualFrames(decodedFrame, frame)
+    }
+
+    func testHeadersFrameEncodingSplitsOnlyBeyondMaxFrameSize() throws {
+        let frame = HTTP2Frame(streamID: HTTP2StreamID(1), payload: .headers(.init(headers: self.simpleHeaders)))
+
+        // A payload of exactly maxFrameSize octets fits in one frame.
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+        encoder.maxFrameSize = UInt32(self.simpleHeadersEncoded.count)
+        var expectedBufContent = self.byteBuffer(withBytes: [
+            0x00, 0x00, 0x11,  // 3-byte payload length (17 bytes)
+            0x01,  // 1-byte frame type (HEADERS)
+            0x04,  // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x01,  // 4-byte stream identifier
+        ])
+        expectedBufContent.writeBytes(self.simpleHeadersEncoded)
+        var buf = self.allocator.buffer(capacity: expectedBufContent.readableBytes)
+        XCTAssertNil(try encoder.encode(frame: frame, to: &buf), "Should not return an extra buf")
+        XCTAssertEqual(buf, expectedBufContent)
+
+        // One octet more moves that octet into a CONTINUATION frame. A fresh encoder emits the same HPACK bytes.
+        encoder = HTTP2FrameEncoder(allocator: self.allocator)
+        encoder.maxFrameSize = UInt32(self.simpleHeadersEncoded.count - 1)
+        expectedBufContent = self.byteBuffer(withBytes: [
+            0x00, 0x00, 0x10,  // 3-byte payload length (16 bytes)
+            0x01,  // 1-byte frame type (HEADERS)
+            0x00,  // 1-byte flags (none)
+            0x00, 0x00, 0x00, 0x01,  // 4-byte stream identifier
+        ])
+        expectedBufContent.writeBytes(self.simpleHeadersEncoded.dropLast())
+        var expectedContinuation = self.byteBuffer(withBytes: [
+            0x00, 0x00, 0x01,  // 3-byte payload length (1 byte)
+            0x09,  // 1-byte frame type (CONTINUATION)
+            0x04,  // 1-byte flags (END_HEADERS)
+            0x00, 0x00, 0x00, 0x01,  // 4-byte stream identifier
+        ])
+        expectedContinuation.writeBytes(self.simpleHeadersEncoded.suffix(1))
+        buf.clear()
+        let extraBuf = try encoder.encode(frame: frame, to: &buf)
+        XCTAssertEqual(buf, expectedBufContent)
+        XCTAssertEqual(extraBuf, .byteBuffer(expectedContinuation))
+    }
+
+    func testPushPromiseFrameEncodingSplitsBlockLargerThanMaxFrameSize() throws {
+        var headers = self.simpleHeaders
+        headers.add(name: "x-large", value: String(repeating: "a", count: 40_000), indexing: .nonIndexable)
+        let frame = HTTP2Frame(
+            streamID: HTTP2StreamID(1),
+            payload: .pushPromise(.init(pushedStreamID: HTTP2StreamID(2), headers: headers))
+        )
+        var encoder = HTTP2FrameEncoder(allocator: self.allocator)
+
+        var buf = self.allocator.buffer(capacity: 1024)
+        guard case .some(.byteBuffer(let continuationFrames)) = try encoder.encode(frame: frame, to: &buf) else {
+            XCTFail("Should return the CONTINUATION frames as an extra buf")
+            return
+        }
+        buf.writeImmutableBuffer(continuationFrames)
+
+        let layout = self.frameLayout(buf, streamID: HTTP2StreamID(1))
+        XCTAssertEqual(layout.map { $0.type }, [0x05, 0x09])  // PUSH_PROMISE, CONTINUATION
+        XCTAssertEqual(layout.map { $0.flags }, [0x00, 0x04])  // none, END_HEADERS
+        XCTAssertEqual(layout.first?.length, 1 << 14)
+
+        var decoder = HTTP2FrameDecoder(
+            allocator: self.allocator,
+            expectClientMagic: false,
+            maximumSequentialContinuationFrames: self.maximumSequentialContinuationFrames
+        )
+        decoder.headerDecoder.maxHeaderListSize = 64 * 1024
+        decoder.append(bytes: buf)
+        let decodedFrame: HTTP2Frame! = try decoder.nextFrame()?.0
+        XCTAssertNotNil(decodedFrame)
+        self.assertEqualFrames(decodedFrame, frame)
+    }
+
     func testUnsolicitedContinuationFrame() throws {
         var headers = self.byteBuffer(withBytes: self.simpleHeadersEncoded)
 
