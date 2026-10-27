@@ -1,0 +1,23 @@
+{
+    "1k_requests_inline_interleaved": 2050,
+    "1k_requests_inline_noninterleaved": 1050,
+    "1k_requests_interleaved": 2050,
+    "1k_requests_noninterleaved": 1050,
+    "client_server_h1_request_response": 9050,
+    "client_server_h1_request_response_inline": 9050,
+    "client_server_request_response": 8050,
+    "client_server_request_response_inline": 8050,
+    "client_server_request_response_many": 115050,
+    "client_server_request_response_many_inline": 115050,
+    "create_client_stream_channel": 50,
+    "create_client_stream_channel_inline": 50,
+    "create_client_stream_channel_inline_no_promise_based_API": 50,
+    "create_client_stream_channel_no_promise_based_API": 50,
+    "get_100000_headers_canonical_form": 50,
+    "get_100000_headers_canonical_form_trimming_whitespace": 50,
+    "get_100000_headers_canonical_form_trimming_whitespace_from_long_string": 50,
+    "get_100000_headers_canonical_form_trimming_whitespace_from_short_string": 50,
+    "hpack_decoding": 50,
+    "stream_teardown_100_concurrent": 750,
+    "stream_teardown_100_concurrent_inline": 750
+}
