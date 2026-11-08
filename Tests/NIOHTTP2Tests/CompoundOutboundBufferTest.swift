@@ -333,6 +333,34 @@ final class CompoundOutboundBufferTest: XCTestCase {
         thirdUnbufferedFrame.assertFrameMatches(this: secondData)
     }
 
+    func testTransferringFlushedDataDoesNotFlushOtherStreams() throws {
+        var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 2, maxBufferedControlFrames: 1000)
+        buffer.streamCreated(1, initialWindowSize: 65535)
+        buffer.streamCreated(3, initialWindowSize: 65535)
+
+        let headers = HTTP2Frame(streamID: 5, payload: .headers(.init(headers: HPACKHeaders([]))))
+        let flushedData = self.createDataFrame(5, byteBufferSize: 10)
+        for frame in [headers, flushedData] {
+            try buffer.processOutboundFrame(frame, promise: nil, channelWritable: true).assertNothing()
+        }
+        buffer.flushReceived()
+
+        let unflushedData = self.createDataFrame(3, byteBufferSize: 10)
+        try buffer.processOutboundFrame(unflushedData, promise: nil, channelWritable: true).assertNothing()
+
+        XCTAssertEqual(buffer.streamClosed(1).count, 0)
+        guard case .frame(let unbufferedHeaders, _) = buffer.nextFlushedWritableFrame(channelWritable: true) else {
+            XCTFail("Did not unbuffer headers")
+            return
+        }
+        unbufferedHeaders.assertFrameMatches(this: headers)
+        buffer.streamCreated(5, initialWindowSize: 65535)
+
+        buffer.receivedFrames().assertFramesMatch([flushedData])
+        buffer.flushReceived()
+        buffer.receivedFrames().assertFramesMatch([unflushedData])
+    }
+
     func testFailingAllPromisesOnClose() {
         var buffer = CompoundOutboundBuffer(mode: .client, initialMaxOutboundStreams: 1, maxBufferedControlFrames: 1000)
 
