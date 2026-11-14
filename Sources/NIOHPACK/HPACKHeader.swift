@@ -50,20 +50,22 @@ public struct HPACKHeaders: ExpressibleByDictionaryLiteral, Sendable {
         if normalizeHTTPHeaders {
             self.headers = httpHeaders.map { HPACKHeader(name: $0.name.lowercased(), value: $0.value) }
 
-            let connectionHeaderValue = httpHeaders[canonicalForm: "connection"]
+            // Connection options are case-insensitive (RFC 9110 § 7.6.1). The header names have
+            // been lowercased above, so lowercase the options too before comparing them.
+            let connectionHeaderValue = httpHeaders[canonicalForm: "connection"].map { $0.lowercased() }
 
             // Above a limit we use a set rather than scanning the connection header value array.
             // See `Self.connectionHeaderValueArraySizeLimit`.
             if connectionHeaderValue.count > Self.connectionHeaderValueArraySizeLimit {
                 var headersToRemove = Set(connectionHeaderValue)
                 // Since we have a set we can just merge in the illegal headers.
-                headersToRemove.formUnion(Self.illegalNames.lazy.map { $0[...] })
+                headersToRemove.formUnion(Self.illegalNames)
                 self.headers.removeAll { header in
-                    headersToRemove.contains(header.name[...])
+                    headersToRemove.contains(header.name)
                 }
             } else {
                 self.headers.removeAll { header in
-                    connectionHeaderValue.contains(header.name[...])
+                    connectionHeaderValue.contains(header.name)
                         || HPACKHeaders.illegalNames.contains(header.name)
                 }
             }
