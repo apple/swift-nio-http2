@@ -943,6 +943,49 @@ class ConnectionStateMachineTests: XCTestCase {
         XCTAssertTrue(self.server.fullyQuiesced)
     }
 
+    func testPushPromiseWithInvalidHeadersRemovesPromisedStream() {
+        let streamOne = HTTP2StreamID(1)
+        let streamTwo = HTTP2StreamID(2)
+
+        self.exchangePreamble()
+
+        assertSucceeds(
+            self.client.sendHeaders(
+                streamID: streamOne,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: false
+            )
+        )
+
+        // The promised headers are invalid: a request header block must contain :method.
+        let invalidPushPromiseHeaders: HPACKHeaders = [
+            ":scheme": "https",
+            ":path": "/",
+            ":authority": "example.com",
+        ]
+
+        // Receiving the push promise fails: the header block is invalid.
+        assertStreamError(
+            type: .protocolError,
+            self.client.receivePushPromise(
+                originalStreamID: streamOne,
+                childStreamID: streamTwo,
+                headers: invalidPushPromiseHeaders
+            )
+        )
+
+        // The promised stream must not be left dangling: receiving the pushed
+        // response headers for it must fail because the stream no longer exists.
+        assertConnectionError(
+            type: .streamClosed,
+            self.client.receiveHeaders(
+                streamID: streamTwo,
+                headers: ConnectionStateMachineTests.responseHeaders,
+                isEndStreamSet: false
+            )
+        )
+    }
+
     func testSimpleStreamResetFlow() {
         let streamOne = HTTP2StreamID(1)
 
