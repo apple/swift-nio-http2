@@ -62,7 +62,7 @@ public final class NIOHTTP2ServerConnectionManagementHandler: ChannelDuplexHandl
     private var maxAgeTimerHandler: Timer<MaxAgeTimerHandlerView>?
 
     /// The timer used to forcefully close a connection during a graceful close.
-    /// The timer starts after the second GOAWAY frame has been sent.
+    /// The timer starts after the first GOAWAY frame has been sent.
     private var maxGraceTimerHandler: Timer<MaxGraceTimerHandlerView>?
 
     /// The timer used to send keep-alive pings.
@@ -532,6 +532,10 @@ extension NIOHTTP2ServerConnectionManagementHandler {
 
             let ping = HTTP2Frame(streamID: .rootStream, payload: .ping(pingData, ack: false))
 
+            // We may have a graceful shutdown timeout. Start the timer if it is set. The connection will close abruptly
+            // once the grace period passes.
+            self.maxGraceTimerHandler?.start()
+
             context.write(self.wrapOutboundOut(goAway), promise: nil)
             context.write(self.wrapOutboundOut(ping), promise: nil)
             self.maybeFlush(context: context)
@@ -554,10 +558,6 @@ extension NIOHTTP2ServerConnectionManagementHandler {
 
             if close {
                 context.close(promise: nil)
-            } else {
-                // We may have a grace period for finishing once the second GOAWAY frame has finished.
-                // If this is set close the connection abruptly once the grace period passes.
-                self.maxGraceTimerHandler?.start()
             }
 
         case .none:
