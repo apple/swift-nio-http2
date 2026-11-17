@@ -120,6 +120,42 @@ final class HPACKHeadersTests: XCTestCase {
         XCTAssertEqual(normalized, expected)
     }
 
+    func testNormalizationOfHTTPHeadersIgnoresCaseOfConnectionOptions() {
+        // Connection options are case-insensitive (RFC 9110 § 7.6.1).
+        let httpHeaders: HTTPHeaders = [
+            "Connection": "Remove-Me, TE",
+            "Remove-Me": "",
+            "TE": "gzip",
+            "but-not-me": "",
+        ]
+
+        let normalized = HPACKHeaders(httpHeaders: httpHeaders, normalizeHTTPHeaders: true)
+        let expected: HPACKHeaders = [
+            "but-not-me": ""
+        ]
+
+        XCTAssertEqual(normalized, expected)
+    }
+
+    func testNormalizationOfHTTPHeadersWithManyConnectionHeaderValuesIgnoresCase() {
+        var httpHeaders: HTTPHeaders = [
+            "but-not-me": ""
+        ]
+
+        // Use enough connection header values to take the set-based removal path.
+        for i in 0..<512 {
+            httpHeaders.add(name: "connection", value: "Value-\(i)")
+            httpHeaders.add(name: "value-\(i)", value: "")
+        }
+
+        let normalized = HPACKHeaders(httpHeaders: httpHeaders, normalizeHTTPHeaders: true)
+        let expected: HPACKHeaders = [
+            "but-not-me": ""
+        ]
+
+        XCTAssertEqual(normalized, expected)
+    }
+
     func testValuesSequence() {
         let headers: HPACKHeaders = [
             "foo": "bar",
