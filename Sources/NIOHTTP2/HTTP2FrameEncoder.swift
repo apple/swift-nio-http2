@@ -21,8 +21,11 @@ struct HTTP2FrameEncoder {
     // RFC 7540 § 6.5.2 puts the initial value of SETTINGS_MAX_FRAME_SIZE at 2**14 octets
     var maxFrameSize: UInt32 = 1 << 14
 
+    private let allocator: ByteBufferAllocator
+
     init(allocator: ByteBufferAllocator) {
         self.headerEncoder = HPACKEncoder(allocator: allocator)
+        self.allocator = allocator
     }
 
     /// Encodes the frame and optionally returns one or more blobs of data
@@ -110,8 +113,13 @@ struct HTTP2FrameEncoder {
             }
 
             try self.headerEncoder.encode(headers: headerData.headers, to: &buf)
+            extraFrameData = self.splitOffContinuationFrames(
+                from: &buf,
+                payloadStart: payloadStart,
+                streamID: frame.streamID,
+                flags: &flags
+            )
             payloadSize = buf.writerIndex - payloadStart
-            extraFrameData = nil
 
         case .priority(let priorityData):
             var raw = UInt32(priorityData.dependency)
@@ -153,11 +161,15 @@ struct HTTP2FrameEncoder {
             let streamVal: UInt32 = UInt32(pushPromiseData.pushedStreamID)
             buf.writeInteger(streamVal)
 
-            try self.headerEncoder.encode(headers: pushPromiseData.headers, to: &buf)
-
-            payloadSize = buf.writerIndex - payloadStart
-            extraFrameData = nil
             flags.insert(.endHeaders)
+            try self.headerEncoder.encode(headers: pushPromiseData.headers, to: &buf)
+            extraFrameData = self.splitOffContinuationFrames(
+                from: &buf,
+                payloadStart: payloadStart,
+                streamID: frame.streamID,
+                flags: &flags
+            )
+            payloadSize = buf.writerIndex - payloadStart
 
         case .ping(let pingData, let ack):
             withUnsafeBytes(of: pingData.bytes) { ptr -> Void in
@@ -232,6 +244,55 @@ struct HTTP2FrameEncoder {
 
         // all bytes to write are in the provided buffer now
         return extraFrameData
+    }
+
+    /// Cuts a HEADERS or PUSH_PROMISE frame whose payload exceeds `maxFrameSize` at that size, and moves the rest of
+    /// its header block into CONTINUATION frames, the last of which carries END_HEADERS.
+    ///
+    /// RFC 9113 § 4.3 requires the frames of one header block to be sent with no other frame between them. They are
+    /// returned to be written together with the frame that starts the block, which guarantees that.
+    ///
+    /// - Parameters:
+    ///   - buf: The buffer holding the encoded frame, whose payload starts at `payloadStart`. Truncated to the first
+    ///     frame when the block is cut.
+    ///   - payloadStart: The index in `buf` at which the frame's payload starts.
+    ///   - streamID: The stream the frame belongs to.
+    ///   - flags: The frame's flags, from which END_HEADERS is removed when the block is cut.
+    /// - Returns: The CONTINUATION frames, or `nil` when the payload fits in one frame.
+    private func splitOffContinuationFrames(
+        from buf: inout ByteBuffer,
+        payloadStart: Int,
+        streamID: HTTP2StreamID,
+        flags: inout FrameFlags
+    ) -> IOData? {
+        let maxFrameSize = Int(self.maxFrameSize)
+        let firstFrameEnd = payloadStart + maxFrameSize
+        guard buf.writerIndex > firstFrameEnd else {
+            return nil
+        }
+
+        var remainder = buf.getSlice(at: firstFrameEnd, length: buf.writerIndex - firstFrameEnd)!
+        buf.moveWriterIndex(to: firstFrameEnd)
+        flags.remove(.endHeaders)
+
+        let frameCount = (remainder.readableBytes + maxFrameSize - 1) / maxFrameSize
+        var frames = self.allocator.buffer(capacity: remainder.readableBytes + frameCount * 9)
+        while remainder.readableBytes > 0 {
+            var fragment = remainder.readSlice(length: min(remainder.readableBytes, maxFrameSize))!
+            var continuationFlags = FrameFlags()
+            if remainder.readableBytes == 0 {
+                continuationFlags.insert(.endHeaders)
+            }
+            frames.writeMultipleIntegers(
+                UInt16(truncatingIfNeeded: fragment.readableBytes >> 8),
+                UInt8(truncatingIfNeeded: fragment.readableBytes),
+                UInt8(0x9),  // CONTINUATION
+                continuationFlags.rawValue,
+                Int32(streamID)
+            )
+            frames.writeBuffer(&fragment)
+        }
+        return .byteBuffer(frames)
     }
 }
 

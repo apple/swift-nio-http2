@@ -1597,6 +1597,23 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
 
+    func testHeaderBlockLargerThanMaxFrameSizeIsSentInContinuationFrames() throws {
+        // The server accepts a header list larger than SETTINGS_MAX_FRAME_SIZE, so the client must send a block that
+        // does not fit in one frame as HEADERS and CONTINUATION frames rather than fail the connection.
+        try self.basicHTTP2Connection(serverSettings: [HTTP2Setting(parameter: .maxHeaderListSize, value: 64 * 1024)])
+
+        // 40kB of header value Huffman-encodes to 25kB: a HEADERS frame and a CONTINUATION frame.
+        var headers = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost"),
+        ])
+        headers.add(name: "x-large", value: String(repeating: "a", count: 40_000), indexing: .nonIndexable)
+        let requestFrame = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: headers, endStream: true)))
+        try self.assertFramesRoundTrip(frames: [requestFrame], sender: self.clientChannel, receiver: self.serverChannel)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
     func testStreamErrorOnSelfDependentPriorityFrames() throws {
         // Begin by getting the connection up.
         try self.basicHTTP2Connection()
