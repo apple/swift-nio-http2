@@ -467,22 +467,14 @@ extension NIOHTTP2ServerConnectionManagementHandler {
         case .startIdleTimer:
             self.maxIdleTimerHandler?.start()
         case .close:
-            // Defer closing until the next tick of the event loop.
+            // Defer until the next tick so the HTTP/2 handler's pending flush (which carries
+            // the END_STREAM frame's bytes) propagates first; then half-close to wait for those
+            // bytes to drain before fully closing.
             //
-            // This point is reached because the server is shutting down gracefully and the stream count
-            // has dropped to zero, meaning the connection is no longer required and can be closed.
-            // However, the stream would've been closed by writing and flushing a frame with end stream
-            // set. These are two distinct events in the channel pipeline. The HTTP/2 handler updates the
-            // state machine when a frame is written, which in this case results in the stream closed
-            // event which we're reacting to here.
-            //
-            // Importantly the HTTP/2 handler hasn't yet seen the flush event, so the bytes of the frame
-            // with end-stream set - and potentially some other frames - are sitting in a buffer in the
-            // HTTP/2 handler. If we close on this event loop tick then those frames will be dropped.
-            // Delaying the close by a loop tick will allow the flush to happen before the close.
-            let loopBound = NIOLoopBound(context, eventLoop: context.eventLoop)
-            context.eventLoop.execute {
-                loopBound.value.close(mode: .all, promise: nil)
+            // Without the half-close barrier any bytes still pending would be dropped on
+            // full close.
+            context.eventLoop.assumeIsolated().execute {
+                Self.gracefullyClose(context: context)
             }
 
         case .none:
@@ -553,7 +545,7 @@ extension NIOHTTP2ServerConnectionManagementHandler {
             self.maybeFlush(context: context)
 
             if close {
-                context.close(promise: nil)
+                Self.gracefullyClose(context: context)
             } else {
                 // We may have a grace period for finishing once the second GOAWAY frame has finished.
                 // If this is set close the connection abruptly once the grace period passes.
@@ -562,6 +554,20 @@ extension NIOHTTP2ServerConnectionManagementHandler {
 
         case .none:
             ()
+        }
+    }
+
+    /// Closes the connection gracefully.
+    ///
+    /// `close(mode: .all)` would drop any writes still queued in the channel's pending-writes
+    /// buffer or the kernel send buffer. Half-closing the output side first acts as a drain
+    /// barrier: the close-output promise only succeeds once all preceding writes have been
+    /// written, after which the full close is safe.
+    private static func gracefullyClose(context: ChannelHandlerContext) {
+        let promise = context.eventLoop.makePromise(of: Void.self)
+        context.close(mode: .output, promise: promise)
+        promise.futureResult.assumeIsolated().whenComplete { _ in
+            context.close(mode: .all, promise: nil)
         }
     }
 
