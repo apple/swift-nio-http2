@@ -45,7 +45,10 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         connection.advanceTime(by: .minutes(1))
 
         // Follow the graceful shutdown flow.
-        try self.testGracefulShutdown(connection: connection, lastStreamID: 0)
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(expectedSecondGOAWAYStreamID: 0)
+        )
 
         // Closed because no streams were open.
         try connection.waitUntilClosed()
@@ -79,7 +82,10 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         connection.advanceTime(by: .minutes(1))
 
         // Follow the graceful shutdown flow.
-        try self.testGracefulShutdown(connection: connection, lastStreamID: 1)
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(expectedSecondGOAWAYStreamID: 1)
+        )
 
         // Closed because no streams were open.
         try connection.waitUntilClosed()
@@ -96,7 +102,10 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
 
         // Run to the max age and follow the graceful shutdown flow.
         connection.advanceTime(by: .minutes(1))
-        try self.testGracefulShutdown(connection: connection, lastStreamID: 3)
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(expectedSecondGOAWAYStreamID: 3)
+        )
 
         // Close the streams.
         connection.streamClosed(1)
@@ -117,8 +126,10 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         connection.advanceTime(by: .minutes(1))
         try self.testGracefulShutdown(
             connection: connection,
-            lastStreamID: 1,
-            streamToOpenBeforePingAck: 1
+            pingAckConfiguration: .enable(
+                openStreamBeforeSending: 1,
+                expectedSecondGOAWAYStreamID: 1
+            )
         )
 
         // Close the stream to trigger closing the connection.
@@ -140,12 +151,76 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         connection.advanceTime(by: .minutes(1))
         try self.testGracefulShutdown(
             connection: connection,
-            lastStreamID: 1,
-            streamToOpenBeforePingAck: 1
+            pingAckConfiguration: .enable(
+                openStreamBeforeSending: 1,
+                expectedSecondGOAWAYStreamID: 1
+            )
         )
 
         // Wait out the grace period without closing the stream.
         connection.advanceTime(by: .seconds(5))
+        try connection.waitUntilClosed()
+    }
+
+    @Test("Connection is forcefully closed after timeout when the client does not send a PING ACK")
+    func connectionForcefullyClosedWhenPingAckDoesNotArrive() throws {
+        let connection = try Connection(
+            maxIdleTime: .minutes(1),
+            maxGraceTime: .seconds(5)
+        )
+        try connection.activate()
+
+        // The idle timer will trigger the graceful shutdown.
+        connection.advanceTime(by: .minutes(1))
+
+        try self.testGracefulShutdown(
+            connection: connection,
+            // The client will not send a PING ACK.
+            pingAckConfiguration: .disable
+        )
+
+        // Wait 4 seconds. The connection should still be open.
+        connection.advanceTime(by: .seconds(4))
+        #expect(connection.channel.isActive)
+
+        // Once the grace period passes, the connection should be forcefully closed.
+        connection.advanceTime(by: .seconds(1))
+
+        try #require(!connection.channel.isActive)
+        #expect(try connection.readFrame() == nil)
+        try connection.waitUntilClosed()
+    }
+
+    @Test("Grace period starts when the first GOAWAY is sent")
+    func graceTimerStartsAtFirstGoAway() throws {
+        let connection = try Connection(
+            maxIdleTime: .minutes(1),
+            maxGraceTime: .seconds(5)
+        )
+        try connection.activate()
+
+        // The idle timer will trigger the graceful shutdown.
+        connection.advanceTime(by: .minutes(1))
+
+        // Open a stream so that the PING ACK doesn't immediately close the connection.
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(
+                openStreamBeforeSending: 1,
+                delay: .seconds(3),
+                expectedSecondGOAWAYStreamID: 1
+            )
+        )
+
+        // The stream should still be open.
+        #expect(connection.channel.isActive)
+
+        // The grace period should be measured from the first GOAWAY. Therefore, the connection should forcefully close
+        // after 2 seconds.
+        connection.advanceTime(by: .seconds(2))
+        try #require(!connection.channel.isActive)
+        #expect(try connection.readFrame() == nil)
+
         try connection.waitUntilClosed()
     }
 
@@ -157,7 +232,10 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         try connection.activate()
 
         connection.advanceTime(by: .minutes(1))
-        try self.testGracefulShutdown(connection: connection, lastStreamID: 0)
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(expectedSecondGOAWAYStreamID: 0)
+        )
 
         // The ping-ack is the trigger for closing output. The recording handler stores the promise
         // which will be succeeded in a moment.
@@ -180,8 +258,7 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         connection.advanceTime(by: .minutes(1))
         try self.testGracefulShutdown(
             connection: connection,
-            lastStreamID: 1,
-            streamToOpenBeforePingAck: 1
+            pingAckConfiguration: .enable(openStreamBeforeSending: 1, expectedSecondGOAWAYStreamID: 1)
         )
 
         // Stream still open after second GOAWAY: no close yet.
@@ -276,7 +353,10 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
 
         // We didn't ack the PING, the connection should shutdown after the timeout.
         connection.advanceTime(by: .seconds(5))
-        try self.testGracefulShutdown(connection: connection, lastStreamID: 0)
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(expectedSecondGOAWAYStreamID: 0)
+        )
 
         // Connection is closed now.
         try connection.waitUntilClosed()
@@ -310,17 +390,37 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         connection.advanceTime(by: .seconds(30))
 
         // Follow the graceful shutdown flow.
-        try self.testGracefulShutdown(connection: connection, lastStreamID: 0)
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(expectedSecondGOAWAYStreamID: 0)
+        )
         // Closed because no streams were open.
         try connection.waitUntilClosed()
     }
 }
 
 extension NIOHTTP2ServerConnectionManagementHandlerTests {
+    /// Configure how the client responds to the PING that the server sends after the first GOAWAY.
+    enum PingAckConfiguration {
+        /// Send a PING ACK, then expect the server to send a second GOAWAY.
+        ///
+        /// - Parameters:
+        ///   - openStreamBeforeSending: The ID of a stream to open before sending the PING ACK, if any.
+        ///   - delay: The delay after which the PING ACK is sent.
+        ///   - expectedSecondGOAWAYStreamID: The expected stream ID value contained in the second GOAWAY.
+        case enable(
+            openStreamBeforeSending: HTTP2StreamID? = nil,
+            delay: TimeAmount? = nil,
+            expectedSecondGOAWAYStreamID: HTTP2StreamID
+        )
+
+        // Do not respond to the PING received from the server.
+        case disable
+    }
+
     private func testGracefulShutdown(
         connection: Connection,
-        lastStreamID: HTTP2StreamID,
-        streamToOpenBeforePingAck: HTTP2StreamID? = nil
+        pingAckConfiguration: PingAckConfiguration
     ) throws {
         do {
             let frame = try #require(try connection.readFrame())
@@ -339,22 +439,30 @@ extension NIOHTTP2ServerConnectionManagementHandlerTests {
             let (data, ack) = try #require(frame.payload.ping)
             #expect(!ack)
 
-            if let id = streamToOpenBeforePingAck {
-                connection.streamOpened(id)
+            switch pingAckConfiguration {
+            case .enable(let streamToOpenBeforePingAck, let delay, let expectedSecondGOAWAYStreamID):
+                if let streamToOpenBeforePingAck {
+                    connection.streamOpened(streamToOpenBeforePingAck)
+                }
+
+                if let delay {
+                    connection.advanceTime(by: delay)
+                }
+
+                // Send the PING ACK.
+                try connection.ping(data: data, ack: true)
+
+                // PING ACK triggers another GOAWAY.
+                let frame = try #require(try connection.readFrame())
+                #expect(frame.streamID == .rootStream)
+
+                let (streamID, errorCode, _) = try #require(frame.payload.goAway)
+                #expect(streamID == expectedSecondGOAWAYStreamID)
+                #expect(errorCode == .noError)
+
+            case .disable:
+                ()
             }
-
-            // Send the PING ACK.
-            try connection.ping(data: data, ack: true)
-        }
-
-        // PING ACK triggers another GOAWAY.
-        do {
-            let frame = try #require(try connection.readFrame())
-            #expect(frame.streamID == .rootStream)
-
-            let (streamID, errorCode, _) = try #require(frame.payload.goAway)
-            #expect(streamID == lastStreamID)
-            #expect(errorCode == .noError)
         }
     }
 }
