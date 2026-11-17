@@ -220,6 +220,61 @@ struct NIOHTTP2ServerConnectionManagementHandlerTests {
         connection.advanceTime(by: .seconds(2))
         try #require(!connection.channel.isActive)
         #expect(try connection.readFrame() == nil)
+
+        try connection.waitUntilClosed()
+    }
+
+    @Test("Graceful close half-closes output before full close (no streams)")
+    func gracefulCloseHalfClosesBeforeFullCloseWithNoStreams() throws {
+        let connection = try Connection(maxIdleTime: .minutes(1))
+        let recorder = CloseRecorder()
+        try connection.channel.pipeline.syncOperations.addHandler(recorder, position: .first)
+        try connection.activate()
+
+        connection.advanceTime(by: .minutes(1))
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(expectedSecondGOAWAYStreamID: 0)
+        )
+
+        // The ping-ack is the trigger for closing output. The recording handler stores the promise
+        // which will be succeeded in a moment.
+        #expect(recorder.modes == [.output])
+
+        // Complete the half-close promise. Doing that triggers the full close.
+        recorder.completeOutput()
+        #expect(recorder.modes == [.output, .all])
+
+        try connection.waitUntilClosed()
+    }
+
+    @Test("Graceful close half-closes output before full close (last stream closes)")
+    func gracefulCloseHalfClosesBeforeFullCloseOnLastStreamClose() throws {
+        let connection = try Connection(maxIdleTime: .minutes(1))
+        let recorder = CloseRecorder()
+        try connection.channel.pipeline.syncOperations.addHandler(recorder, position: .first)
+        try connection.activate()
+
+        connection.advanceTime(by: .minutes(1))
+        try self.testGracefulShutdown(
+            connection: connection,
+            pingAckConfiguration: .enable(openStreamBeforeSending: 1, expectedSecondGOAWAYStreamID: 1)
+        )
+
+        // Stream still open after second GOAWAY: no close yet.
+        #expect(recorder.modes.isEmpty)
+
+        // Closing the last stream schedules a graceful close on the event loop.
+        connection.streamClosed(1)
+        connection.loop.run()
+
+        // The recording handler stores the promise which will be succeeded in a moment.
+        #expect(recorder.modes == [.output])
+
+        // Complete the half-close promise. Doing that triggers the full close.
+        recorder.completeOutput()
+        #expect(recorder.modes == [.output, .all])
+
         try connection.waitUntilClosed()
     }
 
@@ -490,5 +545,27 @@ extension HTTP2Frame.FramePayload {
         default:
             return nil
         }
+    }
+}
+
+private final class CloseRecorder: ChannelOutboundHandler {
+    typealias OutboundIn = NIOAny
+
+    private(set) var modes: [CloseMode] = []
+    private var halfClosePromise: EventLoopPromise<Void>?
+
+    func close(context: ChannelHandlerContext, mode: CloseMode, promise: EventLoopPromise<Void>?) {
+        self.modes.append(mode)
+        switch mode {
+        case .output:
+            self.halfClosePromise = promise
+        default:
+            context.close(mode: mode, promise: promise)
+        }
+    }
+
+    func completeOutput() {
+        self.halfClosePromise?.succeed(())
+        self.halfClosePromise = nil
     }
 }
