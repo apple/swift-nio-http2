@@ -75,6 +75,17 @@ extension ReceivingPushPromiseState {
             let result = self.streamState.modifyStreamState(streamID: originalStreamID, ignoreRecentlyReset: true) {
                 $0.receivePushPromise(headers: headers, validateHeaderBlock: validateHeaderBlock)
             }
+
+            // If the PUSH_PROMISE frame was rejected on the parent stream, the promised
+            // stream must not be left dangling: remove it again, otherwise it stays in
+            // the stream map forever with no channel to deliver its frames to.
+            switch result.result {
+            case .succeed:
+                break
+            default:
+                self.streamState.removeStream(childStreamID)
+            }
+
             return StateMachineResultWithEffect(
                 result,
                 inboundFlowControlWindow: self.inboundFlowControlWindow,

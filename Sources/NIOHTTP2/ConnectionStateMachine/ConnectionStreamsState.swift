@@ -90,6 +90,20 @@ struct ConnectionStreamState {
         self.activeStreams.insert(streamState)
     }
 
+    /// Removes a stream from the stream map.
+    ///
+    /// Used when a remotely pushed stream has to be discarded because the PUSH_PROMISE
+    /// frame that created it was rejected on the parent stream: without this the
+    /// stream would stay in the map forever, with no channel to deliver its frames to.
+    ///
+    /// - Parameter streamID: The ID of the stream to remove.
+    mutating func removeStream(_ streamID: HTTP2StreamID) {
+        guard self.activeStreams.removeValue(forStreamID: streamID) != nil else {
+            return
+        }
+        self.streamClosed(streamID)
+    }
+
     /// Create stream state for a locally pushed stream.
     ///
     /// Unlike with idle streams, which are served by `modifyStreamStateCreateIfNeeded`, for pushed streams we do not
