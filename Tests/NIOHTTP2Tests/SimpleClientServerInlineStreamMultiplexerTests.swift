@@ -207,6 +207,69 @@ class SimpleClientServerInlineStreamMultiplexerTests: XCTestCase {
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
 
+    func testBufferedWindowUpdatesDoNotOverGrantConnectionFlowControlCredit() throws {
+        // Regression test for https://github.com/apple/swift-nio-http2/issues/572
+        try self.basicHTTP2Connection { channel in
+            channel.eventLoop.makeSucceededFuture(())
+        }
+
+        let headers = HPACKHeaders([
+            (":path", "/"), (":method", "POST"), (":scheme", "https"), (":authority", "localhost"),
+        ])
+
+        let multiplexer = try self.clientChannel.pipeline.handler(type: NIOHTTP2Handler.self).flatMap {
+            $0.multiplexer
+        }.wait()
+        let childHandler = InboundFramePayloadRecorder()
+        let childChannelPromise = self.clientChannel.eventLoop.makePromise(of: Channel.self)
+        multiplexer.createStreamChannel(promise: childChannelPromise) { channel in
+            channel.write(HTTP2Frame.FramePayload.headers(.init(headers: headers)), promise: nil)
+            return channel.pipeline.addHandler(childHandler)
+        }
+        (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+        let childChannel = try childChannelPromise.futureResult.wait()
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // While the server channel isn't writable, the WINDOW_UPDATEs the server
+        // computes pile up in its control frame buffer, unsent.
+        self.serverChannel.isWritable = false
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+
+        let data = ByteBuffer(repeating: 0, count: 16_000)
+        for _ in 0..<4 {
+            childChannel.writeAndFlush(
+                HTTP2Frame.FramePayload.data(.init(data: .byteBuffer(data))),
+                promise: nil
+            )
+            (self.clientChannel.eventLoop as! EmbeddedEventLoop).run()
+            self.interactInMemory(self.clientChannel, self.serverChannel)
+        }
+
+        self.serverChannel.isWritable = true
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+        self.interactInMemory(self.clientChannel, self.serverChannel)
+
+        // The server consumed 64,000 bytes, so the client must receive exactly
+        // that much connection-level credit, in a single WINDOW_UPDATE.
+        var connectionIncrements: [Int] = []
+        while let frame = try? self.clientChannel.readInbound(as: HTTP2Frame.self) {
+            guard case .windowUpdate(let increment) = frame.payload else {
+                XCTFail("Unexpected frame: \(frame)")
+                continue
+            }
+            XCTAssertEqual(frame.streamID, .rootStream)
+            connectionIncrements.append(increment)
+        }
+        XCTAssertEqual(connectionIncrements, [64000])
+
+        // The same applies to the stream-level credit.
+        let expectedChildFrames = [HTTP2Frame.FramePayload.windowUpdate(windowSizeIncrement: 64000)]
+        childHandler.receivedFrames.assertFramePayloadsMatch(expectedChildFrames)
+
+        XCTAssertNoThrow(try self.clientChannel.finish())
+        XCTAssertNoThrow(try self.serverChannel.finish())
+    }
+
     func testNoStreamWindowUpdateOnEndStreamFrameFromServer() throws {
         let maxFrameSize = (1 << 24) - 1  // Max value of SETTINGS_MAX_FRAME_SIZE is 2^24-1.
         let clientSettings = nioDefaultSettings + [HTTP2Setting(parameter: .maxFrameSize, value: maxFrameSize)]

@@ -89,6 +89,31 @@ extension ControlFrameBuffer {
     }
 
     private mutating func bufferFrame(_ frame: HTTP2Frame, promise: EventLoopPromise<Void>?) throws {
+        if case .windowUpdate(let increment) = frame.payload,
+            let index = self.pendingControlFrames.firstIndex(where: {
+                guard $0.frame.streamID == frame.streamID, case .windowUpdate = $0.frame.payload else {
+                    return false
+                }
+                return true
+            })
+        {
+            // A later WINDOW_UPDATE for the same stream covers an earlier unsent one:
+            // the window can only grow once an update is sent, so keep the larger increment.
+            var pending = self.pendingControlFrames[index]
+            if case .windowUpdate(let buffered) = pending.frame.payload, increment > buffered {
+                pending.frame.payload = .windowUpdate(windowSizeIncrement: increment)
+            }
+            switch (pending.promise, promise) {
+            case (_, .none):
+                ()
+            case (.none, .some):
+                pending.promise = promise
+            case (.some(let existing), .some(let new)):
+                existing.futureResult.cascade(to: new)
+            }
+            self.pendingControlFrames[index] = pending
+            return
+        }
         guard self.pendingControlFrames.count < self.maximumBufferSize else {
             // Appending another frame would violate the maximum buffer size. We're storing too many frames here,
             // we gotta move on.
