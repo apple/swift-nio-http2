@@ -2378,6 +2378,127 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         )
     }
 
+    /// Activates the server and delivers a client preamble that does not ACK the server's SETTINGS: the state in
+    /// which a client such as Envoy sends its first request on a fresh connection.
+    private func coldServerConnection(serverSettings: HTTP2Settings) throws {
+        XCTAssertNoThrow(
+            try self.serverChannel.pipeline.syncOperations.addHandler(
+                NIOHTTP2Handler(mode: .server, initialSettings: serverSettings)
+            )
+        )
+        _ = try self.serverChannel.connect(to: try SocketAddress(unixDomainSocketPath: "/fake")).wait()
+
+        var frameEncoder = HTTP2FrameEncoder(allocator: self.serverChannel.allocator)
+        var buffer = self.serverChannel.allocator.buffer(capacity: 1024)
+        buffer.writeString("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")
+        XCTAssertNil(
+            try frameEncoder.encode(frame: HTTP2Frame(streamID: 0, payload: .settings(.settings([]))), to: &buffer)
+        )
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(buffer))
+        try self.serverChannel.assertReceivedFrame().assertSettingsFrame(expectedSettings: [], ack: false)
+    }
+
+    /// Request headers whose header list size is a little over `valueLength` bytes. Nothing is indexed, so each
+    /// block can be encoded by a fresh `HPACKEncoder`.
+    private func requestHeaders(valueLength: Int) -> HPACKHeaders {
+        var headers = HPACKHeaders()
+        headers.add(name: ":path", value: "/", indexing: .nonIndexable)
+        headers.add(name: ":method", value: "GET", indexing: .nonIndexable)
+        headers.add(name: ":authority", value: "localhost", indexing: .nonIndexable)
+        headers.add(name: ":scheme", value: "https", indexing: .nonIndexable)
+        headers.add(name: "x-large", value: String(repeating: "a", count: valueLength), indexing: .nonIndexable)
+        return headers
+    }
+
+    /// Encodes `headers` as a HEADERS frame followed by as many CONTINUATION frames as the default
+    /// SETTINGS_MAX_FRAME_SIZE requires. `NIOHTTP2Handler` never emits CONTINUATION frames itself, but other
+    /// clients do.
+    private func headerBlockFrames(streamID: UInt32, headers: HPACKHeaders) throws -> ByteBuffer {
+        var block = self.serverChannel.allocator.buffer(capacity: 1024)
+        var headerEncoder = HPACKEncoder(allocator: self.serverChannel.allocator)
+        try headerEncoder.encode(headers: headers, to: &block)
+
+        var frames = self.serverChannel.allocator.buffer(capacity: block.readableBytes + 1024)
+        var frameType: UInt8 = 0x01  // HEADERS
+        var flags: UInt8 = 0x01  // END_STREAM
+        repeat {
+            var fragment = block.readSlice(length: min(block.readableBytes, 1 << 14))!
+            if block.readableBytes == 0 {
+                flags |= 0x04  // END_HEADERS
+            }
+            frames.writeInteger(UInt8(truncatingIfNeeded: fragment.readableBytes >> 16))
+            frames.writeInteger(UInt16(truncatingIfNeeded: fragment.readableBytes))
+            frames.writeInteger(frameType)
+            frames.writeInteger(flags)
+            frames.writeInteger(streamID)
+            frames.writeBuffer(&fragment)
+            frameType = 0x09  // CONTINUATION
+            flags = 0
+        } while block.readableBytes > 0
+        return frames
+    }
+
+    func testInitialMaxHeaderListSizeAppliesBeforeSettingsAck() throws {
+        // RFC 9113 § 6.5.2 puts the initial value of SETTINGS_MAX_HEADER_LIST_SIZE at unlimited, so the client may
+        // send a header block larger than the default limit before it has ACKed our SETTINGS. The server must already
+        // accept up to the limit it advertised.
+        try self.coldServerConnection(serverSettings: [HTTP2Setting(parameter: .maxHeaderListSize, value: 64 * 1024)])
+
+        // 32kB of header value Huffman-encodes to roughly 20kB: a HEADERS frame and a CONTINUATION frame.
+        let headers = self.requestHeaders(valueLength: 32 * 1024)
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(self.headerBlockFrames(streamID: 1, headers: headers)))
+        try self.serverChannel.assertReceivedFrame().assertHeadersFrame(endStream: true, streamID: 1, headers: headers)
+        self.serverChannel.assertNoFramesReceived()
+
+        // The server sent its SETTINGS and the ACK of the client's, and no GOAWAY.
+        let sentFrames = try self.serverChannel.decodedSentFrames()
+        XCTAssertFalse(sentFrames.contains { if case .goAway = $0.payload { true } else { false } })
+    }
+
+    func testInitialMaxHeaderListSizeSmallerThanDefaultIsNotEnforcedBeforeSettingsAck() throws {
+        // A configured value below the default must not make the server stricter before the client ACKs it.
+        try self.coldServerConnection(serverSettings: [HTTP2Setting(parameter: .maxHeaderListSize, value: 1000)])
+
+        let headers = self.requestHeaders(valueLength: 2048)
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(self.headerBlockFrames(streamID: 1, headers: headers)))
+        try self.serverChannel.assertReceivedFrame().assertHeadersFrame(endStream: true, streamID: 1, headers: headers)
+        self.serverChannel.assertNoFramesReceived()
+    }
+
+    func testSmallerMaxHeaderListSizeIsEnforcedOnceAckedAfterLargerInitialValue() throws {
+        try self.basicHTTP2Connection(serverSettings: [HTTP2Setting(parameter: .maxHeaderListSize, value: 64 * 1024)])
+
+        // The larger initial value applies once ACKed.
+        let headers = self.requestHeaders(valueLength: 32 * 1024)
+        XCTAssertNoThrow(try self.serverChannel.writeInbound(self.headerBlockFrames(streamID: 1, headers: headers)))
+        try self.serverChannel.assertReceivedFrame().assertHeadersFrame(endStream: true, streamID: 1, headers: headers)
+
+        // The server now shrinks its value for max header list size, which must take effect once ACKed.
+        let newSettings = [HTTP2Setting(parameter: .maxHeaderListSize, value: 225)]
+        try self.assertSettingsUpdateWithAck(newSettings, sender: self.serverChannel, receiver: self.clientChannel)
+
+        XCTAssertThrowsError(
+            try self.serverChannel.writeInbound(self.headerBlockFrames(streamID: 3, headers: headers))
+        ) { error in
+            XCTAssertEqual(
+                error as? NIOHTTP2Errors.ExcessivelyLargeHeaderBlock,
+                NIOHTTP2Errors.excessivelyLargeHeaderBlock()
+            )
+        }
+        guard let responseFrame = try assertNoThrowWithValue(self.serverChannel.readOutbound(as: ByteBuffer.self))
+        else {
+            XCTFail("Did not receive response frame")
+            return
+        }
+        XCTAssertNoThrow(try self.clientChannel.writeInbound(responseFrame))
+
+        try self.clientChannel.assertReceivedFrame().assertGoAwayFrame(
+            lastStreamID: .maxID,
+            errorCode: UInt32(HTTP2ErrorCode.protocolError.networkCode),
+            opaqueData: nil
+        )
+    }
+
     func testForbidsExceedingMaximumSequentialContinuationFrames() throws {
         let maximumSequentialContinuationFrames = 5
 
