@@ -447,6 +447,18 @@ struct HTTP2ConnectionStateMachine {
     }
 
     /// The state required for a connection that has completely quiesced.
+    ///
+    /// We enter this state when (1) a GOAWAY has been sent or received and (2) every stream has closed.
+    ///
+    /// Entering this state opens a short race window in which it is valid for the peer to send us frames, because the
+    /// peer doesn't yet know that the connection is finished: it may not have seen our GOAWAY, or the frames that
+    /// closed the last streams. The window closes once the peer has seen both. We can't observe when that happens, but
+    /// this race window can last about one RTT.
+    ///
+    /// Frames that arrive during this window are valid, so we need to ignore them. However, we cannot keep ignoring
+    /// frames forever, otherwise a peer could overwhelm us. Since a well-behaved peer can only send so many frames in
+    /// one round trip, we ignore frames up to a small limit (`maximumIgnoredFrames`), and any frame received after that
+    /// results in a connection error.
     fileprivate struct FullyQuiescedState: ConnectionStateWithRole, ConnectionStateWithConfiguration,
         LocallyQuiescingState, RemotelyQuiescingState, SendAndReceiveGoawayState
     {
@@ -456,6 +468,12 @@ struct HTTP2ConnectionStateMachine {
         var streamState: ConnectionStreamState
         var lastLocalStreamID: HTTP2StreamID
         var lastRemoteStreamID: HTTP2StreamID
+
+        /// The number of inbound frames ignored since the connection became fully quiesced.
+        var ignoredFrames = 0
+
+        /// The maximum number of inbound frames we will ignore before emitting a connection error.
+        static let maximumIgnoredFrames = 200
 
         var localSupportsExtendedConnect: Bool {
             false
@@ -499,6 +517,29 @@ struct HTTP2ConnectionStateMachine {
             self.streamState = previousState.streamState
             self.lastLocalStreamID = previousState.lastLocalStreamID
             self.lastRemoteStreamID = .maxID
+        }
+
+        /// Determines whether to ignore the received frame, or to emit a connection error.
+        ///
+        /// It is only valid for the peer to send us frames in this state if it doesn't yet know that the connection is
+        /// finished. All such frames received in this state are ignored, but we need to have an upper bound on how many
+        /// frames we ignore to prevent the peer from overwhelming us. Once the peer has sent more than
+        /// ``maximumIgnoredFrames``, we deem it as malicious behaviour and emit a connection error.
+        mutating func receiveFrame() -> StateMachineResultWithEffect {
+            self.ignoredFrames += 1
+
+            guard self.ignoredFrames <= Self.maximumIgnoredFrames else {
+                return StateMachineResultWithEffect(
+                    result: .connectionError(
+                        underlyingError: NIOHTTP2Errors.excessiveNumberOfGlitches(),
+                        type: .enhanceYourCalm,
+                        isMisbehavingPeer: true
+                    ),
+                    effect: nil
+                )
+            }
+
+            return StateMachineResultWithEffect(result: .ignoreFrame, effect: nil)
         }
     }
 
@@ -593,6 +634,12 @@ struct HTTP2ConnectionStateMachine {
         default:
             return false
         }
+    }
+
+    /// The number of inbound frames that are ignored once the connection is fully quiesced before any further inbound
+    /// frame results in a connection error.
+    static var maximumIgnoredFramesWhenFullyQuiesced: Int {
+        FullyQuiescedState.maximumIgnoredFrames
     }
 
     /// Whether the preamble can be sent.
@@ -945,11 +992,12 @@ extension HTTP2ConnectionStateMachine {
                 effect: nil
             )
 
-        case .fullyQuiesced:
-            return .init(
-                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
-                effect: nil
-            )
+        case .fullyQuiesced(var state):
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return result
+            }
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1057,7 +1105,7 @@ extension HTTP2ConnectionStateMachine {
         }
     }
 
-    func receivePriority() -> StateMachineResultWithEffect {
+    mutating func receivePriority() -> StateMachineResultWithEffect {
         // So long as we've received the preamble and haven't fullyQuiesced, a PRIORITY frame is basically always
         // an acceptable thing to receive. The only rule is that it mustn't form a cycle in the priority
         // tree, but we don't maintain enough state in this object to enforce that.
@@ -1071,11 +1119,12 @@ extension HTTP2ConnectionStateMachine {
                 effect: nil
             )
 
-        case .fullyQuiesced:
-            return StateMachineResultWithEffect(
-                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
-                effect: nil
-            )
+        case .fullyQuiesced(var state):
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return result
+            }
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1162,11 +1211,12 @@ extension HTTP2ConnectionStateMachine {
                 effect: nil
             )
 
-        case .fullyQuiesced:
-            return .init(
-                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
-                effect: nil
-            )
+        case .fullyQuiesced(var state):
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return result
+            }
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1330,11 +1380,25 @@ extension HTTP2ConnectionStateMachine {
                 effect: nil
             )
 
-        case .fullyQuiesced:
-            return .init(
-                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
-                effect: nil
-            )
+        case .fullyQuiesced(var state):
+            // Receiving a PUSH_PROMISE as a server is a protocol error.
+            if state.role == .server {
+                return .init(
+                    result: .connectionError(
+                        underlyingError: NIOHTTP2Errors.pushInViolationOfSetting(),
+                        type: .protocolError
+                    ),
+                    effect: nil
+                )
+            }
+
+            // We are a client. The server's PUSH_PROMISE may have been in flight when we reset the parent stream, so we
+            // ignore it.
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return result
+            }
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1670,11 +1734,12 @@ extension HTTP2ConnectionStateMachine {
                 effect: nil
             )
 
-        case .fullyQuiesced:
-            return .init(
-                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
-                effect: nil
-            )
+        case .fullyQuiesced(var state):
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return result
+            }
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1754,7 +1819,7 @@ extension HTTP2ConnectionStateMachine {
         //   > The ALTSVC frame is a non-critical extension to HTTP/2.  Endpoints
         //   > that do not support this frame will ignore it (as per the
         //   > extensibility rules defined in Section 4.1 of RFC7540).
-        .init(result: .ignoreFrame, effect: .none)
+        self.receiveUnsupportedExtensionFrame()
     }
 
     /// Called when an ALTSVC frame is sent.
@@ -1773,7 +1838,7 @@ extension HTTP2ConnectionStateMachine {
         // From RFC 8336 § 2.1:
         //   > The ORIGIN frame is a non-critical extension to HTTP/2.  Endpoints
         //   > that do not support this frame can safely ignore it upon receipt.
-        .init(result: .ignoreFrame, effect: .none)
+        self.receiveUnsupportedExtensionFrame()
     }
 
     /// Called when an ORIGIN frame is sent.
@@ -1781,6 +1846,24 @@ extension HTTP2ConnectionStateMachine {
     /// At present the frame is not handled, calling this function will trap.
     mutating func sendOrigin(origins: [String]) -> Never {
         fatalError("Currently ORIGIN frames are unhandled.")
+    }
+
+    /// Called when a frame is received for an extension we don't support.
+    ///
+    /// The frame is ignored, but if the connection is fully quiesced, we need to track how many frames we have ignored
+    /// in that state so that we can emit a connection error if the peer has sent too many.
+    private mutating func receiveUnsupportedExtensionFrame() -> StateMachineResultWithEffect {
+        switch self.state {
+        case .fullyQuiesced(var state):
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return result
+            }
+
+        default:
+            return .init(result: .ignoreFrame, effect: .none)
+        }
     }
 }
 
@@ -1873,16 +1956,12 @@ extension HTTP2ConnectionStateMachine {
                 return result
             }
 
-        case .fullyQuiesced:
-            return (
-                .init(
-                    result: .connectionError(
-                        underlyingError: NIOHTTP2Errors.ioOnClosedConnection(),
-                        type: .protocolError
-                    ),
-                    effect: nil
-                ), .nothing
-            )
+        case .fullyQuiesced(var state):
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return (result, .nothing)
+            }
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")
@@ -1927,11 +2006,12 @@ extension HTTP2ConnectionStateMachine {
                 effect: nil
             )
 
-        case .fullyQuiesced:
-            return .init(
-                result: .connectionError(underlyingError: NIOHTTP2Errors.ioOnClosedConnection(), type: .protocolError),
-                effect: nil
-            )
+        case .fullyQuiesced(var state):
+            return self.avoidingStateMachineCoW { newState in
+                let result = state.receiveFrame()
+                newState = .fullyQuiesced(state)
+                return result
+            }
 
         case .modifying:
             preconditionFailure("Must not be left in modifying state")

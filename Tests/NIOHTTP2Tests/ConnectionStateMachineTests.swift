@@ -2307,7 +2307,7 @@ class ConnectionStateMachineTests: XCTestCase {
         XCTAssertTrue(temporaryClient.fullyQuiesced)
     }
 
-    func testClosedStreamsForbidAllActivity() {
+    func testClosedConnectionForbidsNewActivityButToleratesInFlightFrames() {
         let streamOne = HTTP2StreamID(1)
         let streamTwo = HTTP2StreamID(2)
 
@@ -2317,7 +2317,9 @@ class ConnectionStateMachineTests: XCTestCase {
         assertSucceeds(self.server.sendGoaway(lastStreamID: .rootStream))
         assertSucceeds(self.client.receiveGoaway(lastStreamID: .rootStream))
 
-        // Stream specific things don't work.
+        // We can't do anything stream specific now. However, the peer may still have had stream-specific frames in
+        // flight when the connection closed. Therefore, we must ignore everything, except a new stream creation, which
+        // we refuse.
         assertConnectionError(
             type: .protocolError,
             self.client.sendHeaders(
@@ -2338,8 +2340,7 @@ class ConnectionStateMachineTests: XCTestCase {
             type: .protocolError,
             self.client.sendData(streamID: streamOne, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false)
         )
-        assertConnectionError(
-            type: .protocolError,
+        assertIgnored(
             self.server.receiveData(
                 streamID: streamOne,
                 contentLength: 15,
@@ -2351,11 +2352,8 @@ class ConnectionStateMachineTests: XCTestCase {
             type: .protocolError,
             self.client.sendWindowUpdate(streamID: streamOne, windowIncrement: 1024)
         )
-        assertConnectionError(
-            type: .protocolError,
-            self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024)
-        )
-        assertConnectionError(type: .protocolError, self.server.receiveRstStream(streamID: streamOne, reason: .noError))
+        assertIgnored(self.server.receiveWindowUpdate(streamID: streamOne, windowIncrement: 1024))
+        assertIgnored(self.server.receiveRstStream(streamID: streamOne, reason: .noError))
         assertConnectionError(
             type: .protocolError,
             self.server.sendPushPromise(
@@ -2364,8 +2362,7 @@ class ConnectionStateMachineTests: XCTestCase {
                 headers: ConnectionStateMachineTests.requestHeaders
             )
         )
-        assertConnectionError(
-            type: .protocolError,
+        assertIgnored(
             self.client.receivePushPromise(
                 originalStreamID: streamOne,
                 childStreamID: streamTwo,
@@ -2373,18 +2370,19 @@ class ConnectionStateMachineTests: XCTestCase {
             )
         )
 
-        // Connectiony things don't work either.
+        // Sending connectiony things don't work. If we receive connection-level frames, we ignore them.
         assertConnectionError(type: .protocolError, self.client.sendPriority())
-        assertConnectionError(type: .protocolError, self.server.receivePriority())
+        assertIgnored(self.server.receivePriority())
         assertConnectionError(type: .protocolError, self.client.sendSettings([]))
-        assertConnectionError(
-            type: .protocolError,
+        assertIgnored(
             self.server.receiveSettings(
                 .settings([]),
                 frameEncoder: &self.serverEncoder,
                 frameDecoder: &self.serverDecoder
-            )
+            ).0
         )
+        assertIgnored(self.server.receiveAlternativeService(origin: nil, field: nil))
+        assertIgnored(self.server.receiveOrigin(origins: []))
 
         // Duplicate goaway is cool though.
         assertSucceeds(self.client.sendGoaway(lastStreamID: .rootStream))
@@ -7752,6 +7750,218 @@ class ConnectionStateMachineTests: XCTestCase {
             }
         }
 
+    }
+
+    func testInFlightSettingsAckIsIgnoredWhenFullyQuiesced() {
+        self.quiesceServerLeavingSettingsUnacknowledged()
+        // The server is in the `fullyQuiesced` state, but the client hasn't sent their SETTINGS ACK yet. When the
+        // server eventually receives the SETTINGS ACK, it should just ignore the frame.
+        let (result, postFrameOperation) = self.server.receiveSettings(
+            .ack,
+            frameEncoder: &self.serverEncoder,
+            frameDecoder: &self.serverDecoder
+        )
+
+        assertIgnored(result)
+        XCTAssertEqual(postFrameOperation, .nothing)
+    }
+
+    func testInFlightSettingsChangeIsIgnoredWhenFullyQuiesced() {
+        self.quiesceServerLeavingSettingsUnacknowledged()
+        // A SETTINGS change in the `fullyQuiesced` state should be ignored.
+        let (result, postFrameOperation) = self.server.receiveSettings(
+            .settings([]),
+            frameEncoder: &self.serverEncoder,
+            frameDecoder: &self.serverDecoder
+        )
+        assertIgnored(result)
+
+        // Since the server ignored the SETTINGS frame, it shouldn't send an ACK for it.
+        switch postFrameOperation {
+        case .nothing:
+            ()
+
+        case .sendAck:
+            XCTFail("Must not ACK SETTINGS on a fully quiesced connection")
+        }
+    }
+
+    func testInFlightFramesAreIgnoredWhenFullyQuiesced() {
+        self.quiesceServerLeavingSettingsUnacknowledged()
+
+        // Each of these frames could have been in flight when the server became fully quiesced. As such, each one
+        // should be ignored.
+        assertIgnored(self.server.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 1024))
+        assertIgnored(self.server.receiveWindowUpdate(streamID: 1, windowIncrement: 1024))
+        assertIgnored(self.server.receiveRstStream(streamID: 1, reason: .cancel))
+        assertIgnored(
+            self.server.receiveData(streamID: 1, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false)
+        )
+        assertIgnored(self.server.receivePriority())
+    }
+
+    func testInFlightPushPromiseIsIgnoredWhenFullyQuiesced() {
+        self.quiesceClient()
+
+        assertIgnored(
+            self.client.receivePushPromise(
+                originalStreamID: 1,
+                childStreamID: 2,
+                headers: ConnectionStateMachineTests.requestHeaders
+            )
+        )
+    }
+
+    func testPushPromiseFromClientIsRejectedWhenFullyQuiesced() {
+        self.quiesceServerLeavingSettingsUnacknowledged()
+
+        // Clients can never send a PUSH_PROMISE frame. Regardless of the state, this is a protocol error.
+        assertConnectionError(
+            type: .protocolError,
+            self.server.receivePushPromise(
+                originalStreamID: 1,
+                childStreamID: 3,
+                headers: ConnectionStateMachineTests.requestHeaders
+            )
+        )
+    }
+
+    func testInFlightFramesAreLimitedWhenFullyQuiesced() {
+        self.quiesceServerLeavingSettingsUnacknowledged()
+
+        // Every kind of frame that is ignored counts towards the same limit.
+        let inFlightFrames: [() -> StateMachineResultWithEffect] = [
+            { self.server.receiveData(streamID: 1, contentLength: 15, flowControlledBytes: 15, isEndStreamSet: false) },
+            { self.server.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 1024) },
+            { self.server.receiveWindowUpdate(streamID: 1, windowIncrement: 1024) },
+            { self.server.receiveRstStream(streamID: 1, reason: .cancel) },
+            { self.server.receivePriority() },
+            {
+                self.server.receiveSettings(
+                    .settings([]),
+                    frameEncoder: &self.serverEncoder,
+                    frameDecoder: &self.serverDecoder
+                ).0
+            },
+            {
+                self.server.receiveSettings(
+                    .ack,
+                    frameEncoder: &self.serverEncoder,
+                    frameDecoder: &self.serverDecoder
+                ).0
+            },
+            { self.server.receiveAlternativeService(origin: nil, field: nil) },
+            { self.server.receiveOrigin(origins: []) },
+        ]
+
+        for index in 0..<HTTP2ConnectionStateMachine.maximumIgnoredFramesWhenFullyQuiesced {
+            assertIgnored(inFlightFrames[index % inFlightFrames.count]())
+        }
+
+        // A well-behaved peer can't have had this many frames in flight. A further frame should now result in a
+        // connection error.
+        assertConnectionError(type: .enhanceYourCalm, isMisbehavingPeer: true, self.server.receivePriority())
+        assertConnectionError(
+            type: .enhanceYourCalm,
+            isMisbehavingPeer: true,
+            self.server.receiveWindowUpdate(streamID: .rootStream, windowIncrement: 1024)
+        )
+    }
+
+    func testOnlyIgnoredFramesCountTowardsTheFullyQuiescedLimit() {
+        self.quiesceServerLeavingSettingsUnacknowledged()
+
+        // Consume all but one of the maximum allowed ignored frames.
+        for _ in 1..<HTTP2ConnectionStateMachine.maximumIgnoredFramesWhenFullyQuiesced {
+            assertIgnored(self.server.receivePriority())
+        }
+
+        // Now the server can only ignore one more frame.
+
+        // Let's send frames that shouldn't be ignored. None of these should hit the limit.
+        assertStreamError(
+            type: .refusedStream,
+            self.server.receiveHeaders(
+                streamID: 3,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: true
+            )
+        )
+        assertSucceeds(self.server.receivePing(ackFlagSet: false))
+        assertSucceeds(self.server.receivePing(ackFlagSet: true))
+        assertSucceeds(self.server.receiveGoaway(lastStreamID: .rootStream))
+
+        // Now send a PRIORITY frame. The server should now reach the limit and consequently emit a connection error.
+        assertIgnored(self.server.receivePriority())
+        assertConnectionError(type: .enhanceYourCalm, isMisbehavingPeer: true, self.server.receivePriority())
+    }
+
+    func testIgnoredFramesAreNotLimitedBeforeFullyQuiesced() {
+        self.exchangePreamble()
+
+        for _ in 0...HTTP2ConnectionStateMachine.maximumIgnoredFramesWhenFullyQuiesced {
+            assertIgnored(self.server.receiveAlternativeService(origin: nil, field: nil))
+        }
+    }
+
+    /// Drives the server to the `fullyQuiesced` state through a series of frames, excluding the client's SETTINGS ACK.
+    private func quiesceServerLeavingSettingsUnacknowledged() {
+        // Receive the client's SETTINGS frame, and send back our SETTINGS frame.
+        assertSucceeds(
+            self.server.receiveSettings(
+                .settings(HTTP2Settings()),
+                frameEncoder: &self.serverEncoder,
+                frameDecoder: &self.serverDecoder
+            )
+        )
+        assertSucceeds(self.server.sendSettings(HTTP2Settings()))
+
+        // Hold back the client's SETTINGS ACK, and simulate a new stream arriving.
+        assertSucceeds(
+            self.server.receiveHeaders(
+                streamID: 1,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: true
+            )
+        )
+        // Send a GOAWAY while the stream is open. The server should now be in the `locallyQuiesced` state.
+        assertSucceeds(self.server.sendGoaway(lastStreamID: .maxID))
+        // Send the response to close the open stream.
+        assertSucceeds(
+            self.server.sendHeaders(
+                streamID: 1,
+                headers: ConnectionStateMachineTests.responseHeaders,
+                isEndStreamSet: true
+            )
+        )
+        // Now the server should be in the `fullyQuiesced` state, with a pending SETTINGS ACK from the client.
+        XCTAssertTrue(self.server.fullyQuiesced)
+    }
+
+    /// Drives the client to the `fullyQuiesced` state through a series of frames.
+    private func quiesceClient() {
+        self.exchangePreamble()
+
+        // Send a request, which opens a stream.
+        assertSucceeds(
+            self.client.sendHeaders(
+                streamID: 1,
+                headers: ConnectionStateMachineTests.requestHeaders,
+                isEndStreamSet: true
+            )
+        )
+        // Receive a GOAWAY while the stream is open. The client should now be in the `remotelyQuiesced` state.
+        assertSucceeds(self.client.receiveGoaway(lastStreamID: .maxID))
+        // Receive the response; this closes the open stream.
+        assertSucceeds(
+            self.client.receiveHeaders(
+                streamID: 1,
+                headers: ConnectionStateMachineTests.responseHeaders,
+                isEndStreamSet: true
+            )
+        )
+        // Now the client should be in the `fullyQuiesced` state.
+        XCTAssertTrue(self.client.fullyQuiesced)
     }
 }
 
