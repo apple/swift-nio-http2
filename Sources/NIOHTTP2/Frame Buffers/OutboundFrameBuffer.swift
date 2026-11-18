@@ -168,70 +168,29 @@ extension CompoundOutboundBuffer {
             return .noFrame
         }
 
-        // Ok, the channel is writable, so we may be able to unbuffer some frames. How do we do it?
-        //
-        // First, we check if we have any buffered control frames. Control frames *must* be emitted first, so we want to check that first.
-        // If there are no buffered control frames, we can then eagerly do as much work as possible on the concurrent streams buffer
-        // before we get to the flow control buffer. We spin over the concurrent streams buffer, unbuffering everything we can and passing it
-        // to the flow control buffer and then to the control frame buffer.
-        //
-        // We expect only two possible outcomes from this forwarding: .forward or .nothing. If we get .nothing, we continue
-        // the loop. If we get .forward, we pass the frame to the control frame buffer which again can only give us .forward
-        // or .nothing. If we get .nothing, we continue the loop. Otherwise, if we get .forward we return the frame, as we can
-        // send it to the network.
-        //
-        // If we get to the end of the loop without forwarding a frame, we mark a new flush point on the flowControlBuffer
-        // and then do a smaller version of the above loop, now looping on the control frame buffer. Finally, we attempt to go to the
-        // control frame buffer once more: though in the current version of the code there is no way to have to buffer again here,
-        // we should still be careful and ensure that we follow the buffering flow.
-
-        // Let's start with the control frame buffer.
+        // Flushed control frames take precedence. Any control frames left in the buffer
+        // were written after the last flush and should not block earlier flushed writes.
         if let flushedFrame = self.controlFrameBuffer.nextFlushedWritableFrame() {
             return .frame(flushedFrame.frame, flushedFrame.promise)
         }
 
-        // Ok, now to move on to work on the concurrent streams buffer.
+        // Writes from the concurrent stream buffer are already flushed. Preserve that
+        // state if a write is buffered again for flow control.
         while let (frame, promise) = self.concurrentStreamsBuffer.nextFlushedWritableFrame() {
             do {
-                if try self.flowControlBuffer.processOutboundFrame(frame, promise: promise).shouldForward
-                    && self.controlFrameBuffer.processOutboundFrame(
-                        frame,
-                        promise: promise,
-                        channelWritable: channelWritable
-                    ).shouldForward
-                {
+                if try self.flowControlBuffer.processOutboundFrame(frame, promise: promise).shouldForward {
                     return .frame(frame, promise)
                 }
+                self.flowControlBuffer.flushStream(frame.streamID)
             } catch {
                 return .error(promise, error)
             }
         }
 
-        // Mark the flush point, as any frame we forwarded on is by definition flushed.
-        self.flowControlBuffer.flushReceived()
-
-        while let (frame, promise) = self.flowControlBuffer.nextFlushedWritableFrame() {
-            do {
-                if try self.controlFrameBuffer.processOutboundFrame(
-                    frame,
-                    promise: promise,
-                    channelWritable: channelWritable
-                ).shouldForward {
-                    return .frame(frame, promise)
-                }
-            } catch {
-                return .error(promise, error)
-            }
+        if let (frame, promise) = self.flowControlBuffer.nextFlushedWritableFrame() {
+            return .frame(frame, promise)
         }
-
-        // Mark the flush point again. There either is or is not a frame to write here.
-        self.controlFrameBuffer.flushReceived()
-
-        if let flushedFrame = self.controlFrameBuffer.nextFlushedWritableFrame() {
-            return .frame(flushedFrame.frame, flushedFrame.promise)
-        } else {
-            return .noFrame
-        }
+        return .noFrame
     }
 }
 

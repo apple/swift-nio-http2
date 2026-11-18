@@ -129,24 +129,31 @@ internal struct OutboundFlowControlBuffer {
     }
 
     internal mutating func flushReceived() {
-        // Mark the flush points on all the streams we believe are writable.
-        // We need to double-check here: has their flow control window dropped below zero? If it
-        // has, the streamID isn't actually writable, and we should abandon adding it here. However,
-        // we still mark the flush point.
         for streamID in self.writableStreams {
-            let actuallyWritable: Bool? = self.streamDataBuffers.modify(streamID: streamID) { dataBuffer in
-                dataBuffer.markFlushPoint()
-                return dataBuffer.hasFlowControlWindowSpaceForNextWrite
-            }
-            if let actuallyWritable = actuallyWritable, actuallyWritable {
-                self.flushableStreams.insert(streamID)
-                if self.queuedStreams.insert(streamID).inserted {
-                    self.sendQueue.append(streamID)
-                }
-            }
+            self.markFlushPoint(for: streamID)
         }
 
         self.writableStreams.removeAll(keepingCapacity: true)
+    }
+
+    /// Preserves the flush point of a write transferred from the concurrent stream buffer.
+    internal mutating func flushStream(_ streamID: HTTP2StreamID) {
+        self.markFlushPoint(for: streamID)
+        self.writableStreams.remove(streamID)
+    }
+
+    private mutating func markFlushPoint(for streamID: HTTP2StreamID) {
+        // The stream window may have closed since the write was buffered.
+        let actuallyWritable = self.streamDataBuffers.modify(streamID: streamID) { dataBuffer in
+            dataBuffer.markFlushPoint()
+            return dataBuffer.hasFlowControlWindowSpaceForNextWrite
+        }
+        if actuallyWritable == true {
+            self.flushableStreams.insert(streamID)
+            if self.queuedStreams.insert(streamID).inserted {
+                self.sendQueue.append(streamID)
+            }
+        }
     }
 
     private mutating func nextStreamToSend() -> HTTP2StreamID? {

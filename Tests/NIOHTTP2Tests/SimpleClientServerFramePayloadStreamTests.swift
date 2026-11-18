@@ -2214,6 +2214,113 @@ class SimpleClientServerFramePayloadStreamTests: XCTestCase {
         XCTAssertNoThrow(try self.serverChannel.finish())
     }
 
+    func testBufferedResponseFramesWaitForFlushWhenChannelBecomesWritable() throws {
+        try self.basicHTTP2Connection()
+        defer {
+            XCTAssertNoThrow(try self.clientChannel.finish())
+            XCTAssertNoThrow(try self.serverChannel.finish())
+        }
+
+        let requestHeaders = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost"),
+        ])
+        try self.assertFramesRoundTrip(
+            frames: [HTTP2Frame(streamID: 1, payload: .headers(.init(headers: requestHeaders, endStream: true)))],
+            sender: self.clientChannel,
+            receiver: self.serverChannel
+        )
+
+        self.serverChannel.isWritable = false
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+
+        let responseHeaders = HTTP2Frame(streamID: 1, payload: .headers(.init(headers: [":status": "200"])))
+        let responseData = HTTP2Frame(
+            streamID: 1,
+            payload: .data(.init(data: .byteBuffer(ByteBuffer(string: "response")), endStream: true))
+        )
+        let completedWrites = NIOLockedValueBox(0)
+        for frame in [responseHeaders, responseData] {
+            let promise = self.serverChannel.eventLoop.makePromise(of: Void.self)
+            promise.futureResult.whenComplete { result in
+                switch result {
+                case .success:
+                    completedWrites.withLockedValue { $0 += 1 }
+                case .failure(let error):
+                    XCTFail("Write failed: \(error)")
+                }
+            }
+            self.serverChannel.write(frame, promise: promise)
+        }
+
+        self.serverChannel.isWritable = true
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+
+        XCTAssertNil(try self.serverChannel.readOutbound(as: ByteBuffer.self))
+        XCTAssertEqual(completedWrites.withLockedValue { $0 }, 0)
+        XCTAssertNoThrow(try self.serverChannel.throwIfErrorCaught())
+
+        self.serverChannel.flush()
+        self.interactInMemory(self.serverChannel, self.clientChannel)
+
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: responseHeaders)
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: responseData)
+        self.clientChannel.assertNoFramesReceived()
+        XCTAssertEqual(completedWrites.withLockedValue { $0 }, 2)
+    }
+
+    func testFlushedDataCanPrecedeLaterUnflushedHeadersOnAnotherStream() throws {
+        try self.basicHTTP2Connection()
+        defer {
+            XCTAssertNoThrow(try self.clientChannel.finish())
+            XCTAssertNoThrow(try self.serverChannel.finish())
+        }
+
+        let requestHeaders = HPACKHeaders([
+            (":path", "/"), (":method", "GET"), (":scheme", "https"), (":authority", "localhost"),
+        ])
+        try self.assertFramesRoundTrip(
+            frames: [HTTP2StreamID(1), HTTP2StreamID(3)].map {
+                HTTP2Frame(streamID: $0, payload: .headers(.init(headers: requestHeaders, endStream: true)))
+            },
+            sender: self.clientChannel,
+            receiver: self.serverChannel
+        )
+
+        let responseHeaders = HPACKHeaders([(":status", "200")])
+        try self.assertFramesRoundTrip(
+            frames: [HTTP2Frame(streamID: 1, payload: .headers(.init(headers: responseHeaders)))],
+            sender: self.serverChannel,
+            receiver: self.clientChannel
+        )
+
+        self.serverChannel.isWritable = false
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+
+        let firstData = HTTP2Frame(
+            streamID: 1,
+            payload: .data(.init(data: .byteBuffer(ByteBuffer(string: "response")), endStream: true))
+        )
+        self.serverChannel.writeAndFlush(firstData, promise: nil)
+        let secondHeaders = HTTP2Frame(
+            streamID: 3,
+            payload: .headers(.init(headers: responseHeaders, endStream: true))
+        )
+        self.serverChannel.write(secondHeaders, promise: nil)
+
+        self.serverChannel.isWritable = true
+        self.serverChannel.pipeline.fireChannelWritabilityChanged()
+        self.interactInMemory(self.serverChannel, self.clientChannel)
+
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: firstData)
+        self.clientChannel.assertNoFramesReceived()
+
+        self.serverChannel.flush()
+        self.interactInMemory(self.serverChannel, self.clientChannel)
+
+        try self.clientChannel.assertReceivedFrame().assertFrameMatches(this: secondHeaders)
+        self.clientChannel.assertNoFramesReceived()
+    }
+
     func testEnforcingMaxHeaderListSize() throws {
         // Begin by getting the connection up.
         try self.basicHTTP2Connection()
