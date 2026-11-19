@@ -8,91 +8,95 @@ on:
     types: [opened, reopened, synchronize]
 
 jobs:
+  # Soundness
   soundness:
     name: Soundness
     uses: swiftlang/github-workflows/.github/workflows/soundness.yml@0.0.7
     with:
       license_header_check_project_name: "SwiftNIO"
 
-  unit-tests:
-    name: Unit tests
-    uses: apple/swift-nio/.github/workflows/unit_tests.yml@main
+  tests:
+    name: Tests
+    uses: swiftlang/github-workflows/.github/workflows/package_test.yml@main
     with:
-      linux_6_1_arguments_override: "-Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error"
-      linux_6_2_arguments_override: "-Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error"
-      linux_6_3_arguments_override: "-Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error"
-      linux_nightly_next_arguments_override: "-Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error"
-      linux_nightly_main_arguments_override: "--explicit-target-dependency-import-check error"
+      # Linux
+      linux_swift_versions: &linux_swift_versions '["6.1", "6.2", "6.3", "6.4", "nightly-release", "nightly-main"]'
+      linux_version_overrides: |
+        default: -Xswiftc -warnings-as-errors --explicit-target-dependency-import-check error
+        nightly-main: --explicit-target-dependency-import-check error
+      linux_command: |
+        Debug-Test: swift test
+        Release-Build: swift build -c release
 
-  cxx-interop:
-    name: Cxx interop
-    uses: apple/swift-nio/.github/workflows/cxx_interop.yml@main
+      # macOS
+      macos_runner_pool: general
+      macos_swift_versions: '["6.1", "6.2", "6.3", "6.4"]'
+      macos_xcode_versions: '["latest-beta"]'
+      xcode_scheme: swift-nio-http2-Package
+      xcode_targets: '[macOS, iOS, watchOS, tvOS, visionOS]'
 
+      # Not yet supported
+      enable_windows: false
+      enable_macos_swiftly: false
+      enable_wasm_sdk_build: false
+      enable_embedded_wasm_sdk_build: false
+      enable_android_sdk_build: false
+      enable_android_emulator_tests: false
+
+  # Benchmarks
+  benchmarks:
+    name: Benchmarks
+    uses: swiftlang/github-workflows/.github/workflows/benchmarks.yml@main
+    with:
+      benchmark_package_paths: '["Benchmarks"]'
+      linux_swift_versions: *linux_swift_versions
+
+  # h2spec
   construct-h2spec-matrix:
     name: Construct h2spec matrix
-    runs-on: ubuntu-latest
-    outputs:
-      h2spec-matrix: '${{ steps.generate-matrix.outputs.h2spec-matrix }}'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - id: generate-matrix
-        run: echo "h2spec-matrix=$(curl -s https://raw.githubusercontent.com/apple/swift-nio/main/scripts/generate_matrix.sh | bash)" >> "$GITHUB_OUTPUT"
-        env:
-          MATRIX_LINUX_SETUP_COMMAND: apt-get update -y && apt-get install -yq wget lsof && mkdir $HOME/.tools && wget -q https://github.com/summerwind/h2spec/releases/download/v2.2.1/h2spec_linux_amd64.tar.gz -O $HOME/.tools/h2spec.tar.gz && tar xzf $HOME/.tools/h2spec.tar.gz --directory $HOME/.tools && PATH=${PATH}:$HOME/.tools
-          MATRIX_LINUX_COMMAND: ./scripts/test_h2spec.sh
+    uses: swiftlang/github-workflows/.github/workflows/toolchain_matrix.yml@main
+    with:
+      linux_swift_versions: *linux_swift_versions
 
   h2spec:
     name: HTTP/2 spec tests
     needs: construct-h2spec-matrix
-    uses: apple/swift-nio/.github/workflows/swift_test_matrix.yml@main
+    uses: swiftlang/github-workflows/.github/workflows/execute_matrix.yml@main
     with:
-      name: "HTTP/2 spec tests"
-      matrix_string: '${{ needs.construct-h2spec-matrix.outputs.h2spec-matrix }}'
+      name: h2spec
+      matrix_yaml_string: ${{ needs.construct-h2spec-matrix.outputs.matrix_yaml }}
+      # The job runs unprivileged on the runner but as root in a container, where
+      # sudo is not installed.
+      setup_command: |
+        if command -v sudo >/dev/null 2>&1; then
+          sudo apt-get update -y -q && sudo apt-get install -y -q wget lsof
+        else
+          apt-get update -y -q && apt-get install -y -q wget lsof
+        fi
+        mkdir -p "$HOME/.tools"
+        wget -q https://github.com/summerwind/h2spec/releases/download/v2.2.1/h2spec_linux_amd64.tar.gz -O "$HOME/.tools/h2spec.tar.gz"
+        tar xzf "$HOME/.tools/h2spec.tar.gz" --directory "$HOME/.tools"
+        export PATH="$PATH:$HOME/.tools"
+      command: ./scripts/test_h2spec.sh
 
+  # Integration tests
   construct-integration-tests-matrix:
-    name: Construct Examples matrix
-    runs-on: ubuntu-latest
-    outputs:
-      integration-tests-matrix: '${{ steps.generate-matrix.outputs.integration-tests-matrix }}'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - id: generate-matrix
-        run: echo "integration-tests-matrix=$(curl -s https://raw.githubusercontent.com/apple/swift-nio/main/scripts/generate_matrix.sh | bash)" >> "$GITHUB_OUTPUT"
-        env:
-          MATRIX_LINUX_COMMAND: "./scripts/integration_tests.sh"
-          MATRIX_LINUX_SETUP_COMMAND: "apt-get update -y -q && apt-get install -y -q  jq"
+    name: Construct Integration Tests matrix
+    uses: swiftlang/github-workflows/.github/workflows/toolchain_matrix.yml@main
+    with:
+      linux_swift_versions: *linux_swift_versions
 
   integration-tests:
     name: Integration Tests
     needs: construct-integration-tests-matrix
-    uses: apple/swift-nio/.github/workflows/swift_test_matrix.yml@main
+    uses: swiftlang/github-workflows/.github/workflows/execute_matrix.yml@main
     with:
-      name: "Examples"
-      matrix_string: '${{ needs.construct-integration-tests-matrix.outputs.integration-tests-matrix }}'
-
-  benchmarks:
-    name: Benchmarks
-    uses: apple/swift-nio/.github/workflows/benchmarks.yml@main
-    with:
-      benchmark_package_path: "Benchmarks"
-
-  macos-tests:
-    name: macOS tests
-    uses: apple/swift-nio/.github/workflows/macos_tests.yml@main
-    with:
-      runner_pool: general
-      build_scheme: swift-nio-http2-Package
-
-  static-sdk:
-    name: Static SDK
-    uses: apple/swift-nio/.github/workflows/static_sdk.yml@main
-
-  release-builds:
-    name: Release builds
-    uses: apple/swift-nio/.github/workflows/release_builds.yml@main
+      name: integration-tests
+      matrix_yaml_string: ${{ needs.construct-integration-tests-matrix.outputs.matrix_yaml }}
+      setup_command: |
+        if command -v sudo >/dev/null 2>&1; then
+          sudo apt-get update -y -q && sudo apt-get install -y -q jq
+        else
+          apt-get update -y -q && apt-get install -y -q jq
+        fi
+      command: ./scripts/integration_tests.sh
