@@ -683,6 +683,79 @@ final class HTTP2ToHTTP1CodecTests: XCTestCase {
     }
 
     @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    func testReceiveConnectRequestWithoutPathOrScheme() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
+
+        let requestHeaders = HPACKHeaders([
+            (":method", "CONNECT"), (":authority", "example.org"), ("other", "header"),
+        ])
+        let headersFrame = HTTP2Frame(
+            streamID: streamID,
+            payload: .headers(.init(headers: requestHeaders, endStream: true))
+        )
+        XCTAssertNoThrow(try self.channel.writeInbound(headersFrame))
+
+        var expectedRequestHead = HTTPRequestHead(
+            version: HTTPVersion(major: 2, minor: 0),
+            method: .CONNECT,
+            uri: "example.org"
+        )
+        expectedRequestHead.headers.add(name: "host", value: "example.org")
+        expectedRequestHead.headers.add(name: "other", value: "header")
+        self.channel.assertReceivedServerRequestPart(.head(expectedRequestHead))
+        self.channel.assertReceivedServerRequestPart(.end(nil))
+
+        XCTAssertNoThrow(try self.channel.finish())
+    }
+
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    func testReceiveConnectRequestWithoutAuthority() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
+
+        let requestHeaders = HPACKHeaders([(":method", "CONNECT")])
+        XCTAssertThrowsError(
+            try self.channel.writeInbound(
+                HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders)))
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? NIOHTTP2Errors.MissingPseudoHeader,
+                NIOHTTP2Errors.MissingPseudoHeader(":authority")
+            )
+        }
+
+        _ = try? self.channel.finish()
+    }
+
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
+    func testReceiveExtendedConnectRequestWithoutPath() throws {
+        let streamID = HTTP2StreamID(1)
+        XCTAssertNoThrow(
+            try self.channel.pipeline.syncOperations.addHandler(HTTP2ToHTTP1ServerCodec(streamID: streamID))
+        )
+
+        let requestHeaders = HPACKHeaders([
+            (":method", "CONNECT"), (":protocol", "websocket"), (":scheme", "https"),
+            (":authority", "example.org"), ("other", "header"),
+        ])
+        XCTAssertThrowsError(
+            try self.channel.writeInbound(
+                HTTP2Frame(streamID: streamID, payload: .headers(.init(headers: requestHeaders)))
+            )
+        ) { error in
+            XCTAssertEqual(error as? NIOHTTP2Errors.MissingPseudoHeader, NIOHTTP2Errors.MissingPseudoHeader(":path"))
+        }
+
+        _ = try? self.channel.finish()
+    }
+
+    @available(*, deprecated, message: "Deprecated so deprecated functionality can be tested without warnings")
     func testReceiveRequestWithoutPath() throws {
         let streamID = HTTP2StreamID(1)
         XCTAssertNoThrow(
