@@ -20,9 +20,10 @@ struct DOSHeuristics<DeadlineClock: NIODeadlineClock> {
     /// The number of "empty" (zero bytes of useful payload) DATA frames we've received since the
     /// last useful frame.
     ///
-    /// We reset this count each time we see END_STREAM, or a HEADERS frame, both of which we count
-    /// as doing useful work. We have a small budget for these because we want to tolerate buggy
-    /// implementations that occasionally emit empty DATA frames, but don't want to drown in them.
+    /// We reset this count each time we see a DATA frame with a payload, END_STREAM, or a HEADERS
+    /// frame, all of which we count as doing useful work. The budget is for empty frames in a row:
+    /// a compressor flush can emit one empty DATA frame between payload frames, and that must not
+    /// add up across the whole stream.
     private var receivedEmptyDataFrames: Int
 
     /// The maximum number of "empty" data frames we're willing to tolerate.
@@ -62,6 +63,8 @@ extension DOSHeuristics {
         case .data(let payload):
             if payload.data.readableBytes == 0 {
                 self.receivedEmptyDataFrames += 1
+            } else {
+                self.receivedEmptyDataFrames = 0
             }
 
             if payload.endStream {
